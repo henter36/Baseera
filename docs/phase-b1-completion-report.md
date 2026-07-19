@@ -81,7 +81,18 @@ Minimal API `[AsParameters]` treats non-nullable value-type properties as **requ
 
 NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra placeholders): OK.
 
-**Post-fix tip SHA:** `f263d6eb4f79283cc77837b356f111cab3c02a61` (nullable AsParameters binding fix; prior code-fix `0406606`).
+**Post-fix tip SHA:** `8273f5d85fbf2f0822065a413054d53372b1612d`
+
+### CI / Sonar (run `29692774437`)
+
+| Gate | Result |
+|------|--------|
+| Backend (unit 215 + integration 51) | Passed |
+| Frontend (78) | Passed |
+| Secret scan (Gitleaks) | Passed |
+| SonarCloud Quality Gate | **Passed** (Reliability A, Maintainability A, Security A; new issues 0) |
+| Qlty | Passed (no blocking issues) |
+| Skipped | **0** |
 
 ## Rollback
 
