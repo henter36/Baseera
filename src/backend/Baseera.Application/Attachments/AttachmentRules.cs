@@ -95,47 +95,19 @@ public static class AttachmentRules
             throw new InvalidOperationException("نوع الملف غير مسموح.");
         }
 
-        var previous = stream.Position;
         try
         {
             stream.Position = 0;
             Span<byte> header = stackalloc byte[8];
             header.Clear();
+            ReadSignatureHeader(stream, header, required);
 
-            if (required > 0)
-            {
-                try
-                {
-                    stream.ReadExactly(header[..required]);
-                }
-                catch (EndOfStreamException)
-                {
-                    throw new InvalidOperationException("الملف قصير جدًا أو تالف.");
-                }
-            }
-
-            var ext = Path.GetExtension(fileName).ToLowerInvariant();
-            var ok = contentType.ToLowerInvariant() switch
-            {
-                "application/pdf" => header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46,
-                "image/png" => header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47,
-                "image/jpeg" => header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
-                "text/plain" => true,
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    => header[0] == 0x50 && header[1] == 0x4B,
-                _ => false
-            };
-
-            if (!ok)
+            if (!MatchesDeclaredSignature(contentType, header))
             {
                 throw new InvalidOperationException("توقيع الملف لا يطابق النوع المعلن.");
             }
 
-            if (ext is ".exe" or ".dll" or ".bat" or ".cmd" or ".ps1" or ".sh")
-            {
-                throw new InvalidOperationException("امتداد الملف غير مسموح.");
-            }
+            RejectDangerousExtension(fileName);
         }
         finally
         {
@@ -143,10 +115,45 @@ public static class AttachmentRules
             {
                 stream.Position = 0;
             }
-            else
-            {
-                stream.Position = previous;
-            }
+        }
+    }
+
+    private static void ReadSignatureHeader(Stream stream, Span<byte> header, int required)
+    {
+        if (required <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            stream.ReadExactly(header[..required]);
+        }
+        catch (EndOfStreamException)
+        {
+            throw new InvalidOperationException("الملف قصير جدًا أو تالف.");
+        }
+    }
+
+    private static bool MatchesDeclaredSignature(string contentType, ReadOnlySpan<byte> header) =>
+        contentType.ToLowerInvariant() switch
+        {
+            "application/pdf" => header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46,
+            "image/png" => header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47,
+            "image/jpeg" => header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
+            "text/plain" => true,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                => header[0] == 0x50 && header[1] == 0x4B,
+            _ => false
+        };
+
+    private static void RejectDangerousExtension(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (ext is ".exe" or ".dll" or ".bat" or ".cmd" or ".ps1" or ".sh")
+        {
+            throw new InvalidOperationException("امتداد الملف غير مسموح.");
         }
     }
 }

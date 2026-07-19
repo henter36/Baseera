@@ -105,32 +105,7 @@ public sealed class UserProvisioningService(BaseeraDbContext db, ILogger<UserPro
         var email = principal.FindFirstValue(ClaimTypes.Email)
                     ?? principal.FindFirstValue("preferred_username");
 
-        // Bookkeeping only: throttle writes so concurrent requests do not contend on SaveChanges.
-        var profileChanged =
-            !string.Equals(user.DisplayNameAr, displayName, StringComparison.Ordinal) ||
-            (!string.IsNullOrWhiteSpace(email) && !string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase));
-        var loginStale = user.LastLoginAtUtc is null ||
-                         DateTimeOffset.UtcNow - user.LastLoginAtUtc.Value > TimeSpan.FromMinutes(5);
-
-        if (profileChanged || loginStale)
-        {
-            user.LastLoginAtUtc = DateTimeOffset.UtcNow;
-            user.DisplayNameAr = displayName;
-            if (!string.IsNullOrWhiteSpace(email))
-            {
-                user.Email = email;
-            }
-
-            try
-            {
-                await db.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException ex)
-            {
-                logger.LogDebug(ex, "Ignored concurrency conflict while updating login bookkeeping for {UserId}", user.Id);
-                db.ChangeTracker.Clear();
-            }
-        }
+        await PersistLoginBookkeepingAsync(user, displayName, email, cancellationToken);
 
         var permissions = await (
             from ur in db.UserRoles
@@ -146,5 +121,40 @@ public sealed class UserProvisioningService(BaseeraDbContext db, ILogger<UserPro
             .ToListAsync(cancellationToken);
 
         return new UserPrincipalState(true, user.Id, subject, displayName, permissions, scopes);
+    }
+
+    private async Task PersistLoginBookkeepingAsync(
+        User user,
+        string displayName,
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        var profileChanged =
+            !string.Equals(user.DisplayNameAr, displayName, StringComparison.Ordinal) ||
+            (!string.IsNullOrWhiteSpace(email) && !string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase));
+        var loginStale = user.LastLoginAtUtc is null ||
+                         DateTimeOffset.UtcNow - user.LastLoginAtUtc.Value > TimeSpan.FromMinutes(5);
+
+        if (!profileChanged && !loginStale)
+        {
+            return;
+        }
+
+        user.LastLoginAtUtc = DateTimeOffset.UtcNow;
+        user.DisplayNameAr = displayName;
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            user.Email = email;
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            logger.LogDebug(ex, "Ignored concurrency conflict while updating login bookkeeping for {UserId}", user.Id);
+            db.ChangeTracker.Clear();
+        }
     }
 }
