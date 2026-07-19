@@ -118,11 +118,19 @@ NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra place
 | Integration | **52** (CI) | 0 |
 | Frontend | **78** | 0 |
 
-**Post-fix tip SHA:** `5b5d7ff1653af8b8d3e8f706c7069fb970b8c282`
+**Post-fix tip SHA:** `7fa215c8f8f6546c4fbbca1fc20f6554ba26fc53` (code `5b5d7ff`)
 
 ### Gates
 
-Recorded after CI on tip: Sonar / Qlty / Gitleaks / CodeRabbit; open review threads count.
+| Gate | Result |
+|------|--------|
+| CI run `29694566600` | Passed |
+| Unit 228 / Integration 52 / Frontend 78 | Passed, Skipped 0 |
+| Sonar Quality Gate | **Passed** (Reliability A, Maintainability A, Security A; new issues 0) |
+| Qlty | Passed |
+| Gitleaks | Passed |
+| CodeRabbit | Passed |
+| Open review threads | **0** |
 
 1. Revert the B.1 PR / migration `PhaseB1NotesCore` Down in a **test** environment only first.
 2. Do not edit prior merged migrations.
