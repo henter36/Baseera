@@ -81,7 +81,7 @@ Minimal API `[AsParameters]` treats non-nullable value-type properties as **requ
 
 NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra placeholders): OK.
 
-**Post-fix tip SHA:** _(updated after push of nullable AsParameters fix)_
+**Post-fix tip SHA:** `f263d6eb4f79283cc77837b356f111cab3c02a61` (nullable AsParameters binding fix; prior code-fix `0406606`).
 
 ## Rollback
 
