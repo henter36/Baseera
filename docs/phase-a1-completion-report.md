@@ -3,7 +3,7 @@
 **Date:** 2026-07-19  
 **Branch:** `phase-a1-security-hardening`  
 **PR:** https://github.com/henter36/Baseera/pull/2  
-**Commit SHA:** _(pending push of static-analysis closure)_
+**Commit SHA:** `bbfba57e772f0e6e11c750c06982c08ab251dce7`
 
 ---
 
@@ -76,7 +76,7 @@ Also green locally: `dotnet build` Release; `npm ci --ignore-scripts` + `typeche
 
 ### Final commit SHA
 
-Recorded after push in the Evidence section below.
+`bbfba57e772f0e6e11c750c06982c08ab251dce7`
 
 ---
 
