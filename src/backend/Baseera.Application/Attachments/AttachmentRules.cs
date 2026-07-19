@@ -100,11 +100,18 @@ public static class AttachmentRules
         {
             stream.Position = 0;
             Span<byte> header = stackalloc byte[8];
-            var read = stream.Read(header);
+            header.Clear();
 
-            if (required > 0 && read < required)
+            if (required > 0)
             {
-                throw new InvalidOperationException("الملف قصير جدًا أو تالف.");
+                try
+                {
+                    stream.ReadExactly(header[..required]);
+                }
+                catch (EndOfStreamException)
+                {
+                    throw new InvalidOperationException("الملف قصير جدًا أو تالف.");
+                }
             }
 
             var ext = Path.GetExtension(fileName).ToLowerInvariant();

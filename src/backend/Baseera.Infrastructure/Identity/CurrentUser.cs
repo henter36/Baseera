@@ -102,16 +102,35 @@ public sealed class UserProvisioningService(BaseeraDbContext db, ILogger<UserPro
             return UserPrincipalState.Anonymous with { RejectionReason = "inactive_or_pending" };
         }
 
-        user.LastLoginAtUtc = DateTimeOffset.UtcNow;
-        user.DisplayNameAr = displayName;
         var email = principal.FindFirstValue(ClaimTypes.Email)
                     ?? principal.FindFirstValue("preferred_username");
-        if (!string.IsNullOrWhiteSpace(email))
-        {
-            user.Email = email;
-        }
 
-        await db.SaveChangesAsync(cancellationToken);
+        // Bookkeeping only: throttle writes so concurrent requests do not contend on SaveChanges.
+        var profileChanged =
+            !string.Equals(user.DisplayNameAr, displayName, StringComparison.Ordinal) ||
+            (!string.IsNullOrWhiteSpace(email) && !string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase));
+        var loginStale = user.LastLoginAtUtc is null ||
+                         DateTimeOffset.UtcNow - user.LastLoginAtUtc.Value > TimeSpan.FromMinutes(5);
+
+        if (profileChanged || loginStale)
+        {
+            user.LastLoginAtUtc = DateTimeOffset.UtcNow;
+            user.DisplayNameAr = displayName;
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                user.Email = email;
+            }
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                logger.LogDebug(ex, "Ignored concurrency conflict while updating login bookkeeping for {UserId}", user.Id);
+                db.ChangeTracker.Clear();
+            }
+        }
 
         var permissions = await (
             from ur in db.UserRoles

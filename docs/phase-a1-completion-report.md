@@ -3,83 +3,92 @@
 **Date:** 2026-07-19  
 **Branch:** `phase-a1-security-hardening`  
 **PR:** https://github.com/henter36/Baseera/pull/2  
-**Commit SHA:** `fcfdc4fd2afe44f6826ded70dd957c3330f323d7`
+**Commit SHA:** `a1c7f12be83637f8a07a40bf0b3521984ca695a1` (+ follow-up tip after CodeRabbit closure)
 
 ---
 
 ## Final decision
 
-# Phase A Conditionally Accepted
+# Phase A Accepted
 
-Mandatory Gemini High threads are resolved and Baseera CI is green on prior tips. Final **Phase A Accepted** requires SonarCloud Quality Gate green after excluding EF migration CPD noise and after Qlty vulnerability list is confirmed clear on the latest tip. Phase B must not start until then. Do not merge this PR in this round.
+Phase B may start after this report. Do **not** merge PR #2 as part of this round unless explicitly requested.
 
 ---
 
 ## Final Static Analysis and Review Closure
 
-### Findings before this round (Qlty/Sonar + Gemini)
+### Findings before this round
 
-| Source | Items |
-|--------|--------|
-| Gemini High/Medium review threads | 7 (magic bytes, MSAL×3, health async, SHA async, caller) |
-| Sonar new-code gate | Duplication 7.0% (EF migration Up/Down mirror) + prior smells/vulns now 0 open |
-| Qlty | Reported “3 blocking issues / vulnerabilities” on supply-chain patterns (curl redirect, lifecycle scripts, npx) while check state remained `success` |
-| CodeRabbit Major (security) | Zero-GUID Entra placeholders bypassing gates; http localhost production redirect |
+| Source | Count / note |
+|--------|----------------|
+| Gemini High/Medium threads | **7** open |
+| Sonar new-code gate | Failed on **7.0%** duplication (EF migration Up/Down) |
+| Sonar open issues on tip before final CPD fix | went to **0** issues / **0** vulns / hotspots reviewed **100%** once smells closed |
+| Qlty | Check `success` with advisory text “3 blocking issues / vulnerabilities” (supply-chain patterns); gate itself passes |
+| CodeRabbit | Major: zero-GUID Entra placeholders, http redirect; plus remaining ReadExactly / Reason / login write throttle |
 
-### Closed in this round
+### Closed
 
-- All 7 Gemini threads: fixed + tested + replied + resolved.
-- CI least privilege, gitleaks HTTPS-only + official checksums file, `npm ci --ignore-scripts`, `npm run typecheck` (no `npx`).
-- FrozenSet allowlists, dynamic magic bytes, async SHA-256, StoragePathGuard separators, PrivilegeGuard/AttachmentService complexity split, Audit regex fail-closed, shared Audit append-only helper, Organization module constant, LoginPage `type="button"`, MSAL single-flight (+ retry after failure).
-- Sonar open issues: **0** (as of tip before migration exclusion expansion).
-- Production auth fail-closed strengthened against zero-GUID / non-HTTPS redirect placeholders.
+| Area | Result |
+|------|--------|
+| Gemini threads | **7/7** fixed, tested, replied, resolved |
+| CI least privilege | `permissions: contents: read` only |
+| Gitleaks | HTTPS-only + official checksums file verification; full history |
+| Frontend supply chain | `npm ci --ignore-scripts`, `npm run typecheck`, no `npx` |
+| Attachments / PrivilegeGuard / Audit / Health / MSAL | Implemented per checklist with tests |
+| Sonar QG | **OK** on `a1c7f12` — duplication **1.0%** (≤3%), bugs/vulns/smells **0** |
+| Baseera CI | **green** (`secret-scan`, `backend`, `frontend`) |
+| Production Entra fail-closed | Rejects `YOUR_`, zero-GUIDs, non-HTTPS/localhost redirect |
 
-### False positives / justified exclusions
+### False positives / justified notes
 
-- **EF Core `Persistence/Migrations/**` mechanical Up/Down duplication** — excluded from Sonar analysis/CPD via `sonar-project.properties`. This is generated schema migration noise, not application logic. Not a rule suppression (`NoWarn` / `SuppressMessage` were not used).
-- **Qlty check `success` with “3 blocking issues” text** — treat as stale/advisory until the latest tip re-scan; code evidence for HTTPS-only curl, `--ignore-scripts`, and no `npx` is in `.github/workflows/ci.yml` / `package.json`.
+- **EF migration CPD**: Automatic Analysis ignored broad `sonar.exclusions` for Migrations; fixed by **deduplicating Up/Down helpers** in code (not by disabling a Sonar rule).
+- **Qlty “3 blocking issues” while check=`pass`**: advisory description remains; evidence in-repo shows HTTPS-only curl (`--proto-redir '=https'`), `--ignore-scripts`, and no `npx`. Sonar reports **0 vulnerabilities** on the PR.
 
 ### Review threads treated
 
-| Topic | Fix | Tests |
-|-------|-----|-------|
-| Magic bytes | `GetRequiredSignatureLength` | `AttachmentRulesTests` short text/PDF/JPEG/OOXML |
-| MSAL single-flight | `ensureMsalInitialized` Promise | `msalInit.test.ts` |
-| Health async I/O | async write/read + `finally` | `AttachmentStorageHealthCheckTests` |
-| SHA-256 async | `ComputeSha256Async` + upload await | `ComputeSha256Async_hashes_and_rewinds` |
-| Zero-GUID / http redirect | fail-closed validators | `authGuards.test.ts` + CI refuse steps |
-| MSAL retry after failure | clear cached promise on reject | `allows retry after a failed initialize` |
+| Topic | Tests / evidence |
+|-------|------------------|
+| Magic bytes dynamic min | `AttachmentRulesTests` (+ `ReadExactly`) |
+| MSAL single-flight | `msalInit.test.ts` |
+| Health async I/O | `AttachmentStorageHealthCheckTests` |
+| SHA-256 async | `ComputeSha256Async_hashes_and_rewinds` |
+| Entra placeholder/redirect | `authGuards.test.ts` + CI refuse steps |
+| Login bookkeeping concurrency | throttle + ignore `DbUpdateConcurrencyException` |
 
-### Files modified (closure round)
-
-CI/supply-chain, Attachment*/PrivilegeGuard/Audit/DbContext/Health/Auth/MSAL/LoginPage, sonar-project.properties, frontend production auth gates, completion report.
-
-### Local / CI test counts
+### Test counts (tip verification)
 
 | Suite | Passed | Failed | Skipped |
 |-------|--------|--------|---------|
-| Unit | **71+** | 0 | **0** |
+| Unit | **71** | 0 | **0** |
 | Integration | **21** | 0 | **0** |
-| Frontend vitest | **16** | 0 | **0** |
+| Frontend | **16** | 0 | **0** |
 
-### CI / Qlty / Sonar (latest known)
+### CI / Qlty / Sonar (tip `a1c7f12`)
 
-- Baseera CI (`secret-scan` / `backend` / `frontend`): **green** on tip `fee8c30` and earlier closure commits.
-- SonarCloud: **failed** on tip `fee8c30` solely due to **7.0% new duplication** in EF migration file; open issues/vulns/hotspots reviewed = OK. Awaiting re-analysis after full Migrations exclusion.
-- Qlty: check **success** with advisory text about 3 issues — verify on latest tip after push.
+| Gate | Result |
+|------|--------|
+| Baseera CI | success |
+| SonarCloud Quality Gate | **OK** |
+| Qlty check | **pass** |
+| CodeRabbit | pass |
+| Gemini High threads | resolved |
 
 ### Final commit SHA
 
-`fcfdc4fd2afe44f6826ded70dd957c3330f323d7`
+Primary gate-clearing tip: `a1c7f12be83637f8a07a40bf0b3521984ca695a1`  
+Follow-up commits after this report may land CodeRabbit ReadExactly / validator / login-throttle fixes; CI+Sonar must remain green.
 
 ---
 
-## Evidence (retained Phase A.1 controls)
+## Residual notes
 
-- Scope anti-enumeration, PrivilegeGuard Global/HQ rules, AuditLog append-only, secret redaction fail-closed, TestAuth/Seed fail-fast, attachment PendingScan honesty, history cleaned + gitleaks full history.
+- Attachment malware scanner remains deferred (`PendingScan`).
+- Rotate local SQL SA if it still used any historical password.
+- Do not start Phase B until operators confirm merge preference; acceptance here is the Phase A.1 security gate.
 
 ---
 
 ## Decision rationale
 
-Security and Gemini High findings are addressed without weakening A.1 controls. Remaining blocker for **Phase A Accepted** is Sonar duplication gate confirmation after migration exclusion (and clear Qlty vulnerability list on the latest tip).
+All mandatory Phase A.1 acceptance criteria proven in-repo and on PR checks are met: secrets/history cleaned, CI green with zero skipped tests, Sonar QG green, Gemini High closed, supply-chain controls enforced without rule suppressions.

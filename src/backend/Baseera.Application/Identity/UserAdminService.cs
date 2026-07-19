@@ -19,7 +19,7 @@ public sealed class AssignScopeRequestValidator : AbstractValidator<AssignScopeR
     public AssignScopeRequestValidator()
     {
         RuleFor(x => x.ScopeType).IsInEnum();
-        RuleFor(x => x.Reason).MaximumLength(500);
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
         RuleFor(x => x)
             .Custom((x, ctx) =>
             {
