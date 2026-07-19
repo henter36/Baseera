@@ -3,7 +3,8 @@
 **Branch:** `phase-b1-notes-core`  
 **Base merge:** `5dc0b5b8efab8214c8a38cad839f8964f9f59f08` (PR #2 → `main`)  
 **Migration:** `20260719103156_PhaseB1NotesCore`  
-**Decision (proposed):** Phase B.1 Conditionally Accepted — pending PR review, Sonar/Qlty CI on the PR, and explicit human acceptance. **Do not merge until approved.**
+**PR:** https://github.com/henter36/Baseera/pull/3  
+**Decision (proposed):** Phase B.1 Conditionally Accepted — functional slice + CI/Sonar/Qlty green on PR #3; awaiting explicit human acceptance. **Do not merge until approved.**
 
 ## Delivered
 
@@ -28,12 +29,24 @@ Corrective multi-actions, auto-escalation, notifications, background jobs, execu
 | Integration | 21 | 49 | 0 |
 | Frontend | 16 | 76 | 0 |
 
+## PR #3 CI (tip `7a270a4`)
+
+| Check | Result |
+|-------|--------|
+| backend | pass |
+| frontend | pass |
+| secret-scan | pass |
+| SonarCloud Code Analysis | **pass** (Reliability remediated) |
+| qlty check | pass (no blocking issues) |
+| CodeRabbit | pass (review completed; rate-limit note on later push) |
+| NuGet High/Critical | clean (Cryptography.Xml 10.0.10 pin retained; NU1510 warning remains) |
+
 ## Residual risks
 
 1. Malware scanner remains stubbed (PendingScan still blocks download — intentional for B.1).
 2. NU1510 warning remains while the High/Critical pin is required.
-3. SonarCloud / Qlty / CodeRabbit results must be confirmed on the PR CI run.
-4. Restore UX requires knowing `rowVersion` for archived notes (no “include deleted” list API yet).
+3. Restore UX requires knowing `rowVersion` for archived notes (no “include deleted” list API yet).
+4. CodeRabbit incremental review hit plan rate limits on a later push; earlier review comments were addressed (async EF / complexity).
 
 ## Rollback
 
