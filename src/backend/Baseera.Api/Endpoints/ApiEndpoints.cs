@@ -6,8 +6,10 @@ using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.Common;
 using Baseera.Application.Identity;
+using Baseera.Application.Notes;
 using Baseera.Application.Organization;
 using Baseera.Domain.Attachments;
+using Baseera.Domain.Notes;
 using FluentValidation;
 
 public static class ApiEndpoints
@@ -150,6 +152,148 @@ public static class ApiEndpoints
             return Results.File(content, meta.ContentType, meta.OriginalFileName);
         }).RequireAuthorization(AuthPolicies.AttachmentsDownload);
 
+        MapNotesEndpoints(api);
+
         return api;
     }
+
+    private static void MapNotesEndpoints(RouteGroupBuilder api)
+    {
+        var notes = api.MapGroup("/notes");
+
+        notes.MapGet("/", async (
+            int? page,
+            int? pageSize,
+            string? search,
+            NoteStatus? status,
+            NoteSeverity? severity,
+            NoteCategory? category,
+            NoteSourceType? sourceType,
+            Guid? regionId,
+            Guid? facilityId,
+            Guid? facilityUnitId,
+            Guid? ownerDepartmentId,
+            Guid? assignedToUserId,
+            bool? overdueOnly,
+            DateTimeOffset? dueFrom,
+            DateTimeOffset? dueTo,
+            DateTimeOffset? createdFrom,
+            DateTimeOffset? createdTo,
+            string? sortBy,
+            bool? sortDesc,
+            INoteQueryService queries,
+            CancellationToken ct) =>
+            Results.Ok(await queries.ListAsync(new NoteListQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 20,
+                Search = search,
+                Status = status,
+                Severity = severity,
+                Category = category,
+                SourceType = sourceType,
+                RegionId = regionId,
+                FacilityId = facilityId,
+                FacilityUnitId = facilityUnitId,
+                OwnerDepartmentId = ownerDepartmentId,
+                AssignedToUserId = assignedToUserId,
+                OverdueOnly = overdueOnly ?? false,
+                DueFrom = dueFrom,
+                DueTo = dueTo,
+                CreatedFrom = createdFrom,
+                CreatedTo = createdTo,
+                SortBy = sortBy,
+                SortDesc = sortDesc ?? false
+            }, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapGet("/{id:guid}", async (Guid id, INoteQueryService queries, CancellationToken ct) =>
+        {
+            var item = await queries.GetDetailAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapPost("/", async (CreateNoteRequest request, IValidator<CreateNoteRequest> validator, INoteCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await commands.CreateDraftAsync(request, ct);
+            return Results.Created($"/api/v1/notes/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.NotesCreate);
+
+        notes.MapPut("/{id:guid}", async (Guid id, UpdateNoteRequest request, IValidator<UpdateNoteRequest> validator, INoteCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await commands.UpdateAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesUpdate);
+
+        notes.MapPost("/{id:guid}/submit", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await commands.SubmitAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesUpdate);
+
+        notes.MapPost("/{id:guid}/assign", async (Guid id, AssignNoteRequest request, IValidator<AssignNoteRequest> validator, INoteAssignmentService assignments, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await assignments.AssignAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesAssign);
+
+        notes.MapPost("/{id:guid}/start-work", async (Guid id, WorkflowActionRequest request, IValidator<WorkflowActionRequest> validator, INoteWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.StartWorkAsync(id, ToTransition(request), ct));
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        notes.MapPost("/{id:guid}/submit-for-verification", async (Guid id, WorkflowActionRequest request, IValidator<WorkflowActionRequest> validator, INoteWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.SubmitForVerificationAsync(id, ToTransition(request), ct));
+        }).RequireAuthorization(AuthPolicies.NotesSubmitForVerification);
+
+        notes.MapPost("/{id:guid}/return-for-rework", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.ReturnForReworkAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesReturnForRework);
+
+        notes.MapPost("/{id:guid}/verify-closure", async (Guid id, CloseNoteRequest request, IValidator<CloseNoteRequest> validator, INoteWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.VerifyClosureAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesVerifyClosure);
+
+        notes.MapPost("/{id:guid}/reopen", async (Guid id, ReopenNoteRequest request, IValidator<ReopenNoteRequest> validator, INoteWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.ReopenAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesReopen);
+
+        notes.MapPost("/{id:guid}/cancel", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.CancelAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesCancel);
+
+        notes.MapPost("/{id:guid}/archive", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await commands.ArchiveAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.NotesArchive);
+
+        notes.MapPost("/{id:guid}/restore", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await commands.RestoreAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.NotesRestore);
+
+        notes.MapGet("/{id:guid}/history", async (Guid id, INoteQueryService queries, CancellationToken ct) =>
+            Results.Ok(await queries.GetHistoryAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapGet("/{id:guid}/assignments", async (Guid id, INoteQueryService queries, CancellationToken ct) =>
+            Results.Ok(await queries.GetAssignmentsAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+    }
+
+    private static TransitionNoteRequest ToTransition(WorkflowActionRequest request) =>
+        new(string.IsNullOrWhiteSpace(request.Reason) ? "—" : request.Reason.Trim(), request.RowVersion);
 }

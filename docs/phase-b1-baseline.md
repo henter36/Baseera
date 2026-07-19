@@ -53,3 +53,24 @@ Prior green evidence from Phase A.1 tip before merge; post-merge `main` inherits
 ## Decision
 
 **Baseline accepted.** Proceed with Phase B.1 implementation on `phase-b1-notes-core`.
+
+---
+
+## NU1510 / `System.Security.Cryptography.Xml` follow-up (during B.1 implementation)
+
+The direct pin on `System.Security.Cryptography.Xml` in `Baseera.Api.csproj` was removed to test
+whether the NU1510 "package will not be pruned" warning could be cleared. Result:
+
+- With the pin **removed**, `dotnet build` still emitted NU1510 for the *transitive* copy pulled in
+  by `Microsoft.Identity.Web`, and `scripts/check-nuget-vulnerabilities.sh` **failed** — it resolved
+  `System.Security.Cryptography.Xml 9.0.0`, which has two published High-severity advisories
+  ([GHSA-37gx-xxp4-5rgx](https://github.com/advisories/GHSA-37gx-xxp4-5rgx),
+  [GHSA-w3x6-4m5h-cxqf](https://github.com/advisories/GHSA-w3x6-4m5h-cxqf)). The failure surfaced via
+  `Baseera.UnitTests`, which references `Baseera.Api` but (unlike `Baseera.IntegrationTests`) had no
+  pin of its own to force NuGet's highest-wins resolution to a patched version.
+- **Decision: restored the `System.Security.Cryptography.Xml` `Version="10.0.10"` pin** in
+  `Baseera.Api.csproj` (with an inline comment explaining why). The NU1510 hygiene warning remains
+  (harmless — it only means the package could theoretically be pruned once `Microsoft.Identity.Web`
+  bumps its own dependency), but the vulnerability gate is green again.
+- Re-ran `bash scripts/check-nuget-vulnerabilities.sh src/backend/Baseera.slnx` after restoring the
+  pin: **"No High/Critical NuGet vulnerabilities reported."**

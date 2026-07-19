@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.Identity;
+using Baseera.Application.Notes;
 using Baseera.Application.Organization;
 using Baseera.Application.Security;
 using FluentValidation;
@@ -20,6 +21,11 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
         services.AddScoped<IAttachmentAppService, AttachmentAppService>();
+        services.AddScoped<INoteScopeService, NoteScopeService>();
+        services.AddScoped<INoteQueryService, NoteQueryService>();
+        services.AddScoped<INoteCommandService, NoteCommandService>();
+        services.AddScoped<INoteAssignmentService, NoteAssignmentService>();
+        services.AddScoped<INoteWorkflowService, NoteWorkflowService>();
         return services;
     }
 }
