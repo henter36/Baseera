@@ -3,7 +3,7 @@
 **Date:** 2026-07-19  
 **Branch:** `phase-a1-security-hardening`  
 **PR:** https://github.com/henter36/Baseera/pull/2  
-**Commit SHA:** _(updated on push)_
+**Commit SHA:** `fcfdc4fd2afe44f6826ded70dd957c3330f323d7`
 
 ---
 
@@ -70,7 +70,7 @@ CI/supply-chain, Attachment*/PrivilegeGuard/Audit/DbContext/Health/Auth/MSAL/Log
 
 ### Final commit SHA
 
-Recorded after the push that lands Sonar exclusion + production-auth hardening.
+`fcfdc4fd2afe44f6826ded70dd957c3330f323d7`
 
 ---
 
