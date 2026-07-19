@@ -6,6 +6,34 @@ using Baseera.Application.Abstractions;
 using Baseera.Domain.Audit;
 using Baseera.Infrastructure.Persistence;
 
+public static class AuditSecretRedactor
+{
+    private static readonly Regex SecretPattern = new(
+        "(password|secret|clientsecret|token|authorization|connectionstring|apikey|access_token|refresh_token)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
+
+    /// <summary>
+    /// Fail-closed: on match or regex timeout, never persist the original payload.
+    /// </summary>
+    public static string Protect(string json)
+    {
+        try
+        {
+            if (SecretPattern.IsMatch(json))
+            {
+                return "{\"redacted\":true}";
+            }
+
+            return json;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return "{\"redacted\":true}";
+        }
+    }
+}
+
 public sealed class AuditService(BaseeraDbContext db, ICurrentUser currentUser, IOrganizationalScopeService scope) : IAuditService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -13,10 +41,6 @@ public sealed class AuditService(BaseeraDbContext db, ICurrentUser currentUser, 
         WriteIndented = false,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
-
-    private static readonly Regex SecretPattern = new(
-        "(password|secret|clientsecret|token|authorization|connectionstring|apikey|access_token|refresh_token)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
     /// Stages an append-only audit row in the same DbContext. Caller must SaveChanges
@@ -55,11 +79,6 @@ public sealed class AuditService(BaseeraDbContext db, ICurrentUser currentUser, 
         }
 
         var json = JsonSerializer.Serialize(value, JsonOptions);
-        if (SecretPattern.IsMatch(json))
-        {
-            return "{\"redacted\":true}";
-        }
-
-        return json;
+        return AuditSecretRedactor.Protect(json);
     }
 }

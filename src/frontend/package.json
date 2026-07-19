@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node scripts/check-production-auth.mjs && tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",

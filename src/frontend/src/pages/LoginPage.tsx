@@ -18,7 +18,7 @@ export function LoginPage() {
         {configError && <div className="error" role="alert">{configError}</div>}
         {mode === 'entra' && !configError && (
           <div className="toolbar">
-            <button disabled={loading} onClick={() => void loginEntra()}>
+            <button type="button" disabled={loading} onClick={() => void loginEntra()}>
               تسجيل الدخول عبر Microsoft Entra ID
             </button>
           </div>
@@ -33,7 +33,11 @@ export function LoginPage() {
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="معرف مستخدم مُسبق التجهيز"
               />
-              <button disabled={loading || !subject.trim()} onClick={() => void loginTest(subject.trim())}>
+              <button
+                type="button"
+                disabled={loading || !subject.trim()}
+                onClick={() => void loginTest(subject.trim())}
+              >
                 دخول تجريبي
               </button>
             </div>

@@ -208,12 +208,14 @@ public static class DatabaseInitializer
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private const string OrganizationModule = "Organization";
+
     private static List<Permission> BuildPermissions()
     {
         (string Code, string NameAr, string Module)[] items =
         [
-            (PermissionCodes.OrganizationView, "عرض الهيكل التنظيمي", "Organization"),
-            (PermissionCodes.OrganizationManage, "إدارة الهيكل التنظيمي", "Organization"),
+            (PermissionCodes.OrganizationView, "عرض الهيكل التنظيمي", OrganizationModule),
+            (PermissionCodes.OrganizationManage, "إدارة الهيكل التنظيمي", OrganizationModule),
             (PermissionCodes.UsersView, "عرض المستخدمين", "Identity"),
             (PermissionCodes.UsersManage, "إدارة المستخدمين", "Identity"),
             (PermissionCodes.RolesManage, "إدارة الأدوار", "Identity"),
@@ -224,8 +226,8 @@ public static class DatabaseInitializer
             (PermissionCodes.AttachmentsDownloadSensitive, "تنزيل المرفقات الحساسة", "Attachments"),
             (PermissionCodes.UsersArchive, "أرشفة مستخدم", "Identity"),
             (PermissionCodes.UsersRestore, "استعادة مستخدم", "Identity"),
-            (PermissionCodes.OrganizationArchive, "أرشفة تنظيمي", "Organization"),
-            (PermissionCodes.OrganizationRestore, "استعادة تنظيمي", "Organization"),
+            (PermissionCodes.OrganizationArchive, "أرشفة تنظيمي", OrganizationModule),
+            (PermissionCodes.OrganizationRestore, "استعادة تنظيمي", OrganizationModule),
             (PermissionCodes.GrantGlobalScope, "منح نطاق وطني", "Identity"),
             (PermissionCodes.GrantHeadquartersScope, "منح نطاق المستوى الرئيسي", "Identity"),
             (PermissionCodes.VehiclesView, "عرض المركبات", "Vehicles"),

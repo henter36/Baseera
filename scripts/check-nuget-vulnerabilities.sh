@@ -13,7 +13,9 @@ set -e
 
 if [[ "$STATUS" -ne 0 ]]; then
   echo "dotnet list package --vulnerable failed with exit code $STATUS" >&2
-  cat "${TMP}.err" >&2 || true
+  if [[ -s "${TMP}.err" ]]; then
+    cat "${TMP}.err" >&2
+  fi
   # Tool failure must not look like a clean bill of health.
   exit "$STATUS"
 fi

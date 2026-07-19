@@ -5,14 +5,16 @@ using Microsoft.AspNetCore.Authorization;
 
 public static class AuthPolicies
 {
-    public const string OrganizationView = "perm:" + PermissionCodes.OrganizationView;
-    public const string OrganizationManage = "perm:" + PermissionCodes.OrganizationManage;
-    public const string UsersView = "perm:" + PermissionCodes.UsersView;
-    public const string RolesManage = "perm:" + PermissionCodes.RolesManage;
-    public const string ScopesManage = "perm:" + PermissionCodes.ScopesManage;
-    public const string AuditView = "perm:" + PermissionCodes.AuditView;
-    public const string AttachmentsUpload = "perm:" + PermissionCodes.AttachmentsUpload;
-    public const string AttachmentsDownload = "perm:" + PermissionCodes.AttachmentsDownload;
+    public const string PermissionPrefix = "perm:";
+
+    public const string OrganizationView = PermissionPrefix + PermissionCodes.OrganizationView;
+    public const string OrganizationManage = PermissionPrefix + PermissionCodes.OrganizationManage;
+    public const string UsersView = PermissionPrefix + PermissionCodes.UsersView;
+    public const string RolesManage = PermissionPrefix + PermissionCodes.RolesManage;
+    public const string ScopesManage = PermissionPrefix + PermissionCodes.ScopesManage;
+    public const string AuditView = PermissionPrefix + PermissionCodes.AuditView;
+    public const string AttachmentsUpload = PermissionPrefix + PermissionCodes.AttachmentsUpload;
+    public const string AttachmentsDownload = PermissionPrefix + PermissionCodes.AttachmentsDownload;
 }
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement

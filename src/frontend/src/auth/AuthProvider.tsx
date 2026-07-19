@@ -16,6 +16,7 @@ import {
   type Me,
 } from '../api/client'
 import { getMsalConfig, validateEntraEnv } from './msalConfig'
+import { ensureMsalInitialized } from './msalInit'
 
 type AuthContextValue = {
   me: Me | null
@@ -34,6 +35,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 let msalInstance: PublicClientApplication | null = null
 let msalInitError: string | null = null
+let redirectHandlingPromise: Promise<AuthenticationResult | null> | null = null
 
 try {
   if (getAuthMode() === 'entra') {
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 async function acquireToken(account: AccountInfo): Promise<string | null> {
   if (!msalInstance) return null
+  await ensureMsalInitialized(msalInstance, msalInitError)
   const scopes = getMsalConfig().auth.scopes
   try {
     const result = await msalInstance.acquireTokenSilent({ account, scopes })
@@ -65,6 +68,15 @@ async function acquireToken(account: AccountInfo): Promise<string | null> {
     }
     throw err
   }
+}
+
+function handleRedirectOnce(): Promise<AuthenticationResult | null> {
+  if (!msalInstance) {
+    return Promise.resolve(null)
+  }
+
+  redirectHandlingPromise ??= msalInstance.handleRedirectPromise()
+  return redirectHandlingPromise
 }
 
 function AuthState({ children }: { children: ReactNode }) {
@@ -101,8 +113,8 @@ function AuthState({ children }: { children: ReactNode }) {
       }
 
       if (mode === 'entra' && msalInstance) {
-        await msalInstance.initialize()
-        const redirect = await msalInstance.handleRedirectPromise()
+        await ensureMsalInitialized(msalInstance, msalInitError)
+        const redirect = await handleRedirectOnce()
         const account = redirect?.account ?? msalInstance.getAllAccounts()[0] ?? null
         setAccessTokenProvider(async () => {
           const active = msalInstance!.getActiveAccount() ?? msalInstance!.getAllAccounts()[0]
@@ -144,17 +156,17 @@ function AuthState({ children }: { children: ReactNode }) {
       await refresh()
     },
     loginEntra: async () => {
-      if (!msalInstance) throw new Error(msalInitError || 'Entra غير مهيأ')
-      await msalInstance.initialize()
-      const result: AuthenticationResult = await msalInstance.loginPopup({
+      await ensureMsalInitialized(msalInstance, msalInitError)
+      const result: AuthenticationResult = await msalInstance!.loginPopup({
         scopes: getMsalConfig().auth.scopes,
       })
-      msalInstance.setActiveAccount(result.account)
+      msalInstance!.setActiveAccount(result.account)
       await refresh()
     },
     logout: async () => {
       setMe(null)
       if (mode === 'entra' && msalInstance) {
+        await ensureMsalInitialized(msalInstance, msalInitError)
         const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0]
         await msalInstance.logoutPopup({ account: account ?? undefined })
       }

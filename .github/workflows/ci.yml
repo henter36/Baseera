@@ -6,31 +6,50 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege: no workflow-level write. Jobs only request what they use.
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
-      - name: Install gitleaks
+      - name: Install gitleaks (pinned + checksum)
+        env:
+          GITLEAKS_VERSION: "8.24.3"
+          GITLEAKS_ARCHIVE: "gitleaks_8.24.3_linux_x64.tar.gz"
+          # From https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_checksums.txt
+          GITLEAKS_SHA256: "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c"
         run: |
           set -euo pipefail
-          curl -sSL -o /tmp/gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
-          tar -xzf /tmp/gitleaks.tgz -C /tmp
-          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          cd "$RUNNER_TEMP/gitleaks"
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --location \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --tlsv1.2 \
+            -o "$GITLEAKS_ARCHIVE" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_ARCHIVE}"
+          echo "${GITLEAKS_SHA256}  ${GITLEAKS_ARCHIVE}" | sha256sum -c -
+          tar -xzf "$GITLEAKS_ARCHIVE"
+          chmod +x ./gitleaks
+          ./gitleaks version
       - name: Gitleaks full history
-        run: gitleaks detect --source . --verbose --redact --exit-code 1
+        run: "$RUNNER_TEMP/gitleaks/gitleaks" detect --source "$GITHUB_WORKSPACE" --verbose --redact --exit-code 1
 
   backend:
     runs-on: ubuntu-latest
     services:
       sqlserver:
-        image: mcr.microsoft.com/mssql/server:2022-latest
+        # Pin CU tag (digest verified against MCR: sha256:3b2d73fe601817aa81b10be441af80c369793bf16b1940b75fae2a56330afd5d)
+        image: mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
         env:
           ACCEPT_EULA: Y
           MSSQL_SA_PASSWORD: ${{ secrets.BASEERA_CI_SA_PASSWORD }}
@@ -46,8 +65,8 @@ jobs:
       BASEERA_TEST_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
       BASEERA_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '10.0.x'
       - name: Wait for SQL Server
@@ -62,21 +81,22 @@ jobs:
             fi
             sleep 2
             if [[ "$i" -eq 90 ]]; then
-              echo "SQL port never opened"
+              echo "SQL port never opened" >&2
               exit 1
             fi
           done
-          # SQL Server accepts TCP before logins work; retry authenticated probe.
+          # Pin by digest: mssql-tools18:latest is unpublished on MCR; tools18 path differs.
+          SQLCMD_IMAGE="mcr.microsoft.com/mssql-tools@sha256:62556500522072535cb3df2bb5965333dded9be47000473e9e0f84118e248642"
           for i in $(seq 1 60); do
             if docker run --rm --network host \
-              mcr.microsoft.com/mssql-tools18:latest \
-              /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1 -U sa -P "$SA_PASSWORD" -C -Q "SELECT 1" >/dev/null 2>&1; then
+              "$SQLCMD_IMAGE" \
+              /opt/mssql-tools/bin/sqlcmd -S 127.0.0.1 -U sa -P "$SA_PASSWORD" -C -Q "SELECT 1" >/dev/null 2>&1; then
               echo "SQL authenticated readiness OK"
               exit 0
             fi
             sleep 3
           done
-          echo "Falling back to extended warm-up sleep"
+          echo "Falling back to extended warm-up sleep" >&2
           sleep 40
       - name: Restore
         run: dotnet restore src/backend/Baseera.slnx
@@ -98,10 +118,9 @@ jobs:
           if [[ "$status" -ne 0 ]]; then
             exit "$status"
           fi
-          # Fail closed if any tests were skipped in CI
-          summary=$(dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --no-build --verbosity quiet 2>&1 || true)
+          summary=$(dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --no-build --verbosity quiet)
           if echo "$summary" | grep -E 'Skipped:\s*[1-9]' >/dev/null; then
-            echo "Integration tests reported skips; failing CI"
+            echo "Integration tests reported skips; failing CI" >&2
             exit 1
           fi
       - name: Apply migrations
@@ -117,14 +136,15 @@ jobs:
       run:
         working-directory: src/frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: '22.14.0'
           cache: npm
           cache-dependency-path: src/frontend/package-lock.json
-      - run: npm ci
-      - run: npx tsc -b --pretty false
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - run: npm run typecheck
       - run: npm run lint
       - run: npm test
       - name: Refuse TestAuth production build
@@ -134,7 +154,7 @@ jobs:
           status=$?
           set -e
           if [[ "$status" -eq 0 ]]; then
-            echo "expected failure for VITE_AUTH_MODE=test"
+            echo "expected failure for VITE_AUTH_MODE=test" >&2
             exit 1
           fi
       - name: Production build

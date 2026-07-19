@@ -85,28 +85,39 @@ public sealed class SqlReadyHealthCheck(BaseeraDbContext db) : IHealthCheck
 
 public sealed class AttachmentStorageHealthCheck(IOptions<AttachmentStorageOptions> options) : IHealthCheck
 {
-    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
+        string? probe = null;
         try
         {
             var root = StoragePathGuard.NormalizeRoot(options.Value.RootPath);
             Directory.CreateDirectory(root);
-            var probe = Path.Combine(root, $".health-{Guid.NewGuid():N}");
+            probe = Path.Combine(root, $".health-{Guid.NewGuid():N}");
             StoragePathGuard.EnsureInsideRoot(root, probe);
             var payload = "ok"u8.ToArray();
-            File.WriteAllBytes(probe, payload);
-            var read = File.ReadAllBytes(probe);
-            File.Delete(probe);
+            await File.WriteAllBytesAsync(probe, payload, cancellationToken);
+            var read = await File.ReadAllBytesAsync(probe, cancellationToken);
             if (read.Length != payload.Length)
             {
-                return Task.FromResult(HealthCheckResult.Unhealthy("attachment_storage_io"));
+                return HealthCheckResult.Unhealthy("attachment_storage_io");
             }
 
-            return Task.FromResult(HealthCheckResult.Healthy());
+            return HealthCheckResult.Healthy();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("attachment_storage"));
+            return HealthCheckResult.Unhealthy("attachment_storage");
+        }
+        finally
+        {
+            if (probe is not null && File.Exists(probe))
+            {
+                File.Delete(probe);
+            }
         }
     }
 }

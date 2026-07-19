@@ -75,7 +75,7 @@ public sealed class AttachmentService(
             throw new InvalidOperationException($"حجم الملف غير مسموح. الحد الأقصى {AttachmentRules.MaxSizeBytes} بايت.");
         }
 
-        if (!AttachmentRules.AllowedContentTypes.Contains(request.ContentType))
+        if (!AttachmentRules.IsAllowedContentType(request.ContentType))
         {
             throw new InvalidOperationException("نوع الملف غير مسموح.");
         }
@@ -85,7 +85,7 @@ public sealed class AttachmentService(
         AttachmentRules.ValidateMagicBytes(request.Content, request.ContentType, request.OriginalFileName);
 
         var original = AttachmentRules.SanitizeFileName(request.OriginalFileName);
-        var sha = AttachmentRules.ComputeSha256(request.Content);
+        var sha = await AttachmentRules.ComputeSha256Async(request.Content, cancellationToken);
         var storedName = $"{Guid.NewGuid():N}";
         string? savedPath = null;
 
@@ -185,59 +185,101 @@ public sealed class AttachmentService(
         }
     }
 
-    public async Task<(bool Exists, bool InScope)> ResolveEntityAccessAsync(
+    public Task<(bool Exists, bool InScope)> ResolveEntityAccessAsync(
         string entityType,
         Guid entityId,
         CancellationToken cancellationToken)
     {
-        switch (entityType.ToLowerInvariant())
+        var normalized = entityType.ToLowerInvariant();
+        return normalized switch
         {
-            case "organization":
-            {
-                var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == entityId, cancellationToken);
-                if (org is null) return (false, false);
-                return (true, scope.HasNationalAccess || currentUser.HasHeadquartersScope);
-            }
-            case "region":
-            {
-                var region = await db.Regions.FirstOrDefaultAsync(r => r.Id == entityId, cancellationToken);
-                if (region is null) return (false, false);
-                return (true, scope.CanAccessRegion(region.Id));
-            }
-            case "facility":
-            {
-                var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == entityId, cancellationToken);
-                if (facility is null) return (false, false);
-                return (true, scope.CanAccessFacility(facility.Id));
-            }
-            case "facilityunit":
-            {
-                var unit = await db.FacilityUnits.FirstOrDefaultAsync(u => u.Id == entityId, cancellationToken);
-                if (unit is null) return (false, false);
-                return (true, scope.CanAccessFacilityUnit(unit.Id));
-            }
-            case "building":
-            {
-                var building = await db.Buildings.FirstOrDefaultAsync(b => b.Id == entityId, cancellationToken);
-                if (building is null) return (false, false);
-                return (true, scope.CanAccessFacility(building.FacilityId));
-            }
-            case "department":
-            {
-                var dept = await db.Departments.FirstOrDefaultAsync(d => d.Id == entityId, cancellationToken);
-                if (dept is null) return (false, false);
-                return (true, scope.HasNationalAccess || currentUser.HasHeadquartersScope);
-            }
-            case "user":
-            {
-                var user = await db.Users.IgnoreQueryFilters()
-                    .FirstOrDefaultAsync(u => u.Id == entityId && !u.IsDeleted, cancellationToken);
-                if (user is null) return (false, false);
-                // User attachments are national/HQ only in A.1 (no regional user-file sharing yet).
-                return (true, scope.HasNationalAccess || currentUser.HasHeadquartersScope);
-            }
-            default:
-                throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.");
+            "organization" => ResolveOrganizationAccessAsync(entityId, cancellationToken),
+            "region" => ResolveRegionAccessAsync(entityId, cancellationToken),
+            "facility" => ResolveFacilityAccessAsync(entityId, cancellationToken),
+            "facilityunit" => ResolveFacilityUnitAccessAsync(entityId, cancellationToken),
+            "building" => ResolveBuildingAccessAsync(entityId, cancellationToken),
+            "department" => ResolveDepartmentAccessAsync(entityId, cancellationToken),
+            "user" => ResolveUserAccessAsync(entityId, cancellationToken),
+            _ => throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.")
+        };
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveOrganizationAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == entityId, cancellationToken);
+        if (org is null)
+        {
+            return (false, false);
         }
+
+        return (true, scope.HasNationalAccess || currentUser.HasHeadquartersScope);
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveRegionAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var region = await db.Regions.FirstOrDefaultAsync(r => r.Id == entityId, cancellationToken);
+        if (region is null)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.CanAccessRegion(region.Id));
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveFacilityAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == entityId, cancellationToken);
+        if (facility is null)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.CanAccessFacility(facility.Id));
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveFacilityUnitAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var unit = await db.FacilityUnits.FirstOrDefaultAsync(u => u.Id == entityId, cancellationToken);
+        if (unit is null)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.CanAccessFacilityUnit(unit.Id));
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveBuildingAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var building = await db.Buildings.FirstOrDefaultAsync(b => b.Id == entityId, cancellationToken);
+        if (building is null)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.CanAccessFacility(building.FacilityId));
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveDepartmentAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var dept = await db.Departments.FirstOrDefaultAsync(d => d.Id == entityId, cancellationToken);
+        if (dept is null)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.HasNationalAccess || currentUser.HasHeadquartersScope);
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveUserAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var user = await db.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == entityId && !u.IsDeleted, cancellationToken);
+        if (user is null)
+        {
+            return (false, false);
+        }
+
+        // User attachments are national/HQ only in A.1 (no regional user-file sharing yet).
+        return (true, scope.HasNationalAccess || currentUser.HasHeadquartersScope);
     }
 }

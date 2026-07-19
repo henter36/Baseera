@@ -91,14 +91,24 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         return base.SaveChangesAsync(cancellationToken);
     }
 
-    private void EnforceAuditImmutability()
+    private void EnforceAuditImmutability() =>
+        AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(this);
+}
+
+/// <summary>
+/// Shared append-only enforcement used by DbContext overrides and the interceptor.
+/// </summary>
+internal static class AuditAppendOnlyGuard
+{
+    public static void EnsureAuditEntriesAreAppendOnly(DbContext context)
     {
-        foreach (var entry in ChangeTracker.Entries<AuditLog>())
+        var invalidEntries = context.ChangeTracker
+            .Entries<AuditLog>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidEntries.Any())
         {
-            if (entry.State is EntityState.Modified or EntityState.Deleted)
-            {
-                throw new InvalidOperationException("AuditLog is append-only and cannot be modified or deleted.");
-            }
+            throw new InvalidOperationException("AuditLog is append-only and cannot be modified or deleted.");
         }
     }
 }
@@ -107,7 +117,11 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
 {
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
-        Guard(eventData.Context);
+        if (eventData.Context is not null)
+        {
+            AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
+        }
+
         return base.SavingChanges(eventData, result);
     }
 
@@ -116,23 +130,11 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         InterceptionResult<int> result,
         CancellationToken cancellationToken = default)
     {
-        Guard(eventData.Context);
+        if (eventData.Context is not null)
+        {
+            AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
+        }
+
         return base.SavingChangesAsync(eventData, result, cancellationToken);
-    }
-
-    private static void Guard(DbContext? context)
-    {
-        if (context is null)
-        {
-            return;
-        }
-
-        foreach (var entry in context.ChangeTracker.Entries<AuditLog>())
-        {
-            if (entry.State is EntityState.Modified or EntityState.Deleted)
-            {
-                throw new InvalidOperationException("AuditLog is append-only and cannot be modified or deleted.");
-            }
-        }
     }
 }

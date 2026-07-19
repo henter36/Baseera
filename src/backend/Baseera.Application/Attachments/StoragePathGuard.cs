@@ -24,19 +24,24 @@ public static class StoragePathGuard
             return false;
         }
 
-        if (relative == "..")
+        if (relative == ".." ||
+            relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal) ||
+            relative.StartsWith("../", StringComparison.Ordinal) ||
+            relative.StartsWith("..\\", StringComparison.Ordinal))
         {
             return false;
         }
 
-        if (relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
-            relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal))
+        var separators = new[]
         {
-            return false;
-        }
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar,
+            '/',
+            '\\'
+        }.Distinct().ToArray();
 
-        // Reject weird encodings that still escape (e.g. "..\\")
-        var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var segments = relative.Split(separators, StringSplitOptions.RemoveEmptyEntries);
         return !segments.Contains("..", StringComparer.Ordinal);
     }
 

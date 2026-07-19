@@ -1,11 +1,12 @@
 namespace Baseera.Application.Attachments;
 
+using System.Collections.Frozen;
 using System.Security.Cryptography;
 using Baseera.Domain.Attachments;
 
 public static class AttachmentEntityTypes
 {
-    public static readonly HashSet<string> Allowed = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenSet<string> Allowed = new[]
     {
         "Organization",
         "Region",
@@ -14,14 +15,14 @@ public static class AttachmentEntityTypes
         "Building",
         "Department",
         "User"
-    };
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static bool IsAllowed(string entityType) => Allowed.Contains(entityType);
 }
 
 public static class AttachmentRules
 {
-    public static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenSet<string> AllowedContentTypes = new[]
     {
         "application/pdf",
         "image/jpeg",
@@ -29,9 +30,12 @@ public static class AttachmentRules
         "text/plain",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    };
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public const long MaxSizeBytes = 10 * 1024 * 1024;
+
+    public static bool IsAllowedContentType(string contentType) =>
+        AllowedContentTypes.Contains(contentType);
 
     public static string SanitizeFileName(string original)
     {
@@ -45,14 +49,14 @@ public static class AttachmentRules
         return string.IsNullOrWhiteSpace(name) ? "file.bin" : name;
     }
 
-    public static string ComputeSha256(Stream stream)
+    public static async Task<string> ComputeSha256Async(Stream stream, CancellationToken cancellationToken = default)
     {
         if (stream.CanSeek)
         {
             stream.Position = 0;
         }
 
-        var hash = SHA256.HashData(stream);
+        var hash = await SHA256.HashDataAsync(stream, cancellationToken);
         if (stream.CanSeek)
         {
             stream.Position = 0;
@@ -61,6 +65,23 @@ public static class AttachmentRules
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Minimum header bytes required to validate a content-type signature.
+    /// text/plain has no binary signature requirement (size &gt; 0 is enforced separately).
+    /// ZIP-based office formats only check the initial ZIP magic; malware scanning remains deferred.
+    /// </summary>
+    public static int GetRequiredSignatureLength(string contentType) =>
+        contentType.ToLowerInvariant() switch
+        {
+            "application/pdf" => 4,
+            "image/png" => 4,
+            "image/jpeg" => 3,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => 2,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => 2,
+            "text/plain" => 0,
+            _ => -1
+        };
+
     public static void ValidateMagicBytes(Stream stream, string contentType, string fileName)
     {
         if (!stream.CanSeek)
@@ -68,36 +89,57 @@ public static class AttachmentRules
             throw new InvalidOperationException("تعذر التحقق من توقيع الملف.");
         }
 
-        stream.Position = 0;
-        Span<byte> header = stackalloc byte[8];
-        var read = stream.Read(header);
-        stream.Position = 0;
-        if (read < 4)
+        var required = GetRequiredSignatureLength(contentType);
+        if (required < 0)
         {
-            throw new InvalidOperationException("الملف قصير جدًا أو تالف.");
+            throw new InvalidOperationException("نوع الملف غير مسموح.");
         }
 
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        var ok = contentType.ToLowerInvariant() switch
+        var previous = stream.Position;
+        try
         {
-            "application/pdf" => header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46,
-            "image/png" => header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47,
-            "image/jpeg" => header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
-            "text/plain" => true,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                => header[0] == 0x50 && header[1] == 0x4B,
-            _ => false
-        };
+            stream.Position = 0;
+            Span<byte> header = stackalloc byte[8];
+            var read = stream.Read(header);
 
-        if (!ok)
-        {
-            throw new InvalidOperationException("توقيع الملف لا يطابق النوع المعلن.");
+            if (required > 0 && read < required)
+            {
+                throw new InvalidOperationException("الملف قصير جدًا أو تالف.");
+            }
+
+            var ext = Path.GetExtension(fileName).ToLowerInvariant();
+            var ok = contentType.ToLowerInvariant() switch
+            {
+                "application/pdf" => header[0] == 0x25 && header[1] == 0x50 && header[2] == 0x44 && header[3] == 0x46,
+                "image/png" => header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47,
+                "image/jpeg" => header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF,
+                "text/plain" => true,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    => header[0] == 0x50 && header[1] == 0x4B,
+                _ => false
+            };
+
+            if (!ok)
+            {
+                throw new InvalidOperationException("توقيع الملف لا يطابق النوع المعلن.");
+            }
+
+            if (ext is ".exe" or ".dll" or ".bat" or ".cmd" or ".ps1" or ".sh")
+            {
+                throw new InvalidOperationException("امتداد الملف غير مسموح.");
+            }
         }
-
-        if (ext is ".exe" or ".dll" or ".bat" or ".cmd" or ".ps1" or ".sh")
+        finally
         {
-            throw new InvalidOperationException("امتداد الملف غير مسموح.");
+            if (stream.CanSeek)
+            {
+                stream.Position = 0;
+            }
+            else
+            {
+                stream.Position = previous;
+            }
         }
     }
 }

@@ -43,6 +43,34 @@ public sealed class StoragePathGuardTests
         Directory.CreateDirectory(Path.GetDirectoryName(sibling)!);
         Assert.False(StoragePathGuard.IsPathInsideRoot(root, sibling));
     }
+
+    [Fact]
+    public void Rejects_rooted_relative_escape()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "baseera-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        Assert.False(StoragePathGuard.IsPathInsideRoot(root, Path.DirectorySeparatorChar + "etc" + Path.DirectorySeparatorChar + "passwd"));
+    }
+
+    [Fact]
+    public void Rejects_alt_separator_traversal()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "baseera-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var mixed = root + "/../outside.txt";
+        Assert.False(StoragePathGuard.IsPathInsideRoot(root, mixed));
+    }
+
+    [Fact]
+    public void Rejects_mixed_separators_with_dotdot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "baseera-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var nested = Path.Combine(root, "a");
+        Directory.CreateDirectory(nested);
+        var candidate = Path.Combine(nested, "..", "..", "outside.bin");
+        Assert.False(StoragePathGuard.IsPathInsideRoot(root, candidate));
+    }
 }
 
 public sealed class AttachmentEntityScopeTests

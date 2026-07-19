@@ -45,6 +45,9 @@ public static class RoleHierarchy
 
     public static bool IsScopeAdminRole(IEnumerable<string> roleCodes) =>
         roleCodes.Any(r => ScopeAdminRoles.Contains(r));
+
+    public static bool IsSystemAdministrator(IEnumerable<string> roleCodes) =>
+        roleCodes.Contains(RoleCodes.SystemAdministrator, StringComparer.OrdinalIgnoreCase);
 }
 
 public interface IPrivilegeGuard
@@ -60,29 +63,169 @@ public sealed class PrivilegeGuard(
 {
     public void EnsureCanAssignRole(Guid targetUserId, string roleCode)
     {
-        if (!currentUser.HasPermission(PermissionCodes.RolesManage))
-        {
-            throw new UnauthorizedAccessException("ليست لديك صلاحية إدارة الأدوار.");
-        }
-
-        if (currentUser.UserId == targetUserId)
-        {
-            throw new UnauthorizedAccessException("لا يمكنك تعديل أدوارك بنفسك.");
-        }
-
+        EnsureHasPermission(PermissionCodes.RolesManage, "ليست لديك صلاحية إدارة الأدوار.");
+        EnsureTargetIsNotSelf(targetUserId);
         EnsureTargetUserAssignable(targetUserId);
 
         var actorRoles = LoadActorRoles();
+        EnsureRoleRankAllowsGrant(actorRoles, roleCode);
+        EnsureActorHoldsRolePermissions(actorRoles, roleCode);
+    }
+
+    public void EnsureCanAssignScope(Guid targetUserId, ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
+    {
+        EnsureHasPermission(PermissionCodes.ScopesManage, "ليست لديك صلاحية إدارة النطاقات.");
+        EnsureTargetIsNotSelf(targetUserId);
+        EnsureTargetUserAssignable(targetUserId);
+        ValidateScopeShape(scopeType, regionId, facilityId, facilityUnitId);
+
+        var actorRoles = LoadActorRoles();
+        switch (scopeType)
+        {
+            case ScopeType.Global:
+                EnsureCanGrantGlobalScope(actorRoles);
+                return;
+            case ScopeType.Headquarters:
+                EnsureCanGrantHeadquartersScope(actorRoles);
+                return;
+            case ScopeType.Region:
+            case ScopeType.MultipleRegions:
+                EnsureCanGrantRegionScope(regionId);
+                return;
+            case ScopeType.Facility:
+            case ScopeType.MultipleFacilities:
+                EnsureCanGrantFacilityScope(regionId, facilityId);
+                return;
+            case ScopeType.FacilityUnit:
+                EnsureCanGrantFacilityUnitScope(facilityId, facilityUnitId);
+                return;
+            default:
+                throw new InvalidOperationException("نوع النطاق غير مدعوم.");
+        }
+    }
+
+    private void EnsureCanGrantGlobalScope(IReadOnlyCollection<string> actorRoles)
+    {
+        if (!currentUser.HasPermission(PermissionCodes.GrantGlobalScope))
+        {
+            throw new UnauthorizedAccessException("منح النطاق الوطني يتطلب صلاحية Scopes.GrantGlobal.");
+        }
+
+        if (!currentUser.IsGlobalScope)
+        {
+            throw new UnauthorizedAccessException("منح النطاق الوطني يتطلب أن تملك نطاق Global.");
+        }
+
+        if (!RoleHierarchy.IsScopeAdminRole(actorRoles))
+        {
+            throw new UnauthorizedAccessException("منح النطاق الوطني مقصور على دور إداري معتمد.");
+        }
+    }
+
+    private void EnsureCanGrantHeadquartersScope(IReadOnlyCollection<string> actorRoles)
+    {
+        if (!currentUser.HasPermission(PermissionCodes.GrantHeadquartersScope))
+        {
+            throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي يتطلب صلاحية Scopes.GrantHeadquarters.");
+        }
+
+        if (!currentUser.IsGlobalScope && !currentUser.HasHeadquartersScope)
+        {
+            throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي يتطلب نطاق Global أو Headquarters.");
+        }
+
+        if (!RoleHierarchy.IsScopeAdminRole(actorRoles))
+        {
+            throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي مقصور على دور إداري معتمد.");
+        }
+    }
+
+    private void EnsureCanGrantRegionScope(Guid? regionId)
+    {
+        if (regionId is null || !scopeService.CanAccessRegion(regionId.Value))
+        {
+            throw new UnauthorizedAccessException("لا يمكنك منح نطاق خارج منطقتك.");
+        }
+    }
+
+    private void EnsureCanGrantFacilityScope(Guid? regionId, Guid? facilityId)
+    {
+        if (facilityId is null || !scopeService.CanAccessFacility(facilityId.Value))
+        {
+            throw new UnauthorizedAccessException("لا يمكنك منح نطاق خارج سجنك.");
+        }
+
+        EnsureFacilityBelongsToRegion(facilityId.Value, regionId);
+    }
+
+    private void EnsureCanGrantFacilityUnitScope(Guid? facilityId, Guid? facilityUnitId)
+    {
+        if (facilityId is null || !scopeService.CanAccessFacility(facilityId.Value))
+        {
+            throw new UnauthorizedAccessException("لا يمكنك منح نطاق خارج سجنك.");
+        }
+
+        if (facilityUnitId is null || !scopeService.CanAccessFacilityUnit(facilityUnitId.Value))
+        {
+            throw new UnauthorizedAccessException("لا يمكنك منح نطاق وحدة خارج صلاحيتك.");
+        }
+
+        EnsureUnitBelongsToFacility(facilityUnitId.Value, facilityId.Value);
+    }
+
+    private void EnsureFacilityBelongsToRegion(Guid facilityId, Guid? regionId)
+    {
+        var facility = db.Facilities.FirstOrDefault(f => f.Id == facilityId && !f.IsDeleted)
+            ?? throw new KeyNotFoundException("السجن غير موجود.");
+        if (regionId.HasValue && facility.RegionId != regionId.Value)
+        {
+            throw new InvalidOperationException("السجن لا يتبع المنطقة المحددة.");
+        }
+    }
+
+    private void EnsureUnitBelongsToFacility(Guid facilityUnitId, Guid facilityId)
+    {
+        var unit = db.FacilityUnits.FirstOrDefault(u => u.Id == facilityUnitId && !u.IsDeleted)
+            ?? throw new KeyNotFoundException("الوحدة غير موجودة.");
+        if (unit.FacilityId != facilityId)
+        {
+            throw new InvalidOperationException("الوحدة لا تتبع السجن المحدد.");
+        }
+    }
+
+    private void EnsureHasPermission(string permission, string message)
+    {
+        if (!currentUser.HasPermission(permission))
+        {
+            throw new UnauthorizedAccessException(message);
+        }
+    }
+
+    private void EnsureTargetIsNotSelf(Guid targetUserId)
+    {
+        if (currentUser.UserId == targetUserId)
+        {
+            throw new UnauthorizedAccessException("لا يمكنك تعديل أدوارك أو نطاقاتك بنفسك.");
+        }
+    }
+
+    private void EnsureRoleRankAllowsGrant(IReadOnlyCollection<string> actorRoles, string roleCode)
+    {
         var actorRank = RoleHierarchy.MaxRank(actorRoles);
         var targetRank = RoleHierarchy.RankOf(roleCode);
-        if (targetRank >= actorRank && !actorRoles.Contains(RoleCodes.SystemAdministrator, StringComparer.OrdinalIgnoreCase))
+        var isSysAdmin = RoleHierarchy.IsSystemAdministrator(actorRoles);
+
+        if (targetRank > actorRank || (targetRank >= actorRank && !isSysAdmin))
         {
             throw new UnauthorizedAccessException("لا يمكنك منح دورًا بمستوى يساوي أو أعلى من مستواك.");
         }
+    }
 
-        if (targetRank > actorRank)
+    private void EnsureActorHoldsRolePermissions(IReadOnlyCollection<string> actorRoles, string roleCode)
+    {
+        if (RoleHierarchy.IsSystemAdministrator(actorRoles))
         {
-            throw new UnauthorizedAccessException("لا يمكنك منح دورًا أعلى من دورك.");
+            return;
         }
 
         var rolePermissions = (
@@ -92,121 +235,17 @@ public sealed class PrivilegeGuard(
             where r.Code == roleCode && !r.IsDeleted
             select p.Code).Distinct().ToList();
 
-        foreach (var permission in rolePermissions)
+        var missing = rolePermissions.Where(permission => !currentUser.HasPermission(permission)).ToArray();
+        if (missing.Length > 0)
         {
-            if (!currentUser.HasPermission(permission) &&
-                !actorRoles.Contains(RoleCodes.SystemAdministrator, StringComparer.OrdinalIgnoreCase))
-            {
-                throw new UnauthorizedAccessException($"لا يمكنك منح صلاحية لا تمتلكها: {permission}");
-            }
-        }
-    }
-
-    public void EnsureCanAssignScope(Guid targetUserId, ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
-    {
-        if (!currentUser.HasPermission(PermissionCodes.ScopesManage))
-        {
-            throw new UnauthorizedAccessException("ليست لديك صلاحية إدارة النطاقات.");
-        }
-
-        if (currentUser.UserId == targetUserId)
-        {
-            throw new UnauthorizedAccessException("لا يمكنك تعديل نطاقاتك بنفسك.");
-        }
-
-        EnsureTargetUserAssignable(targetUserId);
-        ValidateScopeShape(scopeType, regionId, facilityId, facilityUnitId);
-
-        var actorRoles = LoadActorRoles();
-
-        if (scopeType == ScopeType.Global)
-        {
-            if (!currentUser.HasPermission(PermissionCodes.GrantGlobalScope))
-            {
-                throw new UnauthorizedAccessException("منح النطاق الوطني يتطلب صلاحية Scopes.GrantGlobal.");
-            }
-
-            if (!currentUser.IsGlobalScope)
-            {
-                throw new UnauthorizedAccessException("منح النطاق الوطني يتطلب أن تملك نطاق Global.");
-            }
-
-            if (!RoleHierarchy.IsScopeAdminRole(actorRoles))
-            {
-                throw new UnauthorizedAccessException("منح النطاق الوطني مقصور على دور إداري معتمد.");
-            }
-
-            return;
-        }
-
-        if (scopeType == ScopeType.Headquarters)
-        {
-            if (!currentUser.HasPermission(PermissionCodes.GrantHeadquartersScope))
-            {
-                throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي يتطلب صلاحية Scopes.GrantHeadquarters.");
-            }
-
-            if (!currentUser.IsGlobalScope && !currentUser.HasHeadquartersScope)
-            {
-                throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي يتطلب نطاق Global أو Headquarters.");
-            }
-
-            if (!RoleHierarchy.IsScopeAdminRole(actorRoles))
-            {
-                throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي مقصور على دور إداري معتمد.");
-            }
-
-            return;
-        }
-
-        if (scopeType is ScopeType.Region or ScopeType.MultipleRegions)
-        {
-            if (regionId is null || !scopeService.CanAccessRegion(regionId.Value))
-            {
-                throw new UnauthorizedAccessException("لا يمكنك منح نطاق خارج منطقتك.");
-            }
-        }
-
-        if (scopeType is ScopeType.Facility or ScopeType.MultipleFacilities or ScopeType.FacilityUnit)
-        {
-            if (facilityId is null || !scopeService.CanAccessFacility(facilityId.Value))
-            {
-                throw new UnauthorizedAccessException("لا يمكنك منح نطاق خارج سجنك.");
-            }
-
-            if (scopeType == ScopeType.FacilityUnit)
-            {
-                if (facilityUnitId is null || !scopeService.CanAccessFacilityUnit(facilityUnitId.Value))
-                {
-                    throw new UnauthorizedAccessException("لا يمكنك منح نطاق وحدة خارج صلاحيتك.");
-                }
-
-                var unit = db.FacilityUnits.FirstOrDefault(u => u.Id == facilityUnitId.Value && !u.IsDeleted)
-                    ?? throw new KeyNotFoundException("الوحدة غير موجودة.");
-                if (unit.FacilityId != facilityId.Value)
-                {
-                    throw new InvalidOperationException("الوحدة لا تتبع السجن المحدد.");
-                }
-            }
-            else
-            {
-                var facility = db.Facilities.FirstOrDefault(f => f.Id == facilityId.Value && !f.IsDeleted)
-                    ?? throw new KeyNotFoundException("السجن غير موجود.");
-                if (regionId.HasValue && facility.RegionId != regionId.Value)
-                {
-                    throw new InvalidOperationException("السجن لا يتبع المنطقة المحددة.");
-                }
-            }
+            throw new UnauthorizedAccessException($"لا يمكنك منح صلاحية لا تمتلكها: {missing[0]}");
         }
     }
 
     private void EnsureTargetUserAssignable(Guid targetUserId)
     {
-        var target = db.UsersIncludingDeleted.FirstOrDefault(u => u.Id == targetUserId);
-        if (target is null)
-        {
-            throw new KeyNotFoundException("المستخدم غير موجود.");
-        }
+        var target = db.UsersIncludingDeleted.FirstOrDefault(u => u.Id == targetUserId)
+            ?? throw new KeyNotFoundException("المستخدم غير موجود.");
 
         if (target.IsDeleted)
         {
@@ -227,38 +266,57 @@ public sealed class PrivilegeGuard(
 
     public static void ValidateScopeShape(ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
     {
-        if (scopeType is ScopeType.Global or ScopeType.Headquarters)
+        switch (scopeType)
         {
-            if (regionId.HasValue || facilityId.HasValue || facilityUnitId.HasValue)
-            {
-                throw new InvalidOperationException("نطاق Global/Headquarters لا يقبل معرفات منطقة أو سجن أو وحدة.");
-            }
-
-            return;
+            case ScopeType.Global:
+            case ScopeType.Headquarters:
+                ValidateNationalScopeShape(regionId, facilityId, facilityUnitId);
+                return;
+            case ScopeType.Region:
+            case ScopeType.MultipleRegions:
+                ValidateRegionScopeShape(regionId, facilityId, facilityUnitId);
+                return;
+            case ScopeType.Facility:
+            case ScopeType.MultipleFacilities:
+                ValidateFacilityScopeShape(facilityId, facilityUnitId);
+                return;
+            case ScopeType.FacilityUnit:
+                ValidateFacilityUnitScopeShape(facilityId, facilityUnitId);
+                return;
+            default:
+                throw new InvalidOperationException("نوع النطاق غير مدعوم.");
         }
+    }
 
-        if (scopeType is ScopeType.Region or ScopeType.MultipleRegions)
+    private static void ValidateNationalScopeShape(Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
+    {
+        if (regionId.HasValue || facilityId.HasValue || facilityUnitId.HasValue)
         {
-            if (!regionId.HasValue || facilityId.HasValue || facilityUnitId.HasValue)
-            {
-                throw new InvalidOperationException("نطاق المنطقة يتطلب RegionId فقط.");
-            }
+            throw new InvalidOperationException("نطاق Global/Headquarters لا يقبل معرفات منطقة أو سجن أو وحدة.");
         }
+    }
 
-        if (scopeType is ScopeType.Facility or ScopeType.MultipleFacilities)
+    private static void ValidateRegionScopeShape(Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
+    {
+        if (!regionId.HasValue || facilityId.HasValue || facilityUnitId.HasValue)
         {
-            if (!facilityId.HasValue || facilityUnitId.HasValue)
-            {
-                throw new InvalidOperationException("نطاق السجن يتطلب FacilityId.");
-            }
+            throw new InvalidOperationException("نطاق المنطقة يتطلب RegionId فقط.");
         }
+    }
 
-        if (scopeType == ScopeType.FacilityUnit)
+    private static void ValidateFacilityScopeShape(Guid? facilityId, Guid? facilityUnitId)
+    {
+        if (!facilityId.HasValue || facilityUnitId.HasValue)
         {
-            if (!facilityId.HasValue || !facilityUnitId.HasValue)
-            {
-                throw new InvalidOperationException("نطاق الوحدة يتطلب FacilityId وFacilityUnitId.");
-            }
+            throw new InvalidOperationException("نطاق السجن يتطلب FacilityId.");
+        }
+    }
+
+    private static void ValidateFacilityUnitScopeShape(Guid? facilityId, Guid? facilityUnitId)
+    {
+        if (!facilityId.HasValue || !facilityUnitId.HasValue)
+        {
+            throw new InvalidOperationException("نطاق الوحدة يتطلب FacilityId وFacilityUnitId.");
         }
     }
 }
