@@ -10,7 +10,7 @@
 - Start SHA: `12ab345777104e2cc4dca2a9177eeb5332c7a358`
 - Reference Phase B.1 merge SHA: `12ab345777104e2cc4dca2a9177eeb5332c7a358`
 
-## Local Baseline Commands
+## Initial failed baseline attempt
 
 ### Backend build
 
@@ -83,9 +83,114 @@ Total: 54
 
 ### Frontend
 
-Frontend baseline commands were not run because backend integration baseline did not meet the required skipped count of zero.
+Frontend baseline commands were not run because the backend integration baseline did not meet the required skipped count of zero.
 
 Expected baseline count from the phase brief: 78 frontend tests, skipped 0.
+
+## Integration Test Connection Setup
+
+Integration tests require `BASEERA_TEST_CONNECTION` to be exported in the same shell that runs `dotnet test`.
+
+Use a connection string shape like this, with credentials loaded from a local secret source:
+
+```bash
+export BASEERA_TEST_CONNECTION='Server=<host>,<port>;User Id=<user>;Password=<from-secret-store>;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true'
+```
+
+The integration fixture creates a unique test database per run. Prefer omitting a fixed `Database` value to avoid collisions between concurrent or repeated test runs.
+
+Do not commit SQL Server passwords or real connection strings to Git.
+
+## Successful baseline rerun
+
+The baseline was rerun after loading the local developer environment from `$HOME/.baseera-dev.env`, starting the `baseera-sql` container, deriving the mapped SQL Server port from Docker, exporting `BASEERA_TEST_CONNECTION` without a fixed database name, and verifying SQL Server readiness with `SELECT 1`.
+
+### Backend build
+
+Command:
+
+```bash
+dotnet build src/backend/Baseera.slnx -c Release --tl:off
+```
+
+Result:
+
+```text
+Build succeeded.
+Warnings: 2
+Errors: 0
+```
+
+Pre-existing warning:
+
+```text
+Baseera.Api.csproj : warning NU1510: PackageReference System.Security.Cryptography.Xml will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.
+```
+
+### Backend unit tests
+
+Command:
+
+```bash
+dotnet test src/backend/tests/Baseera.UnitTests/Baseera.UnitTests.csproj -c Release --no-build --logger "console;verbosity=normal"
+```
+
+Result:
+
+```text
+Passed: 236
+Failed: 0
+Skipped: 0
+Total: 236
+```
+
+### Backend integration tests
+
+Command:
+
+```bash
+dotnet test src/backend/tests/Baseera.IntegrationTests/Baseera.IntegrationTests.csproj -c Release --no-build --logger "console;verbosity=normal"
+```
+
+Result:
+
+```text
+Passed: 54
+Failed: 0
+Skipped: 0
+Total: 54
+```
+
+### Frontend
+
+Commands:
+
+```bash
+cd src/frontend
+npm ci --ignore-scripts
+npm run typecheck
+npm run lint
+npm test
+VITE_AUTH_MODE=entra \
+VITE_ENTRA_CLIENT_ID=11111111-1111-4111-8111-111111111111 \
+VITE_ENTRA_TENANT_ID=22222222-2222-4222-8222-222222222222 \
+VITE_ENTRA_API_SCOPE=api://33333333-3333-4333-8333-333333333333/.default \
+VITE_ENTRA_REDIRECT_URI=https://app.example.sa \
+npm run build
+npm audit --audit-level=high
+```
+
+Results:
+
+```text
+npm ci: Passed
+Typecheck: Passed
+Lint: Passed with 2 pre-existing warnings in src/auth/AuthProvider.tsx
+Test Files: 13 passed
+Tests: 78 passed
+Production build: Passed with non-secret local Entra validation values
+npm audit: 0 vulnerabilities
+```
 
 ## CI Status
 
@@ -103,4 +208,4 @@ Observed latest runs:
 
 ## Baseline Decision
 
-Phase B.2.1 implementation was not started because the local baseline did not satisfy the required condition `Skipped = 0`: integration tests were skipped due to the missing `BASEERA_TEST_CONNECTION` environment variable. No domain, application, infrastructure, API, frontend, migration, test, or authorization changes were made.
+Baseline accepted. Phase B.2.1 implementation may proceed.
