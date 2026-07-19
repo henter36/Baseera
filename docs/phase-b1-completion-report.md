@@ -154,7 +154,7 @@ Critical SoD previously compared only `LastProcessedByUserId` to the closer. Aft
 
 ### Tests
 
-- Unit: all-processors rejection, SystemAdmin, mutation-order, multi-user A→B→C, non-critical policy, assigner/creator/independent verifier success.
+- Unit: all-processors rejection, SystemAdministrator, mutation-order, multi-user A→B→C, non-critical policy, assigner/creator/independent verifier success.
 - Integration: `Critical_note_all_processors_are_blocked_from_final_closure`, `Independent_verifier_outside_scope_cannot_close_critical_note`.
 
 ### Counts

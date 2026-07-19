@@ -224,6 +224,15 @@ public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
             rowVersion = note.RowVersion
         });
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var entity = await verifyDb.OperationalNotes.SingleAsync(n => n.Id == note.Id);
+        Assert.Equal(NoteStatus.PendingVerification, entity.Status);
+        Assert.Null(entity.ClosedAtUtc);
+        Assert.Null(entity.ClosedByUserId);
+        Assert.Equal(0, await verifyDb.NoteStatusHistories.CountAsync(h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Closed));
+        Assert.Equal(0, await verifyDb.AuditLogs.CountAsync(a => a.EntityId == note.Id.ToString() && a.Action == "NoteClosed"));
     }
 
     [IntegrationConnectionFact]
