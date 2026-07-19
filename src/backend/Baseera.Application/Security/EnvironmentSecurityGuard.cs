@@ -51,12 +51,26 @@ public static class EnvironmentSecurityGuard
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(tenantId) || tenantId.Contains("YOUR_", StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(clientId) || clientId.Contains("YOUR_", StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(audience) || audience.Contains("YOUR_", StringComparison.Ordinal))
+        if (IsMissingOrPlaceholder(tenantId) || IsMissingOrPlaceholder(clientId) || IsMissingOrPlaceholder(audience))
         {
             throw new InvalidOperationException(
                 $"AzureAd TenantId/ClientId/Audience must be configured for environment '{environmentName}'. Startup aborted.");
         }
+    }
+
+    public static bool IsMissingOrPlaceholder(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        if (value.Contains("YOUR_", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Reject nil / near-nil GUID placeholders that would otherwise bypass YOUR_ checks.
+        return value.Contains("00000000-0000-0000-0000-", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -151,8 +151,8 @@ public sealed class EntraConfigHealthCheck(IConfiguration configuration, IHostEn
 
         var tenant = configuration["AzureAd:TenantId"];
         var client = configuration["AzureAd:ClientId"];
-        if (string.IsNullOrWhiteSpace(tenant) || tenant.Contains("YOUR_", StringComparison.Ordinal) ||
-            string.IsNullOrWhiteSpace(client) || client.Contains("YOUR_", StringComparison.Ordinal))
+        if (EnvironmentSecurityGuard.IsMissingOrPlaceholder(tenant) ||
+            EnvironmentSecurityGuard.IsMissingOrPlaceholder(client))
         {
             return Task.FromResult(HealthCheckResult.Unhealthy("entra_not_configured"));
         }

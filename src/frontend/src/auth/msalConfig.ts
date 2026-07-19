@@ -1,3 +1,15 @@
+const NIL_GUID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/i
+const ZEROISH_GUID = /00000000-0000-0000-0000-00000000000[0-9a-f]/i
+
+function isPlaceholder(value: unknown): boolean {
+  if (!value) return true
+  const text = String(value)
+  if (text.includes('YOUR_')) return true
+  if (NIL_GUID.test(text)) return true
+  if (ZEROISH_GUID.test(text)) return true
+  return false
+}
+
 export function validateEntraEnv() {
   const required = [
     'VITE_ENTRA_CLIENT_ID',
@@ -7,8 +19,18 @@ export function validateEntraEnv() {
 
   for (const key of required) {
     const value = import.meta.env[key]
-    if (!value || String(value).includes('YOUR_')) {
+    if (isPlaceholder(value)) {
       throw new Error(`إعداد Entra ناقص: ${key}. راجع docs/entra-id-configuration.md`)
+    }
+  }
+
+  const redirect = import.meta.env.VITE_ENTRA_REDIRECT_URI as string | undefined
+  if (redirect) {
+    if (!/^https:\/\//i.test(redirect)) {
+      throw new Error('إعداد Entra غير صالح: VITE_ENTRA_REDIRECT_URI يجب أن يكون HTTPS')
+    }
+    if (/localhost|127\.0\.0\.1/i.test(redirect)) {
+      throw new Error('إعداد Entra غير صالح: لا يُسمح بـ localhost في VITE_ENTRA_REDIRECT_URI للإنتاج')
     }
   }
 }

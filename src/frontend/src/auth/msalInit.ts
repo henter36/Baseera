@@ -11,6 +11,7 @@ export function resetMsalInitializationForTests(): void {
 
 /**
  * Single-flight MSAL initialize(): concurrent callers share one Promise.
+ * On failure the cache is cleared so a later call can retry.
  */
 export function ensureMsalInitialized(
   instance: MsalInitializable | null,
@@ -20,6 +21,9 @@ export function ensureMsalInitialized(
     return Promise.reject(new Error(initError || 'Entra غير مهيأ'))
   }
 
-  msalInitializationPromise ??= instance.initialize()
+  msalInitializationPromise ??= instance.initialize().catch((err) => {
+    msalInitializationPromise = null
+    throw err
+  })
   return msalInitializationPromise
 }

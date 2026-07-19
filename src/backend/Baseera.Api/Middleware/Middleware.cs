@@ -94,7 +94,7 @@ public sealed class ProvisionedUserMiddleware(RequestDelegate next)
             await context.Response.WriteAsJsonAsync(new
             {
                 title = "غير مصرح",
-                detail = "الحساب غير مُفعّل أو غير مُProvisioning في المنصة.",
+                detail = "الحساب غير مُفعّل أو غير مُهيّأ في المنصة.",
                 status = 403
             });
             return;

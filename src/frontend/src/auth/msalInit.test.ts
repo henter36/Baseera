@@ -46,6 +46,18 @@ describe('ensureMsalInitialized single-flight', () => {
     expect(initialize).toHaveBeenCalledTimes(1)
   })
 
+  it('allows retry after a failed initialize', async () => {
+    const initialize = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('init boom'))
+      .mockResolvedValueOnce(undefined)
+    const instance = { initialize }
+
+    await expect(ensureMsalInitialized(instance, null)).rejects.toThrow('init boom')
+    await expect(ensureMsalInitialized(instance, null)).resolves.toBeUndefined()
+    expect(initialize).toHaveBeenCalledTimes(2)
+  })
+
   it('allows login waiter to share the same in-flight initialize promise', async () => {
     let resolveInit!: () => void
     const initialize = vi.fn(

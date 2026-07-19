@@ -34,4 +34,37 @@ describe('check-production-auth script contract', () => {
     })
     expect(result.status).toBe(1)
   })
+
+  it('refuses zero-GUID Entra placeholders', async () => {
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync(process.execPath, ['scripts/check-production-auth.mjs'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        VITE_AUTH_MODE: 'entra',
+        VITE_ENTRA_CLIENT_ID: '00000000-0000-0000-0000-000000000001',
+        VITE_ENTRA_TENANT_ID: '00000000-0000-0000-0000-000000000002',
+        VITE_ENTRA_API_SCOPE: 'api://00000000-0000-0000-0000-000000000003/.default',
+      },
+      encoding: 'utf8',
+    })
+    expect(result.status).toBe(1)
+  })
+
+  it('refuses http localhost redirect URI', async () => {
+    const { spawnSync } = await import('node:child_process')
+    const result = spawnSync(process.execPath, ['scripts/check-production-auth.mjs'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        VITE_AUTH_MODE: 'entra',
+        VITE_ENTRA_CLIENT_ID: '11111111-1111-4111-8111-111111111111',
+        VITE_ENTRA_TENANT_ID: '22222222-2222-4222-8222-222222222222',
+        VITE_ENTRA_API_SCOPE: 'api://33333333-3333-4333-8333-333333333333/.default',
+        VITE_ENTRA_REDIRECT_URI: 'http://localhost:5173',
+      },
+      encoding: 'utf8',
+    })
+    expect(result.status).toBe(1)
+  })
 })
