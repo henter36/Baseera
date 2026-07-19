@@ -3,41 +3,41 @@ namespace Baseera.Api.Endpoints;
 using Baseera.Application.Notes;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Notes;
-using Microsoft.AspNetCore.Mvc;
 
 /// <summary>
-/// Query-string binding surface for GET /api/v1/notes.
-/// Kept in the API layer because <c>[AsParameters]</c> on the Application
-/// <see cref="NoteListQuery"/> type failed model binding (HTTP 400) in integration tests.
-/// Property names match the existing public query contract exactly.
+/// Query-string binding surface for GET /api/v1/notes via <c>[AsParameters]</c>.
+/// Non-nullable value types must be nullable here: Minimal API treats
+/// AsParameters properties like handler parameters, so missing query keys
+/// would otherwise yield HTTP 400 (property initializers are not applied).
+/// Defaults match the public contract (Page=1, PageSize=20, flags false).
 /// </summary>
 public sealed class NoteListQueryParams
 {
-    [FromQuery] public int Page { get; set; } = 1;
-    [FromQuery] public int PageSize { get; set; } = 20;
-    [FromQuery] public string? Search { get; set; }
-    [FromQuery] public NoteStatus? Status { get; set; }
-    [FromQuery] public NoteSeverity? Severity { get; set; }
-    [FromQuery] public NoteCategory? Category { get; set; }
-    [FromQuery] public NoteSourceType? SourceType { get; set; }
-    [FromQuery] public ClassificationLevel? Classification { get; set; }
-    [FromQuery] public Guid? RegionId { get; set; }
-    [FromQuery] public Guid? FacilityId { get; set; }
-    [FromQuery] public Guid? FacilityUnitId { get; set; }
-    [FromQuery] public Guid? OwnerDepartmentId { get; set; }
-    [FromQuery] public Guid? AssignedToUserId { get; set; }
-    [FromQuery] public bool OverdueOnly { get; set; }
-    [FromQuery] public DateTimeOffset? DueFrom { get; set; }
-    [FromQuery] public DateTimeOffset? DueTo { get; set; }
-    [FromQuery] public DateTimeOffset? CreatedFrom { get; set; }
-    [FromQuery] public DateTimeOffset? CreatedTo { get; set; }
-    [FromQuery] public string? SortBy { get; set; }
-    [FromQuery] public bool SortDesc { get; set; }
+    public int? Page { get; set; }
+    public int? PageSize { get; set; }
+    public string? Search { get; set; }
+    public NoteStatus? Status { get; set; }
+    public NoteSeverity? Severity { get; set; }
+    public NoteCategory? Category { get; set; }
+    public NoteSourceType? SourceType { get; set; }
+    public ClassificationLevel? Classification { get; set; }
+    public Guid? RegionId { get; set; }
+    public Guid? FacilityId { get; set; }
+    public Guid? FacilityUnitId { get; set; }
+    public Guid? OwnerDepartmentId { get; set; }
+    public Guid? AssignedToUserId { get; set; }
+    public bool? OverdueOnly { get; set; }
+    public DateTimeOffset? DueFrom { get; set; }
+    public DateTimeOffset? DueTo { get; set; }
+    public DateTimeOffset? CreatedFrom { get; set; }
+    public DateTimeOffset? CreatedTo { get; set; }
+    public string? SortBy { get; set; }
+    public bool? SortDesc { get; set; }
 
     public NoteListQuery ToQuery() => new()
     {
-        Page = Page,
-        PageSize = PageSize,
+        Page = Page ?? 1,
+        PageSize = PageSize ?? 20,
         Search = Search,
         Status = Status,
         Severity = Severity,
@@ -49,12 +49,12 @@ public sealed class NoteListQueryParams
         FacilityUnitId = FacilityUnitId,
         OwnerDepartmentId = OwnerDepartmentId,
         AssignedToUserId = AssignedToUserId,
-        OverdueOnly = OverdueOnly,
+        OverdueOnly = OverdueOnly ?? false,
         DueFrom = DueFrom,
         DueTo = DueTo,
         CreatedFrom = CreatedFrom,
         CreatedTo = CreatedTo,
         SortBy = SortBy,
-        SortDesc = SortDesc
+        SortDesc = SortDesc ?? false
     };
 }

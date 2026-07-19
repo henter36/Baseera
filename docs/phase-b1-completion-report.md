@@ -54,13 +54,20 @@ Corrective multi-actions, auto-escalation, notifications, background jobs, execu
 
 | Finding | Before | After |
 |---------|--------|-------|
-| `GET /notes` list handler parameters | **22** (individual query args) | **3** (`[AsParameters] NoteListQueryParams` → `NoteListQuery`, `INoteQueryService`, `CancellationToken`). Application `NoteListQuery` alone returned HTTP 400 under Minimal API binding; API-layer params class preserves the same query names/defaults. |
+| `GET /notes` list handler parameters | **22** (individual query args) | **3** (`[AsParameters] NoteListQueryParams` → `NoteListQuery`, `INoteQueryService`, `CancellationToken`). |
 | `IntersectsNoteAsync` Cognitive Complexity | **29** | **≤15** — extracted to `NoteAssigneeScopeIntersection` coordinator + helpers (`IntersectsRegionAsync`, `IntersectsFacilityAsync`, `IntersectsFacilityUnitAsync`, `HasGlobalScope`, `HasHeadquartersScope`, `GetFacilityRegionIdAsync`) |
 | Nested ternary in `NoteDetailPage` attachment download UI | nested `?:` | `AttachmentAction` early-return component |
+
+### Binding follow-up (CI 400 on list)
+
+Minimal API `[AsParameters]` treats non-nullable value-type properties as **required** query parameters (property initializers are not applied). That caused HTTP 400 on `GET /api/v1/notes` without every key present.
+
+**Fix:** `NoteListQueryParams` uses nullable `int?` / `bool?` for Page, PageSize, OverdueOnly, SortDesc; `ToQuery()` applies contract defaults (`Page=1`, `PageSize=20`, flags `false`). Query string names unchanged.
 
 ### Tests added
 
 - Unit: `NoteAssigneeScopeIntersectionTests` (Global/HQ/Region/Facility/FacilityUnit/MultipleRegions/MultipleFacilities + null-id / missing facility cases).
+- Unit: `NoteListQueryParamsTests` (defaults + explicit filter mapping).
 - Integration: `List_notes_binds_AsParameters_filters_and_defaults` (defaults + page/pageSize/status/severity/facilityId/overdueOnly/dates/sort).
 - Frontend: sensitive-redacted attachment message; quarantined/rejected hide download; Clean download invokes `downloadAttachment`.
 
@@ -68,13 +75,13 @@ Corrective multi-actions, auto-escalation, notifications, background jobs, execu
 
 | Suite | Count | Skipped |
 |-------|-------|---------|
-| Unit | **213** | 0 |
-| Integration | **51** expected (local SQL unreachable; CI validates) | 0 |
+| Unit | **215** | 0 |
+| Integration | **51** expected (local SQL SA mismatch; CI validates) | 0 |
 | Frontend | **78** | 0 |
 
 NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra placeholders): OK.
 
-**Post-fix tip SHA:** `0406606d500767f6be2efc6065b1471b25bb6985` (code fix); branch HEAD docs tip `fed16a1`.
+**Post-fix tip SHA:** _(updated after push of nullable AsParameters fix)_
 
 ## Rollback
 
