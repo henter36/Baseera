@@ -18,10 +18,10 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install gitleaks (pinned + checksum)
+        # Checksum from gitleaks v8.24.3 checksums.txt (linux_x64 archive).
         env:
           GITLEAKS_VERSION: "8.24.3"
           GITLEAKS_ARCHIVE: "gitleaks_8.24.3_linux_x64.tar.gz"
-          # From https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_checksums.txt
           GITLEAKS_SHA256: "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c"
         run: |
           set -euo pipefail
@@ -42,13 +42,14 @@ jobs:
           chmod +x ./gitleaks
           ./gitleaks version
       - name: Gitleaks full history
-        run: "$RUNNER_TEMP/gitleaks/gitleaks" detect --source "$GITHUB_WORKSPACE" --verbose --redact --exit-code 1
+        run: |
+          "$RUNNER_TEMP/gitleaks/gitleaks" detect --source "$GITHUB_WORKSPACE" --verbose --redact --exit-code 1
 
   backend:
     runs-on: ubuntu-latest
     services:
       sqlserver:
-        # Pin CU tag (digest verified against MCR: sha256:3b2d73fe601817aa81b10be441af80c369793bf16b1940b75fae2a56330afd5d)
+        # Pinned CU tag (not :latest). MCR digest sha256:3b2d73fe601817aa81b10be441af80c369793bf16b1940b75fae2a56330afd5d
         image: mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
         env:
           ACCEPT_EULA: Y
