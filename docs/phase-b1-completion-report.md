@@ -74,7 +74,7 @@ Corrective multi-actions, auto-escalation, notifications, background jobs, execu
 
 NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra placeholders): OK.
 
-**Post-fix tip SHA:** recorded after push of this round.
+**Post-fix tip SHA:** `0406606d500767f6be2efc6065b1471b25bb6985`
 
 ## Rollback
 
