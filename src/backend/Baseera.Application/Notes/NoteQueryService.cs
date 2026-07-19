@@ -269,6 +269,11 @@ public sealed class NoteQueryService(
             q = q.Where(n => n.SourceType == query.SourceType.Value);
         }
 
+        if (query.Classification.HasValue)
+        {
+            q = q.Where(n => n.Classification == query.Classification.Value);
+        }
+
         if (query.RegionId.HasValue)
         {
             q = q.Where(n => n.RegionId == query.RegionId.Value);

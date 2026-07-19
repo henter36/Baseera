@@ -64,6 +64,29 @@ public static class ApiEndpoints
             return Results.Created($"/api/v1/facilities/{created.Id}", created);
         }).RequireAuthorization(AuthPolicies.OrganizationManage);
 
+        api.MapGet("/facility-units", async (Guid? facilityId, int? page, int? pageSize, string? search, IOrganizationService org, CancellationToken ct) =>
+        {
+            if (facilityId is null)
+            {
+                return Results.BadRequest(new { detail = "facilityId مطلوب." });
+            }
+
+            return Results.Ok(await org.ListFacilityUnitsAsync(facilityId.Value, new PagedQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 50,
+                Search = search
+            }, ct));
+        }).RequireAuthorization(AuthPolicies.OrganizationView);
+
+        api.MapGet("/departments", async (int? page, int? pageSize, string? search, IOrganizationService org, CancellationToken ct) =>
+            Results.Ok(await org.ListDepartmentsAsync(new PagedQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 50,
+                Search = search
+            }, ct))).RequireAuthorization(AuthPolicies.OrganizationView);
+
         api.MapGet("/users", async (int? page, int? pageSize, string? search, IUserAdminService users, CancellationToken ct) =>
             Results.Ok(await users.ListUsersAsync(new PagedQuery
             {
@@ -169,6 +192,7 @@ public static class ApiEndpoints
             NoteSeverity? severity,
             NoteCategory? category,
             NoteSourceType? sourceType,
+            ClassificationLevel? classification,
             Guid? regionId,
             Guid? facilityId,
             Guid? facilityUnitId,
@@ -192,6 +216,7 @@ public static class ApiEndpoints
                 Severity = severity,
                 Category = category,
                 SourceType = sourceType,
+                Classification = classification,
                 RegionId = regionId,
                 FacilityId = facilityId,
                 FacilityUnitId = facilityUnitId,
@@ -292,6 +317,11 @@ public static class ApiEndpoints
 
         notes.MapGet("/{id:guid}/assignments", async (Guid id, INoteQueryService queries, CancellationToken ct) =>
             Results.Ok(await queries.GetAssignmentsAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        // Metadata-only (no content); out-of-scope/missing notes surface as 404 via the same
+        // KeyNotFoundException path AttachmentService uses for single-attachment downloads.
+        notes.MapGet("/{id:guid}/attachments", async (Guid id, IAttachmentAppService attachments, CancellationToken ct) =>
+            Results.Ok(await attachments.ListForEntityAsync("OperationalNote", id, ct))).RequireAuthorization(AuthPolicies.NotesView);
     }
 
     private static TransitionNoteRequest ToTransition(WorkflowActionRequest request) =>

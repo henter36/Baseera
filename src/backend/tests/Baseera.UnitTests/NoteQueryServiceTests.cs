@@ -36,7 +36,7 @@ public sealed class NoteQueryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Sensitive_note_is_hidden_from_list_without_view_sensitive_permission()
+    public async Task Sensitive_note_is_redacted_in_list_without_view_sensitive_permission()
     {
         var reporter = NoteTestFixtures.AddUser(_db, "reporter");
         var viewer = NoteTestFixtures.AddUser(_db, "viewer");
@@ -47,7 +47,12 @@ public sealed class NoteQueryServiceTests : IDisposable
         var queries = BuildService(viewer.Id, PermissionCodes.NotesView);
         var result = await queries.ListAsync(new NoteListQuery());
 
-        Assert.Empty(result.Items);
+        // Sensitive notes stay visible in the list (users must know they exist within their
+        // scope) but their title/description are redacted rather than shown outright.
+        var item = Assert.Single(result.Items);
+        Assert.True(item.IsSensitiveRedacted);
+        Assert.Equal("[محجوب]", item.Title);
+        Assert.Null(item.DescriptionSnippet);
     }
 
     [Fact]
@@ -120,6 +125,23 @@ public sealed class NoteQueryServiceTests : IDisposable
 
         Assert.True(result.Items.Single(i => i.Id == overdueNote.Id).IsOverdue);
         Assert.False(result.Items.Single(i => i.Id == closedOverdueNote.Id).IsOverdue);
+    }
+
+    [Fact]
+    public async Task Classification_filter_is_applied_server_side()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var viewer = NoteTestFixtures.AddUser(_db, "viewer");
+        var internalNote = NoteTestFixtures.NewNote(ScopeType.Global, reporter.Id, classification: ClassificationLevel.Internal, reference: "OBS-00000001");
+        var restrictedNote = NoteTestFixtures.NewNote(ScopeType.Global, reporter.Id, classification: ClassificationLevel.Restricted, reference: "OBS-00000002");
+        _db.OperationalNotes.AddRange(internalNote, restrictedNote);
+        _db.SaveChanges();
+
+        var queries = BuildService(viewer.Id, PermissionCodes.NotesView, PermissionCodes.NotesViewSensitive);
+        var result = await queries.ListAsync(new NoteListQuery { Classification = ClassificationLevel.Restricted });
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(restrictedNote.Id, item.Id);
     }
 
     [Fact]

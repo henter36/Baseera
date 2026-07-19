@@ -20,6 +20,7 @@ public interface IAttachmentAppService
 {
     Task<AttachmentDto> UploadAsync(UploadAttachmentRequest request, CancellationToken cancellationToken = default);
     Task<(AttachmentDto Meta, Stream Content)> DownloadAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<AttachmentDto>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default);
 }
 
 public sealed class AttachmentAppService(IAttachmentService attachments, ICurrentUser currentUser) : IAttachmentAppService
@@ -52,6 +53,12 @@ public sealed class AttachmentAppService(IAttachmentService attachments, ICurren
         }
 
         return (Map(entity), stream);
+    }
+
+    public async Task<IReadOnlyList<AttachmentDto>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default)
+    {
+        var entities = await attachments.ListForEntityAsync(entityType, entityId, cancellationToken);
+        return entities.Select(Map).ToList();
     }
 
     private static AttachmentDto Map(Attachment a) => new(

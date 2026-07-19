@@ -172,6 +172,21 @@ public sealed class AttachmentService(
         return (entity, stream);
     }
 
+    public async Task<IReadOnlyList<Attachment>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default)
+    {
+        if (!AttachmentEntityTypes.IsAllowed(entityType))
+        {
+            throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.");
+        }
+
+        await EnsureEntityInScopeAsync(entityType, entityId, cancellationToken);
+
+        return await db.Attachments
+            .Where(a => a.EntityType == entityType && a.EntityId == entityId)
+            .OrderByDescending(a => a.UploadedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Anti-enumeration: missing entity and out-of-scope both surface as NotFound (KeyNotFoundException).
     /// Global/HQ callers still must reference a real entity — orphan IDs are rejected.

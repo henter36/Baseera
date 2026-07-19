@@ -103,6 +103,8 @@ public interface IAttachmentService
 {
     Task<Attachment> UploadAsync(UploadAttachmentRequest request, CancellationToken cancellationToken = default);
     Task<(Attachment Attachment, Stream Content)> DownloadAsync(Guid attachmentId, CancellationToken cancellationToken = default);
+    /// <summary>Metadata-only listing for an entity. Missing/out-of-scope entities throw KeyNotFoundException (404), matching DownloadAsync.</summary>
+    Task<IReadOnlyList<Attachment>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default);
 }
 
 public sealed class UploadAttachmentRequest

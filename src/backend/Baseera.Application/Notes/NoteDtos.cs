@@ -145,6 +145,7 @@ public sealed record NoteListQuery
     public NoteSeverity? Severity { get; set; }
     public NoteCategory? Category { get; set; }
     public NoteSourceType? SourceType { get; set; }
+    public ClassificationLevel? Classification { get; set; }
     public Guid? RegionId { get; set; }
     public Guid? FacilityId { get; set; }
     public Guid? FacilityUnitId { get; set; }

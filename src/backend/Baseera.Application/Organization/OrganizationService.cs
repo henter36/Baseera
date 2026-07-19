@@ -7,6 +7,8 @@ using FluentValidation;
 
 public sealed record RegionDto(Guid Id, string Code, string NameAr, bool IsActive, DateTimeOffset CreatedAtUtc, string RowVersion);
 public sealed record FacilityDto(Guid Id, Guid RegionId, string Code, string NameAr, string? FacilityType, bool IsActive, string RowVersion);
+public sealed record FacilityUnitDto(Guid Id, Guid FacilityId, Guid? ParentUnitId, string Code, string NameAr, bool IsActive);
+public sealed record DepartmentDto(Guid Id, Guid OrganizationId, Guid? ParentDepartmentId, string Code, string NameAr, bool IsActive);
 public sealed record UpdateRegionRequest(string NameAr, bool IsActive, string RowVersion);
 public sealed record CreateFacilityRequest(Guid RegionId, string Code, string NameAr, string? FacilityType);
 
@@ -37,6 +39,8 @@ public interface IOrganizationService
     Task<PagedResult<FacilityDto>> ListFacilitiesAsync(PagedQuery query, Guid? regionId, CancellationToken cancellationToken = default);
     Task<FacilityDto?> GetFacilityAsync(Guid id, CancellationToken cancellationToken = default);
     Task<FacilityDto> CreateFacilityAsync(CreateFacilityRequest request, CancellationToken cancellationToken = default);
+    Task<PagedResult<FacilityUnitDto>> ListFacilityUnitsAsync(Guid facilityId, PagedQuery query, CancellationToken cancellationToken = default);
+    Task<PagedResult<DepartmentDto>> ListDepartmentsAsync(PagedQuery query, CancellationToken cancellationToken = default);
 }
 
 public sealed class OrganizationService(
@@ -198,6 +202,53 @@ public sealed class OrganizationService(
         await db.SaveChangesAsync(cancellationToken);
 
         return new FacilityDto(facility.Id, facility.RegionId, facility.Code, facility.NameAr, facility.FacilityType, facility.IsActive, Convert.ToBase64String(facility.RowVersion));
+    }
+
+    public Task<PagedResult<FacilityUnitDto>> ListFacilityUnitsAsync(Guid facilityId, PagedQuery query, CancellationToken cancellationToken = default)
+    {
+        EnsurePermission("Organization.View");
+        if (!scope.CanAccessFacility(facilityId))
+        {
+            throw new UnauthorizedAccessException("لا صلاحية على نطاق هذا السجن.");
+        }
+
+        var q = db.FacilityUnits.Where(u => u.FacilityId == facilityId && !u.IsDeleted);
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var term = query.Search.Trim();
+            q = q.Where(u => u.NameAr.Contains(term) || u.Code.Contains(term));
+        }
+
+        var total = q.Count();
+        var items = q.OrderBy(u => u.Code)
+            .Skip(query.Skip)
+            .Take(query.Take)
+            .ToList()
+            .Select(u => new FacilityUnitDto(u.Id, u.FacilityId, u.ParentUnitId, u.Code, u.NameAr, u.IsActive))
+            .ToList();
+
+        return Task.FromResult(new PagedResult<FacilityUnitDto> { Items = items, Page = query.Page, PageSize = query.Take, TotalCount = total });
+    }
+
+    public Task<PagedResult<DepartmentDto>> ListDepartmentsAsync(PagedQuery query, CancellationToken cancellationToken = default)
+    {
+        EnsurePermission("Organization.View");
+        var q = db.Departments.Where(d => !d.IsDeleted);
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var term = query.Search.Trim();
+            q = q.Where(d => d.NameAr.Contains(term) || d.Code.Contains(term));
+        }
+
+        var total = q.Count();
+        var items = q.OrderBy(d => d.Code)
+            .Skip(query.Skip)
+            .Take(query.Take)
+            .ToList()
+            .Select(d => new DepartmentDto(d.Id, d.OrganizationId, d.ParentDepartmentId, d.Code, d.NameAr, d.IsActive))
+            .ToList();
+
+        return Task.FromResult(new PagedResult<DepartmentDto> { Items = items, Page = query.Page, PageSize = query.Take, TotalCount = total });
     }
 
     private void EnsurePermission(string code)

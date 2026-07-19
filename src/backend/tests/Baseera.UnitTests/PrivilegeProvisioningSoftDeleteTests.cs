@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using Baseera.Application.Abstractions;
+using Baseera.Application.Common;
+using Baseera.Application.Identity;
 using Baseera.Application.Security;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
@@ -463,6 +465,139 @@ public sealed class SoftDeleteFilterTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         return new BaseeraDbContext(options);
+    }
+}
+
+/// <summary>
+/// Confirms the EF 10622 fix (compatible query filters on UserRole/RolePermission) actually
+/// hides rows referencing a soft-deleted Role everywhere: direct DbSet queries, user-facing
+/// role listings, and PrivilegeGuard's rank/permission checks. SysAdmin does not bypass this.
+/// </summary>
+public sealed class RoleSoftDeleteLeakageTests
+{
+    [Fact]
+    public void Archived_role_UserRole_row_is_hidden_from_direct_query()
+    {
+        using var db = CreateDb();
+        var user = SeedUser(db, "user-archived-role");
+        var role = SeedRole(db, RoleCodes.FacilityDirector, isDeleted: true);
+        db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
+        db.SaveChanges();
+
+        Assert.Empty(db.UserRoles.Where(ur => ur.UserId == user.Id).ToList());
+        Assert.Single(db.UserRoles.IgnoreQueryFilters().Where(ur => ur.UserId == user.Id).ToList());
+    }
+
+    [Fact]
+    public void Archived_role_RolePermission_row_is_hidden_from_direct_query()
+    {
+        using var db = CreateDb();
+        var role = SeedRole(db, RoleCodes.FacilityDirector, isDeleted: true);
+        var permission = new Permission { Code = PermissionCodes.NotesView, NameAr = "عرض", Module = "Notes" };
+        db.Permissions.Add(permission);
+        db.SaveChanges();
+        db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
+        db.SaveChanges();
+
+        Assert.Empty(db.RolePermissions.Where(rp => rp.RoleId == role.Id).ToList());
+        Assert.Single(db.RolePermissions.IgnoreQueryFilters().Where(rp => rp.RoleId == role.Id).ToList());
+    }
+
+    [Fact]
+    public async Task User_list_and_get_do_not_surface_archived_role_code()
+    {
+        using var db = CreateDb();
+        var user = SeedUser(db, "user-listed");
+        var activeRole = SeedRole(db, RoleCodes.ReadOnlyUser, isDeleted: false);
+        var archivedRole = SeedRole(db, RoleCodes.SystemAdministrator, isDeleted: true);
+        db.UserRoles.AddRange(
+            new UserRole { UserId = user.Id, RoleId = activeRole.Id },
+            new UserRole { UserId = user.Id, RoleId = archivedRole.Id });
+        db.SaveChanges();
+
+        var current = new FakeCurrentUser(true, user.Id, "actor", "actor", [PermissionCodes.UsersView], []);
+        var service = new UserAdminService(db, current, new NoOpAuditService(), new NoOpPrivilegeGuard());
+
+        var list = await service.ListUsersAsync(new PagedQuery());
+        var listedRoles = list.Items.Single(u => u.Id == user.Id).Roles;
+        Assert.Contains(RoleCodes.ReadOnlyUser, listedRoles);
+        Assert.DoesNotContain(RoleCodes.SystemAdministrator, listedRoles);
+
+        var single = await service.GetUserAsync(user.Id);
+        Assert.NotNull(single);
+        Assert.Contains(RoleCodes.ReadOnlyUser, single!.Roles);
+        Assert.DoesNotContain(RoleCodes.SystemAdministrator, single.Roles);
+    }
+
+    [Fact]
+    public void PrivilegeGuard_treats_actor_with_only_an_archived_role_as_having_no_roles()
+    {
+        using var db = CreateDb();
+        var actor = SeedUser(db, "actor-archived-only");
+        var target = SeedUser(db, "target-archived-only");
+        // Actor's only role (formerly SystemAdministrator) has since been archived.
+        var archivedAdminRole = SeedRole(db, RoleCodes.SystemAdministrator, isDeleted: true);
+        db.UserRoles.Add(new UserRole { UserId = actor.Id, RoleId = archivedAdminRole.Id });
+        db.SaveChanges();
+
+        var current = new FakeCurrentUser(true, actor.Id, "actor", "actor",
+            [PermissionCodes.RolesManage],
+            [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
+        var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
+
+        // An actor with no effective (non-archived) roles has rank 0 and cannot grant even a
+        // low-ranked role, because 0 >= 0 and the actor no longer resolves as SystemAdministrator.
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            guard.EnsureCanAssignRole(target.Id, RoleCodes.ReadOnlyUser));
+    }
+
+    private static User SeedUser(BaseeraDbContext db, string subject)
+    {
+        var user = new User
+        {
+            ExternalSubject = subject,
+            UserName = subject,
+            DisplayNameAr = subject,
+            IsActive = true,
+            ProvisioningStatus = UserProvisioningStatus.Active
+        };
+        db.Users.Add(user);
+        db.SaveChanges();
+        return user;
+    }
+
+    private static Role SeedRole(BaseeraDbContext db, string code, bool isDeleted)
+    {
+        var role = new Role
+        {
+            Code = code,
+            NameAr = code,
+            IsSystem = true,
+            IsDeleted = isDeleted,
+            DeletedAtUtc = isDeleted ? DateTimeOffset.UtcNow : null
+        };
+        db.Roles.Add(role);
+        db.SaveChanges();
+        return role;
+    }
+
+    private static BaseeraDbContext CreateDb()
+    {
+        var options = new DbContextOptionsBuilder<BaseeraDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        return new BaseeraDbContext(options);
+    }
+
+    private sealed class NoOpAuditService : IAuditService
+    {
+        public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class NoOpPrivilegeGuard : IPrivilegeGuard
+    {
+        public void EnsureCanAssignRole(Guid targetUserId, string roleCode) { }
+        public void EnsureCanAssignScope(Guid targetUserId, ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId) { }
     }
 }
 
