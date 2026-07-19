@@ -209,7 +209,7 @@ public sealed class PrivilegeGuard(
         }
     }
 
-    private void EnsureRoleRankAllowsGrant(IReadOnlyCollection<string> actorRoles, string roleCode)
+    private static void EnsureRoleRankAllowsGrant(IReadOnlyCollection<string> actorRoles, string roleCode)
     {
         var actorRank = RoleHierarchy.MaxRank(actorRoles);
         var targetRank = RoleHierarchy.RankOf(roleCode);

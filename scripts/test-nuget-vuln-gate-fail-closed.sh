@@ -28,4 +28,4 @@ if [[ "$STATUS" -ne 42 ]]; then
   exit 1
 fi
 
-echo "NuGet vulnerability gate correctly failed closed on tool error."
+echo "NuGet vulnerability gate fail-closed self-test succeeded."
