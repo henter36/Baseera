@@ -3,7 +3,7 @@
 **Date:** 2026-07-19  
 **Branch:** `phase-a1-security-hardening`  
 **PR:** https://github.com/henter36/Baseera/pull/2  
-**Commit SHA:** `a1c7f12be83637f8a07a40bf0b3521984ca695a1` (+ follow-up tip after CodeRabbit closure)
+**Commit SHA:** `43c0f035fd379b21125394268c7027554a32a282`
 
 ---
 
@@ -76,8 +76,8 @@ Phase B may start after this report. Do **not** merge PR #2 as part of this roun
 
 ### Final commit SHA
 
-Primary gate-clearing tip: `a1c7f12be83637f8a07a40bf0b3521984ca695a1`  
-Follow-up commits after this report may land CodeRabbit ReadExactly / validator / login-throttle fixes; CI+Sonar must remain green.
+`43c0f035fd379b21125394268c7027554a32a282`  
+(Sonar QG first cleared on `a1c7f12`; this tip includes CodeRabbit closure fixes.)
 
 ---
 
