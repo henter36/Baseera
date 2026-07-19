@@ -59,8 +59,12 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<Department>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<User>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Role>().HasQueryFilter(e => !e.IsDeleted);
+        // Join entities must filter deleted Role (and User) to avoid EF 10622 with required navigations.
+        modelBuilder.Entity<UserRole>().HasQueryFilter(ur => !ur.Role.IsDeleted && !ur.User.IsDeleted);
+        modelBuilder.Entity<RolePermission>().HasQueryFilter(rp => !rp.Role.IsDeleted);
         modelBuilder.Entity<UserScope>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Attachment>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Domain.Notes.OperationalNote>().HasQueryFilter(e => !e.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {
