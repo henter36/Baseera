@@ -34,6 +34,14 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        // UseSetting is reliable with WebApplicationFactory + minimal hosting;
+        // ConfigureAppConfiguration alone can be ignored by WebApplication.CreateBuilder.
+        builder.UseSetting("ConnectionStrings:Baseera", _connectionString);
+        builder.UseSetting("Auth:UseTestAuth", "true");
+        builder.UseSetting("Seed:DemoOrganization", "true");
+        builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
+        builder.UseSetting("Attachments:RootPath", Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName));
+
         builder.ConfigureAppConfiguration((_, config) =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
