@@ -34,7 +34,7 @@ public sealed class NoteQueryService(
 
         // Sensitive notes stay in the list (so users know they exist within their scope) but are
         // redacted below when the caller lacks Notes.ViewSensitive — never excluded outright.
-        var q = noteScope.FilterQueryable(db.OperationalNotes);
+        var q = await noteScope.FilterQueryableAsync(db.OperationalNotes, cancellationToken);
         q = ApplyFilters(q, query, now);
 
         var total = await q.CountAsync(cancellationToken);

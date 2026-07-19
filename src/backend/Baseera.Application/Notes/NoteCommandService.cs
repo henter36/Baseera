@@ -119,7 +119,18 @@ public sealed class NoteCommandService(
             throw new InvalidOperationException("لا يمكن تعديل ملاحظة مغلقة أو ملغاة إلا عبر انتقال صريح.");
         }
 
-        var old = new { note.Title, note.Description, note.Category, note.Severity, note.Classification, note.DueAtUtc };
+        var old = new
+        {
+            note.Title,
+            note.Description,
+            note.Category,
+            note.Severity,
+            note.SourceType,
+            note.SourceReference,
+            note.Classification,
+            note.OwnerDepartmentId,
+            note.DueAtUtc
+        };
         note.Title = request.Title.Trim();
         note.Description = request.Description.Trim();
         note.Category = request.Category;
@@ -140,7 +151,18 @@ public sealed class NoteCommandService(
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             OldValues = old,
-            NewValues = new { note.Title, note.Description, note.Category, note.Severity, note.Classification, note.DueAtUtc },
+            NewValues = new
+            {
+                note.Title,
+                note.Description,
+                note.Category,
+                note.Severity,
+                note.SourceType,
+                note.SourceReference,
+                note.Classification,
+                note.OwnerDepartmentId,
+                note.DueAtUtc
+            },
             Reason = "تحديث حقول الملاحظة"
         }, cancellationToken);
 
@@ -253,7 +275,8 @@ public sealed class NoteCommandService(
     {
         if (request.ScopeType == ScopeType.Facility && !request.RegionId.HasValue && request.FacilityId.HasValue)
         {
-            var facility = await db.Facilities.FirstAsync(f => f.Id == request.FacilityId.Value, cancellationToken);
+            var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == request.FacilityId.Value, cancellationToken)
+                ?? throw new KeyNotFoundException("السجن غير موجود.");
             return facility.RegionId;
         }
 

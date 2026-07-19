@@ -337,6 +337,40 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
         var listed = Assert.Single(list!, a => a.Id == attachment.Id);
         Assert.Equal("evidence.txt", listed.OriginalFileName);
         Assert.Equal(0, listed.ScanStatus); // PendingScan until marked clean.
+        Assert.False(listed.IsSensitiveRedacted);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Note_attachments_list_redacts_confidential_metadata_without_download_sensitive()
+    {
+        await _factory.SeedUserAsync("notes-att-redact-admin", "مسؤول", [RoleCodes.SystemAdministrator],
+            (ScopeType.Global, null, null));
+        await _factory.SeedUserAsync("notes-att-redact-viewer", "عارض", [RoleCodes.FacilityCoordinator],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+
+        var admin = _factory.CreateAuthenticatedClient("notes-att-redact-admin");
+        var note = await CreateNoteAsync(admin, ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null, "مرفق سري");
+
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent("OperationalNote"), "entityType");
+        content.Add(new StringContent(note.Id.ToString()), "entityId");
+        content.Add(new StringContent(ClassificationLevel.Confidential.ToString()), "classification");
+        content.Add(new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes("سرّي"))
+        {
+            Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") }
+        }, "file", "secret-plan.txt");
+        var upload = await admin.PostAsync("/api/v1/attachments", content);
+        Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
+        var attachment = JsonSerializer.Deserialize<AttachmentItem>(await upload.Content.ReadAsStringAsync(), JsonOptions)!;
+
+        var viewer = _factory.CreateAuthenticatedClient("notes-att-redact-viewer");
+        var list = await viewer.GetFromJsonAsync<List<NoteAttachmentItem>>($"/api/v1/notes/{note.Id}/attachments");
+        Assert.NotNull(list);
+        var listed = Assert.Single(list!, a => a.Id == attachment.Id);
+        Assert.True(listed.IsSensitiveRedacted);
+        Assert.Equal("[محجوب]", listed.OriginalFileName);
+        Assert.True(string.IsNullOrEmpty(listed.Sha256));
+        Assert.Equal(0, listed.SizeBytes);
     }
 
     [IntegrationConnectionFact]
@@ -425,4 +459,11 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
 internal sealed record SensitiveNoteListItem(Guid Id, string Title, bool IsSensitiveRedacted);
 internal sealed record SensitiveNoteDetail(Guid Id, string Title, bool IsSensitiveRedacted);
 internal sealed record NoteAssignmentItem(Guid Id, Guid? AssignedToUserId, bool IsCurrent);
-internal sealed record NoteAttachmentItem(Guid Id, string OriginalFileName, int ScanStatus, int Classification);
+internal sealed record NoteAttachmentItem(
+    Guid Id,
+    string OriginalFileName,
+    int ScanStatus,
+    int Classification,
+    string? Sha256 = null,
+    long SizeBytes = 0,
+    bool IsSensitiveRedacted = false);

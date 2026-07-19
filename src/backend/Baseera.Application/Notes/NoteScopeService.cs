@@ -9,6 +9,7 @@ public interface INoteScopeService
 {
     bool CanAccess(OperationalNote note);
     IQueryable<OperationalNote> FilterQueryable(IQueryable<OperationalNote> query);
+    Task<IQueryable<OperationalNote>> FilterQueryableAsync(IQueryable<OperationalNote> query, CancellationToken cancellationToken = default);
     void ValidateScopeShape(ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId);
     Task EnsureOrgEntitiesActiveAsync(ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId, CancellationToken cancellationToken = default);
 }
@@ -36,12 +37,31 @@ public sealed class NoteScopeService(
             return query;
         }
 
+        return FilterWithScopeIds(query, BuildAccessibleScopeIds());
+    }
+
+    public async Task<IQueryable<OperationalNote>> FilterQueryableAsync(
+        IQueryable<OperationalNote> query,
+        CancellationToken cancellationToken = default)
+    {
+        if (orgScope.HasNationalAccess)
+        {
+            return query;
+        }
+
+        return FilterWithScopeIds(query, await BuildAccessibleScopeIdsAsync(cancellationToken));
+    }
+
+    private IQueryable<OperationalNote> FilterWithScopeIds(
+        IQueryable<OperationalNote> query,
+        (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) ids)
+    {
         if (!currentUser.IsAuthenticated || currentUser.Scopes.Count == 0)
         {
             return query.Where(_ => false);
         }
 
-        var (regionIds, facilityIds, unitIds) = BuildAccessibleScopeIds();
+        var (regionIds, facilityIds, unitIds) = ids;
         var hasHq = orgScope.HasHeadquartersAccess;
 
         return query.Where(n =>
@@ -54,6 +74,23 @@ public sealed class NoteScopeService(
     }
 
     private (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) BuildAccessibleScopeIds()
+    {
+        var ids = CollectScopeIdsFromUser();
+        ExpandRegionsFromAccessibleFacilities(ids.RegionIds, ids.FacilityIds);
+        ExpandFacilitiesFromAccessibleRegions(ids.RegionIds, ids.FacilityIds);
+        return ids;
+    }
+
+    private async Task<(HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds)> BuildAccessibleScopeIdsAsync(
+        CancellationToken cancellationToken)
+    {
+        var ids = CollectScopeIdsFromUser();
+        await ExpandRegionsFromAccessibleFacilitiesAsync(ids.RegionIds, ids.FacilityIds, cancellationToken);
+        await ExpandFacilitiesFromAccessibleRegionsAsync(ids.RegionIds, ids.FacilityIds, cancellationToken);
+        return ids;
+    }
+
+    private (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) CollectScopeIdsFromUser()
     {
         var regionIds = currentUser.Scopes
             .Where(s => s.RegionId.HasValue &&
@@ -72,19 +109,31 @@ public sealed class NoteScopeService(
             .Select(s => s.FacilityUnitId!.Value)
             .ToHashSet();
 
-        ExpandRegionsFromAccessibleFacilities(regionIds, facilityIds);
-        ExpandFacilitiesFromAccessibleRegions(regionIds, facilityIds);
-
         return (regionIds, facilityIds, unitIds);
     }
 
     private void ExpandRegionsFromAccessibleFacilities(HashSet<Guid> regionIds, HashSet<Guid> facilityIds)
     {
-        var facilityRegionIds = db.Facilities
+        foreach (var id in db.Facilities
+                     .Where(f => facilityIds.Contains(f.Id) && !f.IsDeleted)
+                     .Select(f => f.RegionId)
+                     .Distinct()
+                     .ToList())
+        {
+            regionIds.Add(id);
+        }
+    }
+
+    private async Task ExpandRegionsFromAccessibleFacilitiesAsync(
+        HashSet<Guid> regionIds,
+        HashSet<Guid> facilityIds,
+        CancellationToken cancellationToken)
+    {
+        var facilityRegionIds = await db.Facilities
             .Where(f => facilityIds.Contains(f.Id) && !f.IsDeleted)
             .Select(f => f.RegionId)
             .Distinct()
-            .ToList();
+            .ToListAsync(cancellationToken);
         foreach (var id in facilityRegionIds)
         {
             regionIds.Add(id);
@@ -93,10 +142,24 @@ public sealed class NoteScopeService(
 
     private void ExpandFacilitiesFromAccessibleRegions(HashSet<Guid> regionIds, HashSet<Guid> facilityIds)
     {
-        var regionFacilityIds = db.Facilities
+        foreach (var id in db.Facilities
+                     .Where(f => regionIds.Contains(f.RegionId) && !f.IsDeleted)
+                     .Select(f => f.Id)
+                     .ToList())
+        {
+            facilityIds.Add(id);
+        }
+    }
+
+    private async Task ExpandFacilitiesFromAccessibleRegionsAsync(
+        HashSet<Guid> regionIds,
+        HashSet<Guid> facilityIds,
+        CancellationToken cancellationToken)
+    {
+        var regionFacilityIds = await db.Facilities
             .Where(f => regionIds.Contains(f.RegionId) && !f.IsDeleted)
             .Select(f => f.Id)
-            .ToList();
+            .ToListAsync(cancellationToken);
         foreach (var id in regionFacilityIds)
         {
             facilityIds.Add(id);

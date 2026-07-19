@@ -412,8 +412,10 @@ function AttachmentsPanel({ noteId }: Readonly<{ noteId: string }>) {
                   </span>
                 </td>
                 <td>
-                  {a.scanStatus === 1 ? (
+                  {a.scanStatus === 1 && !a.isSensitiveRedacted ? (
                     <button type="button" className="secondary" onClick={() => download(a)}>تنزيل</button>
+                  ) : a.isSensitiveRedacted ? (
+                    <span className="muted">مرفق حسّاس — يتطلب صلاحية تنزيل حساسة</span>
                   ) : (
                     <span className="muted">التنزيل متاح بعد اكتمال الفحص فقط</span>
                   )}

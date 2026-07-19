@@ -316,6 +316,7 @@ export type Attachment = {
   classification: number
   scanStatus: number
   uploadedAtUtc: string
+  isSensitiveRedacted?: boolean
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

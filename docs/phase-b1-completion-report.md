@@ -46,7 +46,7 @@ Corrective multi-actions, auto-escalation, notifications, background jobs, execu
 1. Malware scanner remains stubbed (PendingScan still blocks download — intentional for B.1).
 2. NU1510 warning remains while the High/Critical pin is required.
 3. Restore UX requires knowing `rowVersion` for archived notes (no “include deleted” list API yet).
-4. CodeRabbit incremental review hit plan rate limits on a later push; earlier review comments were addressed (async EF / complexity).
+4. CodeRabbit findings addressed in follow-up: confidential attachment list metadata redaction, Update audit field coverage, async list-scope expansion, NoteEditPage conflict reload state clear.
 
 ## Rollback
 

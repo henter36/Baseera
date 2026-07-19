@@ -151,7 +151,15 @@ export function NoteEditPage() {
             <div className="error" role="alert">
               <span>{serverError}</span>
               {conflict && (
-                <button type="button" className="secondary" onClick={() => noteQuery.refetch()}>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setConflict(false)
+                    setServerError(null)
+                    void noteQuery.refetch()
+                  }}
+                >
                   إعادة تحميل
                 </button>
               )}

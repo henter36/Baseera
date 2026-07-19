@@ -123,7 +123,7 @@ describe('NoteEditPage', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/notes/note-1'))
   })
 
-  it('shows a clear conflict message on 409 and blocks resubmission until reload', async () => {
+  it('shows a clear conflict message on 409 and clears it after reload', async () => {
     getNote.mockResolvedValue(baseNote)
     updateNote.mockRejectedValue(new ApiError(409, 'تعارض'))
     renderPage()
@@ -134,6 +134,12 @@ describe('NoteEditPage', () => {
 
     expect(await screen.findByText(/تم تعديل الملاحظة من مستخدم آخر/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'حفظ التعديلات' })).toBeDisabled()
+
+    getNote.mockResolvedValue({ ...baseNote, title: 'عنوان بعد التعارض', rowVersion: 'row-v2' })
+    await user.click(screen.getByRole('button', { name: 'إعادة تحميل' }))
+
+    await waitFor(() => expect(screen.queryByText(/تم تعديل الملاحظة من مستخدم آخر/)).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'حفظ التعديلات' })).not.toBeDisabled()
   })
 
   it('shows a clear message for out-of-scope/not-found notes (404)', async () => {
