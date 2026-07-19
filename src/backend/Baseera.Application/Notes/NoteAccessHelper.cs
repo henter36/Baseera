@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 
 internal static class NoteAccessHelper
 {
+    public const string ModuleName = "Notes";
+
     public static void EnsurePermission(ICurrentUser currentUser, string permissionCode)
     {
         if (!currentUser.HasPermission(permissionCode))

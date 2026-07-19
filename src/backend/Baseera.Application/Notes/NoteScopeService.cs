@@ -41,6 +41,20 @@ public sealed class NoteScopeService(
             return query.Where(_ => false);
         }
 
+        var (regionIds, facilityIds, unitIds) = BuildAccessibleScopeIds();
+        var hasHq = orgScope.HasHeadquartersAccess;
+
+        return query.Where(n =>
+            (n.ScopeType == ScopeType.Headquarters && hasHq) ||
+            (n.ScopeType == ScopeType.Region && n.RegionId.HasValue && regionIds.Contains(n.RegionId.Value)) ||
+            (n.ScopeType == ScopeType.Facility && n.FacilityId.HasValue && facilityIds.Contains(n.FacilityId.Value)) ||
+            (n.ScopeType == ScopeType.FacilityUnit && (
+                (n.FacilityUnitId.HasValue && unitIds.Contains(n.FacilityUnitId.Value)) ||
+                (n.FacilityId.HasValue && facilityIds.Contains(n.FacilityId.Value) && unitIds.Count == 0))));
+    }
+
+    private (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) BuildAccessibleScopeIds()
+    {
         var regionIds = currentUser.Scopes
             .Where(s => s.RegionId.HasValue &&
                         (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions))
@@ -58,6 +72,14 @@ public sealed class NoteScopeService(
             .Select(s => s.FacilityUnitId!.Value)
             .ToHashSet();
 
+        ExpandRegionsFromAccessibleFacilities(regionIds, facilityIds);
+        ExpandFacilitiesFromAccessibleRegions(regionIds, facilityIds);
+
+        return (regionIds, facilityIds, unitIds);
+    }
+
+    private void ExpandRegionsFromAccessibleFacilities(HashSet<Guid> regionIds, HashSet<Guid> facilityIds)
+    {
         var facilityRegionIds = db.Facilities
             .Where(f => facilityIds.Contains(f.Id) && !f.IsDeleted)
             .Select(f => f.RegionId)
@@ -67,7 +89,10 @@ public sealed class NoteScopeService(
         {
             regionIds.Add(id);
         }
+    }
 
+    private void ExpandFacilitiesFromAccessibleRegions(HashSet<Guid> regionIds, HashSet<Guid> facilityIds)
+    {
         var regionFacilityIds = db.Facilities
             .Where(f => regionIds.Contains(f.RegionId) && !f.IsDeleted)
             .Select(f => f.Id)
@@ -76,16 +101,6 @@ public sealed class NoteScopeService(
         {
             facilityIds.Add(id);
         }
-
-        var hasHq = orgScope.HasHeadquartersAccess;
-
-        return query.Where(n =>
-            (n.ScopeType == ScopeType.Headquarters && hasHq) ||
-            (n.ScopeType == ScopeType.Region && n.RegionId.HasValue && regionIds.Contains(n.RegionId.Value)) ||
-            (n.ScopeType == ScopeType.Facility && n.FacilityId.HasValue && facilityIds.Contains(n.FacilityId.Value)) ||
-            (n.ScopeType == ScopeType.FacilityUnit && (
-                (n.FacilityUnitId.HasValue && unitIds.Contains(n.FacilityUnitId.Value)) ||
-                (n.FacilityId.HasValue && facilityIds.Contains(n.FacilityId.Value) && unitIds.Count == 0))));
     }
 
     public void ValidateScopeShape(ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
@@ -132,7 +147,12 @@ public sealed class NoteScopeService(
 
         if (facilityUnitId.HasValue)
         {
-            await EnsureUnitBelongsToFacilityAsync(facilityId!.Value, facilityUnitId.Value, cancellationToken);
+            if (!facilityId.HasValue)
+            {
+                throw new InvalidOperationException("نطاق الوحدة يتطلب FacilityId وFacilityUnitId.");
+            }
+
+            await EnsureUnitBelongsToFacilityAsync(facilityId.Value, facilityUnitId.Value, cancellationToken);
         }
     }
 

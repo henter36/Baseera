@@ -212,7 +212,7 @@ public sealed class NoteQueryService(
             .OrderByDescending(a => a.AssignedAtUtc)
             .ToListAsync(cancellationToken);
 
-        IReadOnlyList<NoteAssignmentDto> result = rows.Select(MapAssignment).Where(a => a is not null).Cast<NoteAssignmentDto>().ToList();
+        IReadOnlyList<NoteAssignmentDto> result = rows.Select(MapAssignment).OfType<NoteAssignmentDto>().ToList();
         return result;
     }
 
@@ -243,6 +243,15 @@ public sealed class NoteQueryService(
     }
 
     private static IQueryable<OperationalNote> ApplyFilters(IQueryable<OperationalNote> q, NoteListQuery query, DateTimeOffset now)
+    {
+        q = ApplyTextAndEnumFilters(q, query);
+        q = ApplyScopeFilters(q, query);
+        q = ApplyDateFilters(q, query, now);
+        q = ApplyAssignmentFilter(q, query);
+        return q;
+    }
+
+    private static IQueryable<OperationalNote> ApplyTextAndEnumFilters(IQueryable<OperationalNote> q, NoteListQuery query)
     {
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -275,6 +284,11 @@ public sealed class NoteQueryService(
             q = q.Where(n => n.Classification == query.Classification.Value);
         }
 
+        return q;
+    }
+
+    private static IQueryable<OperationalNote> ApplyScopeFilters(IQueryable<OperationalNote> q, NoteListQuery query)
+    {
         if (query.RegionId.HasValue)
         {
             q = q.Where(n => n.RegionId == query.RegionId.Value);
@@ -295,6 +309,11 @@ public sealed class NoteQueryService(
             q = q.Where(n => n.OwnerDepartmentId == query.OwnerDepartmentId.Value);
         }
 
+        return q;
+    }
+
+    private static IQueryable<OperationalNote> ApplyDateFilters(IQueryable<OperationalNote> q, NoteListQuery query, DateTimeOffset now)
+    {
         if (query.DueFrom.HasValue)
         {
             q = q.Where(n => n.DueAtUtc >= query.DueFrom.Value);
@@ -324,6 +343,11 @@ public sealed class NoteQueryService(
                 n.Status != NoteStatus.Cancelled);
         }
 
+        return q;
+    }
+
+    private static IQueryable<OperationalNote> ApplyAssignmentFilter(IQueryable<OperationalNote> q, NoteListQuery query)
+    {
         if (query.AssignedToUserId.HasValue)
         {
             var uid = query.AssignedToUserId.Value;

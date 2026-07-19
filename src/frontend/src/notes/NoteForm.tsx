@@ -34,7 +34,7 @@ type NoteFormProps = {
   me?: Me | null
 }
 
-export function NoteForm({ mode, me }: NoteFormProps) {
+export function NoteForm({ mode, me }: Readonly<NoteFormProps>) {
   const {
     register,
     watch,

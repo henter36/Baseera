@@ -127,47 +127,7 @@ public static class ApiEndpoints
                 Search = search
             }, module, ct))).RequireAuthorization(AuthPolicies.AuditView);
 
-        api.MapPost("/attachments", async (HttpRequest http, IAttachmentAppService attachments, CancellationToken ct) =>
-        {
-            if (!http.HasFormContentType)
-            {
-                return Results.BadRequest(new { detail = "يجب إرسال multipart/form-data." });
-            }
-
-            var form = await http.ReadFormAsync(ct);
-            var file = form.Files.GetFile("file");
-            if (file is null)
-            {
-                return Results.BadRequest(new { detail = "الملف مطلوب." });
-            }
-
-            if (!Guid.TryParse(form["entityId"], out var entityId))
-            {
-                return Results.BadRequest(new { detail = "entityId غير صالح." });
-            }
-
-            var entityType = form["entityType"].ToString();
-            if (string.IsNullOrWhiteSpace(entityType))
-            {
-                return Results.BadRequest(new { detail = "entityType مطلوب." });
-            }
-
-            Enum.TryParse<ClassificationLevel>(form["classification"], true, out var classification);
-            await using var stream = file.OpenReadStream();
-            var created = await attachments.UploadAsync(new UploadAttachmentRequest
-            {
-                EntityType = entityType,
-                EntityId = entityId,
-                OriginalFileName = file.FileName,
-                ContentType = file.ContentType,
-                Content = stream,
-                SizeBytes = file.Length,
-                Classification = classification,
-                UploadReason = form["reason"]
-            }, ct);
-
-            return Results.Created($"/api/v1/attachments/{created.Id}", created);
-        }).RequireAuthorization(AuthPolicies.AttachmentsUpload).DisableAntiforgery();
+        api.MapPost("/attachments", UploadAttachmentAsync).RequireAuthorization(AuthPolicies.AttachmentsUpload).DisableAntiforgery();
 
         api.MapGet("/attachments/{id:guid}/download", async (Guid id, IAttachmentAppService attachments, CancellationToken ct) =>
         {
@@ -326,4 +286,46 @@ public static class ApiEndpoints
 
     private static TransitionNoteRequest ToTransition(WorkflowActionRequest request) =>
         new(string.IsNullOrWhiteSpace(request.Reason) ? "—" : request.Reason.Trim(), request.RowVersion);
+
+    private static async Task<IResult> UploadAttachmentAsync(HttpRequest http, IAttachmentAppService attachments, CancellationToken ct)
+    {
+        if (!http.HasFormContentType)
+        {
+            return Results.BadRequest(new { detail = "يجب إرسال multipart/form-data." });
+        }
+
+        var form = await http.ReadFormAsync(ct);
+        var file = form.Files.GetFile("file");
+        if (file is null)
+        {
+            return Results.BadRequest(new { detail = "الملف مطلوب." });
+        }
+
+        if (!Guid.TryParse(form["entityId"], out var entityId))
+        {
+            return Results.BadRequest(new { detail = "entityId غير صالح." });
+        }
+
+        var entityType = form["entityType"].ToString();
+        if (string.IsNullOrWhiteSpace(entityType))
+        {
+            return Results.BadRequest(new { detail = "entityType مطلوب." });
+        }
+
+        Enum.TryParse<ClassificationLevel>(form["classification"], true, out var classification);
+        await using var stream = file.OpenReadStream();
+        var created = await attachments.UploadAsync(new UploadAttachmentRequest
+        {
+            EntityType = entityType,
+            EntityId = entityId,
+            OriginalFileName = file.FileName,
+            ContentType = file.ContentType,
+            Content = stream,
+            SizeBytes = file.Length,
+            Classification = classification,
+            UploadReason = form["reason"]
+        }, ct);
+
+        return Results.Created($"/api/v1/attachments/{created.Id}", created);
+    }
 }

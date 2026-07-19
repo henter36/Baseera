@@ -24,35 +24,38 @@ public sealed class NoteWorkflowService(
 {
     public Task<NoteDetailDto> StartWorkAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
-            id,
-            request.RowVersion,
-            PermissionCodes.NotesStartWork,
-            NoteStatus.InProgress,
-            "NoteWorkStarted",
-            request.Reason,
-            ApplyStartWork,
+            new TransitionOptions(
+                id,
+                request.RowVersion,
+                PermissionCodes.NotesStartWork,
+                NoteStatus.InProgress,
+                "NoteWorkStarted",
+                request.Reason,
+                ApplyStartWork),
             cancellationToken);
 
     public Task<NoteDetailDto> SubmitForVerificationAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
-            id,
-            request.RowVersion,
-            PermissionCodes.NotesSubmitForVerification,
-            NoteStatus.PendingVerification,
-            "NoteSubmittedForVerification",
-            request.Reason,
-            ApplySubmitForVerification,
+            new TransitionOptions(
+                id,
+                request.RowVersion,
+                PermissionCodes.NotesSubmitForVerification,
+                NoteStatus.PendingVerification,
+                "NoteSubmittedForVerification",
+                request.Reason,
+                ApplySubmitForVerification),
             cancellationToken);
 
     public Task<NoteDetailDto> ReturnForReworkAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
-            id,
-            request.RowVersion,
-            PermissionCodes.NotesReturnForRework,
-            NoteStatus.InProgress,
-            "NoteReturnedForRework",
-            request.Reason,
-            null,
+            new TransitionOptions(
+                id,
+                request.RowVersion,
+                PermissionCodes.NotesReturnForRework,
+                NoteStatus.InProgress,
+                "NoteReturnedForRework",
+                request.Reason,
+                null),
             cancellationToken);
 
     public async Task<NoteDetailDto> VerifyClosureAsync(Guid id, CloseNoteRequest request, CancellationToken cancellationToken = default)
@@ -81,7 +84,7 @@ public sealed class NoteWorkflowService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteClosed",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             OldValues = new { Status = from },
@@ -118,7 +121,7 @@ public sealed class NoteWorkflowService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteReopened",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             OldValues = new { Status = from },
@@ -156,7 +159,7 @@ public sealed class NoteWorkflowService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteCancelled",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             OldValues = new { Status = from },
@@ -168,46 +171,47 @@ public sealed class NoteWorkflowService(
         return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
     }
 
-    private async Task<NoteDetailDto> TransitionAsync(
-        Guid id,
-        string rowVersion,
-        string permission,
-        NoteStatus toStatus,
-        string auditAction,
-        string reason,
-        Action<OperationalNote, Guid, DateTimeOffset>? apply,
-        CancellationToken cancellationToken)
-    {
-        NoteAccessHelper.EnsurePermission(currentUser, permission);
-        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
-        NoteAccessHelper.EnsureRowVersion(note.RowVersion, rowVersion);
+    private sealed record TransitionOptions(
+        Guid Id,
+        string RowVersion,
+        string Permission,
+        NoteStatus ToStatus,
+        string AuditAction,
+        string Reason,
+        Action<OperationalNote, Guid, DateTimeOffset>? Apply);
 
-        if (toStatus == NoteStatus.InProgress && note.Status == NoteStatus.Reopened)
+    private async Task<NoteDetailDto> TransitionAsync(TransitionOptions options, CancellationToken cancellationToken)
+    {
+        NoteAccessHelper.EnsurePermission(currentUser, options.Permission);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, options.Id, cancellationToken: cancellationToken);
+        NoteAccessHelper.EnsureRowVersion(note.RowVersion, options.RowVersion);
+
+        if (options.ToStatus == NoteStatus.InProgress && note.Status == NoteStatus.Reopened)
         {
             await EnsureCurrentAssignmentExistsAsync(note.Id, cancellationToken);
         }
 
-        NoteStateMachine.EnsureAllowed(note.Status, toStatus);
+        NoteStateMachine.EnsureAllowed(note.Status, options.ToStatus);
 
         var actorId = RequireUserId();
         var from = note.Status;
         var now = DateTimeOffset.UtcNow;
-        note.Status = toStatus;
+        note.Status = options.ToStatus;
         note.UpdatedAtUtc = now;
         note.UpdatedBy = currentUser.ExternalSubject;
-        apply?.Invoke(note, actorId, now);
+        options.Apply?.Invoke(note, actorId, now);
         db.Update(note);
 
-        AppendHistory(note.Id, from, toStatus, actorId, reason.Trim());
+        AppendHistory(note.Id, from, options.ToStatus, actorId, options.Reason.Trim());
         await audit.WriteAsync(new AuditEntry
         {
-            Action = auditAction,
-            Module = "Notes",
+            Action = options.AuditAction,
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             OldValues = new { Status = from },
-            NewValues = new { Status = toStatus },
-            Reason = reason.Trim()
+            NewValues = new { Status = options.ToStatus },
+            Reason = options.Reason.Trim()
         }, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
@@ -226,7 +230,7 @@ public sealed class NoteWorkflowService(
         note.LastProcessedByUserId = actorId;
     }
 
-    private void EnforceCriticalSoD(OperationalNote note, Guid closerId)
+    private static void EnforceCriticalSoD(OperationalNote note, Guid closerId)
     {
         if (note.Severity != NoteSeverity.Critical)
         {

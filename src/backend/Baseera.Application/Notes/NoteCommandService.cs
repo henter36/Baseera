@@ -87,7 +87,7 @@ public sealed class NoteCommandService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteCreated",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             NewValues = new
@@ -136,7 +136,7 @@ public sealed class NoteCommandService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteUpdated",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             OldValues = old,
@@ -167,7 +167,7 @@ public sealed class NoteCommandService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteSubmitted",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             OldValues = new { Status = from },
@@ -195,7 +195,7 @@ public sealed class NoteCommandService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteArchived",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             Reason = request.Reason.Trim()
@@ -224,7 +224,7 @@ public sealed class NoteCommandService(
         await audit.WriteAsync(new AuditEntry
         {
             Action = "NoteRestored",
-            Module = "Notes",
+            Module = NoteAccessHelper.ModuleName,
             EntityType = nameof(OperationalNote),
             EntityId = note.Id.ToString(),
             Reason = request.Reason.Trim()

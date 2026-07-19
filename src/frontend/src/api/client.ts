@@ -350,28 +350,44 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>
 }
 
-function buildNoteQuery(filters: NoteListFilters): string {
-  const params = new URLSearchParams()
+function appendPagingParams(params: URLSearchParams, filters: NoteListFilters): void {
   params.set('page', String(filters.page ?? 1))
   params.set('pageSize', String(filters.pageSize ?? 20))
   if (filters.search) params.set('search', filters.search)
+  if (filters.sortBy) params.set('sortBy', filters.sortBy)
+  if (filters.sortDesc) params.set('sortDesc', 'true')
+}
+
+function appendEnumFilterParams(params: URLSearchParams, filters: NoteListFilters): void {
   if (filters.status !== undefined) params.set('status', String(filters.status))
   if (filters.severity !== undefined) params.set('severity', String(filters.severity))
   if (filters.category !== undefined) params.set('category', String(filters.category))
   if (filters.sourceType !== undefined) params.set('sourceType', String(filters.sourceType))
   if (filters.classification !== undefined) params.set('classification', String(filters.classification))
+  if (filters.overdueOnly) params.set('overdueOnly', 'true')
+}
+
+function appendScopeFilterParams(params: URLSearchParams, filters: NoteListFilters): void {
   if (filters.regionId) params.set('regionId', filters.regionId)
   if (filters.facilityId) params.set('facilityId', filters.facilityId)
   if (filters.facilityUnitId) params.set('facilityUnitId', filters.facilityUnitId)
   if (filters.ownerDepartmentId) params.set('ownerDepartmentId', filters.ownerDepartmentId)
   if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
-  if (filters.overdueOnly) params.set('overdueOnly', 'true')
+}
+
+function appendDateRangeParams(params: URLSearchParams, filters: NoteListFilters): void {
   if (filters.dueFrom) params.set('dueFrom', filters.dueFrom)
   if (filters.dueTo) params.set('dueTo', filters.dueTo)
   if (filters.createdFrom) params.set('createdFrom', filters.createdFrom)
   if (filters.createdTo) params.set('createdTo', filters.createdTo)
-  if (filters.sortBy) params.set('sortBy', filters.sortBy)
-  if (filters.sortDesc) params.set('sortDesc', 'true')
+}
+
+function buildNoteQuery(filters: NoteListFilters): string {
+  const params = new URLSearchParams()
+  appendPagingParams(params, filters)
+  appendEnumFilterParams(params, filters)
+  appendScopeFilterParams(params, filters)
+  appendDateRangeParams(params, filters)
   return params.toString()
 }
 

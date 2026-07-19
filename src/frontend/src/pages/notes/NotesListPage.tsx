@@ -29,6 +29,11 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleString('ar-SA')
 }
 
+function sortIndicator(columnKey: string, sortBy: string, sortDesc: boolean): string {
+  if (sortBy !== columnKey) return ''
+  return sortDesc ? '↓' : '↑'
+}
+
 export function NotesListPage() {
   const canView = usePermission('Notes.View')
   const canCreate = usePermission('Notes.Create')
@@ -209,7 +214,7 @@ export function NotesListPage() {
         </div>
       )}
 
-      {query.data && query.data.items.length === 0 && (
+      {query.data?.items.length === 0 && (
         <div className="empty">لا توجد ملاحظات مطابقة ضمن نطاقك.</div>
       )}
 
@@ -221,7 +226,7 @@ export function NotesListPage() {
                 {SORT_COLUMNS.map((col) => (
                   <th key={col.key}>
                     <button type="button" className="sort-header" onClick={() => toggleSort(col.key)}>
-                      {col.labelAr} {sortBy === col.key ? (sortDesc ? '↓' : '↑') : ''}
+                      {col.labelAr} {sortIndicator(col.key, sortBy, sortDesc)}
                     </button>
                   </th>
                 ))}
@@ -298,7 +303,7 @@ export function NotesListPage() {
               استعادة
             </button>
           </div>
-          {restoreMessage && <div className="muted" role="status">{restoreMessage}</div>}
+          {restoreMessage && <output className="muted">{restoreMessage}</output>}
         </div>
       )}
     </div>

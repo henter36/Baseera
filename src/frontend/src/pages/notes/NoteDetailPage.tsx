@@ -7,6 +7,7 @@ import {
   type Attachment,
   type NoteAssignment,
   type NoteDetail,
+  type NoteStatusHistoryEntry,
 } from '../../api/client'
 import { useAuth, usePermission } from '../../auth/AuthProvider'
 import {
@@ -23,7 +24,7 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleString('ar-SA')
 }
 
-function ScopeLabel({ note }: { note: NoteDetail }) {
+function ScopeLabel({ note }: Readonly<{ note: NoteDetail }>) {
   const regionQuery = useQuery({
     queryKey: ['region', note.regionId],
     queryFn: () => api.regions().then((r) => r.items.find((x) => x.id === note.regionId)),
@@ -54,7 +55,7 @@ function AssignActionFields({
   setAssignedToDepartmentId,
   dueAtUtc,
   setDueAtUtc,
-}: {
+}: Readonly<{
   reason: string
   setReason: (v: string) => void
   assignedToUserId: string
@@ -63,7 +64,7 @@ function AssignActionFields({
   setAssignedToDepartmentId: (v: string) => void
   dueAtUtc: string
   setDueAtUtc: (v: string) => void
-}) {
+}>) {
   const [userSearch, setUserSearch] = useState('')
   const usersQuery = useQuery({
     queryKey: ['assign-users', userSearch],
@@ -116,7 +117,86 @@ function AssignActionFields({
   )
 }
 
-function ActionPanel({ note, action, onDone }: { note: NoteDetail; action: NoteActionDef; onDone: () => void }) {
+function validateActionInputs(
+  action: NoteActionDef,
+  reason: string,
+  closureSummary: string,
+  assignedToUserId: string,
+  assignedToDepartmentId: string,
+): string | null {
+  if (action.requiresReason && !reason.trim()) return 'السبب مطلوب.'
+  if (action.requiresClosureSummary && !closureSummary.trim()) return 'ملخص الإغلاق مطلوب.'
+  if (action.isAssign && !assignedToUserId && !assignedToDepartmentId) {
+    return 'يجب تحديد مستخدم أو إدارة واحدة فقط للتكليف.'
+  }
+  if (action.isAssign && assignedToUserId && assignedToDepartmentId) {
+    return 'يجب تحديد مستخدم أو إدارة واحدة فقط للتكليف، لا كليهما.'
+  }
+  return null
+}
+
+type ActionFields = {
+  reason: string
+  closureSummary: string
+  assignedToUserId: string
+  assignedToDepartmentId: string
+  dueAtUtc: string
+}
+
+async function performNoteAction(note: NoteDetail, action: NoteActionDef, fields: ActionFields): Promise<void> {
+  const { reason, closureSummary, assignedToUserId, assignedToDepartmentId, dueAtUtc } = fields
+  const rowVersion = note.rowVersion
+  const isoDue = dueAtUtc ? new Date(dueAtUtc).toISOString() : undefined
+  switch (action.kind) {
+    case 'submit':
+      await api.notes.submit(note.id, { reason, rowVersion })
+      break
+    case 'cancel':
+      await api.notes.cancel(note.id, { reason, rowVersion })
+      break
+    case 'assign':
+    case 'reassign':
+      await api.notes.assign(note.id, {
+        assignedToUserId: assignedToUserId || null,
+        assignedToDepartmentId: assignedToDepartmentId || null,
+        dueAtUtc: isoDue ?? null,
+        reason,
+        rowVersion,
+      })
+      break
+    case 'startWork':
+      await api.notes.startWork(note.id, { reason: reason || null, rowVersion })
+      break
+    case 'submitForVerification':
+      await api.notes.submitForVerification(note.id, { reason: reason || null, rowVersion })
+      break
+    case 'returnForRework':
+      await api.notes.returnForRework(note.id, { reason, rowVersion })
+      break
+    case 'verifyClosure':
+      await api.notes.verifyClosure(note.id, { reason, closureSummary, rowVersion })
+      break
+    case 'reopen':
+      await api.notes.reopen(note.id, { reason, rowVersion })
+      break
+    default:
+      break
+  }
+}
+
+function describeActionError(err: unknown): { message: string; conflict: boolean } {
+  if (err instanceof ApiError) {
+    if (err.status === 409) {
+      return { message: 'تم تغيير الملاحظة بواسطة مستخدم آخر. أعد تحميل الصفحة قبل المحاولة مرة أخرى.', conflict: true }
+    }
+    if (err.status === 403) return { message: 'ليست لديك صلاحية تنفيذ هذا الإجراء.', conflict: false }
+    if (err.status === 404) return { message: 'الملاحظة غير موجودة أو خارج نطاقك.', conflict: false }
+    return { message: err.message, conflict: false }
+  }
+  return { message: 'تعذر تنفيذ الإجراء.', conflict: false }
+}
+
+function ActionPanel({ note, action, onDone }: Readonly<{ note: NoteDetail; action: NoteActionDef; onDone: () => void }>) {
   const [reason, setReason] = useState('')
   const [closureSummary, setClosureSummary] = useState('')
   const [assignedToUserId, setAssignedToUserId] = useState('')
@@ -129,78 +209,20 @@ function ActionPanel({ note, action, onDone }: { note: NoteDetail; action: NoteA
   const run = async () => {
     setError(null)
     setConflict(false)
-    if (action.requiresReason && !reason.trim()) {
-      setError('السبب مطلوب.')
-      return
-    }
-    if (action.requiresClosureSummary && !closureSummary.trim()) {
-      setError('ملخص الإغلاق مطلوب.')
-      return
-    }
-    if (action.isAssign && !assignedToUserId && !assignedToDepartmentId) {
-      setError('يجب تحديد مستخدم أو إدارة واحدة فقط للتكليف.')
-      return
-    }
-    if (action.isAssign && assignedToUserId && assignedToDepartmentId) {
-      setError('يجب تحديد مستخدم أو إدارة واحدة فقط للتكليف، لا كليهما.')
+    const validationError = validateActionInputs(action, reason, closureSummary, assignedToUserId, assignedToDepartmentId)
+    if (validationError) {
+      setError(validationError)
       return
     }
 
     setPending(true)
     try {
-      const rowVersion = note.rowVersion
-      const isoDue = dueAtUtc ? new Date(dueAtUtc).toISOString() : undefined
-      switch (action.kind) {
-        case 'submit':
-          await api.notes.submit(note.id, { reason, rowVersion })
-          break
-        case 'cancel':
-          await api.notes.cancel(note.id, { reason, rowVersion })
-          break
-        case 'assign':
-        case 'reassign':
-          await api.notes.assign(note.id, {
-            assignedToUserId: assignedToUserId || null,
-            assignedToDepartmentId: assignedToDepartmentId || null,
-            dueAtUtc: isoDue ?? null,
-            reason,
-            rowVersion,
-          })
-          break
-        case 'startWork':
-          await api.notes.startWork(note.id, { reason: reason || null, rowVersion })
-          break
-        case 'submitForVerification':
-          await api.notes.submitForVerification(note.id, { reason: reason || null, rowVersion })
-          break
-        case 'returnForRework':
-          await api.notes.returnForRework(note.id, { reason, rowVersion })
-          break
-        case 'verifyClosure':
-          await api.notes.verifyClosure(note.id, { reason, closureSummary, rowVersion })
-          break
-        case 'reopen':
-          await api.notes.reopen(note.id, { reason, rowVersion })
-          break
-        default:
-          break
-      }
+      await performNoteAction(note, action, { reason, closureSummary, assignedToUserId, assignedToDepartmentId, dueAtUtc })
       onDone()
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 409) {
-          setConflict(true)
-          setError('تم تغيير الملاحظة بواسطة مستخدم آخر. أعد تحميل الصفحة قبل المحاولة مرة أخرى.')
-        } else if (err.status === 403) {
-          setError('ليست لديك صلاحية تنفيذ هذا الإجراء.')
-        } else if (err.status === 404) {
-          setError('الملاحظة غير موجودة أو خارج نطاقك.')
-        } else {
-          setError(err.message)
-        }
-      } else {
-        setError('تعذر تنفيذ الإجراء.')
-      }
+      const { message, conflict: isConflict } = describeActionError(err)
+      setConflict(isConflict)
+      setError(message)
     } finally {
       setPending(false)
     }
@@ -260,7 +282,7 @@ function ActionPanel({ note, action, onDone }: { note: NoteDetail; action: NoteA
   )
 }
 
-function ArchivePanel({ note, onDone }: { note: NoteDetail; onDone: () => void }) {
+function ArchivePanel({ note, onDone }: Readonly<{ note: NoteDetail; onDone: () => void }>) {
   const [reason, setReason] = useState('')
   const [pending, setPending] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -305,7 +327,7 @@ function ArchivePanel({ note, onDone }: { note: NoteDetail; onDone: () => void }
   )
 }
 
-function AttachmentsPanel({ noteId }: { noteId: string }) {
+function AttachmentsPanel({ noteId }: Readonly<{ noteId: string }>) {
   const canUpload = usePermission('Attachments.Upload')
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('مستند متعلق بالملاحظة')
@@ -327,7 +349,7 @@ function AttachmentsPanel({ noteId }: { noteId: string }) {
       link.download = fileName || attachment.originalFileName
       document.body.appendChild(link)
       link.click()
-      document.body.removeChild(link)
+      link.remove()
       URL.revokeObjectURL(url)
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'تعذر تنزيل المرفق.')
@@ -367,10 +389,10 @@ function AttachmentsPanel({ noteId }: { noteId: string }) {
         </div>
       )}
 
-      {message && <div className="muted" role="status">{message}</div>}
+      {message && <output className="muted">{message}</output>}
 
       {attachmentsQuery.isLoading && <div className="loading">جاري التحميل…</div>}
-      {attachmentsQuery.data && attachmentsQuery.data.length === 0 && <div className="empty">لا توجد مرفقات لهذه الملاحظة.</div>}
+      {attachmentsQuery.data?.length === 0 && <div className="empty">لا توجد مرفقات لهذه الملاحظة.</div>}
       {attachmentsQuery.data && attachmentsQuery.data.length > 0 && (
         <table>
           <thead>
@@ -401,6 +423,185 @@ function AttachmentsPanel({ noteId }: { noteId: string }) {
           </tbody>
         </table>
       )}
+    </div>
+  )
+}
+
+function describeNoteLoadError(err: ApiError): string {
+  if (err.status === 403) return 'ليست لديك صلاحية عرض هذه الملاحظة.'
+  if (err.status === 404) return 'الملاحظة غير موجودة أو خارج نطاقك.'
+  return err.message || 'تعذر تحميل الملاحظة.'
+}
+
+function NoteSummaryGrid({ note }: Readonly<{ note: NoteDetail }>) {
+  return (
+    <div className="detail-grid">
+      <div><span className="muted">الحالة</span><div><span className="badge" data-tone={statusTone(note.status)}>{note.statusAr}</span></div></div>
+      <div><span className="muted">مستوى الخطورة</span><div><span className="badge" data-tone={severityTone(note.severity)}>{note.severityAr}</span></div></div>
+      <div><span className="muted">التصنيف</span><div>{note.categoryAr}</div></div>
+      <div><span className="muted">مستوى التصنيف الأمني</span><div>{ClassificationLevelLabelsAr[note.classification] ?? note.classification}</div></div>
+      <div><span className="muted">المصدر</span><div>{note.sourceAr}{note.sourceReference ? ` — ${note.sourceReference}` : ''}</div></div>
+      <div><span className="muted">النطاق</span><div><ScopeLabel note={note} /></div></div>
+      <div><span className="muted">الإدارة المسؤولة</span><div>{note.ownerDepartmentId ? note.ownerDepartmentId : '—'}</div></div>
+      <div><span className="muted">المُبلِّغ</span><div>{note.reportedByDisplayName || '—'}</div></div>
+      <div><span className="muted">تاريخ الإبلاغ</span><div>{formatDate(note.reportedAtUtc)}</div></div>
+      <div>
+        <span className="muted">تاريخ الاستحقاق</span>
+        <div>
+          {formatDate(note.dueAtUtc)}
+          {note.isOverdue && <span className="badge" data-tone="danger" style={{ marginRight: '0.35rem' }}>متأخرة</span>}
+        </div>
+      </div>
+      <div><span className="muted">بدء العمل</span><div>{formatDate(note.workStartedAtUtc)}</div></div>
+      <div><span className="muted">أُرسلت للتحقق</span><div>{formatDate(note.submittedForVerificationAtUtc)}</div></div>
+      <div><span className="muted">تاريخ الإغلاق</span><div>{formatDate(note.closedAtUtc)}</div></div>
+      <div><span className="muted">تاريخ إعادة الفتح</span><div>{formatDate(note.reopenedAtUtc)}</div></div>
+    </div>
+  )
+}
+
+function NoteDescriptionSection({ note }: Readonly<{ note: NoteDetail }>) {
+  return (
+    <div className="panel-section">
+      <h2 className="section-title">الوصف</h2>
+      <p>{note.description}</p>
+      {note.closureSummary && (
+        <>
+          <h3 className="section-title">ملخص الإغلاق</h3>
+          <p>{note.closureSummary}</p>
+        </>
+      )}
+      {note.reopenReason && (
+        <>
+          <h3 className="section-title">سبب إعادة الفتح</h3>
+          <p>{note.reopenReason}</p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function CurrentAssignmentSection({ note }: Readonly<{ note: NoteDetail }>) {
+  return (
+    <div className="panel-section">
+      <h2 className="section-title">التكليف الحالي</h2>
+      {note.currentAssignment ? (
+        <div className="detail-grid">
+          <div><span className="muted">المكلَّف</span><div>{note.currentAssignment.assignedToUserDisplayName || note.currentAssignment.assignedToDepartmentName || '—'}</div></div>
+          <div><span className="muted">بواسطة</span><div>{note.currentAssignment.assignedByDisplayName || '—'}</div></div>
+          <div><span className="muted">تاريخ التكليف</span><div>{formatDate(note.currentAssignment.assignedAtUtc)}</div></div>
+          <div><span className="muted">تاريخ الاستحقاق</span><div>{formatDate(note.currentAssignment.dueAtUtc)}</div></div>
+          <div><span className="muted">السبب</span><div>{note.currentAssignment.reason}</div></div>
+        </div>
+      ) : (
+        <div className="empty">لا يوجد تكليف حالي.</div>
+      )}
+    </div>
+  )
+}
+
+function AssignmentsHistorySection({
+  assignments,
+  isLoading,
+}: Readonly<{ assignments?: NoteAssignment[]; isLoading: boolean }>) {
+  return (
+    <div className="panel-section">
+      <h2 className="section-title">سجل التكليفات</h2>
+      {isLoading && <div className="loading">جاري التحميل…</div>}
+      {assignments?.length === 0 && <div className="empty">لا توجد تكليفات سابقة.</div>}
+      {assignments && assignments.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>المكلَّف</th>
+              <th>بواسطة</th>
+              <th>تاريخ التكليف</th>
+              <th>انتهى</th>
+              <th>حالي</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assignments.map((a) => (
+              <tr key={a.id}>
+                <td>{a.assignedToUserDisplayName || a.assignedToDepartmentName || '—'}</td>
+                <td>{a.assignedByDisplayName || '—'}</td>
+                <td>{formatDate(a.assignedAtUtc)}</td>
+                <td>{formatDate(a.endedAtUtc)}</td>
+                <td>{a.isCurrent ? <span className="badge" data-tone="ok">حالي</span> : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function StatusTimelineSection({
+  history,
+  isLoading,
+}: Readonly<{ history?: NoteStatusHistoryEntry[]; isLoading: boolean }>) {
+  return (
+    <div className="panel-section">
+      <h2 className="section-title">الخط الزمني للحالة</h2>
+      {isLoading && <div className="loading">جاري التحميل…</div>}
+      {history?.length === 0 && <div className="empty">لا توجد أحداث بعد.</div>}
+      {history && history.length > 0 && (
+        <ul className="timeline">
+          {history.map((h) => (
+            <li key={h.id}>
+              <span className="badge" data-tone={statusTone(h.toStatus)}>{h.toStatusAr}</span>
+              <span className="muted"> — {formatDate(h.changedAtUtc)} — {h.changedByDisplayName || '—'}</span>
+              {h.reason && <div className="muted">{h.reason}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function NoteActionsSection({
+  note,
+  allowedActions,
+  canArchive,
+  selectedAction,
+  showArchive,
+  onSelectAction,
+  onShowArchive,
+  onDone,
+}: Readonly<{
+  note: NoteDetail
+  allowedActions: NoteActionDef[]
+  canArchive: boolean
+  selectedAction: NoteActionDef | null
+  showArchive: boolean
+  onSelectAction: (action: NoteActionDef) => void
+  onShowArchive: () => void
+  onDone: () => void
+}>) {
+  if (allowedActions.length === 0 && !canArchive) {
+    return null
+  }
+
+  return (
+    <div className="panel-section">
+      <h2 className="section-title">الإجراءات المتاحة</h2>
+      <div className="toolbar">
+        {allowedActions.map((action) => (
+          <button key={action.kind} type="button" className="secondary" onClick={() => onSelectAction(action)}>
+            {action.labelAr}
+          </button>
+        ))}
+        {canArchive && (
+          <button type="button" className="secondary" onClick={onShowArchive}>
+            أرشفة
+          </button>
+        )}
+      </div>
+
+      {selectedAction && <ActionPanel note={note} action={selectedAction} onDone={onDone} />}
+      {showArchive && <ArchivePanel note={note} onDone={onDone} />}
     </div>
   )
 }
@@ -443,12 +644,7 @@ export function NoteDetailPage() {
   }
 
   if (noteQuery.isError) {
-    const err = noteQuery.error as ApiError
-    const message = err.status === 403
-      ? 'ليست لديك صلاحية عرض هذه الملاحظة.'
-      : err.status === 404
-        ? 'الملاحظة غير موجودة أو خارج نطاقك.'
-        : err.message || 'تعذر تحميل الملاحظة.'
+    const message = describeNoteLoadError(noteQuery.error as ApiError)
     return (
       <div className="error" role="alert">
         <span>{message}</span>
@@ -490,133 +686,21 @@ export function NoteDetailPage() {
         <div className="error" role="alert">هذا المحتوى محجوب لأنه يتطلب صلاحية Notes.ViewSensitive.</div>
       )}
 
-      <div className="detail-grid">
-        <div><span className="muted">الحالة</span><div><span className="badge" data-tone={statusTone(note.status)}>{note.statusAr}</span></div></div>
-        <div><span className="muted">مستوى الخطورة</span><div><span className="badge" data-tone={severityTone(note.severity)}>{note.severityAr}</span></div></div>
-        <div><span className="muted">التصنيف</span><div>{note.categoryAr}</div></div>
-        <div><span className="muted">مستوى التصنيف الأمني</span><div>{ClassificationLevelLabelsAr[note.classification] ?? note.classification}</div></div>
-        <div><span className="muted">المصدر</span><div>{note.sourceAr}{note.sourceReference ? ` — ${note.sourceReference}` : ''}</div></div>
-        <div><span className="muted">النطاق</span><div><ScopeLabel note={note} /></div></div>
-        <div><span className="muted">الإدارة المسؤولة</span><div>{note.ownerDepartmentId ? note.ownerDepartmentId : '—'}</div></div>
-        <div><span className="muted">المُبلِّغ</span><div>{note.reportedByDisplayName || '—'}</div></div>
-        <div><span className="muted">تاريخ الإبلاغ</span><div>{formatDate(note.reportedAtUtc)}</div></div>
-        <div>
-          <span className="muted">تاريخ الاستحقاق</span>
-          <div>
-            {formatDate(note.dueAtUtc)}
-            {note.isOverdue && <span className="badge" data-tone="danger" style={{ marginRight: '0.35rem' }}>متأخرة</span>}
-          </div>
-        </div>
-        <div><span className="muted">بدء العمل</span><div>{formatDate(note.workStartedAtUtc)}</div></div>
-        <div><span className="muted">أُرسلت للتحقق</span><div>{formatDate(note.submittedForVerificationAtUtc)}</div></div>
-        <div><span className="muted">تاريخ الإغلاق</span><div>{formatDate(note.closedAtUtc)}</div></div>
-        <div><span className="muted">تاريخ إعادة الفتح</span><div>{formatDate(note.reopenedAtUtc)}</div></div>
-      </div>
-
-      <div className="panel-section">
-        <h2 className="section-title">الوصف</h2>
-        <p>{note.description}</p>
-        {note.closureSummary && (
-          <>
-            <h3 className="section-title">ملخص الإغلاق</h3>
-            <p>{note.closureSummary}</p>
-          </>
-        )}
-        {note.reopenReason && (
-          <>
-            <h3 className="section-title">سبب إعادة الفتح</h3>
-            <p>{note.reopenReason}</p>
-          </>
-        )}
-      </div>
-
-      <div className="panel-section">
-        <h2 className="section-title">التكليف الحالي</h2>
-        {note.currentAssignment ? (
-          <div className="detail-grid">
-            <div><span className="muted">المكلَّف</span><div>{note.currentAssignment.assignedToUserDisplayName || note.currentAssignment.assignedToDepartmentName || '—'}</div></div>
-            <div><span className="muted">بواسطة</span><div>{note.currentAssignment.assignedByDisplayName || '—'}</div></div>
-            <div><span className="muted">تاريخ التكليف</span><div>{formatDate(note.currentAssignment.assignedAtUtc)}</div></div>
-            <div><span className="muted">تاريخ الاستحقاق</span><div>{formatDate(note.currentAssignment.dueAtUtc)}</div></div>
-            <div><span className="muted">السبب</span><div>{note.currentAssignment.reason}</div></div>
-          </div>
-        ) : (
-          <div className="empty">لا يوجد تكليف حالي.</div>
-        )}
-      </div>
-
-      <div className="panel-section">
-        <h2 className="section-title">سجل التكليفات</h2>
-        {assignmentsQuery.isLoading && <div className="loading">جاري التحميل…</div>}
-        {assignmentsQuery.data && assignmentsQuery.data.length === 0 && <div className="empty">لا توجد تكليفات سابقة.</div>}
-        {assignmentsQuery.data && assignmentsQuery.data.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th>المكلَّف</th>
-                <th>بواسطة</th>
-                <th>تاريخ التكليف</th>
-                <th>انتهى</th>
-                <th>حالي</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assignmentsQuery.data.map((a: NoteAssignment) => (
-                <tr key={a.id}>
-                  <td>{a.assignedToUserDisplayName || a.assignedToDepartmentName || '—'}</td>
-                  <td>{a.assignedByDisplayName || '—'}</td>
-                  <td>{formatDate(a.assignedAtUtc)}</td>
-                  <td>{formatDate(a.endedAtUtc)}</td>
-                  <td>{a.isCurrent ? <span className="badge" data-tone="ok">حالي</span> : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="panel-section">
-        <h2 className="section-title">الخط الزمني للحالة</h2>
-        {historyQuery.isLoading && <div className="loading">جاري التحميل…</div>}
-        {historyQuery.data && historyQuery.data.length === 0 && <div className="empty">لا توجد أحداث بعد.</div>}
-        {historyQuery.data && historyQuery.data.length > 0 && (
-          <ul className="timeline">
-            {historyQuery.data.map((h) => (
-              <li key={h.id}>
-                <span className="badge" data-tone={statusTone(h.toStatus)}>{h.toStatusAr}</span>
-                <span className="muted"> — {formatDate(h.changedAtUtc)} — {h.changedByDisplayName || '—'}</span>
-                {h.reason && <div className="muted">{h.reason}</div>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {(allowedActions.length > 0 || canArchive) && (
-        <div className="panel-section">
-          <h2 className="section-title">الإجراءات المتاحة</h2>
-          <div className="toolbar">
-            {allowedActions.map((action) => (
-              <button
-                key={action.kind}
-                type="button"
-                className="secondary"
-                onClick={() => { setSelectedAction(action); setShowArchive(false) }}
-              >
-                {action.labelAr}
-              </button>
-            ))}
-            {canArchive && (
-              <button type="button" className="secondary" onClick={() => { setShowArchive(true); setSelectedAction(null) }}>
-                أرشفة
-              </button>
-            )}
-          </div>
-
-          {selectedAction && <ActionPanel note={note} action={selectedAction} onDone={refreshAll} />}
-          {showArchive && <ArchivePanel note={note} onDone={refreshAll} />}
-        </div>
-      )}
+      <NoteSummaryGrid note={note} />
+      <NoteDescriptionSection note={note} />
+      <CurrentAssignmentSection note={note} />
+      <AssignmentsHistorySection assignments={assignmentsQuery.data} isLoading={assignmentsQuery.isLoading} />
+      <StatusTimelineSection history={historyQuery.data} isLoading={historyQuery.isLoading} />
+      <NoteActionsSection
+        note={note}
+        allowedActions={allowedActions}
+        canArchive={canArchive}
+        selectedAction={selectedAction}
+        showArchive={showArchive}
+        onSelectAction={(action) => { setSelectedAction(action); setShowArchive(false) }}
+        onShowArchive={() => { setShowArchive(true); setSelectedAction(null) }}
+        onDone={refreshAll}
+      />
 
       <AttachmentsPanel noteId={note.id} />
     </div>

@@ -277,6 +277,7 @@ public static class DatabaseInitializer
     }
 
     private const string OrganizationModule = "Organization";
+    private const string NotesModule = "Notes";
 
     private static List<Permission> BuildPermissions()
     {
@@ -308,19 +309,19 @@ public static class DatabaseInitializer
             (PermissionCodes.ArmamentReceive, "استلام تسليح", "Armament"),
             (PermissionCodes.ArmamentInventory, "جرد تسليح", "Armament"),
             (PermissionCodes.ArmamentAdjust, "تسوية تسليح", "Armament"),
-            (PermissionCodes.NotesAssign, "إسناد ملاحظة", "Notes"),
-            (PermissionCodes.NotesVerifyClosure, "اعتماد إغلاق ملاحظة", "Notes"),
-            (PermissionCodes.NotesView, "عرض الملاحظات", "Notes"),
-            (PermissionCodes.NotesViewSensitive, "عرض الملاحظات الحساسة", "Notes"),
-            (PermissionCodes.NotesCreate, "إنشاء ملاحظة", "Notes"),
-            (PermissionCodes.NotesUpdate, "تحديث ملاحظة", "Notes"),
-            (PermissionCodes.NotesStartWork, "بدء معالجة ملاحظة", "Notes"),
-            (PermissionCodes.NotesSubmitForVerification, "إرسال ملاحظة للتحقق", "Notes"),
-            (PermissionCodes.NotesReturnForRework, "إعادة ملاحظة للمعالجة", "Notes"),
-            (PermissionCodes.NotesReopen, "إعادة فتح ملاحظة", "Notes"),
-            (PermissionCodes.NotesCancel, "إلغاء ملاحظة", "Notes"),
-            (PermissionCodes.NotesArchive, "أرشفة ملاحظة", "Notes"),
-            (PermissionCodes.NotesRestore, "استعادة ملاحظة", "Notes"),
+            (PermissionCodes.NotesAssign, "إسناد ملاحظة", NotesModule),
+            (PermissionCodes.NotesVerifyClosure, "اعتماد إغلاق ملاحظة", NotesModule),
+            (PermissionCodes.NotesView, "عرض الملاحظات", NotesModule),
+            (PermissionCodes.NotesViewSensitive, "عرض الملاحظات الحساسة", NotesModule),
+            (PermissionCodes.NotesCreate, "إنشاء ملاحظة", NotesModule),
+            (PermissionCodes.NotesUpdate, "تحديث ملاحظة", NotesModule),
+            (PermissionCodes.NotesStartWork, "بدء معالجة ملاحظة", NotesModule),
+            (PermissionCodes.NotesSubmitForVerification, "إرسال ملاحظة للتحقق", NotesModule),
+            (PermissionCodes.NotesReturnForRework, "إعادة ملاحظة للمعالجة", NotesModule),
+            (PermissionCodes.NotesReopen, "إعادة فتح ملاحظة", NotesModule),
+            (PermissionCodes.NotesCancel, "إلغاء ملاحظة", NotesModule),
+            (PermissionCodes.NotesArchive, "أرشفة ملاحظة", NotesModule),
+            (PermissionCodes.NotesRestore, "استعادة ملاحظة", NotesModule),
             (PermissionCodes.IncidentsApprove, "اعتماد واقعة", "Incidents"),
             (PermissionCodes.FormsDesign, "تصميم نموذج", "Forms"),
             (PermissionCodes.FormsPublish, "نشر نموذج", "Forms"),
