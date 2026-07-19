@@ -94,7 +94,35 @@ NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra place
 | Qlty | Passed (no blocking issues) |
 | Skipped | **0** |
 
-## Rollback
+## Final Assignment Safety Review
+
+**Pre-fix SHA:** `81cab5f577bfbfe0f02a3c5ca5e1cb7a2b048be6`
+
+### Fixes
+
+1. **XOR assignment target** — `EnsureExactlyOneAssignmentTarget` in `AssignAsync` rejects both-null and both-set before any target validation/mutation; pattern matching replaces `!.Value`.
+2. **Transition before mutation** — `EnsureAssignTransition` runs after loading the current assignment and **before** ending it or adding history/audit.
+3. **Headquarters duplication removed** — HQ short-circuit deleted from `EnsureAssigneeScopeIntersectsAsync`; Global short-circuit retained (helper does not treat Global as universal for Region/Facility/Unit notes).
+4. **Concurrent first assign → 409** — `SaveAssignmentChangesAsync` maps `IX_NoteAssignments_OperationalNoteId` unique conflicts (and `DbUpdateConcurrencyException`) to `InvalidOperationException` → HTTP 409 via existing middleware. Other `DbUpdateException`s unchanged.
+
+### Tests added
+
+- Unit XOR / invalid department / transition-order / Global≠HQ assign paths in `NoteAssignmentServiceTests`.
+- Integration: `Concurrent_first_assign_returns_one_success_and_one_conflict`.
+
+### Counts (this round)
+
+| Suite | Count | Skipped |
+|-------|------:|--------:|
+| Unit | **228** | 0 |
+| Integration | **52** (CI) | 0 |
+| Frontend | **78** | 0 |
+
+**Post-fix tip SHA:** _(filled after push)_
+
+### Gates
+
+Recorded after CI on tip: Sonar / Qlty / Gitleaks / CodeRabbit; open review threads count.
 
 1. Revert the B.1 PR / migration `PhaseB1NotesCore` Down in a **test** environment only first.
 2. Do not edit prior merged migrations.

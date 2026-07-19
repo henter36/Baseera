@@ -18,28 +18,35 @@ public sealed class NoteAssignmentService(
     IAuditService audit,
     INoteQueryService queries) : INoteAssignmentService
 {
+    private const string CurrentAssignmentUniqueIndex = "IX_NoteAssignments_OperationalNoteId";
+
     public async Task<NoteDetailDto> AssignAsync(Guid id, AssignNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesAssign);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
+        EnsureExactlyOneAssignmentTarget(request);
 
         var actorId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
         var reason = request.Reason.Trim();
         var now = DateTimeOffset.UtcNow;
 
-        if (request.AssignedToUserId.HasValue)
+        if (request.AssignedToUserId is Guid userId)
         {
-            await ValidateAssigneeUserAsync(request.AssignedToUserId.Value, note, cancellationToken);
+            await ValidateAssigneeUserAsync(userId, note, cancellationToken);
         }
-        else
+        else if (request.AssignedToDepartmentId is Guid departmentId)
         {
-            await ValidateAssigneeDepartmentAsync(request.AssignedToDepartmentId!.Value, cancellationToken);
+            await ValidateAssigneeDepartmentAsync(departmentId, cancellationToken);
         }
 
-        var current = await db.NoteAssignments.FirstOrDefaultAsync(a => a.OperationalNoteId == id && a.IsCurrent, cancellationToken);
+        var current = await db.NoteAssignments
+            .FirstOrDefaultAsync(a => a.OperationalNoteId == id && a.IsCurrent, cancellationToken);
         var isReassign = current is not null;
         var fromStatus = note.Status;
+
+        // Validate transition before mutating any tracked assignment/note entities.
+        EnsureAssignTransition(note.Status, isReassign);
 
         if (current is not null)
         {
@@ -48,8 +55,6 @@ public sealed class NoteAssignmentService(
             current.EndReason = reason;
             db.Update(current);
         }
-
-        EnsureAssignTransition(note.Status, isReassign);
 
         var assignment = new NoteAssignment
         {
@@ -98,8 +103,52 @@ public sealed class NoteAssignmentService(
             Reason = reason
         }, cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
+        await SaveAssignmentChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
+    }
+
+    private async Task SaveAssignmentChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new InvalidOperationException(
+                "تم تعديل السجل بواسطة مستخدم آخر. أعد التحميل ثم حاول مجددًا.",
+                ex);
+        }
+        catch (DbUpdateException ex) when (IsCurrentAssignmentUniqueConflict(ex))
+        {
+            throw new InvalidOperationException(
+                "يوجد تكليف حالي بالفعل لهذه الملاحظة.",
+                ex);
+        }
+    }
+
+    private static bool IsCurrentAssignmentUniqueConflict(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains(CurrentAssignmentUniqueIndex, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void EnsureExactlyOneAssignmentTarget(AssignNoteRequest request)
+    {
+        var hasUser = request.AssignedToUserId.HasValue;
+        var hasDepartment = request.AssignedToDepartmentId.HasValue;
+
+        if (hasUser == hasDepartment)
+        {
+            throw new InvalidOperationException("يجب تحديد مستخدم أو إدارة واحدة فقط للتكليف.");
+        }
     }
 
     private static void EnsureAssignTransition(NoteStatus status, bool isReassign)
@@ -178,13 +227,9 @@ public sealed class NoteAssignmentService(
             throw new InvalidOperationException("نطاق المستخدم لا يتقاطع مع نطاق الملاحظة.");
         }
 
+        // Global short-circuit: IntersectsAsync does not treat Global as universal for
+        // Region/Facility/FacilityUnit notes; keep this gate so Global assignees remain universal.
         if (scopes.Any(s => s.ScopeType == ScopeType.Global))
-        {
-            return;
-        }
-
-        if (note.ScopeType == ScopeType.Headquarters &&
-            scopes.Any(s => s.ScopeType is ScopeType.Headquarters or ScopeType.Global))
         {
             return;
         }

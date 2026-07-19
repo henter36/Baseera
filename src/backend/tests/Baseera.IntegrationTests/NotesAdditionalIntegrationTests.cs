@@ -279,6 +279,75 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
     }
 
     [IntegrationConnectionFact]
+    public async Task Concurrent_first_assign_returns_one_success_and_one_conflict()
+    {
+        await _factory.SeedUserAsync("notes-assign-race-admin", "مسؤول", [RoleCodes.SystemAdministrator],
+            (ScopeType.Global, null, null));
+        await _factory.SeedUserWithPermissionsAsync(
+            "notes-assign-race-w1", "معالج1", [RoleCodes.FacilityCoordinator], [],
+            (ScopeType.Global, null, null));
+        await _factory.SeedUserWithPermissionsAsync(
+            "notes-assign-race-w2", "معالج2", [RoleCodes.FacilityCoordinator], [],
+            (ScopeType.Global, null, null));
+
+        var admin = _factory.CreateAuthenticatedClient("notes-assign-race-admin");
+        var note = await CreateNoteAsync(admin, ScopeType.Global, null, null, null, "تكليف متزامن");
+        var submitted = await PostAsync(admin, $"/api/v1/notes/{note.Id}/submit", note.RowVersion, "تقديم");
+
+        Guid worker1Id;
+        Guid worker2Id;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            worker1Id = await db.Users.Where(u => u.ExternalSubject == "notes-assign-race-w1").Select(u => u.Id).FirstAsync();
+            worker2Id = await db.Users.Where(u => u.ExternalSubject == "notes-assign-race-w2").Select(u => u.Id).FirstAsync();
+        }
+
+        var payload1 = new
+        {
+            assignedToUserId = worker1Id,
+            assignedToDepartmentId = (Guid?)null,
+            dueAtUtc = (DateTimeOffset?)null,
+            reason = "تكليف متزامن 1",
+            rowVersion = submitted.RowVersion
+        };
+        var payload2 = new
+        {
+            assignedToUserId = worker2Id,
+            assignedToDepartmentId = (Guid?)null,
+            dueAtUtc = (DateTimeOffset?)null,
+            reason = "تكليف متزامن 2",
+            rowVersion = submitted.RowVersion
+        };
+
+        var task1 = admin.PostAsJsonAsync($"/api/v1/notes/{submitted.Id}/assign", payload1);
+        var task2 = admin.PostAsJsonAsync($"/api/v1/notes/{submitted.Id}/assign", payload2);
+        await Task.WhenAll(task1, task2);
+
+        var statuses = new[] { task1.Result.StatusCode, task2.Result.StatusCode };
+        Assert.Contains(HttpStatusCode.OK, statuses);
+        Assert.Contains(HttpStatusCode.Conflict, statuses);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var currentAssignments = await verifyDb.NoteAssignments
+            .Where(a => a.OperationalNoteId == note.Id && a.IsCurrent)
+            .ToListAsync();
+        Assert.Single(currentAssignments);
+
+        var noteEntity = await verifyDb.OperationalNotes.SingleAsync(n => n.Id == note.Id);
+        Assert.Equal(NoteStatus.Assigned, noteEntity.Status);
+
+        var historyToAssigned = await verifyDb.NoteStatusHistories
+            .CountAsync(h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Assigned);
+        Assert.Equal(1, historyToAssigned);
+
+        var assignAudits = await verifyDb.AuditLogs
+            .CountAsync(a => a.EntityId == note.Id.ToString() && (a.Action == "NoteAssigned" || a.Action == "NoteReassigned"));
+        Assert.Equal(1, assignAudits);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Reassignment_ends_previous_assignment_and_is_visible_in_assignments_history()
     {
         await _factory.SeedUserAsync("notes-reassign-admin", "مسؤول", [RoleCodes.SystemAdministrator],
