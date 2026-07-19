@@ -3,7 +3,7 @@
 **Date:** 2026-07-19  
 **Branch:** `phase-a1-security-hardening`  
 **PR:** https://github.com/henter36/Baseera/pull/2  
-**Commit SHA:** `43c0f035fd379b21125394268c7027554a32a282`
+**Commit SHA:** `28def28bb31b1eee183891e81d13663669a94019`
 
 ---
 
@@ -76,8 +76,7 @@ Phase B may start after this report. Do **not** merge PR #2 as part of this roun
 
 ### Final commit SHA
 
-`43c0f035fd379b21125394268c7027554a32a282`  
-(Sonar QG first cleared on `a1c7f12`; this tip includes CodeRabbit closure fixes.)
+`28def28bb31b1eee183891e81d13663669a94019`
 
 ---
 
