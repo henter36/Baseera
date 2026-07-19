@@ -14,12 +14,14 @@ public sealed record AttachmentDto(
     string Sha256,
     ClassificationLevel Classification,
     AttachmentScanStatus ScanStatus,
-    DateTimeOffset UploadedAtUtc);
+    DateTimeOffset UploadedAtUtc,
+    bool IsSensitiveRedacted = false);
 
 public interface IAttachmentAppService
 {
     Task<AttachmentDto> UploadAsync(UploadAttachmentRequest request, CancellationToken cancellationToken = default);
     Task<(AttachmentDto Meta, Stream Content)> DownloadAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<AttachmentDto>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default);
 }
 
 public sealed class AttachmentAppService(IAttachmentService attachments, ICurrentUser currentUser) : IAttachmentAppService
@@ -54,7 +56,26 @@ public sealed class AttachmentAppService(IAttachmentService attachments, ICurren
         return (Map(entity), stream);
     }
 
-    private static AttachmentDto Map(Attachment a) => new(
-        a.Id, a.EntityType, a.EntityId, a.OriginalFileName, a.ContentType, a.SizeBytes,
-        a.Sha256, a.Classification, a.ScanStatus, a.UploadedAtUtc);
+    public async Task<IReadOnlyList<AttachmentDto>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default)
+    {
+        var entities = await attachments.ListForEntityAsync(entityType, entityId, cancellationToken);
+        var canSensitive = currentUser.HasPermission(PermissionCodes.AttachmentsDownloadSensitive);
+        return entities.Select(a => Map(a, RedactSensitiveMetadata(a, canSensitive))).ToList();
+    }
+
+    private static bool RedactSensitiveMetadata(Attachment attachment, bool canViewSensitive) =>
+        attachment.Classification >= ClassificationLevel.Confidential && !canViewSensitive;
+
+    private static AttachmentDto Map(Attachment a, bool redact = false) => new(
+        a.Id,
+        a.EntityType,
+        a.EntityId,
+        redact ? "[محجوب]" : a.OriginalFileName,
+        redact ? "application/octet-stream" : a.ContentType,
+        redact ? 0 : a.SizeBytes,
+        redact ? string.Empty : a.Sha256,
+        a.Classification,
+        a.ScanStatus,
+        a.UploadedAtUtc,
+        redact);
 }

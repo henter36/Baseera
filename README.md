@@ -2,16 +2,17 @@
 
 ## المرحلة الحالية
 
-- **Phase A** — التأسيس (مكتملة)
-- **Phase A.1** — تحصين الأمن والتفويض — انظر [`docs/phase-a1-completion-report.md`](docs/phase-a1-completion-report.md)
-
-لا تبدأ المرحلة B قبل قرار **Phase A Accepted**.
+| مرحلة | الحالة |
+|--------|--------|
+| **Phase A** — التأسيس | مكتملة ومقبولة |
+| **Phase A.1** — تحصين الأمن والتفويض | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-a1-completion-report.md`](docs/phase-a1-completion-report.md) |
+| **Phase B.1** — نواة الملاحظات التشغيلية والتكليفات | **قيد المراجعة** على الفرع `phase-b1-notes-core` (لا تُدمج حتى الاعتماد الصريح) |
 
 ## المتطلبات
 
 - .NET 10 SDK
 - Node.js 22+
-- SQL Server (للتطوير المحلي والاختبارات)
+- SQL Server (للتطوير المحلي والاختبارات) — أي منفذ/مضيف متاح لديك؛ لا يُفترض حصر المنفذ على 1433
 
 ## التشغيل
 
@@ -19,23 +20,27 @@
 
 ```bash
 cp src/backend/Baseera.Api/appsettings.example.json src/backend/Baseera.Api/appsettings.Development.json
-# عدّل ConnectionStrings:Baseera عبر متغير/ملف محلي — لا تضع أسرارًا في Git
+```
+
+اضبط سلسلة الاتصال عبر متغير بيئة (لا تضع كلمات مرور في Git أو في أوامر تُنسخ إلى التوثيق):
+
+```bash
+export BASEERA_CONNECTION='Server=<host>,<port>;Database=Baseera;User Id=<user>;Password=<from-secret-store>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=true'
 ```
 
 ```bash
 # API (Development يسمح بـ TestAuth + Demo Seed عبر appsettings.Development فقط)
 cd src/backend
-export BASEERA_CONNECTION='...'   # من بيئة محلية فقط
 dotnet ef database update --project Baseera.Infrastructure --startup-project Baseera.Api
 dotnet run --project Baseera.Api
 
 # Frontend (تطوير)
 cd src/frontend
-npm install
+npm ci --ignore-scripts
 npm run dev
 ```
 
-في وضع التطوير مع `VITE_AUTH_MODE=test` يمكن الدخول بـ `dev-admin` بعد تفعيل Seed في Development فقط.
+في وضع التطوير مع `VITE_AUTH_MODE=test` يمكن الدخول بمستخدم مُسبق التجهيز بعد تفعيل Seed في Development فقط.
 
 ## الاختبارات
 
@@ -43,11 +48,13 @@ npm run dev
 # Unit
 dotnet test src/backend/tests/Baseera.UnitTests
 
-# Integration — يتطلب متغير بيئة بدون fallback في الكود
-export BASEERA_TEST_CONNECTION='Server=...;Database=Baseera_Test;...'
+# Integration — يتطلب متغير بيئة؛ لا يوجد fallback في الكود
+export BASEERA_TEST_CONNECTION='Server=<host>,<port>;Database=Baseera_Test;User Id=<user>;Password=<from-secret-store>;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true'
 dotnet test src/backend/tests/Baseera.IntegrationTests
 
 cd src/frontend
+npm ci --ignore-scripts
+npm run typecheck
 npm test
 npm run check:prod-auth   # يجب أن يفشل إذا VITE_AUTH_MODE=test
 npm run build             # إنتاج: Entra إلزامي

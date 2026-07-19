@@ -4,6 +4,7 @@ using Baseera.Domain.Attachments;
 using Baseera.Domain.Audit;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
+using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -25,6 +26,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<UserScope> UserScopes => Set<UserScope>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<OperationalNote> OperationalNotes => Set<OperationalNote>();
+    public DbSet<NoteAssignment> NoteAssignments => Set<NoteAssignment>();
+    public DbSet<NoteStatusHistory> NoteStatusHistories => Set<NoteStatusHistory>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -42,12 +46,28 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<UserScope> Application.Abstractions.IBaseeraDbContext.UserScopes => UserScopes;
     IQueryable<AuditLog> Application.Abstractions.IBaseeraDbContext.AuditLogs => AuditLogs;
     IQueryable<Attachment> Application.Abstractions.IBaseeraDbContext.Attachments => Attachments;
+    IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotes => OperationalNotes;
+    IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotesIncludingDeleted => OperationalNotes.IgnoreQueryFilters();
+    IQueryable<NoteAssignment> Application.Abstractions.IBaseeraDbContext.NoteAssignments => NoteAssignments;
+    IQueryable<NoteStatusHistory> Application.Abstractions.IBaseeraDbContext.NoteStatusHistories => NoteStatusHistories;
 
     public new void Add<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Add(entity);
     public new void Update<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Update(entity);
 
+    public async Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default)
+    {
+        var rows = await Database
+            .SqlQueryRaw<SequenceValueRow>("SELECT NEXT VALUE FOR [OperationalNoteReferenceSequence] AS [Value]")
+            .ToListAsync(cancellationToken);
+        return rows.Single().Value;
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasSequence<long>("OperationalNoteReferenceSequence")
+            .StartsAt(1)
+            .IncrementsBy(1);
+
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(BaseeraDbContext).Assembly);
 
         modelBuilder.Entity<Organization>().HasQueryFilter(e => !e.IsDeleted);
@@ -59,8 +79,15 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<Department>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<User>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Role>().HasQueryFilter(e => !e.IsDeleted);
+        // Join entities must filter deleted Role (and User) to avoid EF 10622 with required navigations.
+        modelBuilder.Entity<UserRole>().HasQueryFilter(ur => !ur.Role.IsDeleted && !ur.User.IsDeleted);
+        modelBuilder.Entity<RolePermission>().HasQueryFilter(rp => !rp.Role.IsDeleted);
         modelBuilder.Entity<UserScope>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Attachment>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<OperationalNote>().HasQueryFilter(e => !e.IsDeleted);
+        // Join/dependent entities must filter deleted OperationalNote/User to avoid EF 10622 with required navigations.
+        modelBuilder.Entity<NoteAssignment>().HasQueryFilter(na => !na.OperationalNote.IsDeleted && !na.AssignedByUser.IsDeleted);
+        modelBuilder.Entity<NoteStatusHistory>().HasQueryFilter(h => !h.OperationalNote.IsDeleted && !h.ChangedByUser.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {
@@ -81,18 +108,26 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
 
     public override int SaveChanges()
     {
-        EnforceAuditImmutability();
+        EnforceAppendOnlyGuards();
         return base.SaveChanges();
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        EnforceAuditImmutability();
+        EnforceAppendOnlyGuards();
         return base.SaveChangesAsync(cancellationToken);
     }
 
-    private void EnforceAuditImmutability() =>
+    private void EnforceAppendOnlyGuards()
+    {
         AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(this);
+        NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
+    }
+}
+
+internal sealed class SequenceValueRow
+{
+    public long Value { get; set; }
 }
 
 /// <summary>
@@ -113,6 +148,21 @@ internal static class AuditAppendOnlyGuard
     }
 }
 
+internal static class NoteStatusHistoryAppendOnlyGuard
+{
+    public static void EnsureEntriesAreAppendOnly(DbContext context)
+    {
+        var invalidEntries = context.ChangeTracker
+            .Entries<NoteStatusHistory>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidEntries.Any())
+        {
+            throw new InvalidOperationException("NoteStatusHistory is append-only and cannot be modified or deleted.");
+        }
+    }
+}
+
 public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
 {
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
@@ -120,6 +170,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         if (eventData.Context is not null)
         {
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
+            NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChanges(eventData, result);
@@ -133,6 +184,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         if (eventData.Context is not null)
         {
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
+            NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChangesAsync(eventData, result, cancellationToken);

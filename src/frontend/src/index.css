@@ -143,6 +143,145 @@ th, td {
 
 .badge.inactive::before { background: var(--danger); }
 
+.badge[data-tone="danger"]::before { background: var(--danger); }
+.badge[data-tone="warn"]::before { background: #a8722e; }
+.badge[data-tone="ok"]::before { background: var(--ok); }
+.badge[data-tone="muted"]::before { background: var(--muted); }
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.panel-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.section-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem 1.5rem;
+}
+
+.detail-grid .muted {
+  display: block;
+  font-size: 0.8rem;
+  margin-bottom: 0.2rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+.field span:first-child {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.field input, .field select, .field textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.field textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.action-panel {
+  background: var(--bg-accent);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-top: 1rem;
+  border-top: none;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: unset;
+}
+
+.checkbox-field input {
+  width: auto;
+  min-width: unset;
+}
+
+.sort-header {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-weight: 600;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.timeline li {
+  border-right: 3px solid var(--brand);
+  padding-right: 0.75rem;
+}
+
+code {
+  background: var(--bg-accent);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.85rem;
+}
+
 .error {
   color: var(--danger);
   background: #f8eaea;

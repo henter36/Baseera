@@ -97,6 +97,17 @@ public static class PermissionCodes
     public const string ArmamentAdjust = "Armament.Adjust";
     public const string NotesAssign = "Notes.Assign";
     public const string NotesVerifyClosure = "Notes.VerifyClosure";
+    public const string NotesView = "Notes.View";
+    public const string NotesViewSensitive = "Notes.ViewSensitive";
+    public const string NotesCreate = "Notes.Create";
+    public const string NotesUpdate = "Notes.Update";
+    public const string NotesStartWork = "Notes.StartWork";
+    public const string NotesSubmitForVerification = "Notes.SubmitForVerification";
+    public const string NotesReturnForRework = "Notes.ReturnForRework";
+    public const string NotesReopen = "Notes.Reopen";
+    public const string NotesCancel = "Notes.Cancel";
+    public const string NotesArchive = "Notes.Archive";
+    public const string NotesRestore = "Notes.Restore";
     public const string IncidentsApprove = "Incidents.Approve";
     public const string FormsDesign = "Forms.Design";
     public const string FormsPublish = "Forms.Publish";

@@ -93,19 +93,87 @@ public static class DatabaseInitializer
             PermissionCodes.UsersView,
             PermissionCodes.AuditView,
             PermissionCodes.AttachmentsDownload,
-            PermissionCodes.AttachmentsDownloadSensitive);
+            PermissionCodes.AttachmentsDownloadSensitive,
+            PermissionCodes.NotesView);
 
         var readonlyUser = roles.First(r => r.Code == RoleCodes.ReadOnlyUser);
-        Grant(readonlyUser, PermissionCodes.OrganizationView);
+        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView);
 
         var hq = roles.First(r => r.Code == RoleCodes.HeadquartersExecutive);
-        Grant(hq, PermissionCodes.OrganizationView, PermissionCodes.UsersView, PermissionCodes.AuditView);
+        Grant(hq,
+            PermissionCodes.OrganizationView,
+            PermissionCodes.UsersView,
+            PermissionCodes.AuditView,
+            PermissionCodes.NotesView,
+            PermissionCodes.NotesViewSensitive,
+            PermissionCodes.NotesAssign,
+            PermissionCodes.NotesVerifyClosure,
+            PermissionCodes.NotesReopen,
+            PermissionCodes.NotesCancel,
+            PermissionCodes.NotesArchive,
+            PermissionCodes.NotesRestore);
+
+        var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
+        Grant(decisionDirector,
+            PermissionCodes.NotesView,
+            PermissionCodes.NotesCreate,
+            PermissionCodes.NotesUpdate,
+            PermissionCodes.NotesAssign,
+            PermissionCodes.NotesVerifyClosure,
+            PermissionCodes.NotesReturnForRework,
+            PermissionCodes.NotesReopen,
+            PermissionCodes.NotesCancel);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
-        Grant(regional, PermissionCodes.OrganizationView, PermissionCodes.AttachmentsUpload, PermissionCodes.AttachmentsDownload);
+        Grant(regional,
+            PermissionCodes.OrganizationView,
+            PermissionCodes.AttachmentsUpload,
+            PermissionCodes.AttachmentsDownload,
+            PermissionCodes.NotesView,
+            PermissionCodes.NotesCreate,
+            PermissionCodes.NotesUpdate,
+            PermissionCodes.NotesAssign,
+            PermissionCodes.NotesVerifyClosure,
+            PermissionCodes.NotesReturnForRework,
+            PermissionCodes.NotesReopen,
+            PermissionCodes.NotesCancel,
+            PermissionCodes.NotesArchive,
+            PermissionCodes.NotesRestore);
+
+        var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
+        Grant(regionalCoordinator,
+            PermissionCodes.NotesView,
+            PermissionCodes.NotesCreate,
+            PermissionCodes.NotesUpdate,
+            PermissionCodes.NotesAssign,
+            PermissionCodes.NotesStartWork,
+            PermissionCodes.NotesSubmitForVerification,
+            PermissionCodes.NotesCancel);
 
         var facilityDirector = roles.First(r => r.Code == RoleCodes.FacilityDirector);
-        Grant(facilityDirector, PermissionCodes.OrganizationView, PermissionCodes.AttachmentsUpload, PermissionCodes.AttachmentsDownload);
+        Grant(facilityDirector,
+            PermissionCodes.OrganizationView,
+            PermissionCodes.AttachmentsUpload,
+            PermissionCodes.AttachmentsDownload,
+            PermissionCodes.NotesView,
+            PermissionCodes.NotesCreate,
+            PermissionCodes.NotesUpdate,
+            PermissionCodes.NotesAssign,
+            PermissionCodes.NotesVerifyClosure,
+            PermissionCodes.NotesReturnForRework,
+            PermissionCodes.NotesReopen,
+            PermissionCodes.NotesCancel,
+            PermissionCodes.NotesArchive,
+            PermissionCodes.NotesRestore);
+
+        var facilityCoordinator = roles.First(r => r.Code == RoleCodes.FacilityCoordinator);
+        Grant(facilityCoordinator,
+            PermissionCodes.NotesView,
+            PermissionCodes.NotesCreate,
+            PermissionCodes.NotesUpdate,
+            PermissionCodes.NotesStartWork,
+            PermissionCodes.NotesSubmitForVerification,
+            PermissionCodes.NotesCancel);
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -209,6 +277,7 @@ public static class DatabaseInitializer
     }
 
     private const string OrganizationModule = "Organization";
+    private const string NotesModule = "Notes";
 
     private static List<Permission> BuildPermissions()
     {
@@ -240,8 +309,19 @@ public static class DatabaseInitializer
             (PermissionCodes.ArmamentReceive, "استلام تسليح", "Armament"),
             (PermissionCodes.ArmamentInventory, "جرد تسليح", "Armament"),
             (PermissionCodes.ArmamentAdjust, "تسوية تسليح", "Armament"),
-            (PermissionCodes.NotesAssign, "إسناد ملاحظة", "Notes"),
-            (PermissionCodes.NotesVerifyClosure, "اعتماد إغلاق ملاحظة", "Notes"),
+            (PermissionCodes.NotesAssign, "إسناد ملاحظة", NotesModule),
+            (PermissionCodes.NotesVerifyClosure, "اعتماد إغلاق ملاحظة", NotesModule),
+            (PermissionCodes.NotesView, "عرض الملاحظات", NotesModule),
+            (PermissionCodes.NotesViewSensitive, "عرض الملاحظات الحساسة", NotesModule),
+            (PermissionCodes.NotesCreate, "إنشاء ملاحظة", NotesModule),
+            (PermissionCodes.NotesUpdate, "تحديث ملاحظة", NotesModule),
+            (PermissionCodes.NotesStartWork, "بدء معالجة ملاحظة", NotesModule),
+            (PermissionCodes.NotesSubmitForVerification, "إرسال ملاحظة للتحقق", NotesModule),
+            (PermissionCodes.NotesReturnForRework, "إعادة ملاحظة للمعالجة", NotesModule),
+            (PermissionCodes.NotesReopen, "إعادة فتح ملاحظة", NotesModule),
+            (PermissionCodes.NotesCancel, "إلغاء ملاحظة", NotesModule),
+            (PermissionCodes.NotesArchive, "أرشفة ملاحظة", NotesModule),
+            (PermissionCodes.NotesRestore, "استعادة ملاحظة", NotesModule),
             (PermissionCodes.IncidentsApprove, "اعتماد واقعة", "Incidents"),
             (PermissionCodes.FormsDesign, "تصميم نموذج", "Forms"),
             (PermissionCodes.FormsPublish, "نشر نموذج", "Forms"),

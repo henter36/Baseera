@@ -4,6 +4,7 @@ using Baseera.Domain.Audit;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
+using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
 
 public interface IBaseeraDbContext
@@ -25,10 +26,16 @@ public interface IBaseeraDbContext
     IQueryable<UserScope> UserScopes { get; }
     IQueryable<AuditLog> AuditLogs { get; }
     IQueryable<Attachment> Attachments { get; }
+    IQueryable<OperationalNote> OperationalNotes { get; }
+    /// <summary>Includes soft-deleted notes for archive restore only.</summary>
+    IQueryable<OperationalNote> OperationalNotesIncludingDeleted { get; }
+    IQueryable<NoteAssignment> NoteAssignments { get; }
+    IQueryable<NoteStatusHistory> NoteStatusHistories { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ICurrentUser
@@ -96,6 +103,8 @@ public interface IAttachmentService
 {
     Task<Attachment> UploadAsync(UploadAttachmentRequest request, CancellationToken cancellationToken = default);
     Task<(Attachment Attachment, Stream Content)> DownloadAsync(Guid attachmentId, CancellationToken cancellationToken = default);
+    /// <summary>Metadata-only listing for an entity. Missing/out-of-scope entities throw KeyNotFoundException (404), matching DownloadAsync.</summary>
+    Task<IReadOnlyList<Attachment>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default);
 }
 
 public sealed class UploadAttachmentRequest

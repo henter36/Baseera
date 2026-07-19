@@ -23,6 +23,7 @@ public sealed class AttachmentRulesTests
     public void Entity_type_allowlist_rejects_open_text()
     {
         Assert.True(AttachmentEntityTypes.IsAllowed("Facility"));
+        Assert.True(AttachmentEntityTypes.IsAllowed("OperationalNote"));
         Assert.False(AttachmentEntityTypes.IsAllowed("Anything"));
     }
 

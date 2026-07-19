@@ -172,6 +172,21 @@ public sealed class AttachmentService(
         return (entity, stream);
     }
 
+    public async Task<IReadOnlyList<Attachment>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default)
+    {
+        if (!AttachmentEntityTypes.IsAllowed(entityType))
+        {
+            throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.");
+        }
+
+        await EnsureEntityInScopeAsync(entityType, entityId, cancellationToken);
+
+        return await db.Attachments
+            .Where(a => a.EntityType == entityType && a.EntityId == entityId)
+            .OrderByDescending(a => a.UploadedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Anti-enumeration: missing entity and out-of-scope both surface as NotFound (KeyNotFoundException).
     /// Global/HQ callers still must reference a real entity — orphan IDs are rejected.
@@ -200,8 +215,21 @@ public sealed class AttachmentService(
             "building" => ResolveBuildingAccessAsync(entityId, cancellationToken),
             "department" => ResolveDepartmentAccessAsync(entityId, cancellationToken),
             "user" => ResolveUserAccessAsync(entityId, cancellationToken),
+            "operationalnote" => ResolveOperationalNoteAccessAsync(entityId, cancellationToken),
             _ => throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.")
         };
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveOperationalNoteAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var note = await db.OperationalNotes.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(n => n.Id == entityId, cancellationToken);
+        if (note is null || note.IsDeleted)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.CanAccess(note));
     }
 
     private async Task<(bool Exists, bool InScope)> ResolveOrganizationAccessAsync(Guid entityId, CancellationToken cancellationToken)
