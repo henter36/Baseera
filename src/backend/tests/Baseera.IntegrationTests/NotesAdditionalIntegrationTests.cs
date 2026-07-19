@@ -58,7 +58,17 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
 
         var draftLow = await CreateWithSeverity("مسودة منخفضة", NoteSeverity.Low, SeedIds.FacilityA2);
 
-        var overdueDraft = await CreateWithSeverity("متأخرة", NoteSeverity.Medium, SeedIds.FacilityA1, DateTimeOffset.UtcNow.AddDays(-2));
+        // Create with a valid future due date, then backdate via DB (API rejects past DueAtUtc).
+        var overdueDraft = await CreateWithSeverity("متأخرة", NoteSeverity.Medium, SeedIds.FacilityA1);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var entity = await db.OperationalNotes.SingleAsync(n => n.Id == overdueDraft.Id);
+            entity.DueAtUtc = DateTimeOffset.UtcNow.AddDays(-2);
+            await db.SaveChangesAsync();
+        }
+
+        overdueDraft = (await admin.GetFromJsonAsync<NoteDetail>($"/api/v1/notes/{overdueDraft.Id}", JsonOptions))!;
         await PostAsync(admin, $"/api/v1/notes/{overdueDraft.Id}/submit", overdueDraft.RowVersion, "تقديم متأخرة");
 
         var defaults = await admin.GetFromJsonAsync<PagedEnvelope<NoteListItem>>("/api/v1/notes");
