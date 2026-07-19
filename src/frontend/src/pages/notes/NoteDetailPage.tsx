@@ -412,13 +412,7 @@ function AttachmentsPanel({ noteId }: Readonly<{ noteId: string }>) {
                   </span>
                 </td>
                 <td>
-                  {a.scanStatus === 1 && !a.isSensitiveRedacted ? (
-                    <button type="button" className="secondary" onClick={() => download(a)}>تنزيل</button>
-                  ) : a.isSensitiveRedacted ? (
-                    <span className="muted">مرفق حسّاس — يتطلب صلاحية تنزيل حساسة</span>
-                  ) : (
-                    <span className="muted">التنزيل متاح بعد اكتمال الفحص فقط</span>
-                  )}
+                  <AttachmentAction attachment={a} onDownload={download} />
                 </td>
               </tr>
             ))}
@@ -426,6 +420,40 @@ function AttachmentsPanel({ noteId }: Readonly<{ noteId: string }>) {
         </table>
       )}
     </div>
+  )
+}
+
+function AttachmentAction({
+  attachment,
+  onDownload,
+}: Readonly<{
+  attachment: Attachment
+  onDownload: (attachment: Attachment) => void
+}>) {
+  if (attachment.scanStatus === 1 && !attachment.isSensitiveRedacted) {
+    return (
+      <button
+        type="button"
+        className="secondary"
+        onClick={() => onDownload(attachment)}
+      >
+        تنزيل
+      </button>
+    )
+  }
+
+  if (attachment.isSensitiveRedacted) {
+    return (
+      <span className="muted">
+        مرفق حسّاس — يتطلب صلاحية تنزيل حساسة
+      </span>
+    )
+  }
+
+  return (
+    <span className="muted">
+      التنزيل متاح بعد اكتمال الفحص فقط
+    </span>
   )
 }
 

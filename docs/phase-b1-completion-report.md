@@ -48,6 +48,34 @@ Corrective multi-actions, auto-escalation, notifications, background jobs, execu
 3. Restore UX requires knowing `rowVersion` for archived notes (no “include deleted” list API yet).
 4. CodeRabbit findings addressed in follow-up: confidential attachment list metadata redaction, Update audit field coverage, async list-scope expansion, NoteEditPage conflict reload state clear.
 
+## Final Three Sonar Findings
+
+**Pre-fix SHA:** `0ae33d5eb6ceec666aca30ef69a5b6eea97fdbb6`
+
+| Finding | Before | After |
+|---------|--------|-------|
+| `GET /notes` list handler parameters | **22** (individual query args) | **3** (`[AsParameters] NoteListQuery`, `INoteQueryService`, `CancellationToken`) |
+| `IntersectsNoteAsync` Cognitive Complexity | **29** | **≤15** — extracted to `NoteAssigneeScopeIntersection` coordinator + helpers (`IntersectsRegionAsync`, `IntersectsFacilityAsync`, `IntersectsFacilityUnitAsync`, `HasGlobalScope`, `HasHeadquartersScope`, `GetFacilityRegionIdAsync`) |
+| Nested ternary in `NoteDetailPage` attachment download UI | nested `?:` | `AttachmentAction` early-return component |
+
+### Tests added
+
+- Unit: `NoteAssigneeScopeIntersectionTests` (Global/HQ/Region/Facility/FacilityUnit/MultipleRegions/MultipleFacilities + null-id / missing facility cases).
+- Integration: `List_notes_binds_AsParameters_filters_and_defaults` (defaults + page/pageSize/status/severity/facilityId/overdueOnly/dates/sort).
+- Frontend: sensitive-redacted attachment message; quarantined/rejected hide download; Clean download invokes `downloadAttachment`.
+
+### Local verification (this round)
+
+| Suite | Count | Skipped |
+|-------|-------|---------|
+| Unit | **213** | 0 |
+| Integration | **51** expected (local SQL unreachable; CI validates) | 0 |
+| Frontend | **78** | 0 |
+
+NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra placeholders): OK.
+
+**Post-fix tip SHA:** recorded after push of this round.
+
 ## Rollback
 
 1. Revert the B.1 PR / migration `PhaseB1NotesCore` Down in a **test** environment only first.

@@ -144,52 +144,7 @@ public static class ApiEndpoints
     {
         var notes = api.MapGroup("/notes");
 
-        notes.MapGet("/", async (
-            int? page,
-            int? pageSize,
-            string? search,
-            NoteStatus? status,
-            NoteSeverity? severity,
-            NoteCategory? category,
-            NoteSourceType? sourceType,
-            ClassificationLevel? classification,
-            Guid? regionId,
-            Guid? facilityId,
-            Guid? facilityUnitId,
-            Guid? ownerDepartmentId,
-            Guid? assignedToUserId,
-            bool? overdueOnly,
-            DateTimeOffset? dueFrom,
-            DateTimeOffset? dueTo,
-            DateTimeOffset? createdFrom,
-            DateTimeOffset? createdTo,
-            string? sortBy,
-            bool? sortDesc,
-            INoteQueryService queries,
-            CancellationToken ct) =>
-            Results.Ok(await queries.ListAsync(new NoteListQuery
-            {
-                Page = page ?? 1,
-                PageSize = pageSize ?? 20,
-                Search = search,
-                Status = status,
-                Severity = severity,
-                Category = category,
-                SourceType = sourceType,
-                Classification = classification,
-                RegionId = regionId,
-                FacilityId = facilityId,
-                FacilityUnitId = facilityUnitId,
-                OwnerDepartmentId = ownerDepartmentId,
-                AssignedToUserId = assignedToUserId,
-                OverdueOnly = overdueOnly ?? false,
-                DueFrom = dueFrom,
-                DueTo = dueTo,
-                CreatedFrom = createdFrom,
-                CreatedTo = createdTo,
-                SortBy = sortBy,
-                SortDesc = sortDesc ?? false
-            }, ct))).RequireAuthorization(AuthPolicies.NotesView);
+        notes.MapGet("/", ListNotesAsync).RequireAuthorization(AuthPolicies.NotesView);
 
         notes.MapGet("/{id:guid}", async (Guid id, INoteQueryService queries, CancellationToken ct) =>
         {
@@ -282,6 +237,15 @@ public static class ApiEndpoints
         // KeyNotFoundException path AttachmentService uses for single-attachment downloads.
         notes.MapGet("/{id:guid}/attachments", async (Guid id, IAttachmentAppService attachments, CancellationToken ct) =>
             Results.Ok(await attachments.ListForEntityAsync("OperationalNote", id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+    }
+
+    private static async Task<IResult> ListNotesAsync(
+        [AsParameters] NoteListQuery query,
+        INoteQueryService queries,
+        CancellationToken cancellationToken)
+    {
+        var result = await queries.ListAsync(query, cancellationToken);
+        return Results.Ok(result);
     }
 
     private static TransitionNoteRequest ToTransition(WorkflowActionRequest request) =>

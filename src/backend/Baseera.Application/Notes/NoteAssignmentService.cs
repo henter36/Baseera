@@ -189,91 +189,11 @@ public sealed class NoteAssignmentService(
             return;
         }
 
-        if (await IntersectsNoteAsync(scopes, note, cancellationToken))
+        if (await NoteAssigneeScopeIntersection.IntersectsAsync(db, scopes, note, cancellationToken))
         {
             return;
         }
 
         throw new InvalidOperationException("نطاق المستخدم لا يتقاطع مع نطاق الملاحظة.");
-    }
-
-    private async Task<bool> IntersectsNoteAsync(IReadOnlyList<UserScopeSnapshot> scopes, OperationalNote note, CancellationToken cancellationToken)
-    {
-        switch (note.ScopeType)
-        {
-            case ScopeType.Region:
-            {
-                if (note.RegionId is not Guid rid)
-                {
-                    return false;
-                }
-
-                var facilityIds = scopes.Where(s => s.FacilityId.HasValue).Select(s => s.FacilityId!.Value).ToHashSet();
-                var facilityRegionMap = facilityIds.Count == 0
-                    ? new Dictionary<Guid, Guid>()
-                    : await db.Facilities
-                        .Where(f => facilityIds.Contains(f.Id))
-                        .ToDictionaryAsync(f => f.Id, f => f.RegionId, cancellationToken);
-
-                return scopes.Any(s =>
-                    (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId == rid) ||
-                    (s.FacilityId.HasValue && facilityRegionMap.TryGetValue(s.FacilityId.Value, out var mappedRegionId) && mappedRegionId == rid));
-            }
-
-            case ScopeType.Facility:
-            {
-                if (note.FacilityId is not Guid fid)
-                {
-                    return false;
-                }
-
-                var noteFacilityRegionId = await db.Facilities
-                    .Where(f => f.Id == fid)
-                    .Select(f => (Guid?)f.RegionId)
-                    .FirstOrDefaultAsync(cancellationToken);
-
-                return scopes.Any(s =>
-                    (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities or ScopeType.FacilityUnit && s.FacilityId == fid) ||
-                    (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId.HasValue &&
-                     noteFacilityRegionId == s.RegionId));
-            }
-
-            case ScopeType.FacilityUnit:
-            {
-                if (note.FacilityUnitId is not Guid uid)
-                {
-                    return false;
-                }
-
-                if (scopes.Any(s => s.ScopeType == ScopeType.FacilityUnit && s.FacilityUnitId == uid))
-                {
-                    return true;
-                }
-
-                if (note.FacilityId is not Guid fid)
-                {
-                    return false;
-                }
-
-                var noteFacilityRegionId = await db.Facilities
-                    .Where(f => f.Id == fid)
-                    .Select(f => (Guid?)f.RegionId)
-                    .FirstOrDefaultAsync(cancellationToken);
-
-                return scopes.Any(s =>
-                    (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities && s.FacilityId == fid) ||
-                    (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId.HasValue &&
-                     noteFacilityRegionId == s.RegionId));
-            }
-
-            case ScopeType.Global:
-                return scopes.Any(s => s.ScopeType == ScopeType.Global);
-
-            case ScopeType.Headquarters:
-                return scopes.Any(s => s.ScopeType is ScopeType.Headquarters or ScopeType.Global);
-
-            default:
-                return false;
-        }
     }
 }

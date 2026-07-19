@@ -23,6 +23,64 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
     public NotesAdditionalIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
 
     [IntegrationConnectionFact]
+    public async Task List_notes_binds_AsParameters_filters_and_defaults()
+    {
+        await _factory.SeedUserAsync("notes-list-bind-admin", "مسؤول", [RoleCodes.SystemAdministrator],
+            (ScopeType.Global, null, null));
+        var admin = _factory.CreateAuthenticatedClient("notes-list-bind-admin");
+
+        async Task<NoteDetail> CreateWithSeverity(string title, NoteSeverity severity, Guid facilityId, DateTimeOffset? dueAtUtc = null)
+        {
+            var response = await admin.PostAsJsonAsync("/api/v1/notes", new
+            {
+                title,
+                description = "وصف تفصيلي إضافي للاختبار",
+                category = NoteCategory.Operational,
+                severity,
+                sourceType = NoteSourceType.Manual,
+                sourceReference = (string?)null,
+                classification = ClassificationLevel.Internal,
+                scopeType = ScopeType.Facility,
+                regionId = SeedIds.RegionA,
+                facilityId,
+                facilityUnitId = (Guid?)null,
+                ownerDepartmentId = (Guid?)null,
+                dueAtUtc = dueAtUtc ?? DateTimeOffset.UtcNow.AddDays(3)
+            });
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.True(response.IsSuccessStatusCode, body);
+            return JsonSerializer.Deserialize<NoteDetail>(body, JsonOptions)!;
+        }
+
+        var openHigh = await CreateWithSeverity("مفتوحة عالية", NoteSeverity.High, SeedIds.FacilityA1);
+        await PostAsync(admin, $"/api/v1/notes/{openHigh.Id}/submit", openHigh.RowVersion, "تقديم");
+        openHigh = (await admin.GetFromJsonAsync<NoteDetail>($"/api/v1/notes/{openHigh.Id}", JsonOptions))!;
+
+        var draftLow = await CreateWithSeverity("مسودة منخفضة", NoteSeverity.Low, SeedIds.FacilityA2);
+
+        var overdueDraft = await CreateWithSeverity("متأخرة", NoteSeverity.Medium, SeedIds.FacilityA1, DateTimeOffset.UtcNow.AddDays(-2));
+        await PostAsync(admin, $"/api/v1/notes/{overdueDraft.Id}/submit", overdueDraft.RowVersion, "تقديم متأخرة");
+
+        var defaults = await admin.GetFromJsonAsync<PagedEnvelope<NoteListItem>>("/api/v1/notes");
+        Assert.NotNull(defaults);
+        Assert.Equal(1, defaults!.Page);
+        Assert.Equal(20, defaults.PageSize);
+
+        var filtered = await admin.GetFromJsonAsync<PagedEnvelope<NoteListItem>>(
+            $"/api/v1/notes?page=1&pageSize=10&status={(int)NoteStatus.Open}&severity={(int)NoteSeverity.High}&facilityId={SeedIds.FacilityA1}&overdueOnly=false&sortBy=severity&sortDesc=true&dueFrom={Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(-30).ToString("O"))}&dueTo={Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(30).ToString("O"))}");
+        Assert.NotNull(filtered);
+        Assert.Equal(1, filtered!.Page);
+        Assert.Equal(10, filtered.PageSize);
+        Assert.Contains(filtered.Items, n => n.Id == openHigh.Id);
+        Assert.DoesNotContain(filtered.Items, n => n.Id == draftLow.Id);
+
+        var overdueOnly = await admin.GetFromJsonAsync<PagedEnvelope<NoteListItem>>(
+            "/api/v1/notes?overdueOnly=true&page=1&pageSize=50");
+        Assert.NotNull(overdueOnly);
+        Assert.Contains(overdueOnly!.Items, n => n.Id == overdueDraft.Id);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Facility_user_cannot_see_note_from_other_facility_in_same_region()
     {
         await _factory.SeedUserAsync("notes-fac-a1", "سجن أ1", [RoleCodes.FacilityDirector],

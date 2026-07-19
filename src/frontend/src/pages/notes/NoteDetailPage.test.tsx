@@ -18,6 +18,7 @@ const {
   startWorkNote,
   archiveNote,
   uploadAttachment,
+  downloadAttachment,
   currentPermissions,
 } = vi.hoisted(() => ({
   getNote: vi.fn(),
@@ -30,6 +31,7 @@ const {
   startWorkNote: vi.fn(),
   archiveNote: vi.fn(),
   uploadAttachment: vi.fn(),
+  downloadAttachment: vi.fn(),
   currentPermissions: new Set<string>(['Notes.View']),
 }))
 
@@ -45,6 +47,7 @@ vi.mock('../../api/client', async () => {
     api: {
       ...actual.api,
       uploadAttachment,
+      downloadAttachment,
       notes: {
         ...actual.api.notes,
         get: getNote,
@@ -262,6 +265,7 @@ describe('NoteDetailPage', () => {
         uploadedAtUtc: '2024-01-01T00:00:00Z',
       },
     ])
+    downloadAttachment.mockResolvedValue({ blob: new Blob(['x']), fileName: 'report.pdf' })
     renderPage()
     await screen.findByText('OBS-00000001')
 
@@ -269,6 +273,68 @@ describe('NoteDetailPage', () => {
     expect(screen.getByText('سليم')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'تنزيل' })).toBeInTheDocument()
     expect(getAttachments).toHaveBeenCalledWith('note-1')
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'تنزيل' }))
+    await waitFor(() => expect(downloadAttachment).toHaveBeenCalledWith('att-1'))
+  })
+
+  it('hides download and shows sensitive permission message for redacted attachments', async () => {
+    getNote.mockResolvedValue(baseNote)
+    getAttachments.mockResolvedValue([
+      {
+        id: 'att-secret',
+        entityType: 'OperationalNote',
+        entityId: 'note-1',
+        originalFileName: '[محجوب]',
+        contentType: 'application/octet-stream',
+        sizeBytes: 0,
+        sha256: '',
+        classification: 2,
+        scanStatus: 1,
+        uploadedAtUtc: '2024-01-01T00:00:00Z',
+        isSensitiveRedacted: true,
+      },
+    ])
+    renderPage()
+    await screen.findByText('OBS-00000001')
+
+    expect(await screen.findByText('مرفق حسّاس — يتطلب صلاحية تنزيل حساسة')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'تنزيل' })).not.toBeInTheDocument()
+  })
+
+  it('hides download for quarantined or rejected attachments', async () => {
+    getNote.mockResolvedValue(baseNote)
+    getAttachments.mockResolvedValue([
+      {
+        id: 'att-q',
+        entityType: 'OperationalNote',
+        entityId: 'note-1',
+        originalFileName: 'bad.bin',
+        contentType: 'application/octet-stream',
+        sizeBytes: 10,
+        sha256: 'x',
+        classification: 0,
+        scanStatus: 2,
+        uploadedAtUtc: '2024-01-01T00:00:00Z',
+      },
+      {
+        id: 'att-r',
+        entityType: 'OperationalNote',
+        entityId: 'note-1',
+        originalFileName: 'rejected.bin',
+        contentType: 'application/octet-stream',
+        sizeBytes: 10,
+        sha256: 'y',
+        classification: 0,
+        scanStatus: 3,
+        uploadedAtUtc: '2024-01-01T00:00:00Z',
+      },
+    ])
+    renderPage()
+    await screen.findByText('OBS-00000001')
+
+    expect(await screen.findAllByText('التنزيل متاح بعد اكتمال الفحص فقط')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'تنزيل' })).not.toBeInTheDocument()
   })
 
   it('only enables the attachment download button once the scan status is Clean, and refetches the list after upload', async () => {
