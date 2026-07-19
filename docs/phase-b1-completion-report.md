@@ -54,7 +54,7 @@ Corrective multi-actions, auto-escalation, notifications, background jobs, execu
 
 | Finding | Before | After |
 |---------|--------|-------|
-| `GET /notes` list handler parameters | **22** (individual query args) | **3** (`[AsParameters] NoteListQuery`, `INoteQueryService`, `CancellationToken`) |
+| `GET /notes` list handler parameters | **22** (individual query args) | **3** (`[AsParameters] NoteListQueryParams` → `NoteListQuery`, `INoteQueryService`, `CancellationToken`). Application `NoteListQuery` alone returned HTTP 400 under Minimal API binding; API-layer params class preserves the same query names/defaults. |
 | `IntersectsNoteAsync` Cognitive Complexity | **29** | **≤15** — extracted to `NoteAssigneeScopeIntersection` coordinator + helpers (`IntersectsRegionAsync`, `IntersectsFacilityAsync`, `IntersectsFacilityUnitAsync`, `HasGlobalScope`, `HasHeadquartersScope`, `GetFacilityRegionIdAsync`) |
 | Nested ternary in `NoteDetailPage` attachment download UI | nested `?:` | `AttachmentAction` early-return component |
 

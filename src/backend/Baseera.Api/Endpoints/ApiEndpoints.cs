@@ -240,11 +240,11 @@ public static class ApiEndpoints
     }
 
     private static async Task<IResult> ListNotesAsync(
-        [AsParameters] NoteListQuery query,
+        [AsParameters] NoteListQueryParams query,
         INoteQueryService queries,
         CancellationToken cancellationToken)
     {
-        var result = await queries.ListAsync(query, cancellationToken);
+        var result = await queries.ListAsync(query.ToQuery(), cancellationToken);
         return Results.Ok(result);
     }
 
