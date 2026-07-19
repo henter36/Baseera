@@ -75,10 +75,18 @@
 
 ### فصل الواجبات على الملاحظات الحرجة (Critical SoD)
 
-لملاحظة بمستوى خطورة Critical تحديدًا: مَن قام بالمعالجة الفعلية (آخر مَن نفّذ start-work أو
-submit-for-verification، محفوظ في LastProcessedByUserId) لا يمكنه هو نفسه تنفيذ verify-closure
-لنفس الملاحظة، حتى لو كان يحمل صلاحية Notes.VerifyClosure. **SystemAdministrator لا يُستثنى من هذا الفصل.**
-الفحص منفصل تمامًا عن التحقق من الصلاحية (Notes.VerifyClosure مطلوبة أولاً، ثم فحص SoD).
+لملاحظة بمستوى خطورة Critical تحديدًا: **لا يجوز لأي مستخدم شارك في المعالجة الفعلية للملاحظة الحرجة
+اعتماد إغلاقها النهائي، حتى لو كان مسؤول النظام.**
+
+المشاركة الفعلية تُستنتج من سجل `NoteStatusHistory` (وليس من `LastProcessedByUserId` وحده) عبر الانتقالات:
+
+- `Assigned → InProgress` أو `Reopened → InProgress` (start-work)
+- `InProgress → PendingVerification` (submit-for-verification)
+
+لا يُعتبر `PendingVerification → InProgress` (return-for-rework) معالجة فعلية للمعتمد.
+لا تُعدّ عمليات الإنشاء / التقديم / التكليف / الإلغاء / إعادة الفتح / العرض مشاركة معالجة تلقائية.
+
+الفحص منفصل تمامًا عن التحقق من الصلاحية (`Notes.VerifyClosure` مطلوبة أولاً، ثم فحص SoD)، ويحدث قبل أي Mutation.
 
 ### مصفوفة الحالات (State Machine)
 
@@ -102,7 +110,7 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 | العملية | القاعدة |
 |---------|---------|
 | حركة تسليح | المنشئ ≠ المعتمد لنفس الحركة |
-| ملاحظة حرجة | المعالج ≠ المعتمد النهائي للإغلاق منفردًا (مُفعّلة ومُختبرة في B.1) |
+| ملاحظة حرجة | أي مشارك في المعالجة الفعلية ≠ المعتمد النهائي (مُفعّلة عبر NoteStatusHistory؛ SystemAdministrator لا يتجاوز) |
 | واقعة جسيمة | مدخل التقرير ≠ المعتمد النهائي |
 | تصدير حساس | يتطلب `Reports.ExportSensitive` أو `Attachments.DownloadSensitive` + تسجيل تدقيق |
 

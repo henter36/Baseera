@@ -6,7 +6,8 @@
 |--------|--------|
 | **Phase A** — التأسيس | مكتملة ومقبولة |
 | **Phase A.1** — تحصين الأمن والتفويض | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-a1-completion-report.md`](docs/phase-a1-completion-report.md) |
-| **Phase B.1** — نواة الملاحظات التشغيلية والتكليفات | **قيد المراجعة** على الفرع `phase-b1-notes-core` (لا تُدمج حتى الاعتماد الصريح) |
+| **Phase B.1** — نواة الملاحظات التشغيلية والتكليفات | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b1-completion-report.md`](docs/phase-b1-completion-report.md) |
+| **المرحلة التالية** | Phase B.2 |
 
 ## المتطلبات
 

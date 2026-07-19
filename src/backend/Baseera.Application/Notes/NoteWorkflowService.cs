@@ -66,7 +66,7 @@ public sealed class NoteWorkflowService(
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Closed);
 
         var actorId = RequireUserId();
-        EnforceCriticalSoD(note, actorId);
+        await EnforceCriticalSoDAsync(note, actorId, cancellationToken);
 
         var from = note.Status;
         var now = DateTimeOffset.UtcNow;
@@ -230,16 +230,37 @@ public sealed class NoteWorkflowService(
         note.LastProcessedByUserId = actorId;
     }
 
-    private static void EnforceCriticalSoD(OperationalNote note, Guid closerId)
+    /// <summary>
+    /// Critical SoD: any user who performed actual processing on this note cannot verify final closure.
+    /// Processing is derived from append-only history (not LastProcessedByUserId alone):
+    /// Assigned→InProgress, Reopened→InProgress (start-work), InProgress→PendingVerification (submit).
+    /// PendingVerification→InProgress (return-for-rework) is NOT processing — typically a reviewer.
+    /// </summary>
+    private async Task EnforceCriticalSoDAsync(
+        OperationalNote note,
+        Guid closerId,
+        CancellationToken cancellationToken)
     {
         if (note.Severity != NoteSeverity.Critical)
         {
             return;
         }
 
-        if (note.LastProcessedByUserId == closerId)
+        var participated = await db.NoteStatusHistories.AnyAsync(
+            history =>
+                history.OperationalNoteId == note.Id &&
+                history.ChangedByUserId == closerId &&
+                (
+                    (history.FromStatus == NoteStatus.Assigned && history.ToStatus == NoteStatus.InProgress) ||
+                    (history.FromStatus == NoteStatus.Reopened && history.ToStatus == NoteStatus.InProgress) ||
+                    (history.FromStatus == NoteStatus.InProgress && history.ToStatus == NoteStatus.PendingVerification)
+                ),
+            cancellationToken);
+
+        if (participated)
         {
-            throw new InvalidOperationException("فصل الواجبات: لا يمكن لمعالج الملاحظة الحرجة اعتماد إغلاقها منفردًا.");
+            throw new InvalidOperationException(
+                "فصل الواجبات: لا يمكن لأي مستخدم شارك في معالجة الملاحظة الحرجة اعتماد إغلاقها النهائي.");
         }
     }
 

@@ -111,6 +111,122 @@ public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
     }
 
     [IntegrationConnectionFact]
+    public async Task Critical_note_all_processors_are_blocked_from_final_closure()
+    {
+        await _factory.SeedUserAsync("sod-admin", "مسؤول", [RoleCodes.SystemAdministrator],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        await _factory.SeedUserWithPermissionsAsync(
+            "sod-proc-a",
+            "معالج أ",
+            [RoleCodes.FacilityCoordinator],
+            [PermissionCodes.NotesVerifyClosure],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        await _factory.SeedUserWithPermissionsAsync(
+            "sod-proc-b",
+            "معالج ب",
+            [RoleCodes.FacilityCoordinator],
+            [PermissionCodes.NotesVerifyClosure],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        await _factory.SeedUserAsync("sod-verifier-c", "معتمد مستقل", [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+
+        Guid workerAId;
+        Guid verifierCId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            workerAId = await db.Users.Where(u => u.ExternalSubject == "sod-proc-a").Select(u => u.Id).FirstAsync();
+            verifierCId = await db.Users.Where(u => u.ExternalSubject == "sod-verifier-c").Select(u => u.Id).FirstAsync();
+        }
+
+        var admin = _factory.CreateAuthenticatedClient("sod-admin");
+        var note = await CreateNoteAsync(admin, ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null, "حرجة متعددة المعالجين", NoteSeverity.Critical);
+        note = await PostTransitionAsync(admin, $"/api/v1/notes/{note.Id}/submit", note.RowVersion, "تقديم");
+        note = await AssignAsync(admin, note.Id, workerAId, note.RowVersion);
+
+        var procA = _factory.CreateAuthenticatedClient("sod-proc-a");
+        note = await PostWorkflowAsync(procA, $"/api/v1/notes/{note.Id}/start-work", note.RowVersion);
+
+        // B submits for verification (processing participant) without needing to be the current assignee.
+        var procB = _factory.CreateAuthenticatedClient("sod-proc-b");
+        note = await PostWorkflowAsync(procB, $"/api/v1/notes/{note.Id}/submit-for-verification", note.RowVersion);
+
+        var denyA = await procA.PostAsJsonAsync($"/api/v1/notes/{note.Id}/verify-closure", new
+        {
+            reason = "محاولة أ",
+            closureSummary = "لا يجب",
+            rowVersion = note.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.Conflict, denyA.StatusCode);
+
+        var denyB = await procB.PostAsJsonAsync($"/api/v1/notes/{note.Id}/verify-closure", new
+        {
+            reason = "محاولة ب",
+            closureSummary = "لا يجب",
+            rowVersion = note.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.Conflict, denyB.StatusCode);
+
+        var verifier = _factory.CreateAuthenticatedClient("sod-verifier-c");
+        var closed = await verifier.PostAsJsonAsync($"/api/v1/notes/{note.Id}/verify-closure", new
+        {
+            reason = "اعتماد مستقل",
+            closureSummary = "تم التحقق",
+            rowVersion = note.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.OK, closed.StatusCode);
+        var closedBody = await closed.Content.ReadFromJsonAsync<NoteDetail>(JsonOptions);
+        Assert.Equal(NoteStatus.Closed, closedBody!.Status);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var entity = await verifyDb.OperationalNotes.SingleAsync(n => n.Id == note.Id);
+        Assert.Equal(NoteStatus.Closed, entity.Status);
+        Assert.Equal(verifierCId, entity.ClosedByUserId);
+        Assert.Equal(1, await verifyDb.NoteStatusHistories.CountAsync(h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Closed));
+        Assert.Equal(1, await verifyDb.AuditLogs.CountAsync(a => a.EntityId == note.Id.ToString() && a.Action == "NoteClosed"));
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Independent_verifier_outside_scope_cannot_close_critical_note()
+    {
+        await _factory.SeedUserAsync("sod-out-admin", "مسؤول", [RoleCodes.SystemAdministrator],
+            (ScopeType.Global, null, null));
+        await _factory.SeedUserWithPermissionsAsync(
+            "sod-out-worker",
+            "معالج",
+            [RoleCodes.FacilityCoordinator],
+            [],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        await _factory.SeedUserAsync("sod-out-verifier", "معتمد خارج النطاق", [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionB, SeedIds.FacilityB1));
+
+        Guid workerId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            workerId = await db.Users.Where(u => u.ExternalSubject == "sod-out-worker").Select(u => u.Id).FirstAsync();
+        }
+
+        var admin = _factory.CreateAuthenticatedClient("sod-out-admin");
+        var note = await CreateNoteAsync(admin, ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null, "حرجة نطاق", NoteSeverity.Critical);
+        note = await PostTransitionAsync(admin, $"/api/v1/notes/{note.Id}/submit", note.RowVersion, "تقديم");
+        note = await AssignAsync(admin, note.Id, workerId, note.RowVersion);
+        var worker = _factory.CreateAuthenticatedClient("sod-out-worker");
+        note = await PostWorkflowAsync(worker, $"/api/v1/notes/{note.Id}/start-work", note.RowVersion);
+        note = await PostWorkflowAsync(worker, $"/api/v1/notes/{note.Id}/submit-for-verification", note.RowVersion);
+
+        var outsider = _factory.CreateAuthenticatedClient("sod-out-verifier");
+        var response = await outsider.PostAsJsonAsync($"/api/v1/notes/{note.Id}/verify-closure", new
+        {
+            reason = "محاولة خارج النطاق",
+            closureSummary = "لا يجب",
+            rowVersion = note.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Stale_rowversion_returns_409()
     {
         await _factory.SeedUserAsync("notes-conc", "مسؤول", [RoleCodes.SystemAdministrator],
