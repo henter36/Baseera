@@ -2,6 +2,7 @@ namespace Baseera.Application.Identity;
 
 using Baseera.Application.Abstractions;
 using Baseera.Application.Common;
+using Baseera.Application.Security;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using FluentValidation;
@@ -9,8 +10,8 @@ using FluentValidation;
 public sealed record UserDto(Guid Id, string ExternalSubject, string UserName, string DisplayNameAr, string? Email, bool IsActive, IReadOnlyList<string> Roles);
 public sealed record RoleDto(Guid Id, string Code, string NameAr);
 public sealed record UserScopeDto(Guid Id, ScopeType ScopeType, Guid? RegionId, Guid? FacilityId, Guid? FacilityUnitId, bool IsActive);
-public sealed record AssignScopeRequest(ScopeType ScopeType, Guid? RegionId, Guid? FacilityId, Guid? FacilityUnitId);
-public sealed record AssignRoleRequest(string RoleCode);
+public sealed record AssignScopeRequest(ScopeType ScopeType, Guid? RegionId, Guid? FacilityId, Guid? FacilityUnitId, string? Reason);
+public sealed record AssignRoleRequest(string RoleCode, string? Reason);
 public sealed record MeDto(Guid Id, string DisplayNameAr, string? Email, IReadOnlyList<string> Permissions, IReadOnlyList<UserScopeDto> Scopes);
 
 public sealed class AssignScopeRequestValidator : AbstractValidator<AssignScopeRequest>
@@ -18,15 +19,19 @@ public sealed class AssignScopeRequestValidator : AbstractValidator<AssignScopeR
     public AssignScopeRequestValidator()
     {
         RuleFor(x => x.ScopeType).IsInEnum();
+        RuleFor(x => x.Reason).MaximumLength(500);
         RuleFor(x => x)
-            .Must(x => x.ScopeType is not (ScopeType.Region or ScopeType.MultipleRegions) || x.RegionId.HasValue)
-            .WithMessage("معرف المنطقة مطلوب لهذا النوع من النطاق.");
-        RuleFor(x => x)
-            .Must(x => x.ScopeType is not (ScopeType.Facility or ScopeType.MultipleFacilities) || x.FacilityId.HasValue)
-            .WithMessage("معرف السجن مطلوب لهذا النوع من النطاق.");
-        RuleFor(x => x)
-            .Must(x => x.ScopeType != ScopeType.FacilityUnit || (x.FacilityId.HasValue && x.FacilityUnitId.HasValue))
-            .WithMessage("معرف السجن والوحدة مطلوبان لنطاق الوحدة.");
+            .Custom((x, ctx) =>
+            {
+                try
+                {
+                    PrivilegeGuard.ValidateScopeShape(x.ScopeType, x.RegionId, x.FacilityId, x.FacilityUnitId);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    ctx.AddFailure(ex.Message);
+                }
+            });
     }
 }
 
@@ -44,7 +49,8 @@ public interface IUserAdminService
 public sealed class UserAdminService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
-    IAuditService audit) : IUserAdminService
+    IAuditService audit,
+    IPrivilegeGuard privilegeGuard) : IUserAdminService
 {
     public Task<MeDto> GetMeAsync(CancellationToken cancellationToken = default)
     {
@@ -54,7 +60,7 @@ public sealed class UserAdminService(
         }
 
         var user = db.Users.First(u => u.Id == currentUser.UserId.Value);
-        var scopes = db.UserScopes.Where(s => s.UserId == user.Id && s.IsActive && !s.IsDeleted)
+        var scopes = db.UserScopes.Where(s => s.UserId == user.Id && s.IsActive)
             .Select(s => new UserScopeDto(s.Id, s.ScopeType, s.RegionId, s.FacilityId, s.FacilityUnitId, s.IsActive))
             .ToList();
 
@@ -68,8 +74,8 @@ public sealed class UserAdminService(
 
     public Task<PagedResult<UserDto>> ListUsersAsync(PagedQuery query, CancellationToken cancellationToken = default)
     {
-        Ensure("Users.View");
-        var q = db.Users.Where(u => !u.IsDeleted);
+        Ensure(PermissionCodes.UsersView);
+        var q = db.Users.AsQueryable();
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim();
@@ -99,8 +105,8 @@ public sealed class UserAdminService(
 
     public Task<UserDto?> GetUserAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        Ensure("Users.View");
-        var u = db.Users.FirstOrDefault(x => x.Id == id && !x.IsDeleted);
+        Ensure(PermissionCodes.UsersView);
+        var u = db.Users.FirstOrDefault(x => x.Id == id);
         if (u is null)
         {
             return Task.FromResult<UserDto?>(null);
@@ -115,10 +121,13 @@ public sealed class UserAdminService(
 
     public async Task AssignRoleAsync(Guid userId, AssignRoleRequest request, CancellationToken cancellationToken = default)
     {
-        Ensure("Roles.Manage");
-        var user = db.Users.FirstOrDefault(u => u.Id == userId && !u.IsDeleted)
-            ?? throw new KeyNotFoundException("المستخدم غير موجود.");
-        var role = db.Roles.FirstOrDefault(r => r.Code == request.RoleCode && !r.IsDeleted)
+        privilegeGuard.EnsureCanAssignRole(userId, request.RoleCode);
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            throw new InvalidOperationException("سبب تعيين الدور مطلوب.");
+        }
+
+        var role = db.Roles.FirstOrDefault(r => r.Code == request.RoleCode)
             ?? throw new KeyNotFoundException("الدور غير موجود.");
 
         if (db.UserRoles.Any(ur => ur.UserId == userId && ur.RoleId == role.Id))
@@ -132,7 +141,6 @@ public sealed class UserAdminService(
             RoleId = role.Id,
             AssignedBy = currentUser.ExternalSubject
         });
-        await db.SaveChangesAsync(cancellationToken);
 
         await audit.WriteAsync(new AuditEntry
         {
@@ -141,14 +149,16 @@ public sealed class UserAdminService(
             EntityType = nameof(User),
             EntityId = userId.ToString(),
             NewValues = new { role.Code },
-            Reason = "تعيين دور"
+            Reason = request.Reason
         }, cancellationToken);
+
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public Task<IReadOnlyList<UserScopeDto>> ListScopesAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        Ensure("Scopes.Manage");
-        var items = db.UserScopes.Where(s => s.UserId == userId && !s.IsDeleted)
+        Ensure(PermissionCodes.ScopesManage);
+        var items = db.UserScopes.Where(s => s.UserId == userId)
             .Select(s => new UserScopeDto(s.Id, s.ScopeType, s.RegionId, s.FacilityId, s.FacilityUnitId, s.IsActive))
             .ToList();
         return Task.FromResult<IReadOnlyList<UserScopeDto>>(items);
@@ -156,13 +166,30 @@ public sealed class UserAdminService(
 
     public async Task<UserScopeDto> AssignScopeAsync(Guid userId, AssignScopeRequest request, CancellationToken cancellationToken = default)
     {
-        Ensure("Scopes.Manage");
-        if (!db.Users.Any(u => u.Id == userId && !u.IsDeleted))
+        privilegeGuard.EnsureCanAssignScope(userId, request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId);
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            throw new InvalidOperationException("سبب تعيين النطاق مطلوب.");
+        }
+
+        if (!db.Users.Any(u => u.Id == userId))
         {
             throw new KeyNotFoundException("المستخدم غير موجود.");
         }
 
-        var scope = new UserScope
+        var duplicate = db.UserScopes.Any(s =>
+            s.UserId == userId &&
+            s.IsActive &&
+            s.ScopeType == request.ScopeType &&
+            s.RegionId == request.RegionId &&
+            s.FacilityId == request.FacilityId &&
+            s.FacilityUnitId == request.FacilityUnitId);
+        if (duplicate)
+        {
+            throw new InvalidOperationException("نطاق مكافئ نشط موجود مسبقًا.");
+        }
+
+        var scopeEntity = new UserScope
         {
             UserId = userId,
             ScopeType = request.ScopeType,
@@ -171,26 +198,27 @@ public sealed class UserAdminService(
             FacilityUnitId = request.FacilityUnitId,
             CreatedBy = currentUser.ExternalSubject
         };
-        db.Add(scope);
-        await db.SaveChangesAsync(cancellationToken);
+        db.Add(scopeEntity);
 
         await audit.WriteAsync(new AuditEntry
         {
             Action = "AssignScope",
             Module = "Identity",
             EntityType = nameof(UserScope),
-            EntityId = scope.Id.ToString(),
-            NewValues = request,
-            Reason = "تعيين نطاق تنظيمي"
+            EntityId = scopeEntity.Id.ToString(),
+            NewValues = new { request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId },
+            Reason = request.Reason
         }, cancellationToken);
 
-        return new UserScopeDto(scope.Id, scope.ScopeType, scope.RegionId, scope.FacilityId, scope.FacilityUnitId, scope.IsActive);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return new UserScopeDto(scopeEntity.Id, scopeEntity.ScopeType, scopeEntity.RegionId, scopeEntity.FacilityId, scopeEntity.FacilityUnitId, scopeEntity.IsActive);
     }
 
     public Task<IReadOnlyList<RoleDto>> ListRolesAsync(CancellationToken cancellationToken = default)
     {
-        Ensure("Users.View");
-        var items = db.Roles.Where(r => !r.IsDeleted)
+        Ensure(PermissionCodes.UsersView);
+        var items = db.Roles
             .OrderBy(r => r.Code)
             .Select(r => new RoleDto(r.Id, r.Code, r.NameAr))
             .ToList();

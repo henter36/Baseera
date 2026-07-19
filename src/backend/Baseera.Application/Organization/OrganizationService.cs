@@ -103,7 +103,6 @@ public sealed class OrganizationService(
         region.UpdatedAtUtc = DateTimeOffset.UtcNow;
         region.UpdatedBy = currentUser.ExternalSubject;
         db.Update(region);
-        await db.SaveChangesAsync(cancellationToken);
 
         await audit.WriteAsync(new AuditEntry
         {
@@ -115,6 +114,8 @@ public sealed class OrganizationService(
             NewValues = new { region.NameAr, region.IsActive },
             Reason = "تحديث بيانات المنطقة"
         }, cancellationToken);
+
+        await db.SaveChangesAsync(cancellationToken);
 
         return new RegionDto(region.Id, region.Code, region.NameAr, region.IsActive, region.CreatedAtUtc, Convert.ToBase64String(region.RowVersion));
     }
@@ -186,8 +187,6 @@ public sealed class OrganizationService(
             CreatedBy = currentUser.ExternalSubject
         };
         db.Add(facility);
-        await db.SaveChangesAsync(cancellationToken);
-
         await audit.WriteAsync(new AuditEntry
         {
             Action = "Create",
@@ -196,6 +195,7 @@ public sealed class OrganizationService(
             EntityId = facility.Id.ToString(),
             NewValues = new { facility.Code, facility.NameAr, facility.RegionId }
         }, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
 
         return new FacilityDto(facility.Id, facility.RegionId, facility.Code, facility.NameAr, facility.FacilityType, facility.IsActive, Convert.ToBase64String(facility.RowVersion));
     }

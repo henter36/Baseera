@@ -1,6 +1,7 @@
 namespace Baseera.Infrastructure.Audit;
 
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Baseera.Application.Abstractions;
 using Baseera.Domain.Audit;
 using Baseera.Infrastructure.Persistence;
@@ -13,7 +14,15 @@ public sealed class AuditService(BaseeraDbContext db, ICurrentUser currentUser, 
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public async Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default)
+    private static readonly Regex SecretPattern = new(
+        "(password|secret|clientsecret|token|authorization|connectionstring|apikey|access_token|refresh_token)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Stages an append-only audit row in the same DbContext. Caller must SaveChanges
+    /// so operational change + audit commit atomically.
+    /// </summary>
+    public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default)
     {
         var log = new AuditLog
         {
@@ -35,7 +44,7 @@ public sealed class AuditService(BaseeraDbContext db, ICurrentUser currentUser, 
         };
 
         db.AuditLogs.Add(log);
-        await db.SaveChangesAsync(cancellationToken);
+        return Task.CompletedTask;
     }
 
     private static string? SerializeSafe(object? value)
@@ -46,10 +55,7 @@ public sealed class AuditService(BaseeraDbContext db, ICurrentUser currentUser, 
         }
 
         var json = JsonSerializer.Serialize(value, JsonOptions);
-        // Never persist obvious secrets.
-        if (json.Contains("password", StringComparison.OrdinalIgnoreCase) ||
-            json.Contains("access_token", StringComparison.OrdinalIgnoreCase) ||
-            json.Contains("refresh_token", StringComparison.OrdinalIgnoreCase))
+        if (SecretPattern.IsMatch(json))
         {
             return "{\"redacted\":true}";
         }

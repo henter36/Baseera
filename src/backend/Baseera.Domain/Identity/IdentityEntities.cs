@@ -10,6 +10,7 @@ public class User : SoftDeletableEntity
     public string DisplayNameAr { get; set; } = string.Empty;
     public string? Email { get; set; }
     public bool IsActive { get; set; } = true;
+    public UserProvisioningStatus ProvisioningStatus { get; set; } = UserProvisioningStatus.Active;
     public DateTimeOffset? LastLoginAtUtc { get; set; }
     public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
     public ICollection<UserScope> UserScopes { get; set; } = new List<UserScope>();
@@ -77,6 +78,12 @@ public static class PermissionCodes
     public const string AttachmentsUpload = "Attachments.Upload";
     public const string AttachmentsDownload = "Attachments.Download";
     public const string AttachmentsDownloadSensitive = "Attachments.DownloadSensitive";
+    public const string UsersArchive = "Users.Archive";
+    public const string UsersRestore = "Users.Restore";
+    public const string OrganizationArchive = "Organization.Archive";
+    public const string OrganizationRestore = "Organization.Restore";
+    public const string GrantGlobalScope = "Scopes.GrantGlobal";
+    public const string GrantHeadquartersScope = "Scopes.GrantHeadquarters";
 
     public const string VehiclesView = "Vehicles.View";
     public const string VehiclesCreate = "Vehicles.Create";

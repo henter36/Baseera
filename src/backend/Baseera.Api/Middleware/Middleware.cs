@@ -83,3 +83,23 @@ public sealed class CurrentUserMiddleware(RequestDelegate next)
         await next(context);
     }
 }
+
+public sealed class ProvisionedUserMiddleware(RequestDelegate next)
+{
+    public async Task InvokeAsync(HttpContext context, Baseera.Infrastructure.Identity.CurrentUser currentUser)
+    {
+        if (context.User.Identity?.IsAuthenticated == true && !currentUser.IsAuthenticated)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                title = "غير مصرح",
+                detail = "الحساب غير مُفعّل أو غير مُProvisioning في المنصة.",
+                status = 403
+            });
+            return;
+        }
+
+        await next(context);
+    }
+}

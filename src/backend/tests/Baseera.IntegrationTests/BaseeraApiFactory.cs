@@ -1,3 +1,4 @@
+using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Infrastructure.Persistence;
@@ -6,29 +7,41 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Xunit;
 
 namespace Baseera.IntegrationTests;
 
 public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"Baseera_Test_{Guid.NewGuid():N}";
+    private readonly string _connectionString;
+
+    public BaseeraApiFactory()
+    {
+        var raw = Environment.GetEnvironmentVariable("BASEERA_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            // Fixture must construct even when tests are skipped; no credential fallback.
+            _connectionString = "Server=127.0.0.1,1433;Database=Baseera_Skip;Integrated Security=true;Encrypt=False;TrustServerCertificate=True";
+            return;
+        }
+
+        var builder = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = raw };
+        builder["Database"] = _databaseName;
+        _connectionString = builder.ConnectionString;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         builder.ConfigureAppConfiguration((_, config) =>
         {
-            var connection = Environment.GetEnvironmentVariable("BASEERA_TEST_CONNECTION")
-                ?? "Server=127.0.0.1,1433;Database=Baseera_Test_Template;User Id=sa;Password=***REMOVED***;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true";
-
-            var builderCs = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = connection };
-            builderCs["Database"] = _databaseName;
-
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:Baseera"] = builderCs.ConnectionString,
+                ["ConnectionStrings:Baseera"] = _connectionString,
                 ["Auth:UseTestAuth"] = "true",
                 ["Seed:DemoOrganization"] = "true",
+                ["Database:ApplyMigrationsOnStartup"] = "true",
                 ["Attachments:RootPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName)
             });
         });
@@ -43,7 +56,7 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.ExternalSubject == subject);
+        var user = await db.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.ExternalSubject == subject);
         if (user is null)
         {
             user = new User
@@ -52,9 +65,18 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
                 UserName = subject,
                 DisplayNameAr = displayName,
                 Email = $"{subject}@test.local",
-                IsActive = true
+                IsActive = true,
+                ProvisioningStatus = UserProvisioningStatus.Active
             };
             db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+        else if (user.IsDeleted)
+        {
+            user.IsDeleted = false;
+            user.DeletedAtUtc = null;
+            user.IsActive = true;
+            user.ProvisioningStatus = UserProvisioningStatus.Active;
             await db.SaveChangesAsync();
         }
 
@@ -79,6 +101,15 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
             });
         }
 
+        await db.SaveChangesAsync();
+    }
+
+    public async Task MarkAttachmentCleanAsync(Guid attachmentId)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var attachment = await db.Attachments.FirstAsync(a => a.Id == attachmentId);
+        attachment.ScanStatus = AttachmentScanStatus.Clean;
         await db.SaveChangesAsync();
     }
 
@@ -107,5 +138,19 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         }
 
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>
+/// Skips the entire assembly when BASEERA_TEST_CONNECTION is missing.
+/// </summary>
+public sealed class IntegrationConnectionFactAttribute : FactAttribute
+{
+    public IntegrationConnectionFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("BASEERA_TEST_CONNECTION")))
+        {
+            Skip = "BASEERA_TEST_CONNECTION is not set.";
+        }
     }
 }

@@ -17,7 +17,10 @@ public static class InfrastructureServiceCollectionExtensions
             ?? throw new InvalidOperationException("Connection string 'Baseera' is missing.");
 
         services.AddDbContext<BaseeraDbContext>(options =>
-            options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(3)));
+        {
+            options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(3));
+            options.AddInterceptors(new AuditImmutabilityInterceptor());
+        });
 
         services.AddScoped<IBaseeraDbContext>(sp => sp.GetRequiredService<BaseeraDbContext>());
         services.AddHttpContextAccessor();

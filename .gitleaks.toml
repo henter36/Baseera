@@ -1,0 +1,24 @@
+# Gitleaks configuration for Baseera
+title = "Baseera"
+
+[extend]
+useDefault = true
+
+# Historical finding in the initial Phase A commit: a SQL SA password was
+# embedded in an integration-test fallback string. The working tree no longer
+# contains credentials. That password must be rotated wherever it was reused.
+# Do NOT add new allowlist entries for current-tree secrets.
+[[allowlists]]
+description = "Pre-remediation historical commit; credential removed from tree and must be rotated operationally"
+commits = [
+  "38abac77685292b4165ceed586211ea7bc236126"
+]
+
+[[allowlists]]
+description = "Placeholder connection strings and Entra template IDs (not real secrets)"
+regexes = [
+  '''YOUR_LOCAL_SA_PASSWORD''',
+  '''YOUR_TENANT_ID''',
+  '''YOUR_API_CLIENT_ID''',
+  '''00000000-0000-0000-0000-00000000000[123]'''
+]

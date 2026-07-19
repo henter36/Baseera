@@ -14,7 +14,7 @@ public sealed class ScopeIsolationTests : IClassFixture<BaseeraApiFactory>
 
     public ScopeIsolationTests(BaseeraApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Facility_user_cannot_see_other_facility_by_id()
     {
         await _factory.SeedUserAsync(
@@ -40,7 +40,7 @@ public sealed class ScopeIsolationTests : IClassFixture<BaseeraApiFactory>
         Assert.DoesNotContain(list.Items, f => f.Id == SeedIds.FacilityB1);
     }
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Regional_director_sees_only_own_region_facilities()
     {
         await _factory.SeedUserAsync(
@@ -57,7 +57,7 @@ public sealed class ScopeIsolationTests : IClassFixture<BaseeraApiFactory>
         Assert.DoesNotContain(list.Items, f => f.Id == SeedIds.FacilityB1);
     }
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Headquarters_global_scope_sees_all_regions()
     {
         await _factory.SeedUserAsync(
@@ -74,7 +74,7 @@ public sealed class ScopeIsolationTests : IClassFixture<BaseeraApiFactory>
         Assert.Contains(regions.Items, r => r.Id == SeedIds.RegionB);
     }
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Facility_user_cannot_create_facility_in_other_region()
     {
         await _factory.SeedUserAsync(
@@ -103,7 +103,7 @@ public sealed class AuditAndAttachmentTests : IClassFixture<BaseeraApiFactory>
 
     public AuditAndAttachmentTests(BaseeraApiFactory factory) => _factory = factory;
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Updating_region_writes_audit_log()
     {
         await _factory.SeedUserAsync(
@@ -129,7 +129,7 @@ public sealed class AuditAndAttachmentTests : IClassFixture<BaseeraApiFactory>
         Assert.Contains(audits!.Items, a => a.Action == "Update" && a.EntityId == SeedIds.RegionA.ToString());
     }
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Optimistic_concurrency_rejects_stale_rowversion()
     {
         await _factory.SeedUserAsync(
@@ -159,7 +159,7 @@ public sealed class AuditAndAttachmentTests : IClassFixture<BaseeraApiFactory>
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
     }
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Attachment_rejects_disallowed_content_type_and_logs_download()
     {
         await _factory.SeedUserAsync(
@@ -194,6 +194,12 @@ public sealed class AuditAndAttachmentTests : IClassFixture<BaseeraApiFactory>
         Assert.Equal(HttpStatusCode.Created, uploaded.StatusCode);
         var body = await uploaded.Content.ReadFromJsonAsync<JsonElement>();
         var id = body.GetProperty("id").GetGuid();
+        Assert.Equal(0, body.GetProperty("scanStatus").GetInt32());
+
+        var blocked = await client.GetAsync($"/api/v1/attachments/{id}/download");
+        Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
+
+        await _factory.MarkAttachmentCleanAsync(id);
 
         var download = await client.GetAsync($"/api/v1/attachments/{id}/download");
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
@@ -203,7 +209,7 @@ public sealed class AuditAndAttachmentTests : IClassFixture<BaseeraApiFactory>
         Assert.Contains(audits!.Items, a => a.Action == "Download" && a.EntityId == id.ToString());
     }
 
-    [Fact]
+    [IntegrationConnectionFact]
     public async Task Audit_logs_have_no_update_endpoint()
     {
         await _factory.SeedUserAsync(
@@ -215,6 +221,53 @@ public sealed class AuditAndAttachmentTests : IClassFixture<BaseeraApiFactory>
         var client = _factory.CreateAuthenticatedClient("auditor-user");
         var response = await client.PutAsJsonAsync("/api/v1/audit-logs/00000000-0000-0000-0000-000000000001", new { action = "hack" });
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Facility_a1_user_cannot_download_facility_b1_attachment()
+    {
+        await _factory.SeedUserAsync(
+            "attach-admin",
+            "مسؤول مرفقات",
+            [RoleCodes.SystemAdministrator],
+            (ScopeType.Global, null, null));
+        await _factory.SeedUserAsync(
+            "facility-a1-attach",
+            "مستخدم سجن أ1",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+
+        var admin = _factory.CreateAuthenticatedClient("attach-admin");
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(SeedIds.FacilityB1.ToString()), "entityId");
+        content.Add(new StringContent("Facility"), "entityType");
+        content.Add(new StringContent("Internal"), "classification");
+        var bytes = Encoding.UTF8.GetBytes("مرفق سجن ب1");
+        var fileContent = new ByteArrayContent(bytes);
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain");
+        content.Add(fileContent, "file", "b1.txt");
+
+        var uploaded = await admin.PostAsync("/api/v1/attachments", content);
+        Assert.Equal(HttpStatusCode.Created, uploaded.StatusCode);
+        var body = await uploaded.Content.ReadFromJsonAsync<JsonElement>();
+        var id = body.GetProperty("id").GetGuid();
+        await _factory.MarkAttachmentCleanAsync(id);
+
+        var a1 = _factory.CreateAuthenticatedClient("facility-a1-attach");
+        var denied = await a1.GetAsync($"/api/v1/attachments/{id}/download");
+        Assert.True(
+            denied.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound,
+            $"Expected Forbidden/NotFound, got {denied.StatusCode}");
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Unprovisioned_test_user_is_forbidden()
+    {
+        var client = _factory.CreateAuthenticatedClient("never-seeded-user");
+        var response = await client.GetAsync("/api/v1/me");
+        Assert.True(
+            response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized,
+            $"Expected Forbidden/Unauthorized, got {response.StatusCode}");
     }
 }
 

@@ -41,6 +41,7 @@ public interface ICurrentUser
     IReadOnlyCollection<UserScopeSnapshot> Scopes { get; }
     bool HasPermission(string permissionCode);
     bool IsGlobalScope { get; }
+    bool HasHeadquartersScope { get; }
 }
 
 public sealed record UserScopeSnapshot(
@@ -51,6 +52,8 @@ public sealed record UserScopeSnapshot(
 
 public interface IOrganizationalScopeService
 {
+    bool HasNationalAccess { get; }
+    bool HasHeadquartersAccess { get; }
     bool CanAccessRegion(Guid regionId);
     bool CanAccessFacility(Guid facilityId);
     bool CanAccessFacilityUnit(Guid facilityUnitId);

@@ -1,23 +1,48 @@
-import { PublicClientApplication } from '@azure/msal-browser'
+import {
+  InteractionRequiredAuthError,
+  PublicClientApplication,
+  type AccountInfo,
+  type AuthenticationResult,
+} from '@azure/msal-browser'
 import { MsalProvider } from '@azure/msal-react'
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api, getAuthMode, setAccessTokenProvider, setTestSubject, type Me } from '../api/client'
-import { msalConfig } from './msalConfig'
+import {
+  api,
+  ApiError,
+  getAuthMode,
+  isTestAuthAllowed,
+  setAccessTokenProvider,
+  setTestSubject,
+  type Me,
+} from '../api/client'
+import { getMsalConfig, validateEntraEnv } from './msalConfig'
 
 type AuthContextValue = {
   me: Me | null
   loading: boolean
   error: string | null
+  configError: string | null
   isAuthenticated: boolean
   loginTest: (subject: string) => Promise<void>
-  logout: () => void
+  loginEntra: () => Promise<void>
+  logout: () => Promise<void>
   hasPermission: (code: string) => boolean
   refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const msalInstance = getAuthMode() === 'entra' ? new PublicClientApplication(msalConfig) : null
+let msalInstance: PublicClientApplication | null = null
+let msalInitError: string | null = null
+
+try {
+  if (getAuthMode() === 'entra') {
+    validateEntraEnv()
+    msalInstance = new PublicClientApplication(getMsalConfig())
+  }
+} catch (err) {
+  msalInitError = err instanceof Error ? err.message : 'فشل إعداد Entra ID'
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const content = <AuthState>{children}</AuthState>
@@ -25,6 +50,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return <MsalProvider instance={msalInstance}>{content}</MsalProvider>
   }
   return content
+}
+
+async function acquireToken(account: AccountInfo): Promise<string | null> {
+  if (!msalInstance) return null
+  const scopes = getMsalConfig().auth.scopes
+  try {
+    const result = await msalInstance.acquireTokenSilent({ account, scopes })
+    return result.accessToken
+  } catch (err) {
+    if (err instanceof InteractionRequiredAuthError) {
+      const result = await msalInstance.acquireTokenPopup({ account, scopes })
+      return result.accessToken
+    }
+    throw err
+  }
 }
 
 function AuthState({ children }: { children: ReactNode }) {
@@ -41,39 +81,84 @@ function AuthState({ children }: { children: ReactNode }) {
       setMe(profile)
     } catch (err) {
       setMe(null)
-      setError(err instanceof Error ? err.message : 'تعذر تحميل الجلسة')
+      if (err instanceof ApiError && err.status === 401) {
+        setError('انتهت الجلسة. سجّل الدخول مجددًا.')
+      } else {
+        setError(err instanceof Error ? err.message : 'تعذر تحميل الجلسة')
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    if (mode === 'entra' && msalInstance) {
-      setAccessTokenProvider(async () => {
-        const accounts = msalInstance.getAllAccounts()
-        if (!accounts.length) return null
-        const result = await msalInstance.acquireTokenSilent({
-          account: accounts[0],
-          scopes: msalConfig.auth.scopes,
+    let cancelled = false
+    ;(async () => {
+      if (msalInitError) {
+        setError(msalInitError)
+        setLoading(false)
+        return
+      }
+
+      if (mode === 'entra' && msalInstance) {
+        await msalInstance.initialize()
+        const redirect = await msalInstance.handleRedirectPromise()
+        const account = redirect?.account ?? msalInstance.getAllAccounts()[0] ?? null
+        setAccessTokenProvider(async () => {
+          const active = msalInstance!.getActiveAccount() ?? msalInstance!.getAllAccounts()[0]
+          if (!active) return null
+          return acquireToken(active)
         })
-        return result.accessToken
-      })
+        if (account) {
+          msalInstance.setActiveAccount(account)
+          if (!cancelled) await refresh()
+          return
+        }
+      }
+
+      if (isTestAuthAllowed()) {
+        if (!cancelled) await refresh()
+        return
+      }
+
+      if (!cancelled) setLoading(false)
+    })().catch((err) => {
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : 'فشل تهيئة المصادقة')
+        setLoading(false)
+      }
+    })
+    return () => {
+      cancelled = true
     }
-    void refresh()
   }, [mode])
 
   const value = useMemo<AuthContextValue>(() => ({
     me,
     loading,
     error,
+    configError: msalInitError,
     isAuthenticated: !!me,
     loginTest: async (subject: string) => {
       setTestSubject(subject)
       await refresh()
     },
-    logout: () => {
+    loginEntra: async () => {
+      if (!msalInstance) throw new Error(msalInitError || 'Entra غير مهيأ')
+      await msalInstance.initialize()
+      const result: AuthenticationResult = await msalInstance.loginPopup({
+        scopes: getMsalConfig().auth.scopes,
+      })
+      msalInstance.setActiveAccount(result.account)
+      await refresh()
+    },
+    logout: async () => {
       setMe(null)
-      if (mode === 'test') setTestSubject('')
+      if (mode === 'entra' && msalInstance) {
+        const account = msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0]
+        await msalInstance.logoutPopup({ account: account ?? undefined })
+      }
+      if (isTestAuthAllowed()) setTestSubject('')
     },
     hasPermission: (code: string) => !!me?.permissions.includes(code),
     refresh,

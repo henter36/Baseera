@@ -1,0 +1,108 @@
+name: Baseera CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: ${{ secrets.BASEERA_CI_SA_PASSWORD }}
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BASEERA_TEST_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
+      BASEERA_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore src/backend/Baseera.slnx
+      - name: Build
+        run: dotnet build src/backend/Baseera.slnx --no-restore -c Release
+      - name: Vulnerable package gate
+        run: |
+          set -euo pipefail
+          output=$(dotnet list src/backend/Baseera.slnx package --vulnerable --include-transitive 2>&1 || true)
+          echo "$output"
+          if echo "$output" | grep -q "has the following vulnerable packages"; then
+            if echo "$output" | grep -qiE '^\s*(Critical|High)\b|> .*(Critical|High)'; then
+              echo "Vulnerable High/Critical packages detected"
+              exit 1
+            fi
+            # Fail on any listed vulnerable package with High/Critical severity columns
+            if echo "$output" | grep -E 'GHSA-' >/dev/null && echo "$output" | grep -qiE 'Critical|High'; then
+              echo "Vulnerable High/Critical packages detected"
+              exit 1
+            fi
+          fi
+      - name: Unit tests
+        run: dotnet test src/backend/tests/Baseera.UnitTests --no-build -c Release --verbosity normal
+      - name: Integration tests
+        run: dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --verbosity normal
+      - name: Apply migrations
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.0 || true
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef database update --project src/backend/Baseera.Infrastructure --startup-project src/backend/Baseera.Api
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc -b --pretty false
+      - run: npm run lint
+      - run: npm test
+      - name: Refuse TestAuth production build
+        run: |
+          VITE_AUTH_MODE=test node scripts/check-production-auth.mjs && exit 1 || true
+          if VITE_AUTH_MODE=test node scripts/check-production-auth.mjs; then
+            echo "expected failure"
+            exit 1
+          fi
+      - name: Production build
+        env:
+          VITE_AUTH_MODE: entra
+          VITE_ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000001
+          VITE_ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000002
+          VITE_ENTRA_API_SCOPE: api://00000000-0000-0000-0000-000000000003/.default
+        run: npm run build
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high
