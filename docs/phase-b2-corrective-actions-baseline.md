@@ -1,6 +1,6 @@
 # Phase B.2.1 Corrective Actions Baseline
 
-تاريخ التثبيت: 2026-07-19
+تاريخ خط الأساس: 2026-07-19
 
 ## Branch
 
@@ -26,7 +26,7 @@ The same command was then run outside the managed sandbox because the first run 
 
 ```text
 Build succeeded.
-Warnings: 2
+Warnings: 2 occurrences of the same NU1510 warning
 Errors: 0
 Time Elapsed: 00:00:23.22
 ```
@@ -117,7 +117,7 @@ Result:
 
 ```text
 Build succeeded.
-Warnings: 2
+Warnings: 2 occurrences of the same NU1510 warning
 Errors: 0
 ```
 
