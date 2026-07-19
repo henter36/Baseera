@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ApiError, getAuthMode, isTestAuthAllowed } from '../api/client'
 
 describe('production auth client guards', () => {
