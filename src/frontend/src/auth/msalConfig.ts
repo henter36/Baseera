@@ -2,11 +2,12 @@ const NIL_GUID = /^0{8}-0{4}-0{4}-0{4}-0{12}$/i
 const ZEROISH_GUID = /00000000-0000-0000-0000-00000000000[0-9a-f]/i
 
 function isPlaceholder(value: unknown): boolean {
-  if (!value) return true
-  const text = String(value)
-  if (text.includes('YOUR_')) return true
-  if (NIL_GUID.test(text)) return true
-  if (ZEROISH_GUID.test(text)) return true
+  if (typeof value !== 'string' || value.length === 0) {
+    return true
+  }
+  if (value.includes('YOUR_')) return true
+  if (NIL_GUID.test(value)) return true
+  if (ZEROISH_GUID.test(value)) return true
   return false
 }
 
