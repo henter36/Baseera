@@ -118,7 +118,7 @@ NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra place
 | Integration | **52** (CI) | 0 |
 | Frontend | **78** | 0 |
 
-**Post-fix tip SHA:** _(filled after push)_
+**Post-fix tip SHA:** `5b5d7ff1653af8b8d3e8f706c7069fb970b8c282`
 
 ### Gates
 
