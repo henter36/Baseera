@@ -35,10 +35,15 @@ All transitions require matching `RowVersion` and write `NoteStatusHistory` + `A
 
 For `Severity = Critical`:
 
-- `LastProcessedByUserId` (start-work / submit-for-verification) must **not** equal the verifier on `verify-closure`
+- Any user who performed **actual processing** on the note cannot execute `verify-closure`
+- Processing is identified from append-only `NoteStatusHistory` (not `LastProcessedByUserId` alone):
+  - `Assigned → InProgress` / `Reopened → InProgress` (`start-work`)
+  - `InProgress → PendingVerification` (`submit-for-verification`)
+- `PendingVerification → InProgress` (`return-for-rework`) is **not** treated as processing
 - Verifier needs `Notes.VerifyClosure` **and** organizational scope
 - Out-of-scope verifier → 404 (anti-enumeration)
 - **SystemAdministrator does not bypass SoD**
+- SoD runs **before** any note/assignment/history/audit mutation
 
 Non-critical notes: same transition path; SoD check does not block same-user closure.
 

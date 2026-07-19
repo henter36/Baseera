@@ -1,10 +1,11 @@
 # Phase B.1 — Completion Report
 
-**Branch:** `phase-b1-notes-core`  
+**Branch (implementation):** `phase-b1-notes-core` (merged)  
+**Merge commit:** `bda6bdd31ca83210ddf659994fe8e542a2367084`  
 **Base merge:** `5dc0b5b8efab8214c8a38cad839f8964f9f59f08` (PR #2 → `main`)  
 **Migration:** `20260719103156_PhaseB1NotesCore`  
-**PR:** https://github.com/henter36/Baseera/pull/3  
-**Decision (proposed):** Phase B.1 Conditionally Accepted — functional slice + CI/Sonar/Qlty green on PR #3; awaiting explicit human acceptance. **Do not merge until approved.**
+**PR:** https://github.com/henter36/Baseera/pull/3 (**merged**)  
+**Decision:** **Phase B.1 Accepted**
 
 ## Delivered
 
@@ -131,6 +132,40 @@ NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra place
 | Gitleaks | Passed |
 | CodeRabbit | Passed |
 | Open review threads | **0** |
+
+## Post-Merge Critical SoD Hardening
+
+**Branch:** `phase-b1-final-acceptance`  
+**Pre-fix SHA:** `bda6bdd31ca83210ddf659994fe8e542a2367084` (B.1 merge on `main`)  
+**Post-fix tip SHA:** `6b9da54`
+
+### Gap
+
+Critical SoD previously compared only `LastProcessedByUserId` to the closer. After User A started work and User B submitted for verification, A could still verify closure.
+
+### Fix
+
+`EnforceCriticalSoDAsync` queries append-only `NoteStatusHistory` for processing transitions:
+
+- `Assigned → InProgress` / `Reopened → InProgress` (start-work)
+- `InProgress → PendingVerification` (submit-for-verification)
+
+`PendingVerification → InProgress` (return-for-rework) is excluded. No migration change. SoD runs before any mutation.
+
+### Tests
+
+- Unit: all-processors rejection, SystemAdministrator, mutation-order, multi-user A→B→C, non-critical policy, assigner/creator/independent verifier success.
+- Integration: `Critical_note_all_processors_are_blocked_from_final_closure`, `Independent_verifier_outside_scope_cannot_close_critical_note`.
+
+### Counts
+
+| Suite | Count | Skipped |
+|-------|------:|--------:|
+| Unit | **236** | 0 |
+| Integration | **54** | 0 |
+| Frontend | **78** | 0 |
+
+## Rollback
 
 1. Revert the B.1 PR / migration `PhaseB1NotesCore` Down in a **test** environment only first.
 2. Do not edit prior merged migrations.

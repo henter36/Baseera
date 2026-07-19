@@ -24,11 +24,16 @@ public sealed class NoteWorkflowServiceTests : IDisposable
     {
         var reporter = NoteTestFixtures.AddUser(_db, "reporter");
         var actor = NoteTestFixtures.AddUser(_db, "actor");
-        var current = FakeUser(actor.Id, permissions);
+        return (BuildWorkflowForUser(actor.Id, permissions), actor.Id, reporter.Id);
+    }
+
+    private INoteWorkflowService BuildWorkflowForUser(Guid userId, params string[] permissions)
+    {
+        var current = FakeUser(userId, permissions);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
         var queries = new NoteQueryService(_db, current, scope, audit);
-        return (new NoteWorkflowService(_db, current, scope, audit, queries), actor.Id, reporter.Id);
+        return new NoteWorkflowService(_db, current, scope, audit, queries);
     }
 
     private static string RowVersionOf(OperationalNote note) => Convert.ToBase64String(note.RowVersion);
@@ -78,56 +83,230 @@ public sealed class NoteWorkflowServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Critical_note_processor_cannot_verify_closure_alone()
+    public async Task Critical_note_start_work_actor_cannot_verify_closure()
     {
-        var (workflow, actorId, reporterId) = BuildWorkflow(PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
-        var note = SeedNote(NoteStatus.PendingVerification, reporterId: reporterId, severity: NoteSeverity.Critical);
-        note.LastProcessedByUserId = actorId;
-        _db.SaveChanges();
-
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note))));
-        Assert.Contains("فصل الواجبات", ex.Message);
-    }
-
-    [Fact]
-    public async Task Different_verifier_can_close_a_critical_note()
-    {
-        var (workflow, _, reporterId) = BuildWorkflow(PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
         var processor = NoteTestFixtures.AddUser(_db, "processor");
-        var note = SeedNote(NoteStatus.PendingVerification, reporterId: reporterId, severity: NoteSeverity.Critical);
-        note.LastProcessedByUserId = processor.Id;
-        _db.SaveChanges();
+        var note = SeedPendingCritical(reporter.Id, processor.Id);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, NoteTestFixtures.AddUser(_db, "other").Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
 
-        var result = await workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note)));
-
-        Assert.Equal(NoteStatus.Closed, result.Status);
+        var workflow = BuildWorkflowForUser(processor.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        await AssertVerifyRejectedWithoutMutation(workflow, note);
     }
 
     [Fact]
-    public async Task Non_critical_note_can_be_closed_by_its_own_processor()
+    public async Task Critical_note_submit_for_verification_actor_cannot_verify_closure()
     {
-        var (workflow, actorId, reporterId) = BuildWorkflow(PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
-        var note = SeedNote(NoteStatus.PendingVerification, reporterId: reporterId, severity: NoteSeverity.Low);
-        note.LastProcessedByUserId = actorId;
-        _db.SaveChanges();
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var submitter = NoteTestFixtures.AddUser(_db, "submitter");
+        var starter = NoteTestFixtures.AddUser(_db, "starter");
+        var note = SeedPendingCritical(reporter.Id, submitter.Id);
+        AppendProcessingHistory(note.Id, starter.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, submitter.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
 
-        var result = await workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note)));
-
-        Assert.Equal(NoteStatus.Closed, result.Status);
+        var workflow = BuildWorkflowForUser(submitter.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        await AssertVerifyRejectedWithoutMutation(workflow, note);
     }
 
     [Fact]
-    public async Task SystemAdministrator_role_does_not_bypass_critical_sod()
+    public async Task Critical_note_earlier_processor_cannot_verify_after_another_user_submits()
     {
-        var (workflow, actorId, reporterId) = BuildWorkflow(PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
-        NoteTestFixtures.GrantPermissions(_db, actorId, RoleCodes.SystemAdministrator, PermissionCodes.NotesVerifyClosure);
-        var note = SeedNote(NoteStatus.PendingVerification, reporterId: reporterId, severity: NoteSeverity.Critical);
-        note.LastProcessedByUserId = actorId;
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var first = NoteTestFixtures.AddUser(_db, "first");
+        var second = NoteTestFixtures.AddUser(_db, "second");
+        var note = SeedPendingCritical(reporter.Id, second.Id);
+        AppendProcessingHistory(note.Id, first.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, second.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var workflow = BuildWorkflowForUser(first.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        await AssertVerifyRejectedWithoutMutation(workflow, note);
+    }
+
+    [Fact]
+    public async Task Critical_note_reopened_start_work_actor_cannot_verify_closure()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var processor = NoteTestFixtures.AddUser(_db, "reopen-processor");
+        var note = SeedPendingCritical(reporter.Id, processor.Id);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.Reopened, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, NoteTestFixtures.AddUser(_db, "submitter").Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var workflow = BuildWorkflowForUser(processor.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        await AssertVerifyRejectedWithoutMutation(workflow, note);
+    }
+
+    [Fact]
+    public async Task Critical_note_system_admin_processor_cannot_verify_closure()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var admin = NoteTestFixtures.AddUser(_db, "sysadmin");
+        NoteTestFixtures.GrantPermissions(_db, admin.Id, RoleCodes.SystemAdministrator, PermissionCodes.NotesVerifyClosure);
+        var note = SeedPendingCritical(reporter.Id, admin.Id);
+        AppendProcessingHistory(note.Id, admin.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, admin.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var workflow = BuildWorkflowForUser(admin.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        await AssertVerifyRejectedWithoutMutation(workflow, note);
+    }
+
+    [Fact]
+    public async Task Critical_note_processor_is_rejected_before_note_mutation()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var processor = NoteTestFixtures.AddUser(_db, "processor");
+        var assigner = NoteTestFixtures.AddUser(_db, "assigner");
+        var note = SeedPendingCritical(reporter.Id, processor.Id);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+        var assignment = new NoteAssignment
+        {
+            OperationalNoteId = note.Id,
+            AssignedToUserId = processor.Id,
+            AssignedByUserId = assigner.Id,
+            AssignedAtUtc = DateTimeOffset.UtcNow,
+            Reason = "تكليف",
+            IsCurrent = true
+        };
+        _db.NoteAssignments.Add(assignment);
         _db.SaveChanges();
+
+        var auditsBefore = _db.AuditLogs.Count();
+        var historyBefore = _db.NoteStatusHistories.Count(h => h.OperationalNoteId == note.Id);
+        var workflow = BuildWorkflowForUser(processor.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note))));
+
+        Assert.Equal(EntityState.Unchanged, _db.Entry(note).State);
+        Assert.Equal(NoteStatus.PendingVerification, note.Status);
+        Assert.Null(note.ClosedAtUtc);
+        Assert.Null(note.ClosedByUserId);
+        Assert.Null(note.ClosureSummary);
+        Assert.Null(_db.NoteAssignments.Single(a => a.Id == assignment.Id).CompletedAtUtc);
+        Assert.Equal(historyBefore, _db.NoteStatusHistories.Count(h => h.OperationalNoteId == note.Id));
+        Assert.Equal(auditsBefore, _db.AuditLogs.Count());
+        Assert.DoesNotContain(_db.AuditLogs, a => a.Action == "NoteClosed");
+    }
+
+    [Fact]
+    public async Task Critical_note_independent_verifier_can_close()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var processor = NoteTestFixtures.AddUser(_db, "processor");
+        var verifier = NoteTestFixtures.AddUser(_db, "verifier");
+        var note = SeedPendingCritical(reporter.Id, processor.Id);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var workflow = BuildWorkflowForUser(verifier.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var result = await workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note)));
+
+        Assert.Equal(NoteStatus.Closed, result.Status);
+        Assert.Equal(verifier.Id, result.ClosedByUserId);
+    }
+
+    [Fact]
+    public async Task Critical_note_assigner_who_never_processed_can_verify_if_authorized()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var processor = NoteTestFixtures.AddUser(_db, "processor");
+        var assigner = NoteTestFixtures.AddUser(_db, "assigner");
+        var note = SeedPendingCritical(reporter.Id, processor.Id);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+        // Assigner only appears as AssignedBy, never as processing history actor.
+        _db.NoteAssignments.Add(new NoteAssignment
+        {
+            OperationalNoteId = note.Id,
+            AssignedToUserId = processor.Id,
+            AssignedByUserId = assigner.Id,
+            AssignedAtUtc = DateTimeOffset.UtcNow,
+            Reason = "تكليف",
+            IsCurrent = true
+        });
+        _db.SaveChanges();
+
+        var workflow = BuildWorkflowForUser(assigner.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var result = await workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note)));
+        Assert.Equal(NoteStatus.Closed, result.Status);
+        Assert.Equal(assigner.Id, result.ClosedByUserId);
+    }
+
+    [Fact]
+    public async Task Critical_note_creator_who_never_processed_can_verify_if_authorized()
+    {
+        var creator = NoteTestFixtures.AddUser(_db, "creator");
+        var processor = NoteTestFixtures.AddUser(_db, "processor");
+        var note = SeedPendingCritical(creator.Id, processor.Id);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var workflow = BuildWorkflowForUser(creator.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var result = await workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note)));
+        Assert.Equal(NoteStatus.Closed, result.Status);
+        Assert.Equal(creator.Id, result.ClosedByUserId);
+    }
+
+    [Fact]
+    public async Task Non_critical_processor_can_verify_when_policy_allows()
+    {
+        // Policy: Critical SoD applies only to NoteSeverity.Critical.
+        // Non-critical notes may be verified by their own processor when authorized.
+        var (workflow, actorId, reporterId) = BuildWorkflow(PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var note = SeedNote(NoteStatus.PendingVerification, reporterId: reporterId, severity: NoteSeverity.Low);
+        note.LastProcessedByUserId = actorId;
+        AppendProcessingHistory(note.Id, actorId, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, actorId, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var result = await workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note)));
+        Assert.Equal(NoteStatus.Closed, result.Status);
+    }
+
+    [Fact]
+    public async Task Critical_multi_user_sequence_only_independent_verifier_succeeds()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var userA = NoteTestFixtures.AddUser(_db, "user-a");
+        var userB = NoteTestFixtures.AddUser(_db, "user-b");
+        var userC = NoteTestFixtures.AddUser(_db, "user-c");
+        var note = SeedPendingCritical(reporter.Id, userB.Id);
+        AppendProcessingHistory(note.Id, userA.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, userB.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var workflowA = BuildWorkflowForUser(userA.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var workflowB = BuildWorkflowForUser(userB.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var workflowC = BuildWorkflowForUser(userC.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+
+        await AssertVerifyRejectedWithoutMutation(workflowA, note);
+        await AssertVerifyRejectedWithoutMutation(workflowB, note);
+
+        var closed = await workflowC.VerifyClosureAsync(
+            note.Id,
+            new CloseNoteRequest("اعتماد مستقل", "تم التحقق", RowVersionOf(note)));
+        Assert.Equal(NoteStatus.Closed, closed.Status);
+        Assert.Equal(userC.Id, closed.ClosedByUserId);
+        Assert.Equal(1, _db.NoteStatusHistories.Count(h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Closed));
+        Assert.Equal(1, _db.AuditLogs.Count(a => a.Action == "NoteClosed" && a.EntityId == note.Id.ToString()));
+    }
+
+    [Fact]
+    public async Task Return_for_rework_actor_is_not_treated_as_processor_for_sod()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var processor = NoteTestFixtures.AddUser(_db, "processor");
+        var reviewer = NoteTestFixtures.AddUser(_db, "reviewer");
+        var note = SeedPendingCritical(reporter.Id, processor.Id);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.Assigned, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+        // Reviewer returned for rework (PendingVerification → InProgress) — not a processing participant.
+        AppendProcessingHistory(note.Id, reviewer.Id, NoteStatus.PendingVerification, NoteStatus.InProgress);
+        AppendProcessingHistory(note.Id, processor.Id, NoteStatus.InProgress, NoteStatus.PendingVerification);
+
+        var workflow = BuildWorkflowForUser(reviewer.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var result = await workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note)));
+        Assert.Equal(NoteStatus.Closed, result.Status);
+        Assert.Equal(reviewer.Id, result.ClosedByUserId);
     }
 
     [Fact]
@@ -206,6 +385,46 @@ public sealed class NoteWorkflowServiceTests : IDisposable
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             workflow.StartWorkAsync(note.Id, new TransitionNoteRequest("بدء", Convert.ToBase64String(note.RowVersion))));
+    }
+
+    private async Task AssertVerifyRejectedWithoutMutation(INoteWorkflowService workflow, OperationalNote note)
+    {
+        var auditsBefore = _db.AuditLogs.Count(a => a.Action == "NoteClosed");
+        var historyBefore = _db.NoteStatusHistories.Count(h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Closed);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note))));
+        Assert.Contains("فصل الواجبات", ex.Message);
+
+        _db.Entry(note).Reload();
+        Assert.Equal(NoteStatus.PendingVerification, note.Status);
+        Assert.Null(note.ClosedAtUtc);
+        Assert.Null(note.ClosedByUserId);
+        Assert.Null(note.ClosureSummary);
+        Assert.Equal(historyBefore, _db.NoteStatusHistories.Count(h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Closed));
+        Assert.Equal(auditsBefore, _db.AuditLogs.Count(a => a.Action == "NoteClosed"));
+    }
+
+    private OperationalNote SeedPendingCritical(Guid reporterId, Guid lastProcessorId)
+    {
+        var note = SeedNote(NoteStatus.PendingVerification, reporterId, NoteSeverity.Critical);
+        note.LastProcessedByUserId = lastProcessorId;
+        _db.SaveChanges();
+        return note;
+    }
+
+    private void AppendProcessingHistory(Guid noteId, Guid userId, NoteStatus from, NoteStatus to)
+    {
+        _db.NoteStatusHistories.Add(new NoteStatusHistory
+        {
+            OperationalNoteId = noteId,
+            FromStatus = from,
+            ToStatus = to,
+            ChangedByUserId = userId,
+            ChangedAtUtc = DateTimeOffset.UtcNow,
+            Reason = "اختبار"
+        });
+        _db.SaveChanges();
     }
 
     private async Task<IReadOnlyList<NoteStatusHistoryDto>> LoadHistoryAsync(Guid noteId)

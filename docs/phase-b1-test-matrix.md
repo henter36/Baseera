@@ -8,13 +8,15 @@
 | Integration | 21 | 0 |
 | Frontend | 16 | 0 |
 
-## After B.1 (local validation)
+## After B.1 merge (`bda6bdd`) + Final Acceptance SoD hardening
 
 | Suite | Passed | Skipped |
 |-------|--------|---------|
-| Unit | 201 | 0 |
-| Integration | 49 | 0 |
-| Frontend | 76 | 0 |
+| Unit | 236 | 0 |
+| Integration | 54 | 0 |
+| Frontend | 78 | 0 |
+
+(Pre-hardening tip on merge: Unit 228 / Integration 52 / Frontend 78.)
 
 ## Unit coverage (representative)
 
@@ -25,7 +27,9 @@
 | Scope shape | Global/HQ/Region/Facility/Unit |
 | Reference format | `OBS-########` |
 | Assignment XOR + reassignment | Target rules, history retained |
-| Critical SoD | Processor cannot verify; other verifier ok |
+| Critical SoD (all processors) | start-work / submit / earlier processor / reopen-start / SystemAdmin / multi-user A→B→C |
+| Critical SoD mutation order | Rejected before note/assignment/history/audit mutation |
+| Non-critical policy | Processor may verify when severity ≠ Critical |
 | Sensitive redaction | List redacts, does not hide |
 | Validators | FluentValidation rules |
 | Soft-deleted Role | UserRoles / RolePermissions / PrivilegeGuard |
@@ -39,9 +43,10 @@
 | Cross-scope update / create | 404 |
 | Assign out-of-scope / disabled / deleted / PendingProvisioning | Rejected |
 | Concurrent reference generation | Unique OBS numbers |
-| Concurrent update | 409 |
+| Concurrent update / concurrent first assign | 409 |
 | Invalid transition | 409 |
-| Critical SoD | Processor blocked; other verifier ok |
+| Critical SoD multi-processor | A and B blocked; independent C closes |
+| Critical SoD out-of-scope verifier | 404 |
 | Audit + status history atomic | Same transaction |
 | Status history append-only | No update/delete path |
 | Soft-delete + restore | Hidden / restored with permission |

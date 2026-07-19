@@ -277,6 +277,25 @@ public sealed class NoteCriticalSoDTests
         };
         db.OperationalNotes.Add(note);
         db.SaveChanges();
+        db.NoteStatusHistories.Add(new NoteStatusHistory
+        {
+            OperationalNoteId = note.Id,
+            FromStatus = NoteStatus.Assigned,
+            ToStatus = NoteStatus.InProgress,
+            ChangedByUserId = processorId,
+            ChangedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2),
+            Reason = "بدء"
+        });
+        db.NoteStatusHistories.Add(new NoteStatusHistory
+        {
+            OperationalNoteId = note.Id,
+            FromStatus = NoteStatus.InProgress,
+            ToStatus = NoteStatus.PendingVerification,
+            ChangedByUserId = processorId,
+            ChangedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+            Reason = "إرسال للتحقق"
+        });
+        db.SaveChanges();
         return note;
     }
 
