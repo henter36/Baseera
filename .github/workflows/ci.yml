@@ -2,7 +2,7 @@ name: Baseera CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, phase-a1-security-hardening]
   pull_request:
 
 permissions:
@@ -32,10 +32,11 @@ jobs:
         ports:
           - 1433:1433
         options: >-
-          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$MSSQL_SA_PASSWORD\" -C -Q \"SELECT 1\" || exit 1"
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/1433'"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 20
+          --health-start-period 30s
     env:
       BASEERA_TEST_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
       BASEERA_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
@@ -44,33 +45,45 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Wait for SQL Server
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            if (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1; then
+              echo "SQL port is open"
+              sleep 8
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "SQL Server port never opened"
+          exit 1
       - name: Restore
         run: dotnet restore src/backend/Baseera.slnx
       - name: Build
         run: dotnet build src/backend/Baseera.slnx --no-restore -c Release
+      - name: NuGet vulnerability gate fail-closed self-test
+        run: bash scripts/test-nuget-vuln-gate-fail-closed.sh
       - name: Vulnerable package gate
-        run: |
-          set -euo pipefail
-          output=$(dotnet list src/backend/Baseera.slnx package --vulnerable --include-transitive 2>&1 || true)
-          echo "$output"
-          if echo "$output" | grep -q "has the following vulnerable packages"; then
-            if echo "$output" | grep -qiE '^\s*(Critical|High)\b|> .*(Critical|High)'; then
-              echo "Vulnerable High/Critical packages detected"
-              exit 1
-            fi
-            # Fail on any listed vulnerable package with High/Critical severity columns
-            if echo "$output" | grep -E 'GHSA-' >/dev/null && echo "$output" | grep -qiE 'Critical|High'; then
-              echo "Vulnerable High/Critical packages detected"
-              exit 1
-            fi
-          fi
+        run: bash scripts/check-nuget-vulnerabilities.sh src/backend/Baseera.slnx
       - name: Unit tests
         run: dotnet test src/backend/tests/Baseera.UnitTests --no-build -c Release --verbosity normal
       - name: Integration tests
-        run: dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --verbosity normal
+        run: |
+          set -euo pipefail
+          output=$(dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --verbosity normal)
+          echo "$output"
+          if echo "$output" | grep -qi 'Skipped:'; then
+            skipped=$(echo "$output" | sed -n 's/.*Skipped:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | tail -1)
+            if [[ -n "${skipped:-}" && "$skipped" != "0" ]]; then
+              echo "Integration tests skipped ($skipped). Treat skip as failure in CI."
+              exit 1
+            fi
+          fi
       - name: Apply migrations
         run: |
-          dotnet tool install --global dotnet-ef --version 10.0.0 || true
+          set -euo pipefail
+          dotnet tool install --global dotnet-ef --version 10.0.0
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet ef database update --project src/backend/Baseera.Infrastructure --startup-project src/backend/Baseera.Api
 
@@ -92,9 +105,12 @@ jobs:
       - run: npm test
       - name: Refuse TestAuth production build
         run: |
-          VITE_AUTH_MODE=test node scripts/check-production-auth.mjs && exit 1 || true
-          if VITE_AUTH_MODE=test node scripts/check-production-auth.mjs; then
-            echo "expected failure"
+          set +e
+          VITE_AUTH_MODE=test node scripts/check-production-auth.mjs
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            echo "expected failure for VITE_AUTH_MODE=test"
             exit 1
           fi
       - name: Production build

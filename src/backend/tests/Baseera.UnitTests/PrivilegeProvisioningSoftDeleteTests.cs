@@ -18,7 +18,7 @@ public sealed class PrivilegeGuardTests
     {
         using var db = CreateDb();
         var actorId = Guid.NewGuid();
-        var targetId = Guid.NewGuid();
+        var targetId = SeedTarget(db);
         SeedActor(db, actorId, RoleCodes.RegionalDirector, [PermissionCodes.ScopesManage],
             new UserScopeSnapshot(ScopeType.Region, SeedIds.RegionA, null, null));
 
@@ -34,6 +34,69 @@ public sealed class PrivilegeGuardTests
     }
 
     [Fact]
+    public void Global_without_GrantGlobal_permission_cannot_grant_global()
+    {
+        using var db = CreateDb();
+        var actorId = Guid.NewGuid();
+        var targetId = SeedTarget(db);
+        SeedActor(db, actorId, RoleCodes.SystemAdministrator, [PermissionCodes.ScopesManage],
+            new UserScopeSnapshot(ScopeType.Global, null, null, null));
+        var current = FakeUser(actorId, [PermissionCodes.ScopesManage],
+            [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
+        var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            guard.EnsureCanAssignScope(targetId, ScopeType.Global, null, null, null));
+    }
+
+    [Fact]
+    public void GrantGlobal_without_global_scope_fails()
+    {
+        using var db = CreateDb();
+        var actorId = Guid.NewGuid();
+        var targetId = SeedTarget(db);
+        SeedActor(db, actorId, RoleCodes.SystemAdministrator,
+            [PermissionCodes.ScopesManage, PermissionCodes.GrantGlobalScope],
+            new UserScopeSnapshot(ScopeType.Headquarters, null, null, null));
+        var current = FakeUser(actorId,
+            [PermissionCodes.ScopesManage, PermissionCodes.GrantGlobalScope],
+            [new UserScopeSnapshot(ScopeType.Headquarters, null, null, null)]);
+        var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            guard.EnsureCanAssignScope(targetId, ScopeType.Global, null, null, null));
+    }
+
+    [Fact]
+    public void GrantHeadquarters_without_permission_fails()
+    {
+        using var db = CreateDb();
+        var actorId = Guid.NewGuid();
+        var targetId = SeedTarget(db);
+        SeedActor(db, actorId, RoleCodes.SystemAdministrator, [PermissionCodes.ScopesManage],
+            new UserScopeSnapshot(ScopeType.Global, null, null, null));
+        var current = FakeUser(actorId, [PermissionCodes.ScopesManage],
+            [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
+        var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            guard.EnsureCanAssignScope(targetId, ScopeType.Headquarters, null, null, null));
+    }
+
+    [Fact]
+    public void Assign_scope_to_missing_user_fails()
+    {
+        using var db = CreateDb();
+        var actorId = Guid.NewGuid();
+        SeedActor(db, actorId, RoleCodes.SystemAdministrator,
+            [PermissionCodes.ScopesManage, PermissionCodes.GrantGlobalScope],
+            new UserScopeSnapshot(ScopeType.Global, null, null, null));
+        var current = FakeUser(actorId,
+            [PermissionCodes.ScopesManage, PermissionCodes.GrantGlobalScope],
+            [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
+        var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
+        Assert.Throws<KeyNotFoundException>(() =>
+            guard.EnsureCanAssignScope(Guid.NewGuid(), ScopeType.Global, null, null, null));
+    }
+
+    [Fact]
     public void Regional_director_cannot_grant_region_b()
     {
         using var db = CreateDb();
@@ -43,13 +106,14 @@ public sealed class PrivilegeGuardTests
         db.SaveChanges();
 
         var actorId = Guid.NewGuid();
+        var targetId = SeedTarget(db);
         var scopes = new[] { new UserScopeSnapshot(ScopeType.Region, SeedIds.RegionA, null, null) };
         SeedActor(db, actorId, RoleCodes.RegionalDirector, [PermissionCodes.ScopesManage], scopes[0]);
         var current = FakeUser(actorId, [PermissionCodes.ScopesManage], scopes);
         var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
 
         Assert.Throws<UnauthorizedAccessException>(() =>
-            guard.EnsureCanAssignScope(Guid.NewGuid(), ScopeType.Region, SeedIds.RegionB, null, null));
+            guard.EnsureCanAssignScope(targetId, ScopeType.Region, SeedIds.RegionB, null, null));
     }
 
     [Fact]
@@ -62,13 +126,14 @@ public sealed class PrivilegeGuardTests
         db.SaveChanges();
 
         var actorId = Guid.NewGuid();
+        var targetId = SeedTarget(db);
         var scopes = new[] { new UserScopeSnapshot(ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null) };
         SeedActor(db, actorId, RoleCodes.FacilityDirector, [PermissionCodes.ScopesManage], scopes[0]);
         var current = FakeUser(actorId, [PermissionCodes.ScopesManage], scopes);
         var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
 
         Assert.Throws<UnauthorizedAccessException>(() =>
-            guard.EnsureCanAssignScope(Guid.NewGuid(), ScopeType.Facility, SeedIds.RegionB, SeedIds.FacilityB1, null));
+            guard.EnsureCanAssignScope(targetId, ScopeType.Facility, SeedIds.RegionB, SeedIds.FacilityB1, null));
     }
 
     [Fact]
@@ -91,6 +156,7 @@ public sealed class PrivilegeGuardTests
     {
         using var db = CreateDb();
         var actorId = Guid.NewGuid();
+        var targetId = SeedTarget(db);
         SeedActor(db, actorId, RoleCodes.FacilityDirector, [PermissionCodes.RolesManage],
             new UserScopeSnapshot(ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null));
         var current = FakeUser(actorId, [PermissionCodes.RolesManage],
@@ -98,7 +164,7 @@ public sealed class PrivilegeGuardTests
         var guard = new PrivilegeGuard(current, db, new OrganizationalScopeService(current, db));
 
         Assert.Throws<UnauthorizedAccessException>(() =>
-            guard.EnsureCanAssignRole(Guid.NewGuid(), RoleCodes.SystemAdministrator));
+            guard.EnsureCanAssignRole(targetId, RoleCodes.SystemAdministrator));
     }
 
     [Fact]
@@ -108,6 +174,22 @@ public sealed class PrivilegeGuardTests
             PrivilegeGuard.ValidateScopeShape(ScopeType.Global, SeedIds.RegionA, null, null));
         Assert.Throws<InvalidOperationException>(() =>
             PrivilegeGuard.ValidateScopeShape(ScopeType.Headquarters, null, SeedIds.FacilityA1, null));
+    }
+
+    private static Guid SeedTarget(BaseeraDbContext db)
+    {
+        var id = Guid.NewGuid();
+        db.Users.Add(new User
+        {
+            Id = id,
+            ExternalSubject = id.ToString(),
+            UserName = id.ToString(),
+            DisplayNameAr = "target",
+            IsActive = true,
+            ProvisioningStatus = UserProvisioningStatus.Active
+        });
+        db.SaveChanges();
+        return id;
     }
 
     private static void SeedActor(

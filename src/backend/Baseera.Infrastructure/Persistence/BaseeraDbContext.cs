@@ -34,6 +34,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<FacilityAssetLocation> Application.Abstractions.IBaseeraDbContext.FacilityAssetLocations => FacilityAssetLocations;
     IQueryable<Department> Application.Abstractions.IBaseeraDbContext.Departments => Departments;
     IQueryable<User> Application.Abstractions.IBaseeraDbContext.Users => Users;
+    IQueryable<User> Application.Abstractions.IBaseeraDbContext.UsersIncludingDeleted => Users.IgnoreQueryFilters();
     IQueryable<Role> Application.Abstractions.IBaseeraDbContext.Roles => Roles;
     IQueryable<Permission> Application.Abstractions.IBaseeraDbContext.Permissions => Permissions;
     IQueryable<UserRole> Application.Abstractions.IBaseeraDbContext.UserRoles => UserRoles;

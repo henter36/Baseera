@@ -16,6 +16,8 @@ public interface IBaseeraDbContext
     IQueryable<FacilityAssetLocation> FacilityAssetLocations { get; }
     IQueryable<Department> Departments { get; }
     IQueryable<User> Users { get; }
+    /// <summary>Includes soft-deleted users for administrative validation only.</summary>
+    IQueryable<User> UsersIncludingDeleted { get; }
     IQueryable<Role> Roles { get; }
     IQueryable<Permission> Permissions { get; }
     IQueryable<UserRole> UserRoles { get; }

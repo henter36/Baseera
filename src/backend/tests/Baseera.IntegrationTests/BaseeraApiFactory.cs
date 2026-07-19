@@ -113,6 +113,50 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         await db.SaveChangesAsync();
     }
 
+    public async Task SetUserProvisioningAsync(string subject, bool active, UserProvisioningStatus status)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var user = await db.Users.IgnoreQueryFilters().FirstAsync(u => u.ExternalSubject == subject);
+        user.IsActive = active;
+        user.ProvisioningStatus = status;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task ArchiveUserAsync(string subject)
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var user = await db.Users.IgnoreQueryFilters().FirstAsync(u => u.ExternalSubject == subject);
+        user.IsDeleted = true;
+        user.DeletedAtUtc = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task SeedUserWithPermissionsAsync(
+        string subject,
+        string displayName,
+        string[] roleCodes,
+        string[] extraPermissions,
+        params (ScopeType ScopeType, Guid? RegionId, Guid? FacilityId)[] scopes)
+    {
+        await SeedUserAsync(subject, displayName, roleCodes, scopes);
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var user = await db.Users.FirstAsync(u => u.ExternalSubject == subject);
+        var role = await db.Roles.FirstAsync(r => r.Code == roleCodes[0]);
+        foreach (var code in extraPermissions)
+        {
+            var permission = await db.Permissions.FirstAsync(p => p.Code == code);
+            if (!await db.RolePermissions.AnyAsync(rp => rp.RoleId == role.Id && rp.PermissionId == permission.Id))
+            {
+                db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id });
+            }
+        }
+
+        await db.SaveChangesAsync();
+    }
+
     public HttpClient CreateAuthenticatedClient(string subject, string? displayName = null)
     {
         var client = CreateClient();

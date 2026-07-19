@@ -22,6 +22,13 @@ EnvironmentSecurityGuard.EnsureSafeConfiguration(builder.Environment.Environment
 var useTestAuth = EnvironmentSecurityGuard.CanEnableTestAuth(builder.Environment.EnvironmentName, useTestAuthFlag);
 var seedDemo = EnvironmentSecurityGuard.CanEnableDemoSeed(builder.Environment.EnvironmentName, seedDemoFlag);
 
+EnvironmentSecurityGuard.EnsureEntraConfiguredForRestrictedEnvironments(
+    builder.Environment.EnvironmentName,
+    useTestAuth,
+    builder.Configuration["AzureAd:TenantId"],
+    builder.Configuration["AzureAd:ClientId"],
+    builder.Configuration["AzureAd:Audience"]);
+
 builder.Services.AddBaseeraApplication();
 builder.Services.AddBaseeraInfrastructure(builder.Configuration);
 builder.Services.AddBaseeraBackgroundJobs();

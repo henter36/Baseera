@@ -30,11 +30,21 @@ public static class RoleHierarchy
         [RoleCodes.ReadOnlyUser] = 100
     };
 
+    private static readonly HashSet<string> ScopeAdminRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        RoleCodes.SystemAdministrator,
+        RoleCodes.HeadquartersExecutive,
+        RoleCodes.DecisionSupportDirector
+    };
+
     public static int RankOf(string roleCode) =>
         Ranks.TryGetValue(roleCode, out var rank) ? rank : 0;
 
     public static int MaxRank(IEnumerable<string> roleCodes) =>
         roleCodes.Select(RankOf).DefaultIfEmpty(0).Max();
+
+    public static bool IsScopeAdminRole(IEnumerable<string> roleCodes) =>
+        roleCodes.Any(r => ScopeAdminRoles.Contains(r));
 }
 
 public interface IPrivilegeGuard
@@ -60,11 +70,9 @@ public sealed class PrivilegeGuard(
             throw new UnauthorizedAccessException("لا يمكنك تعديل أدوارك بنفسك.");
         }
 
-        var actorRoles = db.UserRoles
-            .Where(ur => ur.UserId == currentUser.UserId)
-            .Join(db.Roles.Where(r => !r.IsDeleted), ur => ur.RoleId, r => r.Id, (_, r) => r.Code)
-            .ToList();
+        EnsureTargetUserAssignable(targetUserId);
 
+        var actorRoles = LoadActorRoles();
         var actorRank = RoleHierarchy.MaxRank(actorRoles);
         var targetRank = RoleHierarchy.RankOf(roleCode);
         if (targetRank >= actorRank && !actorRoles.Contains(RoleCodes.SystemAdministrator, StringComparer.OrdinalIgnoreCase))
@@ -77,7 +85,6 @@ public sealed class PrivilegeGuard(
             throw new UnauthorizedAccessException("لا يمكنك منح دورًا أعلى من دورك.");
         }
 
-        // Actor must hold all permissions of the role being granted.
         var rolePermissions = (
             from r in db.Roles
             join rp in db.RolePermissions on r.Id equals rp.RoleId
@@ -107,13 +114,26 @@ public sealed class PrivilegeGuard(
             throw new UnauthorizedAccessException("لا يمكنك تعديل نطاقاتك بنفسك.");
         }
 
+        EnsureTargetUserAssignable(targetUserId);
         ValidateScopeShape(scopeType, regionId, facilityId, facilityUnitId);
+
+        var actorRoles = LoadActorRoles();
 
         if (scopeType == ScopeType.Global)
         {
-            if (!currentUser.HasPermission(PermissionCodes.GrantGlobalScope) && !currentUser.IsGlobalScope)
+            if (!currentUser.HasPermission(PermissionCodes.GrantGlobalScope))
             {
-                throw new UnauthorizedAccessException("منح النطاق الوطني مقصور على مسؤول مصرح له.");
+                throw new UnauthorizedAccessException("منح النطاق الوطني يتطلب صلاحية Scopes.GrantGlobal.");
+            }
+
+            if (!currentUser.IsGlobalScope)
+            {
+                throw new UnauthorizedAccessException("منح النطاق الوطني يتطلب أن تملك نطاق Global.");
+            }
+
+            if (!RoleHierarchy.IsScopeAdminRole(actorRoles))
+            {
+                throw new UnauthorizedAccessException("منح النطاق الوطني مقصور على دور إداري معتمد.");
             }
 
             return;
@@ -121,11 +141,19 @@ public sealed class PrivilegeGuard(
 
         if (scopeType == ScopeType.Headquarters)
         {
-            if (!currentUser.HasPermission(PermissionCodes.GrantHeadquartersScope) &&
-                !currentUser.IsGlobalScope &&
-                !currentUser.HasHeadquartersScope)
+            if (!currentUser.HasPermission(PermissionCodes.GrantHeadquartersScope))
             {
-                throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي مقصور على مسؤول مصرح له.");
+                throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي يتطلب صلاحية Scopes.GrantHeadquarters.");
+            }
+
+            if (!currentUser.IsGlobalScope && !currentUser.HasHeadquartersScope)
+            {
+                throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي يتطلب نطاق Global أو Headquarters.");
+            }
+
+            if (!RoleHierarchy.IsScopeAdminRole(actorRoles))
+            {
+                throw new UnauthorizedAccessException("منح نطاق المستوى الرئيسي مقصور على دور إداري معتمد.");
             }
 
             return;
@@ -154,7 +182,7 @@ public sealed class PrivilegeGuard(
                 }
 
                 var unit = db.FacilityUnits.FirstOrDefault(u => u.Id == facilityUnitId.Value && !u.IsDeleted)
-                    ?? throw new InvalidOperationException("الوحدة غير موجودة.");
+                    ?? throw new KeyNotFoundException("الوحدة غير موجودة.");
                 if (unit.FacilityId != facilityId.Value)
                 {
                     throw new InvalidOperationException("الوحدة لا تتبع السجن المحدد.");
@@ -163,7 +191,7 @@ public sealed class PrivilegeGuard(
             else
             {
                 var facility = db.Facilities.FirstOrDefault(f => f.Id == facilityId.Value && !f.IsDeleted)
-                    ?? throw new InvalidOperationException("السجن غير موجود.");
+                    ?? throw new KeyNotFoundException("السجن غير موجود.");
                 if (regionId.HasValue && facility.RegionId != regionId.Value)
                 {
                     throw new InvalidOperationException("السجن لا يتبع المنطقة المحددة.");
@@ -171,6 +199,31 @@ public sealed class PrivilegeGuard(
             }
         }
     }
+
+    private void EnsureTargetUserAssignable(Guid targetUserId)
+    {
+        var target = db.UsersIncludingDeleted.FirstOrDefault(u => u.Id == targetUserId);
+        if (target is null)
+        {
+            throw new KeyNotFoundException("المستخدم غير موجود.");
+        }
+
+        if (target.IsDeleted)
+        {
+            throw new UnauthorizedAccessException("لا يمكن منح أدوار أو نطاقات لمستخدم مؤرشف.");
+        }
+
+        if (!target.IsActive || target.ProvisioningStatus is UserProvisioningStatus.Disabled)
+        {
+            throw new UnauthorizedAccessException("لا يمكن منح أدوار أو نطاقات لمستخدم غير نشط.");
+        }
+    }
+
+    private List<string> LoadActorRoles() =>
+        db.UserRoles
+            .Where(ur => ur.UserId == currentUser.UserId)
+            .Join(db.Roles.Where(r => !r.IsDeleted), ur => ur.RoleId, r => r.Id, (_, r) => r.Code)
+            .ToList();
 
     public static void ValidateScopeShape(ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
     {

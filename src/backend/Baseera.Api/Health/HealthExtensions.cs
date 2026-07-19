@@ -1,5 +1,6 @@
 namespace Baseera.Api.Health;
 
+using Baseera.Application.Attachments;
 using Baseera.Application.Security;
 using Baseera.Infrastructure.Attachments;
 using Baseera.Infrastructure.Persistence;
@@ -88,8 +89,19 @@ public sealed class AttachmentStorageHealthCheck(IOptions<AttachmentStorageOptio
     {
         try
         {
-            var root = Path.GetFullPath(options.Value.RootPath);
+            var root = StoragePathGuard.NormalizeRoot(options.Value.RootPath);
             Directory.CreateDirectory(root);
+            var probe = Path.Combine(root, $".health-{Guid.NewGuid():N}");
+            StoragePathGuard.EnsureInsideRoot(root, probe);
+            var payload = "ok"u8.ToArray();
+            File.WriteAllBytes(probe, payload);
+            var read = File.ReadAllBytes(probe);
+            File.Delete(probe);
+            if (read.Length != payload.Length)
+            {
+                return Task.FromResult(HealthCheckResult.Unhealthy("attachment_storage_io"));
+            }
+
             return Task.FromResult(HealthCheckResult.Healthy());
         }
         catch
