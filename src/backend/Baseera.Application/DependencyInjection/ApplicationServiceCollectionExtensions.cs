@@ -15,6 +15,7 @@ public static class ApplicationServiceCollectionExtensions
     {
         services.AddValidatorsFromAssemblyContaining<UpdateRegionRequestValidator>();
         services.AddScoped<IOrganizationalScopeService, OrganizationalScopeService>();
+        services.AddScoped<IPrivilegeGuard, PrivilegeGuard>();
         services.AddScoped<IOrganizationService, OrganizationService>();
         services.AddScoped<IUserAdminService, UserAdminService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();

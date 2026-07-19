@@ -22,7 +22,7 @@ internal sealed class OrganizationConfiguration : IEntityTypeConfiguration<Organ
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => x.Code).IsUnique();
+        builder.HasIndex(x => x.Code).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.ConfigureRowVersion();
     }
 }
@@ -35,8 +35,9 @@ internal sealed class RegionConfiguration : IEntityTypeConfiguration<Region>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => x.Code).IsUnique();
-        builder.HasOne(x => x.Organization).WithMany(o => o.Regions).HasForeignKey(x => x.OrganizationId);
+        builder.HasIndex(x => x.Code).IsUnique().HasFilter("[IsDeleted] = 0");
+        builder.HasOne(x => x.Organization).WithMany(o => o.Regions).HasForeignKey(x => x.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
 }
@@ -49,8 +50,9 @@ internal sealed class FacilityConfiguration : IEntityTypeConfiguration<Facility>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => x.Code).IsUnique();
-        builder.HasOne(x => x.Region).WithMany(r => r.Facilities).HasForeignKey(x => x.RegionId);
+        builder.HasIndex(x => x.Code).IsUnique().HasFilter("[IsDeleted] = 0");
+        builder.HasOne(x => x.Region).WithMany(r => r.Facilities).HasForeignKey(x => x.RegionId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
 }
@@ -63,8 +65,9 @@ internal sealed class FacilityUnitConfiguration : IEntityTypeConfiguration<Facil
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => new { x.FacilityId, x.Code }).IsUnique();
-        builder.HasOne(x => x.Facility).WithMany(f => f.Units).HasForeignKey(x => x.FacilityId);
+        builder.HasIndex(x => new { x.FacilityId, x.Code }).IsUnique().HasFilter("[IsDeleted] = 0");
+        builder.HasOne(x => x.Facility).WithMany(f => f.Units).HasForeignKey(x => x.FacilityId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.ParentUnit).WithMany(p => p.Children).HasForeignKey(x => x.ParentUnitId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
@@ -79,7 +82,8 @@ internal sealed class BuildingConfiguration : IEntityTypeConfiguration<Building>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasOne(x => x.Facility).WithMany(f => f.Buildings).HasForeignKey(x => x.FacilityId);
+        builder.HasOne(x => x.Facility).WithMany(f => f.Buildings).HasForeignKey(x => x.FacilityId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
 }
@@ -92,7 +96,8 @@ internal sealed class FacilityAssetLocationConfiguration : IEntityTypeConfigurat
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasOne(x => x.Building).WithMany(b => b.Locations).HasForeignKey(x => x.BuildingId);
+        builder.HasOne(x => x.Building).WithMany(b => b.Locations).HasForeignKey(x => x.BuildingId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
 }
@@ -105,7 +110,8 @@ internal sealed class DepartmentConfiguration : IEntityTypeConfiguration<Departm
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasOne(x => x.Organization).WithMany(o => o.Departments).HasForeignKey(x => x.OrganizationId);
+        builder.HasOne(x => x.Organization).WithMany(o => o.Departments).HasForeignKey(x => x.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.ParentDepartment).WithMany(p => p.Children).HasForeignKey(x => x.ParentDepartmentId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
@@ -122,8 +128,8 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.UserName).HasMaxLength(128).IsRequired();
         builder.Property(x => x.DisplayNameAr).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Email).HasMaxLength(256);
-        builder.HasIndex(x => x.ExternalSubject).IsUnique();
-        builder.HasIndex(x => x.UserName).IsUnique();
+        builder.HasIndex(x => x.ExternalSubject).IsUnique().HasFilter("[IsDeleted] = 0");
+        builder.HasIndex(x => x.UserName).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.ConfigureRowVersion();
     }
 }
@@ -136,7 +142,7 @@ internal sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Code).HasMaxLength(100).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => x.Code).IsUnique();
+        builder.HasIndex(x => x.Code).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.ConfigureRowVersion();
     }
 }
@@ -183,10 +189,14 @@ internal sealed class UserScopeConfiguration : IEntityTypeConfiguration<UserScop
     {
         builder.ToTable("UserScopes");
         builder.HasKey(x => x.Id);
-        builder.HasOne(x => x.User).WithMany(u => u.UserScopes).HasForeignKey(x => x.UserId);
+        builder.HasOne(x => x.User).WithMany(u => u.UserScopes).HasForeignKey(x => x.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Region).WithMany().HasForeignKey(x => x.RegionId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Facility).WithMany().HasForeignKey(x => x.FacilityId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.FacilityUnit).WithMany().HasForeignKey(x => x.FacilityUnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => new { x.UserId, x.ScopeType, x.RegionId, x.FacilityId, x.FacilityUnitId })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0 AND [IsActive] = 1");
         builder.ConfigureRowVersion();
     }
 }

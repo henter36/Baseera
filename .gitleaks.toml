@@ -1,0 +1,15 @@
+# Gitleaks configuration for Baseera
+title = "Baseera"
+
+[extend]
+useDefault = true
+
+# Placeholder templates only — never allowlist real credentials.
+[[allowlists]]
+description = "Placeholder connection strings and Entra template IDs (not real secrets)"
+regexes = [
+  '''YOUR_LOCAL_SA_PASSWORD''',
+  '''YOUR_TENANT_ID''',
+  '''YOUR_API_CLIENT_ID''',
+  '''00000000-0000-0000-0000-00000000000[123]'''
+]

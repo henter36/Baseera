@@ -1,13 +1,14 @@
 namespace Baseera.Infrastructure.Persistence;
 
-using Baseera.Application.Abstractions;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Audit;
+using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
-public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options) : DbContext(options), IBaseeraDbContext
+public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options) : DbContext(options), Application.Abstractions.IBaseeraDbContext
 {
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<Region> Regions => Set<Region>();
@@ -25,21 +26,22 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
 
-    IQueryable<Organization> IBaseeraDbContext.Organizations => Organizations;
-    IQueryable<Region> IBaseeraDbContext.Regions => Regions;
-    IQueryable<Facility> IBaseeraDbContext.Facilities => Facilities;
-    IQueryable<FacilityUnit> IBaseeraDbContext.FacilityUnits => FacilityUnits;
-    IQueryable<Building> IBaseeraDbContext.Buildings => Buildings;
-    IQueryable<FacilityAssetLocation> IBaseeraDbContext.FacilityAssetLocations => FacilityAssetLocations;
-    IQueryable<Department> IBaseeraDbContext.Departments => Departments;
-    IQueryable<User> IBaseeraDbContext.Users => Users;
-    IQueryable<Role> IBaseeraDbContext.Roles => Roles;
-    IQueryable<Permission> IBaseeraDbContext.Permissions => Permissions;
-    IQueryable<UserRole> IBaseeraDbContext.UserRoles => UserRoles;
-    IQueryable<RolePermission> IBaseeraDbContext.RolePermissions => RolePermissions;
-    IQueryable<UserScope> IBaseeraDbContext.UserScopes => UserScopes;
-    IQueryable<AuditLog> IBaseeraDbContext.AuditLogs => AuditLogs;
-    IQueryable<Attachment> IBaseeraDbContext.Attachments => Attachments;
+    IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
+    IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
+    IQueryable<Facility> Application.Abstractions.IBaseeraDbContext.Facilities => Facilities;
+    IQueryable<FacilityUnit> Application.Abstractions.IBaseeraDbContext.FacilityUnits => FacilityUnits;
+    IQueryable<Building> Application.Abstractions.IBaseeraDbContext.Buildings => Buildings;
+    IQueryable<FacilityAssetLocation> Application.Abstractions.IBaseeraDbContext.FacilityAssetLocations => FacilityAssetLocations;
+    IQueryable<Department> Application.Abstractions.IBaseeraDbContext.Departments => Departments;
+    IQueryable<User> Application.Abstractions.IBaseeraDbContext.Users => Users;
+    IQueryable<User> Application.Abstractions.IBaseeraDbContext.UsersIncludingDeleted => Users.IgnoreQueryFilters();
+    IQueryable<Role> Application.Abstractions.IBaseeraDbContext.Roles => Roles;
+    IQueryable<Permission> Application.Abstractions.IBaseeraDbContext.Permissions => Permissions;
+    IQueryable<UserRole> Application.Abstractions.IBaseeraDbContext.UserRoles => UserRoles;
+    IQueryable<RolePermission> Application.Abstractions.IBaseeraDbContext.RolePermissions => RolePermissions;
+    IQueryable<UserScope> Application.Abstractions.IBaseeraDbContext.UserScopes => UserScopes;
+    IQueryable<AuditLog> Application.Abstractions.IBaseeraDbContext.AuditLogs => AuditLogs;
+    IQueryable<Attachment> Application.Abstractions.IBaseeraDbContext.Attachments => Attachments;
 
     public new void Add<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Add(entity);
     public new void Update<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Update(entity);
@@ -48,7 +50,91 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(BaseeraDbContext).Assembly);
 
-        // Soft-delete filters are applied explicitly in application queries.
-        // Global filters can be added per-entity in later phases once all modules are migrated.
+        modelBuilder.Entity<Organization>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Region>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Facility>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<FacilityUnit>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Building>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<FacilityAssetLocation>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Department>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<User>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Role>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<UserScope>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Attachment>().HasQueryFilter(e => !e.IsDeleted);
+
+        modelBuilder.Entity<UserScope>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_UserScopes_GlobalHq_NoIds",
+                "([ScopeType] NOT IN (0, 1)) OR ([RegionId] IS NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_UserScopes_Region_RequiresRegion",
+                "([ScopeType] NOT IN (2, 5)) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_UserScopes_Facility_RequiresFacility",
+                "([ScopeType] NOT IN (3, 6)) OR ([FacilityId] IS NOT NULL AND [FacilityUnitId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_UserScopes_Unit_RequiresFacilityAndUnit",
+                "([ScopeType] <> 4) OR ([FacilityId] IS NOT NULL AND [FacilityUnitId] IS NOT NULL)");
+        });
+    }
+
+    public override int SaveChanges()
+    {
+        EnforceAuditImmutability();
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        EnforceAuditImmutability();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    private void EnforceAuditImmutability() =>
+        AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(this);
+}
+
+/// <summary>
+/// Shared append-only enforcement used by DbContext overrides and the interceptor.
+/// </summary>
+internal static class AuditAppendOnlyGuard
+{
+    public static void EnsureAuditEntriesAreAppendOnly(DbContext context)
+    {
+        var invalidEntries = context.ChangeTracker
+            .Entries<AuditLog>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidEntries.Any())
+        {
+            throw new InvalidOperationException("AuditLog is append-only and cannot be modified or deleted.");
+        }
+    }
+}
+
+public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
+{
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+    {
+        if (eventData.Context is not null)
+        {
+            AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
+        }
+
+        return base.SavingChanges(eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        if (eventData.Context is not null)
+        {
+            AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
+        }
+
+        return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 }

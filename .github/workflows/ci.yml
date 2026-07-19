@@ -1,0 +1,208 @@
+name: Baseera CI
+
+on:
+  push:
+    branches: [main, phase-a1-security-hardening]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: no workflow-level write. Jobs only request what they use.
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks (pinned + checksum)
+        env:
+          GITLEAKS_VERSION: "8.24.3"
+          GITLEAKS_ARCHIVE: "gitleaks_8.24.3_linux_x64.tar.gz"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          cd "$RUNNER_TEMP/gitleaks"
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --location \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --tlsv1.2 \
+            -o checksums.txt \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --location \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --tlsv1.2 \
+            -o "$GITLEAKS_ARCHIVE" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_ARCHIVE}"
+          # Verify against the official checksums file (HTTPS-only download above).
+          grep " ${GITLEAKS_ARCHIVE}\$" checksums.txt | sha256sum -c -
+          tar -xzf "$GITLEAKS_ARCHIVE"
+          chmod +x ./gitleaks
+          ./gitleaks version
+      - name: Gitleaks full history
+        run: |
+          "$RUNNER_TEMP/gitleaks/gitleaks" detect --source "$GITHUB_WORKSPACE" --verbose --redact --exit-code 1
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        # Pinned CU tag (not :latest). MCR digest sha256:3b2d73fe601817aa81b10be441af80c369793bf16b1940b75fae2a56330afd5d
+        image: mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: ${{ secrets.BASEERA_CI_SA_PASSWORD }}
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/1433'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 30s
+    env:
+      BASEERA_TEST_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
+      BASEERA_CONNECTION: Server=127.0.0.1,1433;Database=Baseera_CI;User Id=sa;Password=${{ secrets.BASEERA_CI_SA_PASSWORD }};Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '10.0.x'
+      - name: Wait for SQL Server
+        env:
+          SA_PASSWORD: ${{ secrets.BASEERA_CI_SA_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            if (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1; then
+              echo "SQL port open"
+              break
+            fi
+            sleep 2
+            if [[ "$i" -eq 90 ]]; then
+              echo "SQL port never opened" >&2
+              exit 1
+            fi
+          done
+          # Pin by digest: mssql-tools18:latest is unpublished on MCR; tools18 path differs.
+          SQLCMD_IMAGE="mcr.microsoft.com/mssql-tools@sha256:62556500522072535cb3df2bb5965333dded9be47000473e9e0f84118e248642"
+          for i in $(seq 1 60); do
+            if docker run --rm --network host \
+              "$SQLCMD_IMAGE" \
+              /opt/mssql-tools/bin/sqlcmd -S 127.0.0.1 -U sa -P "$SA_PASSWORD" -C -Q "SELECT 1" >/dev/null 2>&1; then
+              echo "SQL authenticated readiness OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Falling back to extended warm-up sleep" >&2
+          sleep 40
+      - name: Restore
+        run: dotnet restore src/backend/Baseera.slnx
+      - name: Build
+        run: dotnet build src/backend/Baseera.slnx --no-restore -c Release
+      - name: NuGet vulnerability gate fail-closed self-test
+        run: bash scripts/test-nuget-vuln-gate-fail-closed.sh
+      - name: Vulnerable package gate
+        run: bash scripts/check-nuget-vulnerabilities.sh src/backend/Baseera.slnx
+      - name: Unit tests
+        run: dotnet test src/backend/tests/Baseera.UnitTests --no-build -c Release --verbosity normal
+      - name: Integration tests
+        run: |
+          set -euo pipefail
+          set +e
+          dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --logger "console;verbosity=detailed"
+          status=$?
+          set -e
+          if [[ "$status" -ne 0 ]]; then
+            exit "$status"
+          fi
+          summary=$(dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --no-build --verbosity quiet)
+          if echo "$summary" | grep -E 'Skipped:\s*[1-9]' >/dev/null; then
+            echo "Integration tests reported skips; failing CI" >&2
+            exit 1
+          fi
+      - name: Apply migrations
+        run: |
+          set -euo pipefail
+          dotnet tool install --global dotnet-ef --version 10.0.0
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef database update --project src/backend/Baseera.Infrastructure --startup-project src/backend/Baseera.Api
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.14.0'
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - name: Refuse TestAuth production build
+        run: |
+          set +e
+          VITE_AUTH_MODE=test node scripts/check-production-auth.mjs
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            echo "expected failure for VITE_AUTH_MODE=test" >&2
+            exit 1
+          fi
+      - name: Refuse zero-GUID Entra placeholders
+        run: |
+          set +e
+          VITE_AUTH_MODE=entra \
+            VITE_ENTRA_CLIENT_ID=00000000-0000-0000-0000-000000000001 \
+            VITE_ENTRA_TENANT_ID=00000000-0000-0000-0000-000000000002 \
+            VITE_ENTRA_API_SCOPE=api://00000000-0000-0000-0000-000000000003/.default \
+            node scripts/check-production-auth.mjs
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            echo "expected failure for zero-GUID Entra placeholders" >&2
+            exit 1
+          fi
+      - name: Refuse non-HTTPS production redirect URI
+        run: |
+          set +e
+          VITE_AUTH_MODE=entra \
+            VITE_ENTRA_CLIENT_ID=11111111-1111-4111-8111-111111111111 \
+            VITE_ENTRA_TENANT_ID=22222222-2222-4222-8222-222222222222 \
+            VITE_ENTRA_API_SCOPE=api://33333333-3333-4333-8333-333333333333/.default \
+            VITE_ENTRA_REDIRECT_URI=http://localhost:5173 \
+            node scripts/check-production-auth.mjs
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            echo "expected failure for http localhost redirect URI" >&2
+            exit 1
+          fi
+      - name: Production build
+        env:
+          VITE_AUTH_MODE: entra
+          VITE_ENTRA_CLIENT_ID: 11111111-1111-4111-8111-111111111111
+          VITE_ENTRA_TENANT_ID: 22222222-2222-4222-8222-222222222222
+          VITE_ENTRA_API_SCOPE: api://33333333-3333-4333-8333-333333333333/.default
+          VITE_ENTRA_REDIRECT_URI: https://app.example.sa
+        run: npm run build
+      - name: npm audit (high+)
+        run: npm audit --audit-level=high

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { getAuthMode, getTestSubject } from '../api/client'
+import { getAuthMode, getTestSubject, isTestAuthAllowed } from '../api/client'
 import { useAuth } from '../auth/AuthProvider'
 
 export function LoginPage() {
-  const { isAuthenticated, loginTest, loading, error } = useAuth()
-  const [subject, setSubject] = useState(getTestSubject() || 'dev-admin')
+  const { isAuthenticated, loginTest, loginEntra, loading, error, configError } = useAuth()
+  const [subject, setSubject] = useState(getTestSubject())
   const mode = getAuthMode()
 
   if (isAuthenticated) return <Navigate to="/regions" replace />
@@ -15,23 +15,36 @@ export function LoginPage() {
       <div className="panel login-card">
         <h1 className="page-title">بصيرة</h1>
         <p className="muted">منصة دعم اتخاذ القرار والإشراف التشغيلي</p>
-        {mode === 'test' ? (
+        {configError && <div className="error" role="alert">{configError}</div>}
+        {mode === 'entra' && !configError && (
+          <div className="toolbar">
+            <button type="button" disabled={loading} onClick={() => void loginEntra()}>
+              تسجيل الدخول عبر Microsoft Entra ID
+            </button>
+          </div>
+        )}
+        {isTestAuthAllowed() && (
           <>
-            <p className="muted">وضع التطوير يستخدم TestAuth. أدخل معرف المستخدم التجريبي بعد منحه دورًا ونطاقًا من API.</p>
+            <p className="muted">وضع التطوير (TestAuth) — للتنمية المحلية فقط.</p>
             <div className="toolbar">
               <input
                 aria-label="معرف المستخدم التجريبي"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="مثال: dev-admin"
+                placeholder="معرف مستخدم مُسبق التجهيز"
               />
-              <button disabled={loading || !subject.trim()} onClick={() => void loginTest(subject.trim())}>
-                دخول
+              <button
+                type="button"
+                disabled={loading || !subject.trim()}
+                onClick={() => void loginTest(subject.trim())}
+              >
+                دخول تجريبي
               </button>
             </div>
           </>
-        ) : (
-          <p className="muted">سجّل الدخول عبر Microsoft Entra ID من إعدادات البيئة.</p>
+        )}
+        {mode === 'entra' && !isTestAuthAllowed() && !configError && (
+          <p className="muted">استخدم زر Entra لتسجيل الدخول. لا يتوفر وضع الاختبار في هذا البناء.</p>
         )}
         {error && <div className="error" role="alert">{error}</div>}
       </div>

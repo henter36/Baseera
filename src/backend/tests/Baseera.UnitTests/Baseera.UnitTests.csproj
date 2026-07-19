@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\Baseera.Domain\Baseera.Domain.csproj" />
     <ProjectReference Include="..\..\Baseera.Application\Baseera.Application.csproj" />
     <ProjectReference Include="..\..\Baseera.Infrastructure\Baseera.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Baseera.Api\Baseera.Api.csproj" />
   </ItemGroup>
 
 </Project>

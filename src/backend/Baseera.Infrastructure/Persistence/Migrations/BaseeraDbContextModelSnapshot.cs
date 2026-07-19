@@ -283,7 +283,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Roles", (string)null);
                 });
@@ -344,6 +345,9 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastLoginAtUtc")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int>("ProvisioningStatus")
+                        .HasColumnType("int");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -364,10 +368,12 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ExternalSubject")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.HasIndex("UserName")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Users", (string)null);
                 });
@@ -452,9 +458,20 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RegionId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "ScopeType", "RegionId", "FacilityId", "FacilityUnitId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0 AND [IsActive] = 1");
 
-                    b.ToTable("UserScopes", (string)null);
+                    b.ToTable("UserScopes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserScopes_Facility_RequiresFacility", "([ScopeType] NOT IN (3, 6)) OR ([FacilityId] IS NOT NULL AND [FacilityUnitId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_UserScopes_GlobalHq_NoIds", "([ScopeType] NOT IN (0, 1)) OR ([RegionId] IS NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_UserScopes_Region_RequiresRegion", "([ScopeType] NOT IN (2, 5)) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_UserScopes_Unit_RequiresFacilityAndUnit", "([ScopeType] <> 4) OR ([FacilityId] IS NOT NULL AND [FacilityUnitId] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Baseera.Domain.Organization.Building", b =>
@@ -632,7 +649,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.HasIndex("RegionId");
 
@@ -755,7 +773,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasIndex("ParentUnitId");
 
                     b.HasIndex("FacilityId", "Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("FacilityUnits", (string)null);
                 });
@@ -812,7 +831,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("Organizations", (string)null);
                 });
@@ -872,7 +892,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.HasIndex("OrganizationId");
 
@@ -937,7 +958,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasOne("Baseera.Domain.Identity.User", "User")
                         .WithMany("UserScopes")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Facility");
@@ -954,7 +975,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
                         .WithMany("Buildings")
                         .HasForeignKey("FacilityId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Facility");
@@ -965,7 +986,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
                         .WithMany("Departments")
                         .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Baseera.Domain.Organization.Department", "ParentDepartment")
@@ -983,7 +1004,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasOne("Baseera.Domain.Organization.Region", "Region")
                         .WithMany("Facilities")
                         .HasForeignKey("RegionId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Region");
@@ -994,7 +1015,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasOne("Baseera.Domain.Organization.Building", "Building")
                         .WithMany("Locations")
                         .HasForeignKey("BuildingId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Building");
@@ -1005,7 +1026,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
                         .WithMany("Units")
                         .HasForeignKey("FacilityId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("Baseera.Domain.Organization.FacilityUnit", "ParentUnit")
@@ -1023,7 +1044,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
                         .WithMany("Regions")
                         .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Organization");

@@ -9,13 +9,21 @@ using Microsoft.Extensions.Logging;
 
 public static class DatabaseInitializer
 {
-    public static async Task InitializeAsync(IServiceProvider services, bool seedDemoData, CancellationToken cancellationToken = default)
+    public static async Task InitializeAsync(
+        IServiceProvider services,
+        bool seedDemoData,
+        bool applyMigrations,
+        CancellationToken cancellationToken = default)
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitializer");
 
-        await db.Database.MigrateAsync(cancellationToken);
+        if (applyMigrations)
+        {
+            await db.Database.MigrateAsync(cancellationToken);
+        }
+
         await SeedReferenceDataAsync(db, cancellationToken);
 
         if (seedDemoData)
@@ -200,12 +208,14 @@ public static class DatabaseInitializer
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private const string OrganizationModule = "Organization";
+
     private static List<Permission> BuildPermissions()
     {
         (string Code, string NameAr, string Module)[] items =
         [
-            (PermissionCodes.OrganizationView, "عرض الهيكل التنظيمي", "Organization"),
-            (PermissionCodes.OrganizationManage, "إدارة الهيكل التنظيمي", "Organization"),
+            (PermissionCodes.OrganizationView, "عرض الهيكل التنظيمي", OrganizationModule),
+            (PermissionCodes.OrganizationManage, "إدارة الهيكل التنظيمي", OrganizationModule),
             (PermissionCodes.UsersView, "عرض المستخدمين", "Identity"),
             (PermissionCodes.UsersManage, "إدارة المستخدمين", "Identity"),
             (PermissionCodes.RolesManage, "إدارة الأدوار", "Identity"),
@@ -214,6 +224,12 @@ public static class DatabaseInitializer
             (PermissionCodes.AttachmentsUpload, "رفع المرفقات", "Attachments"),
             (PermissionCodes.AttachmentsDownload, "تنزيل المرفقات", "Attachments"),
             (PermissionCodes.AttachmentsDownloadSensitive, "تنزيل المرفقات الحساسة", "Attachments"),
+            (PermissionCodes.UsersArchive, "أرشفة مستخدم", "Identity"),
+            (PermissionCodes.UsersRestore, "استعادة مستخدم", "Identity"),
+            (PermissionCodes.OrganizationArchive, "أرشفة تنظيمي", OrganizationModule),
+            (PermissionCodes.OrganizationRestore, "استعادة تنظيمي", OrganizationModule),
+            (PermissionCodes.GrantGlobalScope, "منح نطاق وطني", "Identity"),
+            (PermissionCodes.GrantHeadquartersScope, "منح نطاق المستوى الرئيسي", "Identity"),
             (PermissionCodes.VehiclesView, "عرض المركبات", "Vehicles"),
             (PermissionCodes.VehiclesCreate, "إضافة مركبة", "Vehicles"),
             (PermissionCodes.VehiclesUpdate, "تحديث مركبة", "Vehicles"),

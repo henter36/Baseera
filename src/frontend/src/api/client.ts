@@ -1,3 +1,50 @@
+export type AuthMode = 'test' | 'entra'
+
+export function getAuthMode(): AuthMode {
+  const mode = import.meta.env.VITE_AUTH_MODE as AuthMode | undefined
+  if (mode === 'test' || mode === 'entra') return mode
+  // Production builds must set VITE_AUTH_MODE=entra explicitly via env.
+  if (import.meta.env.PROD) {
+    throw new Error('VITE_AUTH_MODE must be set to entra for production builds.')
+  }
+  // Dev-only fallback when Vite env file is incomplete.
+  return 'entra'
+}
+
+export function isTestAuthAllowed(): boolean {
+  return import.meta.env.DEV && getAuthMode() === 'test'
+}
+
+let accessTokenProvider: (() => Promise<string | null>) | null = null
+let testSubject = ''
+
+export function setAccessTokenProvider(provider: (() => Promise<string | null>) | null) {
+  accessTokenProvider = provider
+}
+
+export function setTestSubject(subject: string) {
+  if (!isTestAuthAllowed()) {
+    throw new Error('TestAuth غير مسموح في هذا البناء.')
+  }
+  testSubject = subject
+  sessionStorage.setItem('baseera.testSubject', subject)
+}
+
+export function getTestSubject() {
+  if (!isTestAuthAllowed()) return ''
+  return testSubject || sessionStorage.getItem('baseera.testSubject') || ''
+}
+
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+
 export type Me = {
   id: string
   displayNameAr: string
@@ -62,49 +109,23 @@ export type AuditLog = {
   isSensitiveView: boolean
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? ''
-
-export type AuthMode = 'test' | 'entra'
-
-export function getAuthMode(): AuthMode {
-  return (import.meta.env.VITE_AUTH_MODE as AuthMode) || 'test'
-}
-
-let accessTokenProvider: (() => Promise<string | null>) | null = null
-let testSubject = localStorage.getItem('baseera.testSubject') ?? 'dev-admin'
-
-export function setAccessTokenProvider(provider: (() => Promise<string | null>) | null) {
-  accessTokenProvider = provider
-}
-
-export function setTestSubject(subject: string) {
-  testSubject = subject
-  localStorage.setItem('baseera.testSubject', subject)
-}
-
-export function getTestSubject() {
-  return testSubject
-}
-
-export class ApiError extends Error {
-  status: number
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
-  }
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  if (getAuthMode() === 'test') {
-    headers.set('X-Test-User', testSubject)
-    headers.set('X-Test-DisplayName', testSubject)
+  if (isTestAuthAllowed()) {
+    const subject = getTestSubject()
+    if (subject) {
+      headers.set('X-Test-User', subject)
+      headers.set('X-Test-DisplayName', subject)
+    }
   } else if (accessTokenProvider) {
     const token = await accessTokenProvider()
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
+  if (response.status === 401) {
+    throw new ApiError(401, 'انتهت الجلسة أو غير مصرح. سجّل الدخول مجددًا.')
+  }
   if (!response.ok) {
     let detail = 'تعذر إكمال الطلب.'
     try {

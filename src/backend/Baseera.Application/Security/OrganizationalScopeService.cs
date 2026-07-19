@@ -6,9 +6,13 @@ using Baseera.Domain.Organization;
 
 public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseeraDbContext db) : IOrganizationalScopeService
 {
-    public bool IsGlobal =>
-        currentUser.IsGlobalScope ||
-        currentUser.Scopes.Any(s => s.ScopeType is ScopeType.Global or ScopeType.Headquarters);
+    public bool HasNationalAccess =>
+        currentUser.IsAuthenticated &&
+        currentUser.Scopes.Any(s => s.ScopeType == ScopeType.Global);
+
+    public bool HasHeadquartersAccess =>
+        HasNationalAccess ||
+        currentUser.Scopes.Any(s => s.ScopeType == ScopeType.Headquarters);
 
     public bool CanAccessRegion(Guid regionId)
     {
@@ -17,7 +21,7 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
             return false;
         }
 
-        if (IsGlobal)
+        if (HasNationalAccess)
         {
             return true;
         }
@@ -25,8 +29,9 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
         return currentUser.Scopes.Any(s =>
             (s.ScopeType == ScopeType.Region && s.RegionId == regionId) ||
             (s.ScopeType == ScopeType.MultipleRegions && s.RegionId == regionId) ||
-            (s.ScopeType is ScopeType.Facility or ScopeType.FacilityUnit or ScopeType.MultipleFacilities &&
-             db.Facilities.Any(f => f.Id == s.FacilityId && f.RegionId == regionId)));
+            ((s.ScopeType == ScopeType.Facility || s.ScopeType == ScopeType.FacilityUnit || s.ScopeType == ScopeType.MultipleFacilities) &&
+             s.FacilityId.HasValue &&
+             db.Facilities.Any(f => f.Id == s.FacilityId && f.RegionId == regionId && !f.IsDeleted)));
     }
 
     public bool CanAccessFacility(Guid facilityId)
@@ -36,20 +41,20 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
             return false;
         }
 
-        if (IsGlobal)
+        if (HasNationalAccess)
         {
             return true;
         }
 
-        var facility = db.Facilities.FirstOrDefault(f => f.Id == facilityId);
+        var facility = db.Facilities.FirstOrDefault(f => f.Id == facilityId && !f.IsDeleted);
         if (facility is null)
         {
             return false;
         }
 
         return currentUser.Scopes.Any(s =>
-            (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities && s.FacilityId == facilityId) ||
-            (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId == facility.RegionId) ||
+            ((s.ScopeType == ScopeType.Facility || s.ScopeType == ScopeType.MultipleFacilities) && s.FacilityId == facilityId) ||
+            ((s.ScopeType == ScopeType.Region || s.ScopeType == ScopeType.MultipleRegions) && s.RegionId == facility.RegionId) ||
             (s.ScopeType == ScopeType.FacilityUnit && s.FacilityId == facilityId));
     }
 
@@ -60,12 +65,12 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
             return false;
         }
 
-        if (IsGlobal)
+        if (HasNationalAccess)
         {
             return true;
         }
 
-        var unit = db.FacilityUnits.FirstOrDefault(u => u.Id == facilityUnitId);
+        var unit = db.FacilityUnits.FirstOrDefault(u => u.Id == facilityUnitId && !u.IsDeleted);
         if (unit is null)
         {
             return false;
@@ -81,9 +86,14 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
 
     public IQueryable<Region> FilterRegions(IQueryable<Region> query)
     {
-        if (IsGlobal)
+        if (HasNationalAccess)
         {
             return query;
+        }
+
+        if (!currentUser.IsAuthenticated || currentUser.Scopes.Count == 0)
+        {
+            return query.Where(_ => false);
         }
 
         var regionIds = currentUser.Scopes
@@ -100,7 +110,7 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
             .ToHashSet();
 
         var facilityRegionIds = db.Facilities
-            .Where(f => facilityIdsFromScopes.Contains(f.Id))
+            .Where(f => facilityIdsFromScopes.Contains(f.Id) && !f.IsDeleted)
             .Select(f => f.RegionId)
             .Distinct()
             .ToList();
@@ -115,9 +125,14 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
 
     public IQueryable<Facility> FilterFacilities(IQueryable<Facility> query)
     {
-        if (IsGlobal)
+        if (HasNationalAccess)
         {
             return query;
+        }
+
+        if (!currentUser.IsAuthenticated || currentUser.Scopes.Count == 0)
+        {
+            return query.Where(_ => false);
         }
 
         var facilityIds = currentUser.Scopes
@@ -139,7 +154,8 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
     public bool CanAccess(IScopedEntity entity) =>
         entity.ScopeType switch
         {
-            ScopeType.Global or ScopeType.Headquarters => IsGlobal || currentUser.IsAuthenticated,
+            ScopeType.Global => HasNationalAccess,
+            ScopeType.Headquarters => HasHeadquartersAccess,
             ScopeType.Region => entity.RegionId is Guid id && CanAccessRegion(id),
             ScopeType.Facility or ScopeType.MultipleFacilities => entity.FacilityId is Guid id && CanAccessFacility(id),
             ScopeType.FacilityUnit => entity.FacilityUnitId is Guid id && CanAccessFacilityUnit(id),
@@ -149,9 +165,14 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
 
     public string SummarizeScopes()
     {
-        if (IsGlobal)
+        if (HasNationalAccess)
         {
-            return "Global/Headquarters";
+            return "Global";
+        }
+
+        if (HasHeadquartersAccess)
+        {
+            return "Headquarters";
         }
 
         return string.Join("; ", currentUser.Scopes.Select(s =>

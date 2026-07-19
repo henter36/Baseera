@@ -16,6 +16,8 @@ public interface IBaseeraDbContext
     IQueryable<FacilityAssetLocation> FacilityAssetLocations { get; }
     IQueryable<Department> Departments { get; }
     IQueryable<User> Users { get; }
+    /// <summary>Includes soft-deleted users for administrative validation only.</summary>
+    IQueryable<User> UsersIncludingDeleted { get; }
     IQueryable<Role> Roles { get; }
     IQueryable<Permission> Permissions { get; }
     IQueryable<UserRole> UserRoles { get; }
@@ -41,6 +43,7 @@ public interface ICurrentUser
     IReadOnlyCollection<UserScopeSnapshot> Scopes { get; }
     bool HasPermission(string permissionCode);
     bool IsGlobalScope { get; }
+    bool HasHeadquartersScope { get; }
 }
 
 public sealed record UserScopeSnapshot(
@@ -51,6 +54,8 @@ public sealed record UserScopeSnapshot(
 
 public interface IOrganizationalScopeService
 {
+    bool HasNationalAccess { get; }
+    bool HasHeadquartersAccess { get; }
     bool CanAccessRegion(Guid regionId);
     bool CanAccessFacility(Guid facilityId);
     bool CanAccessFacilityUnit(Guid facilityUnitId);

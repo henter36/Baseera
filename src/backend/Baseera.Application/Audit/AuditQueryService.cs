@@ -3,6 +3,7 @@ namespace Baseera.Application.Audit;
 using Baseera.Application.Abstractions;
 using Baseera.Application.Common;
 using Baseera.Domain.Audit;
+using Baseera.Domain.Identity;
 
 public sealed record AuditLogDto(
     Guid Id,
@@ -21,13 +22,22 @@ public interface IAuditQueryService
     Task<PagedResult<AuditLogDto>> ListAsync(PagedQuery query, string? module, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Phase A.1: national audit listing is limited to Audit.View holders with Global or Headquarters scope.
+/// Regional/facility users cannot browse the national audit stream. Structured scope fields are deferred.
+/// </summary>
 public sealed class AuditQueryService(IBaseeraDbContext db, ICurrentUser currentUser) : IAuditQueryService
 {
     public Task<PagedResult<AuditLogDto>> ListAsync(PagedQuery query, string? module, CancellationToken cancellationToken = default)
     {
-        if (!currentUser.HasPermission("Audit.View"))
+        if (!currentUser.HasPermission(PermissionCodes.AuditView))
         {
             throw new UnauthorizedAccessException("ليست لديك صلاحية عرض سجل التدقيق.");
+        }
+
+        if (!currentUser.IsGlobalScope && !currentUser.HasHeadquartersScope)
+        {
+            throw new UnauthorizedAccessException("عرض سجل التدقيق الوطني مقصور على نطاق Global أو Headquarters.");
         }
 
         var q = db.AuditLogs.AsQueryable();
