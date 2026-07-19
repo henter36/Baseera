@@ -5,6 +5,7 @@ using Baseera.Application.Common;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Microsoft.EntityFrameworkCore;
 
 public interface INoteQueryService
 {
@@ -36,21 +37,21 @@ public sealed class NoteQueryService(
         var q = noteScope.FilterQueryable(db.OperationalNotes);
         q = ApplyFilters(q, query, now);
 
-        var total = q.Count();
+        var total = await q.CountAsync(cancellationToken);
         q = ApplySort(q, query.SortBy, query.SortDesc);
 
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
-        var rows = q.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        var rows = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
 
         var noteIds = rows.Select(r => r.Id).ToList();
-        var currentAssignments = db.NoteAssignments
+        var currentAssignments = await db.NoteAssignments
             .Where(a => noteIds.Contains(a.OperationalNoteId) && a.IsCurrent)
-            .ToList();
+            .ToListAsync(cancellationToken);
         var userIds = currentAssignments.Where(a => a.AssignedToUserId.HasValue).Select(a => a.AssignedToUserId!.Value).ToHashSet();
-        var users = db.Users.Where(u => userIds.Contains(u.Id)).ToDictionary(u => u.Id, u => u.DisplayNameAr);
+        var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
         var deptIds = currentAssignments.Where(a => a.AssignedToDepartmentId.HasValue).Select(a => a.AssignedToDepartmentId!.Value).ToHashSet();
-        var depts = db.Departments.Where(d => deptIds.Contains(d.Id)).ToDictionary(d => d.Id, d => d.NameAr);
+        var depts = await db.Departments.Where(d => deptIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.NameAr, cancellationToken);
 
         var items = rows.Select(n =>
         {
@@ -90,19 +91,19 @@ public sealed class NoteQueryService(
                 redact);
         }).ToList();
 
-        return await Task.FromResult(new PagedResult<NoteListItemDto>
+        return new PagedResult<NoteListItemDto>
         {
             Items = items,
             Page = page,
             PageSize = pageSize,
             TotalCount = total
-        });
+        };
     }
 
     public async Task<NoteDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
-        var note = db.OperationalNotes.FirstOrDefault(n => n.Id == id);
+        var note = await db.OperationalNotes.FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
         if (note is null || !noteScope.CanAccess(note))
         {
             return null;
@@ -124,8 +125,13 @@ public sealed class NoteQueryService(
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        var current = MapAssignment(db.NoteAssignments.FirstOrDefault(a => a.OperationalNoteId == id && a.IsCurrent));
-        var reporter = db.Users.FirstOrDefault(u => u.Id == note.ReportedByUserId)?.DisplayNameAr;
+        var currentAssignment = await db.NoteAssignments
+            .Include(a => a.AssignedToUser)
+            .Include(a => a.AssignedToDepartment)
+            .Include(a => a.AssignedByUser)
+            .FirstOrDefaultAsync(a => a.OperationalNoteId == id && a.IsCurrent, cancellationToken);
+        var current = MapAssignment(currentAssignment);
+        var reporter = (await db.Users.FirstOrDefaultAsync(u => u.Id == note.ReportedByUserId, cancellationToken))?.DisplayNameAr;
         var now = DateTimeOffset.UtcNow;
 
         return new NoteDetailDto(
@@ -167,17 +173,17 @@ public sealed class NoteQueryService(
             redact);
     }
 
-    public Task<IReadOnlyList<NoteStatusHistoryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<NoteStatusHistoryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
-        _ = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        _ = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
 
-        var rows = db.NoteStatusHistories
+        var rows = await db.NoteStatusHistories
             .Where(h => h.OperationalNoteId == id)
             .OrderBy(h => h.ChangedAtUtc)
-            .ToList();
+            .ToListAsync(cancellationToken);
         var userIds = rows.Select(r => r.ChangedByUserId).ToHashSet();
-        var users = db.Users.Where(u => userIds.Contains(u.Id)).ToDictionary(u => u.Id, u => u.DisplayNameAr);
+        var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
 
         IReadOnlyList<NoteStatusHistoryDto> result = rows.Select(h => new NoteStatusHistoryDto(
             h.Id,
@@ -190,47 +196,42 @@ public sealed class NoteQueryService(
             h.Reason,
             h.AssignmentId)).ToList();
 
-        return Task.FromResult(result);
+        return result;
     }
 
-    public Task<IReadOnlyList<NoteAssignmentDto>> GetAssignmentsAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<NoteAssignmentDto>> GetAssignmentsAsync(Guid id, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
-        _ = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        _ = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
 
-        var rows = db.NoteAssignments
+        var rows = await db.NoteAssignments
             .Where(a => a.OperationalNoteId == id)
+            .Include(a => a.AssignedToUser)
+            .Include(a => a.AssignedToDepartment)
+            .Include(a => a.AssignedByUser)
             .OrderByDescending(a => a.AssignedAtUtc)
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         IReadOnlyList<NoteAssignmentDto> result = rows.Select(MapAssignment).Where(a => a is not null).Cast<NoteAssignmentDto>().ToList();
-        return Task.FromResult(result);
+        return result;
     }
 
-    private NoteAssignmentDto? MapAssignment(NoteAssignment? a)
+    private static NoteAssignmentDto? MapAssignment(NoteAssignment? a)
     {
         if (a is null)
         {
             return null;
         }
 
-        string? userName = a.AssignedToUserId is Guid uid
-            ? db.Users.FirstOrDefault(u => u.Id == uid)?.DisplayNameAr
-            : null;
-        string? deptName = a.AssignedToDepartmentId is Guid did
-            ? db.Departments.FirstOrDefault(d => d.Id == did)?.NameAr
-            : null;
-        string? byName = db.Users.FirstOrDefault(u => u.Id == a.AssignedByUserId)?.DisplayNameAr;
-
         return new NoteAssignmentDto(
             a.Id,
             a.OperationalNoteId,
             a.AssignedToUserId,
-            userName,
+            a.AssignedToUser?.DisplayNameAr,
             a.AssignedToDepartmentId,
-            deptName,
+            a.AssignedToDepartment?.NameAr,
             a.AssignedByUserId,
-            byName,
+            a.AssignedByUser?.DisplayNameAr,
             a.AssignedAtUtc,
             a.DueAtUtc,
             a.Reason,

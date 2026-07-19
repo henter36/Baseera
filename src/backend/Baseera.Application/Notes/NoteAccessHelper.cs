@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Microsoft.EntityFrameworkCore;
 
 internal static class NoteAccessHelper
 {
@@ -39,14 +40,15 @@ internal static class NoteAccessHelper
         }
     }
 
-    public static OperationalNote LoadInScopeOrNotFound(
+    public static async Task<OperationalNote> LoadInScopeOrNotFoundAsync(
         IBaseeraDbContext db,
         INoteScopeService noteScope,
         Guid id,
-        bool includeDeleted = false)
+        bool includeDeleted = false,
+        CancellationToken cancellationToken = default)
     {
         var query = includeDeleted ? db.OperationalNotesIncludingDeleted : db.OperationalNotes;
-        var note = query.FirstOrDefault(n => n.Id == id);
+        var note = await query.FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
         if (note is null || !noteScope.CanAccess(note))
         {
             throw new KeyNotFoundException("الملاحظة غير موجودة.");

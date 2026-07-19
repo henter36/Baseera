@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Common;
 using Baseera.Domain.Organization;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 
 public sealed record RegionDto(Guid Id, string Code, string NameAr, bool IsActive, DateTimeOffset CreatedAtUtc, string RowVersion);
 public sealed record FacilityDto(Guid Id, Guid RegionId, string Code, string NameAr, string? FacilityType, bool IsActive, string RowVersion);
@@ -204,7 +205,7 @@ public sealed class OrganizationService(
         return new FacilityDto(facility.Id, facility.RegionId, facility.Code, facility.NameAr, facility.FacilityType, facility.IsActive, Convert.ToBase64String(facility.RowVersion));
     }
 
-    public Task<PagedResult<FacilityUnitDto>> ListFacilityUnitsAsync(Guid facilityId, PagedQuery query, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<FacilityUnitDto>> ListFacilityUnitsAsync(Guid facilityId, PagedQuery query, CancellationToken cancellationToken = default)
     {
         EnsurePermission("Organization.View");
         if (!scope.CanAccessFacility(facilityId))
@@ -219,18 +220,17 @@ public sealed class OrganizationService(
             q = q.Where(u => u.NameAr.Contains(term) || u.Code.Contains(term));
         }
 
-        var total = q.Count();
-        var items = q.OrderBy(u => u.Code)
+        var total = await q.CountAsync(cancellationToken);
+        var items = await q.OrderBy(u => u.Code)
             .Skip(query.Skip)
             .Take(query.Take)
-            .ToList()
             .Select(u => new FacilityUnitDto(u.Id, u.FacilityId, u.ParentUnitId, u.Code, u.NameAr, u.IsActive))
-            .ToList();
+            .ToListAsync(cancellationToken);
 
-        return Task.FromResult(new PagedResult<FacilityUnitDto> { Items = items, Page = query.Page, PageSize = query.Take, TotalCount = total });
+        return new PagedResult<FacilityUnitDto> { Items = items, Page = query.Page, PageSize = query.Take, TotalCount = total };
     }
 
-    public Task<PagedResult<DepartmentDto>> ListDepartmentsAsync(PagedQuery query, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<DepartmentDto>> ListDepartmentsAsync(PagedQuery query, CancellationToken cancellationToken = default)
     {
         EnsurePermission("Organization.View");
         var q = db.Departments.Where(d => !d.IsDeleted);
@@ -240,15 +240,14 @@ public sealed class OrganizationService(
             q = q.Where(d => d.NameAr.Contains(term) || d.Code.Contains(term));
         }
 
-        var total = q.Count();
-        var items = q.OrderBy(d => d.Code)
+        var total = await q.CountAsync(cancellationToken);
+        var items = await q.OrderBy(d => d.Code)
             .Skip(query.Skip)
             .Take(query.Take)
-            .ToList()
             .Select(d => new DepartmentDto(d.Id, d.OrganizationId, d.ParentDepartmentId, d.Code, d.NameAr, d.IsActive))
-            .ToList();
+            .ToListAsync(cancellationToken);
 
-        return Task.FromResult(new PagedResult<DepartmentDto> { Items = items, Page = query.Page, PageSize = query.Take, TotalCount = total });
+        return new PagedResult<DepartmentDto> { Items = items, Page = query.Page, PageSize = query.Take, TotalCount = total };
     }
 
     private void EnsurePermission(string code)

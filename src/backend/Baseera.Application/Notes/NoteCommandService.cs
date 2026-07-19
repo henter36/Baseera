@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Microsoft.EntityFrameworkCore;
 
 public interface INoteCommandService
 {
@@ -43,7 +44,7 @@ public sealed class NoteCommandService(
         }
 
         if (request.OwnerDepartmentId.HasValue &&
-            !db.Departments.Any(d => d.Id == request.OwnerDepartmentId.Value && !d.IsDeleted))
+            !await db.Departments.AnyAsync(d => d.Id == request.OwnerDepartmentId.Value && !d.IsDeleted, cancellationToken))
         {
             throw new KeyNotFoundException("الإدارة غير موجودة.");
         }
@@ -62,7 +63,7 @@ public sealed class NoteCommandService(
             SourceReference = string.IsNullOrWhiteSpace(request.SourceReference) ? null : request.SourceReference.Trim(),
             Classification = request.Classification,
             ScopeType = request.ScopeType,
-            RegionId = NormalizeRegionId(request),
+            RegionId = await NormalizeRegionIdAsync(request, cancellationToken),
             FacilityId = request.FacilityId,
             FacilityUnitId = request.FacilityUnitId,
             OwnerDepartmentId = request.OwnerDepartmentId,
@@ -110,7 +111,7 @@ public sealed class NoteCommandService(
     public async Task<NoteDetailDto> UpdateAsync(Guid id, UpdateNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
 
         if (note.Status is NoteStatus.Closed or NoteStatus.Cancelled)
@@ -150,7 +151,7 @@ public sealed class NoteCommandService(
     public async Task<NoteDetailDto> SubmitAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Open);
 
@@ -181,7 +182,7 @@ public sealed class NoteCommandService(
     public async Task ArchiveAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesArchive);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
 
         note.IsDeleted = true;
@@ -206,7 +207,7 @@ public sealed class NoteCommandService(
     public async Task RestoreAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesRestore);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id, includeDeleted: true);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, includeDeleted: true, cancellationToken: cancellationToken);
         if (!note.IsDeleted)
         {
             throw new InvalidOperationException("الملاحظة غير مؤرشفة.");
@@ -248,11 +249,12 @@ public sealed class NoteCommandService(
         });
     }
 
-    private Guid? NormalizeRegionId(CreateNoteRequest request)
+    private async Task<Guid?> NormalizeRegionIdAsync(CreateNoteRequest request, CancellationToken cancellationToken)
     {
         if (request.ScopeType == ScopeType.Facility && !request.RegionId.HasValue && request.FacilityId.HasValue)
         {
-            return db.Facilities.First(f => f.Id == request.FacilityId.Value).RegionId;
+            var facility = await db.Facilities.FirstAsync(f => f.Id == request.FacilityId.Value, cancellationToken);
+            return facility.RegionId;
         }
 
         return request.RegionId;

@@ -3,6 +3,7 @@ namespace Baseera.Application.Notes;
 using Baseera.Application.Abstractions;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Microsoft.EntityFrameworkCore;
 
 public interface INoteWorkflowService
 {
@@ -57,7 +58,7 @@ public sealed class NoteWorkflowService(
     public async Task<NoteDetailDto> VerifyClosureAsync(Guid id, CloseNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesVerifyClosure);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Closed);
 
@@ -74,7 +75,7 @@ public sealed class NoteWorkflowService(
         note.UpdatedBy = currentUser.ExternalSubject;
         db.Update(note);
 
-        CompleteCurrentAssignment(note.Id, now);
+        await CompleteCurrentAssignmentAsync(note.Id, now, cancellationToken);
         AppendHistory(note.Id, from, NoteStatus.Closed, actorId, request.Reason.Trim());
 
         await audit.WriteAsync(new AuditEntry
@@ -95,7 +96,7 @@ public sealed class NoteWorkflowService(
     public async Task<NoteDetailDto> ReopenAsync(Guid id, ReopenNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesReopen);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Reopened);
 
@@ -132,7 +133,7 @@ public sealed class NoteWorkflowService(
     public async Task<NoteDetailDto> CancelAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesCancel);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
 
         if (note.Status == NoteStatus.Closed)
@@ -150,7 +151,7 @@ public sealed class NoteWorkflowService(
         note.UpdatedBy = currentUser.ExternalSubject;
         db.Update(note);
 
-        EndCurrentAssignment(note.Id, now, request.Reason.Trim());
+        await EndCurrentAssignmentAsync(note.Id, now, request.Reason.Trim(), cancellationToken);
         AppendHistory(note.Id, from, NoteStatus.Cancelled, actorId, request.Reason.Trim());
         await audit.WriteAsync(new AuditEntry
         {
@@ -178,12 +179,12 @@ public sealed class NoteWorkflowService(
         CancellationToken cancellationToken)
     {
         NoteAccessHelper.EnsurePermission(currentUser, permission);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, rowVersion);
 
         if (toStatus == NoteStatus.InProgress && note.Status == NoteStatus.Reopened)
         {
-            EnsureCurrentAssignmentExists(note.Id);
+            await EnsureCurrentAssignmentExistsAsync(note.Id, cancellationToken);
         }
 
         NoteStateMachine.EnsureAllowed(note.Status, toStatus);
@@ -238,17 +239,17 @@ public sealed class NoteWorkflowService(
         }
     }
 
-    private void EnsureCurrentAssignmentExists(Guid noteId)
+    private async Task EnsureCurrentAssignmentExistsAsync(Guid noteId, CancellationToken cancellationToken)
     {
-        if (!db.NoteAssignments.Any(a => a.OperationalNoteId == noteId && a.IsCurrent))
+        if (!await db.NoteAssignments.AnyAsync(a => a.OperationalNoteId == noteId && a.IsCurrent, cancellationToken))
         {
             throw new InvalidOperationException("لا يوجد تكليف حالي للانتقال إلى قيد المعالجة.");
         }
     }
 
-    private void CompleteCurrentAssignment(Guid noteId, DateTimeOffset now)
+    private async Task CompleteCurrentAssignmentAsync(Guid noteId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var current = db.NoteAssignments.FirstOrDefault(a => a.OperationalNoteId == noteId && a.IsCurrent);
+        var current = await db.NoteAssignments.FirstOrDefaultAsync(a => a.OperationalNoteId == noteId && a.IsCurrent, cancellationToken);
         if (current is null)
         {
             return;
@@ -258,9 +259,9 @@ public sealed class NoteWorkflowService(
         db.Update(current);
     }
 
-    private void EndCurrentAssignment(Guid noteId, DateTimeOffset now, string reason)
+    private async Task EndCurrentAssignmentAsync(Guid noteId, DateTimeOffset now, string reason, CancellationToken cancellationToken)
     {
-        var current = db.NoteAssignments.FirstOrDefault(a => a.OperationalNoteId == noteId && a.IsCurrent);
+        var current = await db.NoteAssignments.FirstOrDefaultAsync(a => a.OperationalNoteId == noteId && a.IsCurrent, cancellationToken);
         if (current is null)
         {
             return;

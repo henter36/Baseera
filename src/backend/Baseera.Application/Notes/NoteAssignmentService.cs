@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Microsoft.EntityFrameworkCore;
 
 public interface INoteAssignmentService
 {
@@ -20,7 +21,7 @@ public sealed class NoteAssignmentService(
     public async Task<NoteDetailDto> AssignAsync(Guid id, AssignNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesAssign);
-        var note = NoteAccessHelper.LoadInScopeOrNotFound(db, noteScope, id);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
 
         var actorId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
@@ -33,10 +34,10 @@ public sealed class NoteAssignmentService(
         }
         else
         {
-            ValidateAssigneeDepartment(request.AssignedToDepartmentId!.Value);
+            await ValidateAssigneeDepartmentAsync(request.AssignedToDepartmentId!.Value, cancellationToken);
         }
 
-        var current = db.NoteAssignments.FirstOrDefault(a => a.OperationalNoteId == id && a.IsCurrent);
+        var current = await db.NoteAssignments.FirstOrDefaultAsync(a => a.OperationalNoteId == id && a.IsCurrent, cancellationToken);
         var isReassign = current is not null;
         var fromStatus = note.Status;
 
@@ -118,9 +119,9 @@ public sealed class NoteAssignmentService(
         throw new InvalidOperationException($"لا يمكن التكليف من الحالة {NoteDisplay.StatusAr(status)}.");
     }
 
-    private Task ValidateAssigneeUserAsync(Guid userId, OperationalNote note, CancellationToken cancellationToken)
+    private async Task ValidateAssigneeUserAsync(Guid userId, OperationalNote note, CancellationToken cancellationToken)
     {
-        var user = db.UsersIncludingDeleted.FirstOrDefault(u => u.Id == userId);
+        var user = await db.UsersIncludingDeleted.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null || user.IsDeleted)
         {
             throw new KeyNotFoundException("المستخدم غير موجود.");
@@ -131,20 +132,19 @@ public sealed class NoteAssignmentService(
             throw new InvalidOperationException("المستخدم غير نشط أو غير مُهيّأ لاستلام التكليف.");
         }
 
-        EnsureAssigneeCanWork(userId);
-        EnsureAssigneeScopeIntersects(userId, note);
-        return Task.CompletedTask;
+        await EnsureAssigneeCanWorkAsync(userId, cancellationToken);
+        await EnsureAssigneeScopeIntersectsAsync(userId, note, cancellationToken);
     }
 
-    private void ValidateAssigneeDepartment(Guid departmentId)
+    private async Task ValidateAssigneeDepartmentAsync(Guid departmentId, CancellationToken cancellationToken)
     {
-        if (!db.Departments.Any(d => d.Id == departmentId && !d.IsDeleted))
+        if (!await db.Departments.AnyAsync(d => d.Id == departmentId && !d.IsDeleted, cancellationToken))
         {
             throw new KeyNotFoundException("الإدارة غير موجودة.");
         }
     }
 
-    private void EnsureAssigneeCanWork(Guid userId)
+    private async Task EnsureAssigneeCanWorkAsync(Guid userId, CancellationToken cancellationToken)
     {
         var workPermissions = new[]
         {
@@ -153,12 +153,12 @@ public sealed class NoteAssignmentService(
             PermissionCodes.NotesSubmitForVerification
         };
 
-        var hasWork = (
+        var hasWork = await (
             from ur in db.UserRoles
             join rp in db.RolePermissions on ur.RoleId equals rp.RoleId
             join p in db.Permissions on rp.PermissionId equals p.Id
             where ur.UserId == userId && workPermissions.Contains(p.Code)
-            select p.Code).Any();
+            select p.Code).AnyAsync(cancellationToken);
 
         if (!hasWork)
         {
@@ -166,12 +166,12 @@ public sealed class NoteAssignmentService(
         }
     }
 
-    private void EnsureAssigneeScopeIntersects(Guid userId, OperationalNote note)
+    private async Task EnsureAssigneeScopeIntersectsAsync(Guid userId, OperationalNote note, CancellationToken cancellationToken)
     {
-        var scopes = db.UserScopes
+        var scopes = await db.UserScopes
             .Where(s => s.UserId == userId && s.IsActive && !s.IsDeleted)
             .Select(s => new UserScopeSnapshot(s.ScopeType, s.RegionId, s.FacilityId, s.FacilityUnitId))
-            .ToList();
+            .ToListAsync(cancellationToken);
 
         if (scopes.Count == 0)
         {
@@ -189,7 +189,7 @@ public sealed class NoteAssignmentService(
             return;
         }
 
-        if (IntersectsNote(scopes, note))
+        if (await IntersectsNoteAsync(scopes, note, cancellationToken))
         {
             return;
         }
@@ -197,26 +197,83 @@ public sealed class NoteAssignmentService(
         throw new InvalidOperationException("نطاق المستخدم لا يتقاطع مع نطاق الملاحظة.");
     }
 
-    private bool IntersectsNote(IReadOnlyList<UserScopeSnapshot> scopes, OperationalNote note)
+    private async Task<bool> IntersectsNoteAsync(IReadOnlyList<UserScopeSnapshot> scopes, OperationalNote note, CancellationToken cancellationToken)
     {
-        return note.ScopeType switch
+        switch (note.ScopeType)
         {
-            ScopeType.Region => note.RegionId is Guid rid && scopes.Any(s =>
-                (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId == rid) ||
-                (s.FacilityId.HasValue && db.Facilities.Any(f => f.Id == s.FacilityId && f.RegionId == rid))),
-            ScopeType.Facility => note.FacilityId is Guid fid && scopes.Any(s =>
-                (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities or ScopeType.FacilityUnit && s.FacilityId == fid) ||
-                (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId.HasValue &&
-                 db.Facilities.Any(f => f.Id == fid && f.RegionId == s.RegionId))),
-            ScopeType.FacilityUnit => note.FacilityUnitId is Guid uid && (
-                scopes.Any(s => s.ScopeType == ScopeType.FacilityUnit && s.FacilityUnitId == uid) ||
-                (note.FacilityId is Guid fid && scopes.Any(s =>
+            case ScopeType.Region:
+            {
+                if (note.RegionId is not Guid rid)
+                {
+                    return false;
+                }
+
+                var facilityIds = scopes.Where(s => s.FacilityId.HasValue).Select(s => s.FacilityId!.Value).ToHashSet();
+                var facilityRegionMap = facilityIds.Count == 0
+                    ? new Dictionary<Guid, Guid>()
+                    : await db.Facilities
+                        .Where(f => facilityIds.Contains(f.Id))
+                        .ToDictionaryAsync(f => f.Id, f => f.RegionId, cancellationToken);
+
+                return scopes.Any(s =>
+                    (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId == rid) ||
+                    (s.FacilityId.HasValue && facilityRegionMap.TryGetValue(s.FacilityId.Value, out var mappedRegionId) && mappedRegionId == rid));
+            }
+
+            case ScopeType.Facility:
+            {
+                if (note.FacilityId is not Guid fid)
+                {
+                    return false;
+                }
+
+                var noteFacilityRegionId = await db.Facilities
+                    .Where(f => f.Id == fid)
+                    .Select(f => (Guid?)f.RegionId)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                return scopes.Any(s =>
+                    (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities or ScopeType.FacilityUnit && s.FacilityId == fid) ||
+                    (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId.HasValue &&
+                     noteFacilityRegionId == s.RegionId));
+            }
+
+            case ScopeType.FacilityUnit:
+            {
+                if (note.FacilityUnitId is not Guid uid)
+                {
+                    return false;
+                }
+
+                if (scopes.Any(s => s.ScopeType == ScopeType.FacilityUnit && s.FacilityUnitId == uid))
+                {
+                    return true;
+                }
+
+                if (note.FacilityId is not Guid fid)
+                {
+                    return false;
+                }
+
+                var noteFacilityRegionId = await db.Facilities
+                    .Where(f => f.Id == fid)
+                    .Select(f => (Guid?)f.RegionId)
+                    .FirstOrDefaultAsync(cancellationToken);
+
+                return scopes.Any(s =>
                     (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities && s.FacilityId == fid) ||
                     (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions && s.RegionId.HasValue &&
-                     db.Facilities.Any(f => f.Id == fid && f.RegionId == s.RegionId))))),
-            ScopeType.Global => scopes.Any(s => s.ScopeType == ScopeType.Global),
-            ScopeType.Headquarters => scopes.Any(s => s.ScopeType is ScopeType.Headquarters or ScopeType.Global),
-            _ => false
-        };
+                     noteFacilityRegionId == s.RegionId));
+            }
+
+            case ScopeType.Global:
+                return scopes.Any(s => s.ScopeType == ScopeType.Global);
+
+            case ScopeType.Headquarters:
+                return scopes.Any(s => s.ScopeType is ScopeType.Headquarters or ScopeType.Global);
+
+            default:
+                return false;
+        }
     }
 }

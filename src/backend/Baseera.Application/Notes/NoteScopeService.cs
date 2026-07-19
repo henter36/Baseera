@@ -3,6 +3,7 @@ namespace Baseera.Application.Notes;
 using Baseera.Application.Abstractions;
 using Baseera.Domain.Common;
 using Baseera.Domain.Notes;
+using Microsoft.EntityFrameworkCore;
 
 public interface INoteScopeService
 {
@@ -112,7 +113,7 @@ public sealed class NoteScopeService(
         }
     }
 
-    public Task EnsureOrgEntitiesActiveAsync(
+    public async Task EnsureOrgEntitiesActiveAsync(
         ScopeType scopeType,
         Guid? regionId,
         Guid? facilityId,
@@ -121,20 +122,18 @@ public sealed class NoteScopeService(
     {
         if (scopeType == ScopeType.Region && regionId.HasValue)
         {
-            EnsureRegionExists(regionId.Value);
+            await EnsureRegionExistsAsync(regionId.Value, cancellationToken);
         }
 
         if (facilityId.HasValue)
         {
-            EnsureFacilityConsistent(regionId, facilityId.Value);
+            await EnsureFacilityConsistentAsync(regionId, facilityId.Value, cancellationToken);
         }
 
         if (facilityUnitId.HasValue)
         {
-            EnsureUnitBelongsToFacility(facilityId!.Value, facilityUnitId.Value);
+            await EnsureUnitBelongsToFacilityAsync(facilityId!.Value, facilityUnitId.Value, cancellationToken);
         }
-
-        return Task.CompletedTask;
     }
 
     private static void EnsureNoIds(Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
@@ -169,17 +168,17 @@ public sealed class NoteScopeService(
         }
     }
 
-    private void EnsureRegionExists(Guid regionId)
+    private async Task EnsureRegionExistsAsync(Guid regionId, CancellationToken cancellationToken)
     {
-        if (!db.Regions.Any(r => r.Id == regionId && !r.IsDeleted && r.IsActive))
+        if (!await db.Regions.AnyAsync(r => r.Id == regionId && !r.IsDeleted && r.IsActive, cancellationToken))
         {
             throw new KeyNotFoundException("المنطقة غير موجودة.");
         }
     }
 
-    private void EnsureFacilityConsistent(Guid? regionId, Guid facilityId)
+    private async Task EnsureFacilityConsistentAsync(Guid? regionId, Guid facilityId, CancellationToken cancellationToken)
     {
-        var facility = db.Facilities.FirstOrDefault(f => f.Id == facilityId && !f.IsDeleted && f.IsActive)
+        var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == facilityId && !f.IsDeleted && f.IsActive, cancellationToken)
             ?? throw new KeyNotFoundException("السجن غير موجود.");
 
         if (regionId.HasValue && facility.RegionId != regionId.Value)
@@ -188,9 +187,9 @@ public sealed class NoteScopeService(
         }
     }
 
-    private void EnsureUnitBelongsToFacility(Guid facilityId, Guid facilityUnitId)
+    private async Task EnsureUnitBelongsToFacilityAsync(Guid facilityId, Guid facilityUnitId, CancellationToken cancellationToken)
     {
-        var unit = db.FacilityUnits.FirstOrDefault(u => u.Id == facilityUnitId && !u.IsDeleted && u.IsActive)
+        var unit = await db.FacilityUnits.FirstOrDefaultAsync(u => u.Id == facilityUnitId && !u.IsDeleted && u.IsActive, cancellationToken)
             ?? throw new KeyNotFoundException("الوحدة غير موجودة.");
 
         if (unit.FacilityId != facilityId)
