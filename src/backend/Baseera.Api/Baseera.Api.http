@@ -1,0 +1,6 @@
+@Baseera.Api_HostAddress = http://localhost:5047
+
+GET {{Baseera.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

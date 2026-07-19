@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/Baseera.IntegrationTests/Baseera.IntegrationTests.csproj" />
+    <Project Path="tests/Baseera.UnitTests/Baseera.UnitTests.csproj" />
+  </Folder>
+  <Project Path="Baseera.Api/Baseera.Api.csproj" />
+  <Project Path="Baseera.Application/Baseera.Application.csproj" />
+  <Project Path="Baseera.BackgroundJobs/Baseera.BackgroundJobs.csproj" />
+  <Project Path="Baseera.Domain/Baseera.Domain.csproj" />
+  <Project Path="Baseera.Infrastructure/Baseera.Infrastructure.csproj" />
+  <Project Path="Baseera.Reporting/Baseera.Reporting.csproj" />
+</Solution>

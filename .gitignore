@@ -1,0 +1,16 @@
+# Baseera
+bin/
+obj/
+*.user
+*.suo
+.vs/
+data/
+**/data/attachments/
+src/frontend/node_modules/
+src/frontend/dist/
+.env
+.env.local
+*.db
+.DS_Store
+TestResults/
+src/backend/Baseera.Api/appsettings.Development.json
