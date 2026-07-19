@@ -137,7 +137,7 @@ NuGet High/Critical gate: clean. Frontend typecheck/lint/test/build (Entra place
 
 **Branch:** `phase-b1-final-acceptance`  
 **Pre-fix SHA:** `bda6bdd31ca83210ddf659994fe8e542a2367084` (B.1 merge on `main`)  
-**Post-fix tip SHA:** _(filled after push)_
+**Post-fix tip SHA:** `6b9da54`
 
 ### Gap
 
