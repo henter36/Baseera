@@ -34,17 +34,27 @@ Operational note closure and cancellation are blocked when active corrective act
 - `npm audit --audit-level=high`: 0 vulnerabilities.
 - Migration apply on a new SQL Server database: Passed.
 - Migration rollback to `20260719103156_PhaseB1NotesCore` and reapply `PhaseB2CorrectiveActionsCore`: Passed.
+- GitHub Actions backend/frontend/secret-scan: Passed on the hardening commit.
+- SonarCloud Quality Gate: Passed on commit `cf7bce28a601c19f28dc298a40d9eff7f012a235`.
+- Sonar ratings: Reliability A, Maintainability A, Security A.
+- Qlty: Passed.
 
 ## Sonar Fixes and Test Hardening
 
-- Sonar issue count for the eight targeted findings: 0 expected after the route constant, query filter extraction, transition options record, client type/query refactors, and detail action-panel extraction.
+- The eight targeted Sonar findings are closed after the route constant, query filter extraction, transition options record, client type/query refactors, and detail action-panel extraction.
 - Added hardening coverage for Critical SoD, out-of-scope verification, invalid assignment targets, concurrent references, concurrent first assignment, note cancellation/closure guards, archive/restore, sensitive redaction/audit, attachment scan/scope enforcement, and RTL detail/create/edit behavior.
-- Final SHA: recorded in PR #5 head after push.
+- Final implementation SHA before documentation finalization: `cf7bce28a601c19f28dc298a40d9eff7f012a235`.
+
+## Review Status
+
+- All existing inline review threads are resolved.
+- CodeRabbit status is successful for the previously completed review cycle.
+- A final review was requested after the hardening round; if CodeRabbit remains rate-limited, GitHub Actions, SonarCloud, Qlty, Gitleaks, and the resolved review threads remain the authoritative merge gates.
 
 ## Explicit Non-Starts
 
 No automatic escalation, notifications, background jobs, dashboards, reports/export, recurring actions, Phase B.2.2, or Phase B.3 were started.
 
-## Residual Risks
+## Decision
 
-CI, SonarCloud, Qlty, Gitleaks, CodeRabbit, Sourcery, and Gemini are remote gates; local implementation records the expected commands and PR must use the remote results as the final authority.
+`Phase B.2.1 Accepted`
