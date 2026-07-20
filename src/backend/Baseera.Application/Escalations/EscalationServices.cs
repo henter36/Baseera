@@ -11,6 +11,11 @@ using Baseera.Domain.Notes;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
+internal static class EscalationModules
+{
+    public const string Escalations = "Escalations";
+}
+
 public interface IEscalationPolicyService
 {
     Task<PagedResult<EscalationPolicyDto>> ListAsync(EscalationPolicyQuery query, CancellationToken cancellationToken = default);
@@ -125,7 +130,7 @@ public sealed class EscalationPolicyService(
             CreatedAtUtc = now
         };
         db.Add(policy);
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyCreated", Module = "Escalations", EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString(), NewValues = new { policy.Code, policy.NameAr } }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyCreated", Module = EscalationModules.Escalations, EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString(), NewValues = new { policy.Code, policy.NameAr } }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ToPolicyDto(policy);
     }
@@ -143,7 +148,7 @@ public sealed class EscalationPolicyService(
         policy.FacilityId = request.FacilityId;
         policy.FacilityUnitId = request.FacilityUnitId;
         policy.UpdatedAtUtc = timeProvider.GetUtcNow();
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyUpdated", Module = "Escalations", EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString(), OldValues = old, NewValues = new { policy.NameAr, policy.Description, policy.ScopeType, policy.RegionId, policy.FacilityId, policy.FacilityUnitId } }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyUpdated", Module = EscalationModules.Escalations, EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString(), OldValues = old, NewValues = new { policy.NameAr, policy.Description, policy.ScopeType, policy.RegionId, policy.FacilityId, policy.FacilityUnitId } }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ToPolicyDto(policy);
     }
@@ -161,7 +166,7 @@ public sealed class EscalationPolicyService(
         policy.IsEnabled = true;
         policy.ActivatedAtUtc = timeProvider.GetUtcNow();
         policy.ActivatedByUserId = RequireUser();
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyActivated", Module = "Escalations", EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyActivated", Module = EscalationModules.Escalations, EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ToPolicyDto(policy);
     }
@@ -174,7 +179,7 @@ public sealed class EscalationPolicyService(
         policy.IsEnabled = false;
         policy.DeactivatedAtUtc = timeProvider.GetUtcNow();
         policy.DeactivatedByUserId = RequireUser();
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyDeactivated", Module = "Escalations", EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyDeactivated", Module = EscalationModules.Escalations, EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ToPolicyDto(policy);
     }
@@ -187,7 +192,7 @@ public sealed class EscalationPolicyService(
         policy.IsDeleted = true;
         policy.DeletedAtUtc = timeProvider.GetUtcNow();
         policy.IsEnabled = false;
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyArchived", Module = "Escalations", EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyArchived", Module = EscalationModules.Escalations, EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -200,7 +205,7 @@ public sealed class EscalationPolicyService(
         policy.IsDeleted = false;
         policy.DeletedAtUtc = null;
         policy.DeletedBy = null;
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyRestored", Module = "Escalations", EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationPolicyRestored", Module = EscalationModules.Escalations, EntityType = nameof(EscalationPolicy), EntityId = policy.Id.ToString() }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -242,7 +247,7 @@ public sealed class EscalationPolicyService(
             CreatedAtUtc = timeProvider.GetUtcNow()
         };
         db.Add(rule);
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationRuleCreated", Module = "Escalations", EntityType = nameof(EscalationRule), EntityId = rule.Id.ToString(), NewValues = new { policyId, rule.Level } }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationRuleCreated", Module = EscalationModules.Escalations, EntityType = nameof(EscalationRule), EntityId = rule.Id.ToString(), NewValues = new { policyId, rule.Level } }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ToRuleDto(rule);
     }
@@ -269,7 +274,7 @@ public sealed class EscalationPolicyService(
         rule.TitleTemplateAr = request.TitleTemplateAr.Trim();
         rule.MessageTemplateAr = request.MessageTemplateAr.Trim();
         rule.UpdatedAtUtc = timeProvider.GetUtcNow();
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationRuleUpdated", Module = "Escalations", EntityType = nameof(EscalationRule), EntityId = rule.Id.ToString() }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationRuleUpdated", Module = EscalationModules.Escalations, EntityType = nameof(EscalationRule), EntityId = rule.Id.ToString() }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ToRuleDto(rule);
     }
@@ -286,7 +291,7 @@ public sealed class EscalationPolicyService(
         var rule = await LoadRuleAsync(id, cancellationToken);
         EnsureRowVersion(rule.RowVersion, request.RowVersion);
         rule.IsEnabled = enabled;
-        await audit.WriteAsync(new AuditEntry { Action = auditAction, Module = "Escalations", EntityType = nameof(EscalationRule), EntityId = rule.Id.ToString() }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = auditAction, Module = EscalationModules.Escalations, EntityType = nameof(EscalationRule), EntityId = rule.Id.ToString() }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ToRuleDto(rule);
     }
@@ -375,7 +380,7 @@ public sealed class EscalationProcessor(
             return new EscalationRunResult(0, 0, 0, 0, 0, 0);
         }
 
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationRunStarted", Module = "Escalations", EntityType = JobName, NewValues = new { leaseOwner, options.BatchSize, options.MaximumAttempts, options.RetryBaseSeconds } }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationRunStarted", Module = EscalationModules.Escalations, EntityType = JobName, NewValues = new { leaseOwner, options.BatchSize, options.MaximumAttempts, options.RetryBaseSeconds } }, cancellationToken);
         var policies = await db.EscalationPolicies.AsNoTracking()
             .Where(p => p.IsEnabled)
             .Include(p => p.Rules)
@@ -396,7 +401,7 @@ public sealed class EscalationProcessor(
         }
 
         var final = result.ToResult();
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationRunCompleted", Module = "Escalations", EntityType = JobName, NewValues = final }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationRunCompleted", Module = EscalationModules.Escalations, EntityType = JobName, NewValues = final }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return final;
     }
@@ -512,7 +517,7 @@ public sealed class EscalationProcessor(
         if (recipients.Count == 0)
         {
             result.Suppressed++;
-            await audit.WriteAsync(new AuditEntry { Action = "EscalationOccurrenceSuppressed", Module = "Escalations", EntityType = nameof(EscalationOccurrence), EntityId = occurrence.Id.ToString(), Reason = occurrence.SuppressionReason }, cancellationToken);
+            await audit.WriteAsync(new AuditEntry { Action = "EscalationOccurrenceSuppressed", Module = EscalationModules.Escalations, EntityType = nameof(EscalationOccurrence), EntityId = occurrence.Id.ToString(), Reason = occurrence.SuppressionReason }, cancellationToken);
             return;
         }
 
@@ -553,7 +558,7 @@ public sealed class EscalationProcessor(
             await audit.WriteAsync(new AuditEntry { Action = "NotificationCreated", Module = "Notifications", EntityType = nameof(Notification), EntityId = notification.Id.ToString(), NewValues = new { recipientId, candidate.TargetType, candidate.TargetId } }, cancellationToken);
         }
 
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationOccurrenceCreated", Module = "Escalations", EntityType = nameof(EscalationOccurrence), EntityId = occurrence.Id.ToString(), NewValues = new { occurrence.PolicyId, occurrence.RuleId, occurrence.TargetId, occurrence.RecipientCount } }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationOccurrenceCreated", Module = EscalationModules.Escalations, EntityType = nameof(EscalationOccurrence), EntityId = occurrence.Id.ToString(), NewValues = new { occurrence.PolicyId, occurrence.RuleId, occurrence.TargetId, occurrence.RecipientCount } }, cancellationToken);
     }
 
     private async Task<int> NextOccurrenceNumberOrZeroAsync(EscalationRule rule, EscalationCandidate candidate, DateTimeOffset now, CancellationToken cancellationToken)

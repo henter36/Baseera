@@ -68,7 +68,7 @@ export function NotificationsPage() {
           <h1>الإشعارات</h1>
           <p>صندوق الوارد الداخلي الخاص بالمستخدم الحالي.</p>
         </div>
-        <button onClick={markAll} disabled={Boolean(pendingAction)}>تعليم الكل كمقروء</button>
+        <button type="button" onClick={markAll} disabled={Boolean(pendingAction)}>تعليم الكل كمقروء</button>
       </div>
 
       <div className="filters">
@@ -78,7 +78,7 @@ export function NotificationsPage() {
           <option value={1}>مقروء</option>
           <option value={2}>مؤرشف</option>
         </select>
-        <button className="secondary" onClick={reload}>إعادة المحاولة</button>
+        <button type="button" className="secondary" onClick={reload}>إعادة المحاولة</button>
       </div>
 
       {loading && <div className="loading">جاري تحميل الإشعارات…</div>}
@@ -108,8 +108,8 @@ export function NotificationsPage() {
                 <td>{statusLabel[item.status] ?? item.status}</td>
                 <td>{new Date(item.createdAtUtc).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}</td>
                 <td>
-                  {item.status === 0 && <button className="secondary" disabled={Boolean(pendingAction)} onClick={() => markRead(item)}>مقروء</button>}
-                  {item.status !== 2 && <button className="secondary" disabled={Boolean(pendingAction)} onClick={() => archive(item)}>أرشفة</button>}
+                  {item.status === 0 && <button type="button" className="secondary" disabled={Boolean(pendingAction)} onClick={() => markRead(item)}>مقروء</button>}
+                  {item.status !== 2 && <button type="button" className="secondary" disabled={Boolean(pendingAction)} onClick={() => archive(item)}>أرشفة</button>}
                 </td>
               </tr>
             ))}

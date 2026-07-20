@@ -4,6 +4,14 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, api } from '../../api/client'
 import type { EscalationPolicy, EscalationRule } from '../../api/client'
 
+function formText(
+  form: FormData,
+  name: string,
+): string {
+  const value = form.get(name)
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 export function EscalationPolicyDetailPage() {
   const { id } = useParams()
   const [policy, setPolicy] = useState<EscalationPolicy | null>(null)
@@ -48,10 +56,10 @@ export function EscalationPolicyDetailPage() {
         repeatEveryDays: Number(form.get('repeatEveryDays')) || null,
         maximumOccurrences: Number(form.get('maximumOccurrences')) || null,
         recipientStrategy: Number(form.get('recipientStrategy')),
-        recipientRoleCode: String(form.get('recipientRoleCode') ?? '') || null,
+        recipientRoleCode: formText(form, 'recipientRoleCode') || null,
         specificRecipientUserId: null,
-        titleTemplateAr: String(form.get('titleTemplateAr') ?? '').trim(),
-        messageTemplateAr: String(form.get('messageTemplateAr') ?? '').trim(),
+        titleTemplateAr: formText(form, 'titleTemplateAr'),
+        messageTemplateAr: formText(form, 'messageTemplateAr'),
       })
       event.currentTarget.reset()
       await load()
@@ -73,7 +81,7 @@ export function EscalationPolicyDetailPage() {
             </div>
             <div>
               <Link className="secondary" to={`/settings/escalations/${policy.id}/edit`}>تعديل</Link>
-              <button onClick={toggle}>{policy.isEnabled ? 'تعطيل' : 'تفعيل'}</button>
+              <button type="button" onClick={toggle}>{policy.isEnabled ? 'تعطيل' : 'تفعيل'}</button>
             </div>
           </div>
           <h2>القواعد</h2>
@@ -108,7 +116,7 @@ export function EscalationPolicyDetailPage() {
             <input name="recipientRoleCode" placeholder="RoleCode عند الحاجة" />
             <input name="titleTemplateAr" placeholder="العنوان، مثال: تصعيد {reference}" required />
             <textarea name="messageTemplateAr" placeholder="الرسالة" required />
-            <button>إضافة</button>
+            <button type="submit">إضافة</button>
           </form>
         </>
       )}

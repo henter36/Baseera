@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError, api } from '../../api/client'
 import type { EscalationPolicy } from '../../api/client'
 
-export function EscalationPolicyFormPage({ mode }: { mode: 'create' | 'edit' }) {
+export function EscalationPolicyFormPage({ mode }: Readonly<{ mode: 'create' | 'edit' }>) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [policy, setPolicy] = useState<EscalationPolicy | null>(null)
@@ -66,32 +66,32 @@ export function EscalationPolicyFormPage({ mode }: { mode: 'create' | 'edit' }) 
       {error && <div className="error">{error}</div>}
       <form onSubmit={submit} className="form-grid">
         <label>
-          الرمز
+          <span>الرمز</span>
           <input name="code" defaultValue={policy?.code ?? ''} disabled={mode === 'edit'} />
         </label>
         <label>
-          الاسم
+          <span>الاسم</span>
           <input name="nameAr" defaultValue={policy?.nameAr ?? ''} />
         </label>
         <label>
-          نوع الهدف
+          <span>نوع الهدف</span>
           <select name="targetType" defaultValue={policy?.targetType ?? 0} disabled={mode === 'edit'}>
             <option value={0}>ملاحظة تشغيلية</option>
             <option value={1}>إجراء تصحيحي</option>
           </select>
         </label>
         <label>
-          النطاق
+          <span>النطاق</span>
           <select name="scopeType" defaultValue={policy?.scopeType ?? 0}>
             <option value={0}>وطني</option>
             <option value={1}>المستوى الرئيسي</option>
           </select>
         </label>
         <label className="wide">
-          الوصف
+          <span>الوصف</span>
           <textarea name="description" defaultValue={policy?.description ?? ''} />
         </label>
-        <button disabled={saving}>{saving ? 'جاري الحفظ…' : 'حفظ'}</button>
+        <button type="submit" disabled={saving}>{saving ? 'جاري الحفظ…' : 'حفظ'}</button>
       </form>
     </section>
   )

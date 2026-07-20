@@ -44,7 +44,7 @@ export function EscalationsSettingsPage() {
         </div>
         <div>
           <Link className="button" to="/settings/escalations/new">سياسة جديدة</Link>
-          <button className="secondary" onClick={runNow}>تشغيل الآن</button>
+          <button type="button" className="secondary" onClick={runNow}>تشغيل الآن</button>
         </div>
       </div>
       {runSummary && <div className="success">{runSummary}</div>}
