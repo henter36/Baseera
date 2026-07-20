@@ -354,31 +354,147 @@ public static class DatabaseInitializer
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static RoleNoteTypeGrant BuildDefaultGrant(string roleCode, Guid roleId, Guid noteTypeId)
+    [Flags]
+    private enum NoteTypeSeedCapabilities
     {
-        var all = roleCode is RoleCodes.SystemAdministrator or RoleCodes.DecisionSupportDirector;
-        var reviewer = roleCode is RoleCodes.HeadquartersExecutive or RoleCodes.RegionalDirector or RoleCodes.FacilityDirector;
-        var coordinator = roleCode is RoleCodes.RegionalCoordinator or RoleCodes.FacilityCoordinator;
-        var viewer = roleCode is RoleCodes.Auditor or RoleCodes.ReadOnlyUser;
+        None = 0,
+        View = 1 << 0,
+        Create = 1 << 1,
+        Assign = 1 << 2,
+        Process = 1 << 3,
+        SubmitForVerification = 1 << 4,
+        Review = 1 << 5,
+        Cancel = 1 << 6,
+        Reopen = 1 << 7,
+        Archive = 1 << 8,
+        Restore = 1 << 9,
+
+        Viewer = View,
+
+        HeadquartersReviewer =
+            View |
+            Create |
+            Assign |
+            Review |
+            Cancel |
+            Reopen,
+
+        ScopedReviewer =
+            HeadquartersReviewer |
+            Archive |
+            Restore,
+
+        RegionalCoordinator =
+            View |
+            Create |
+            Assign |
+            Process |
+            SubmitForVerification |
+            Cancel,
+
+        FacilityCoordinator =
+            View |
+            Create |
+            Process |
+            SubmitForVerification |
+            Cancel,
+
+        All =
+            View |
+            Create |
+            Assign |
+            Process |
+            SubmitForVerification |
+            Review |
+            Cancel |
+            Reopen |
+            Archive |
+            Restore
+    }
+
+    private static readonly IReadOnlyDictionary<string, NoteTypeSeedCapabilities>
+        DefaultNoteTypeCapabilities =
+            new Dictionary<string, NoteTypeSeedCapabilities>
+            {
+                [RoleCodes.SystemAdministrator] =
+                    NoteTypeSeedCapabilities.All,
+
+                [RoleCodes.DecisionSupportDirector] =
+                    NoteTypeSeedCapabilities.All,
+
+                [RoleCodes.HeadquartersExecutive] =
+                    NoteTypeSeedCapabilities.HeadquartersReviewer,
+
+                [RoleCodes.RegionalDirector] =
+                    NoteTypeSeedCapabilities.ScopedReviewer,
+
+                [RoleCodes.FacilityDirector] =
+                    NoteTypeSeedCapabilities.ScopedReviewer,
+
+                [RoleCodes.RegionalCoordinator] =
+                    NoteTypeSeedCapabilities.RegionalCoordinator,
+
+                [RoleCodes.FacilityCoordinator] =
+                    NoteTypeSeedCapabilities.FacilityCoordinator,
+
+                [RoleCodes.Auditor] =
+                    NoteTypeSeedCapabilities.Viewer,
+
+                [RoleCodes.ReadOnlyUser] =
+                    NoteTypeSeedCapabilities.Viewer
+            };
+
+    private static RoleNoteTypeGrant BuildDefaultGrant(
+        string roleCode,
+        Guid roleId,
+        Guid noteTypeId)
+    {
+        var capabilities =
+            DefaultNoteTypeCapabilities.GetValueOrDefault(roleCode);
 
         return new RoleNoteTypeGrant
         {
             RoleId = roleId,
             NoteTypeId = noteTypeId,
-            CanView = all || reviewer || coordinator || viewer,
-            CanCreate = all || reviewer || coordinator,
-            CanAssign = all || reviewer || roleCode == RoleCodes.RegionalCoordinator,
-            CanProcess = all || coordinator,
-            CanSubmitForVerification = all || coordinator,
-            CanReview = all || reviewer,
-            CanCancel = all || reviewer || coordinator,
-            CanReopen = all || reviewer,
-            CanArchive = all || roleCode is RoleCodes.RegionalDirector or RoleCodes.FacilityDirector,
-            CanRestore = all || roleCode is RoleCodes.RegionalDirector or RoleCodes.FacilityDirector,
+            CanView = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.View),
+            CanCreate = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Create),
+            CanAssign = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Assign),
+            CanProcess = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Process),
+            CanSubmitForVerification = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.SubmitForVerification),
+            CanReview = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Review),
+            CanCancel = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Cancel),
+            CanReopen = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Reopen),
+            CanArchive = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Archive),
+            CanRestore = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Restore),
             IsActive = true,
             CreatedBy = "seed"
         };
     }
+
+    private static bool HasCapability(
+        NoteTypeSeedCapabilities capabilities,
+        NoteTypeSeedCapabilities required) =>
+        (capabilities & required) == required;
 
     private static (Guid Id, string Code, string NameAr, string DescriptionAr, string EntryInstructionsAr, int SortOrder, NoteSeverity DefaultSeverity, int? DefaultDueDays)[] InitialNoteTypes() =>
     [
