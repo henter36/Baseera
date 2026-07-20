@@ -359,8 +359,10 @@ public sealed class EscalationsNotificationsIntegrationTests(BaseeraApiFactory f
 
         private void CountUserScopeQuery(DbCommand command)
         {
-            if (command.CommandText.Contains("[UserScopes]", StringComparison.OrdinalIgnoreCase) &&
-                !command.CommandText.Contains("@user_Id", StringComparison.OrdinalIgnoreCase))
+            var commandText = command.CommandText;
+            if (commandText.Contains("[UserScopes]", StringComparison.OrdinalIgnoreCase) &&
+                (commandText.Contains("OPENJSON", StringComparison.OrdinalIgnoreCase) ||
+                 commandText.Contains(" IN (", StringComparison.OrdinalIgnoreCase)))
             {
                 UserScopeQueryCount++;
             }
