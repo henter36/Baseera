@@ -75,6 +75,73 @@ function describeLoadError(err: ApiError): string {
   return err.message || 'تعذر تحميل الإجراء.'
 }
 
+type ActionInput = {
+  reason: string
+  completionSummary: string
+  assignedToUserId: string
+  assignedToDepartmentId: string
+  dueAtUtc: string
+}
+
+function validateActionInput(action: ActionDef, input: ActionInput): string | null {
+  if (!input.reason.trim()) return 'السبب مطلوب.'
+  if (action.needsCompletion && !input.completionSummary.trim()) return 'ملخص الإنجاز مطلوب.'
+  if (!action.needsAssignee) return null
+  if (!input.assignedToUserId && !input.assignedToDepartmentId) return 'يجب تحديد مستخدم أو إدارة واحدة فقط.'
+  if (input.assignedToUserId && input.assignedToDepartmentId) return 'لا يمكن تحديد مستخدم وإدارة معًا.'
+  return null
+}
+
+async function executeCorrectiveAction(action: ActionDef, item: CorrectiveActionDetail, input: ActionInput): Promise<void> {
+  const base = { reason: input.reason, rowVersion: item.rowVersion }
+  switch (action.kind) {
+    case 'submit':
+      await api.correctiveActions.submit(item.id, base)
+      return
+    case 'assign':
+      await api.correctiveActions.assign(item.id, {
+        assignedToUserId: input.assignedToUserId || null,
+        assignedToDepartmentId: input.assignedToDepartmentId || null,
+        dueAtUtc: input.dueAtUtc ? new Date(input.dueAtUtc).toISOString() : null,
+        ...base,
+      })
+      return
+    case 'startWork':
+      await api.correctiveActions.startWork(item.id, base)
+      return
+    case 'submitForVerification':
+      await api.correctiveActions.submitForVerification(item.id, { ...base, completionSummary: input.completionSummary })
+      return
+    case 'returnForRework':
+      await api.correctiveActions.returnForRework(item.id, base)
+      return
+    case 'verifyCompletion':
+      await api.correctiveActions.verifyCompletion(item.id, { ...base, completionSummary: input.completionSummary })
+      return
+    case 'reopen':
+      await api.correctiveActions.reopen(item.id, base)
+      return
+    case 'cancel':
+      await api.correctiveActions.cancel(item.id, base)
+      return
+    case 'archive':
+      await api.correctiveActions.archive(item.id, base)
+      return
+    case 'restore':
+      await api.correctiveActions.restore(item.id, base)
+      return
+  }
+}
+
+function describeTransitionError(err: unknown): { message: string; conflict: boolean } {
+  if (err instanceof ApiError && err.status === 409) {
+    return { message: 'حدث تعارض في RowVersion أو انتقال غير صالح. أعد تحميل البيانات.', conflict: true }
+  }
+  if (err instanceof ApiError && err.status === 404) return { message: 'الإجراء غير موجود أو خارج نطاقك.', conflict: false }
+  if (err instanceof ApiError && err.status === 403) return { message: 'ليست لديك صلاحية تنفيذ هذا الانتقال.', conflict: false }
+  return { message: err instanceof Error ? err.message : 'تعذر تنفيذ الانتقال.', conflict: false }
+}
+
 function ActionPanel({ action, item, onDone }: Readonly<{ action: ActionDef; item: CorrectiveActionDetail; onDone: () => void }>) {
   const [reason, setReason] = useState('')
   const [completionSummary, setCompletionSummary] = useState('')
@@ -88,71 +155,22 @@ function ActionPanel({ action, item, onDone }: Readonly<{ action: ActionDef; ite
   const run = async () => {
     setError(null)
     setConflict(false)
-    if (!reason.trim()) {
-      setError('السبب مطلوب.')
-      return
-    }
-    if (action.needsCompletion && !completionSummary.trim()) {
-      setError('ملخص الإنجاز مطلوب.')
-      return
-    }
-    if (action.needsAssignee && (!assignedToUserId && !assignedToDepartmentId)) {
-      setError('يجب تحديد مستخدم أو إدارة واحدة فقط.')
-      return
-    }
-    if (action.needsAssignee && assignedToUserId && assignedToDepartmentId) {
-      setError('لا يمكن تحديد مستخدم وإدارة معًا.')
+
+    const input = { reason, completionSummary, assignedToUserId, assignedToDepartmentId, dueAtUtc }
+    const validationError = validateActionInput(action, input)
+    if (validationError) {
+      setError(validationError)
       return
     }
 
     setPending(true)
     try {
-      const base = { reason, rowVersion: item.rowVersion }
-      switch (action.kind) {
-        case 'submit':
-          await api.correctiveActions.submit(item.id, base)
-          break
-        case 'assign':
-          await api.correctiveActions.assign(item.id, {
-            assignedToUserId: assignedToUserId || null,
-            assignedToDepartmentId: assignedToDepartmentId || null,
-            dueAtUtc: dueAtUtc ? new Date(dueAtUtc).toISOString() : null,
-            ...base,
-          })
-          break
-        case 'startWork':
-          await api.correctiveActions.startWork(item.id, base)
-          break
-        case 'submitForVerification':
-          await api.correctiveActions.submitForVerification(item.id, { ...base, completionSummary })
-          break
-        case 'returnForRework':
-          await api.correctiveActions.returnForRework(item.id, base)
-          break
-        case 'verifyCompletion':
-          await api.correctiveActions.verifyCompletion(item.id, { ...base, completionSummary })
-          break
-        case 'reopen':
-          await api.correctiveActions.reopen(item.id, base)
-          break
-        case 'cancel':
-          await api.correctiveActions.cancel(item.id, base)
-          break
-        case 'archive':
-          await api.correctiveActions.archive(item.id, base)
-          break
-        case 'restore':
-          await api.correctiveActions.restore(item.id, base)
-          break
-      }
+      await executeCorrectiveAction(action, item, input)
       onDone()
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setConflict(true)
-        setError('حدث تعارض في RowVersion أو انتقال غير صالح. أعد تحميل البيانات.')
-      } else if (err instanceof ApiError && err.status === 404) setError('الإجراء غير موجود أو خارج نطاقك.')
-      else if (err instanceof ApiError && err.status === 403) setError('ليست لديك صلاحية تنفيذ هذا الانتقال.')
-      else setError(err instanceof Error ? err.message : 'تعذر تنفيذ الانتقال.')
+      const result = describeTransitionError(err)
+      setConflict(result.conflict)
+      setError(result.message)
     } finally {
       setPending(false)
     }

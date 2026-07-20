@@ -24,13 +24,14 @@ public sealed class CorrectiveActionWorkflowService(
 {
     public Task<CorrectiveActionDetailDto> StartWorkAsync(Guid id, TransitionCorrectiveActionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
-            id,
-            request.RowVersion,
-            PermissionCodes.CorrectiveActionsStartWork,
-            CorrectiveActionStatus.InProgress,
-            "CorrectiveActionWorkStarted",
-            request.Reason,
-            ApplyStartWork,
+            new TransitionOptions(
+                id,
+                request.RowVersion,
+                PermissionCodes.CorrectiveActionsStartWork,
+                CorrectiveActionStatus.InProgress,
+                "CorrectiveActionWorkStarted",
+                request.Reason,
+                ApplyStartWork),
             cancellationToken);
 
     public async Task<CorrectiveActionDetailDto> SubmitForVerificationAsync(
@@ -60,13 +61,14 @@ public sealed class CorrectiveActionWorkflowService(
 
     public Task<CorrectiveActionDetailDto> ReturnForReworkAsync(Guid id, TransitionCorrectiveActionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
-            id,
-            request.RowVersion,
-            PermissionCodes.CorrectiveActionsReturnForRework,
-            CorrectiveActionStatus.InProgress,
-            "CorrectiveActionReturnedForRework",
-            request.Reason,
-            null,
+            new TransitionOptions(
+                id,
+                request.RowVersion,
+                PermissionCodes.CorrectiveActionsReturnForRework,
+                CorrectiveActionStatus.InProgress,
+                "CorrectiveActionReturnedForRework",
+                request.Reason,
+                null),
             cancellationToken);
 
     public async Task<CorrectiveActionDetailDto> VerifyCompletionAsync(Guid id, CompleteCorrectiveActionRequest request, CancellationToken cancellationToken = default)
@@ -140,37 +142,40 @@ public sealed class CorrectiveActionWorkflowService(
     }
 
     private async Task<CorrectiveActionDetailDto> TransitionAsync(
-        Guid id,
-        string rowVersion,
-        string permission,
-        CorrectiveActionStatus to,
-        string auditAction,
-        string reason,
-        Action<CorrectiveAction, Guid, DateTimeOffset>? apply,
+        TransitionOptions options,
         CancellationToken cancellationToken)
     {
-        CorrectiveActionAccessHelper.EnsurePermission(currentUser, permission);
-        var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
-        CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, rowVersion);
-        if (to == CorrectiveActionStatus.InProgress && action.Status == CorrectiveActionStatus.Reopened)
+        CorrectiveActionAccessHelper.EnsurePermission(currentUser, options.Permission);
+        var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, options.Id, cancellationToken: cancellationToken);
+        CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, options.RowVersion);
+        if (options.ToStatus == CorrectiveActionStatus.InProgress && action.Status == CorrectiveActionStatus.Reopened)
         {
             await EnsureCurrentAssignmentExistsAsync(action.Id, cancellationToken);
         }
 
-        CorrectiveActionStateMachine.EnsureAllowed(action.Status, to);
+        CorrectiveActionStateMachine.EnsureAllowed(action.Status, options.ToStatus);
         var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         var from = action.Status;
         var now = DateTimeOffset.UtcNow;
-        action.Status = to;
+        action.Status = options.ToStatus;
         action.UpdatedAtUtc = now;
         action.UpdatedBy = currentUser.ExternalSubject;
-        apply?.Invoke(action, actorId, now);
+        options.Apply?.Invoke(action, actorId, now);
         db.Update(action);
-        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, to, actorId, reason.Trim());
-        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, auditAction, action, new { Status = from }, new { Status = to }, reason.Trim(), cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, options.ToStatus, actorId, options.Reason.Trim());
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, options.AuditAction, action, new { Status = from }, new { Status = options.ToStatus }, options.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
+
+    private sealed record TransitionOptions(
+        Guid Id,
+        string RowVersion,
+        string Permission,
+        CorrectiveActionStatus ToStatus,
+        string AuditAction,
+        string Reason,
+        Action<CorrectiveAction, Guid, DateTimeOffset>? Apply);
 
     private static void ApplyStartWork(CorrectiveAction action, Guid actorId, DateTimeOffset now)
     {

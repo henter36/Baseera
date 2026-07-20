@@ -414,10 +414,7 @@ export type UpdateCorrectiveActionRequest = CreateCorrectiveActionRequest & {
   rowVersion: string
 }
 
-export type AssignCorrectiveActionRequest = AssignNoteRequest
-export type TransitionCorrectiveActionRequest = TransitionNoteRequest
 export type CompleteCorrectiveActionRequest = { reason: string; completionSummary: string; rowVersion: string }
-export type ReopenCorrectiveActionRequest = ReopenNoteRequest
 
 export type Attachment = {
   id: string
@@ -519,27 +516,47 @@ function buildNoteQuery(filters: NoteListFilters): string {
 
 function buildCorrectiveActionQuery(filters: CorrectiveActionListFilters): string {
   const params = new URLSearchParams()
+  appendCorrectiveActionPaging(params, filters)
+  appendCorrectiveActionEnumFilters(params, filters)
+  appendCorrectiveActionScopeFilters(params, filters)
+  appendCorrectiveActionDateFilters(params, filters)
+  appendCorrectiveActionStateFilters(params, filters)
+  return params.toString()
+}
+
+function appendCorrectiveActionPaging(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
   params.set('page', String(filters.page ?? 1))
   params.set('pageSize', String(filters.pageSize ?? 20))
   if (filters.search) params.set('search', filters.search)
   if (filters.noteId) params.set('noteId', filters.noteId)
+  if (filters.sortBy) params.set('sortBy', filters.sortBy)
+  if (filters.sortDesc) params.set('sortDesc', 'true')
+}
+
+function appendCorrectiveActionEnumFilters(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
   if (filters.status !== undefined) params.set('status', String(filters.status))
   if (filters.priority !== undefined) params.set('priority', String(filters.priority))
   if (filters.classification !== undefined) params.set('classification', String(filters.classification))
+}
+
+function appendCorrectiveActionScopeFilters(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
   if (filters.ownerDepartmentId) params.set('ownerDepartmentId', filters.ownerDepartmentId)
   if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
   if (filters.regionId) params.set('regionId', filters.regionId)
   if (filters.facilityId) params.set('facilityId', filters.facilityId)
   if (filters.facilityUnitId) params.set('facilityUnitId', filters.facilityUnitId)
-  if (filters.overdueOnly) params.set('overdueOnly', 'true')
-  if (filters.dueSoonDays !== undefined) params.set('dueSoonDays', String(filters.dueSoonDays))
+}
+
+function appendCorrectiveActionDateFilters(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
   if (filters.dueFrom) params.set('dueFrom', filters.dueFrom)
   if (filters.dueTo) params.set('dueTo', filters.dueTo)
   if (filters.createdFrom) params.set('createdFrom', filters.createdFrom)
   if (filters.createdTo) params.set('createdTo', filters.createdTo)
-  if (filters.sortBy) params.set('sortBy', filters.sortBy)
-  if (filters.sortDesc) params.set('sortDesc', 'true')
-  return params.toString()
+}
+
+function appendCorrectiveActionStateFilters(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
+  if (filters.overdueOnly) params.set('overdueOnly', 'true')
+  if (filters.dueSoonDays !== undefined) params.set('dueSoonDays', String(filters.dueSoonDays))
 }
 
 async function downloadFile(path: string): Promise<{ blob: Blob; fileName: string }> {
@@ -653,25 +670,25 @@ export const api = {
     get: (id: string) => request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}`),
     update: (id: string, body: UpdateCorrectiveActionRequest) =>
       putJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}`, body),
-    submit: (id: string, body: TransitionCorrectiveActionRequest) =>
+    submit: (id: string, body: TransitionNoteRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit`, body),
-    assign: (id: string, body: AssignCorrectiveActionRequest) =>
+    assign: (id: string, body: AssignNoteRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/assign`, body),
-    startWork: (id: string, body: TransitionCorrectiveActionRequest) =>
+    startWork: (id: string, body: TransitionNoteRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/start-work`, body),
     submitForVerification: (id: string, body: CompleteCorrectiveActionRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit-for-verification`, body),
-    returnForRework: (id: string, body: TransitionCorrectiveActionRequest) =>
+    returnForRework: (id: string, body: TransitionNoteRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/return-for-rework`, body),
     verifyCompletion: (id: string, body: CompleteCorrectiveActionRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/verify-completion`, body),
-    reopen: (id: string, body: ReopenCorrectiveActionRequest) =>
+    reopen: (id: string, body: ReopenNoteRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/reopen`, body),
-    cancel: (id: string, body: TransitionCorrectiveActionRequest) =>
+    cancel: (id: string, body: TransitionNoteRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/cancel`, body),
-    archive: (id: string, body: TransitionCorrectiveActionRequest) =>
+    archive: (id: string, body: TransitionNoteRequest) =>
       postJson<void>(`/api/v1/corrective-actions/${id}/archive`, body),
-    restore: (id: string, body: TransitionCorrectiveActionRequest) =>
+    restore: (id: string, body: TransitionNoteRequest) =>
       postJson<void>(`/api/v1/corrective-actions/${id}/restore`, body),
     history: (id: string) => request<CorrectiveActionStatusHistoryEntry[]>(`/api/v1/corrective-actions/${id}/history`),
     assignments: (id: string) => request<CorrectiveActionAssignment[]>(`/api/v1/corrective-actions/${id}/assignments`),

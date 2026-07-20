@@ -230,6 +230,14 @@ public sealed class CorrectiveActionQueryService(
 
     private static IQueryable<CorrectiveAction> ApplyFilters(IQueryable<CorrectiveAction> q, CorrectiveActionListQuery query, DateTimeOffset now)
     {
+        q = ApplyIdentityFilters(q, query);
+        q = ApplyAssignmentAndScopeFilters(q, query);
+        q = ApplyDateFilters(q, query);
+        return ApplyDueStateFilters(q, query, now);
+    }
+
+    private static IQueryable<CorrectiveAction> ApplyIdentityFilters(IQueryable<CorrectiveAction> q, CorrectiveActionListQuery query)
+    {
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim();
@@ -241,6 +249,11 @@ public sealed class CorrectiveActionQueryService(
         if (query.Priority.HasValue) q = q.Where(a => a.Priority == query.Priority.Value);
         if (query.Classification.HasValue) q = q.Where(a => a.Classification == query.Classification.Value);
         if (query.OwnerDepartmentId.HasValue) q = q.Where(a => a.OwnerDepartmentId == query.OwnerDepartmentId.Value);
+        return q;
+    }
+
+    private static IQueryable<CorrectiveAction> ApplyAssignmentAndScopeFilters(IQueryable<CorrectiveAction> q, CorrectiveActionListQuery query)
+    {
         if (query.AssignedToUserId.HasValue)
         {
             var uid = query.AssignedToUserId.Value;
@@ -250,10 +263,20 @@ public sealed class CorrectiveActionQueryService(
         if (query.RegionId.HasValue) q = q.Where(a => a.OperationalNote.RegionId == query.RegionId.Value);
         if (query.FacilityId.HasValue) q = q.Where(a => a.OperationalNote.FacilityId == query.FacilityId.Value);
         if (query.FacilityUnitId.HasValue) q = q.Where(a => a.OperationalNote.FacilityUnitId == query.FacilityUnitId.Value);
+        return q;
+    }
+
+    private static IQueryable<CorrectiveAction> ApplyDateFilters(IQueryable<CorrectiveAction> q, CorrectiveActionListQuery query)
+    {
         if (query.DueFrom.HasValue) q = q.Where(a => a.DueAtUtc >= query.DueFrom.Value);
         if (query.DueTo.HasValue) q = q.Where(a => a.DueAtUtc <= query.DueTo.Value);
         if (query.CreatedFrom.HasValue) q = q.Where(a => a.CreatedAtUtc >= query.CreatedFrom.Value);
         if (query.CreatedTo.HasValue) q = q.Where(a => a.CreatedAtUtc <= query.CreatedTo.Value);
+        return q;
+    }
+
+    private static IQueryable<CorrectiveAction> ApplyDueStateFilters(IQueryable<CorrectiveAction> q, CorrectiveActionListQuery query, DateTimeOffset now)
+    {
         if (query.OverdueOnly) q = q.Where(a => a.DueAtUtc.HasValue && a.DueAtUtc < now && a.Status != CorrectiveActionStatus.Completed && a.Status != CorrectiveActionStatus.Cancelled);
         if (query.DueSoonDays.HasValue)
         {

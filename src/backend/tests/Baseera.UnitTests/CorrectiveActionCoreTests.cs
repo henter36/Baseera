@@ -16,15 +16,28 @@ namespace Baseera.UnitTests;
 
 public sealed class CorrectiveActionStateMachineTests
 {
+    public static IEnumerable<object[]> AllowedTransitions =>
+    [
+        [CorrectiveActionStatus.Draft, CorrectiveActionStatus.Open],
+        [CorrectiveActionStatus.Draft, CorrectiveActionStatus.Cancelled],
+        [CorrectiveActionStatus.Open, CorrectiveActionStatus.Assigned],
+        [CorrectiveActionStatus.Open, CorrectiveActionStatus.Cancelled],
+        [CorrectiveActionStatus.Assigned, CorrectiveActionStatus.InProgress],
+        [CorrectiveActionStatus.Assigned, CorrectiveActionStatus.Assigned],
+        [CorrectiveActionStatus.Assigned, CorrectiveActionStatus.Cancelled],
+        [CorrectiveActionStatus.InProgress, CorrectiveActionStatus.PendingVerification],
+        [CorrectiveActionStatus.InProgress, CorrectiveActionStatus.Cancelled],
+        [CorrectiveActionStatus.PendingVerification, CorrectiveActionStatus.Completed],
+        [CorrectiveActionStatus.PendingVerification, CorrectiveActionStatus.InProgress],
+        [CorrectiveActionStatus.PendingVerification, CorrectiveActionStatus.Cancelled],
+        [CorrectiveActionStatus.Completed, CorrectiveActionStatus.Reopened],
+        [CorrectiveActionStatus.Reopened, CorrectiveActionStatus.Assigned],
+        [CorrectiveActionStatus.Reopened, CorrectiveActionStatus.InProgress],
+        [CorrectiveActionStatus.Reopened, CorrectiveActionStatus.Cancelled]
+    ];
+
     [Theory]
-    [InlineData(CorrectiveActionStatus.Draft, CorrectiveActionStatus.Open)]
-    [InlineData(CorrectiveActionStatus.Open, CorrectiveActionStatus.Assigned)]
-    [InlineData(CorrectiveActionStatus.Assigned, CorrectiveActionStatus.InProgress)]
-    [InlineData(CorrectiveActionStatus.InProgress, CorrectiveActionStatus.PendingVerification)]
-    [InlineData(CorrectiveActionStatus.PendingVerification, CorrectiveActionStatus.Completed)]
-    [InlineData(CorrectiveActionStatus.Completed, CorrectiveActionStatus.Reopened)]
-    [InlineData(CorrectiveActionStatus.Reopened, CorrectiveActionStatus.InProgress)]
-    [InlineData(CorrectiveActionStatus.Open, CorrectiveActionStatus.Cancelled)]
+    [MemberData(nameof(AllowedTransitions))]
     public void Allowed_transitions_are_accepted(CorrectiveActionStatus from, CorrectiveActionStatus to) =>
         Assert.True(CorrectiveActionStateMachine.CanTransition(from, to));
 
@@ -181,19 +194,189 @@ public sealed class CorrectiveActionNoteGuardTests : IDisposable
         Assert.Contains(_db.AuditLogs, a => a.Action == "NoteClosureBlockedByCorrectiveActions");
     }
 
-    private INoteWorkflowService BuildWorkflow(Guid userId)
+    [Fact]
+    public async Task Note_cancellation_is_blocked_before_mutation_when_active_corrective_action_exists()
     {
+        var actor = NoteTestFixtures.AddUser(_db, "actor");
+        var note = NoteTestFixtures.NewNote(ScopeType.Global, actor.Id, status: NoteStatus.Open);
+        _db.OperationalNotes.Add(note);
+        _db.SaveChanges();
+        _db.CorrectiveActions.Add(new CorrectiveAction
+        {
+            ReferenceNumber = "CA-00000002",
+            OperationalNoteId = note.Id,
+            Title = "إجراء",
+            Description = "وصف",
+            CreatedByUserId = actor.Id,
+            Status = CorrectiveActionStatus.Open
+        });
+        _db.SaveChanges();
+
+        var workflow = BuildWorkflow(actor.Id, PermissionCodes.NotesCancel, PermissionCodes.NotesView);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.CancelAsync(note.Id, new TransitionNoteRequest("إلغاء", Convert.ToBase64String(note.RowVersion))));
+
+        Assert.Equal(NoteStatus.Open, note.Status);
+        Assert.DoesNotContain(_db.NoteStatusHistories, h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Cancelled);
+        Assert.DoesNotContain(_db.AuditLogs, a => a.Action == "NoteCancelled");
+        Assert.Contains(_db.AuditLogs, a => a.Action == "NoteCancellationBlockedByCorrectiveActions");
+    }
+
+    private INoteWorkflowService BuildWorkflow(Guid userId, params string[] permissions)
+    {
+        var effectivePermissions = permissions.Length == 0
+            ? [PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView]
+            : permissions;
         var current = new FakeCurrentUser(
             true,
             userId,
             "actor",
             "actor",
-            [PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView],
+            effectivePermissions,
             [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
         var org = new OrganizationalScopeService(current, _db);
         var scope = new NoteScopeService(org, current, _db);
         var audit = new AuditService(_db, current, org);
         var queries = new NoteQueryService(_db, current, scope, audit);
         return new NoteWorkflowService(_db, current, scope, audit, queries);
+    }
+}
+
+public sealed class CorrectiveActionAssignmentHardeningTests : IDisposable
+{
+    private readonly BaseeraDbContext _db = NoteTestFixtures.CreateDb();
+
+    public void Dispose() => _db.Dispose();
+
+    [Fact]
+    public async Task Validation_failure_does_not_end_current_assignment()
+    {
+        var actor = NoteTestFixtures.AddUser(_db, "actor");
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var currentAssignee = NoteTestFixtures.AddUser(_db, "current");
+        var nextAssignee = NoteTestFixtures.AddUser(_db, "next");
+        NoteTestFixtures.GrantPermissions(_db, nextAssignee.Id, "Worker", PermissionCodes.CorrectiveActionsStartWork);
+        _db.UserScopes.Add(new UserScope { UserId = nextAssignee.Id, ScopeType = ScopeType.Global, IsActive = true });
+        var note = NoteTestFixtures.NewNote(ScopeType.Global, reporter.Id, status: NoteStatus.Open);
+        _db.OperationalNotes.Add(note);
+        var action = NewAction(note.Id, reporter.Id, CorrectiveActionStatus.InProgress);
+        var assignment = new CorrectiveActionAssignment
+        {
+            CorrectiveActionId = action.Id,
+            AssignedToUserId = currentAssignee.Id,
+            AssignedByUserId = actor.Id,
+            Reason = "حالي",
+            IsCurrent = true
+        };
+        _db.CorrectiveActions.Add(action);
+        _db.CorrectiveActionAssignments.Add(assignment);
+        _db.SaveChanges();
+
+        var service = BuildAssignmentService(actor.Id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AssignAsync(action.Id, new AssignCorrectiveActionRequest(nextAssignee.Id, null, null, "إعادة", Convert.ToBase64String(action.RowVersion))));
+
+        Assert.True(assignment.IsCurrent);
+        Assert.Null(assignment.EndedAtUtc);
+    }
+
+    [Fact]
+    public void Non_unique_db_update_exception_is_not_classified_as_current_assignment_conflict()
+    {
+        var method = typeof(CorrectiveActionAssignmentService).GetMethod(
+            "IsCurrentAssignmentUniqueConflict",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var result = (bool)method.Invoke(null, [new DbUpdateException("generic failure")])!;
+        Assert.False(result);
+    }
+
+    private CorrectiveActionAssignmentService BuildAssignmentService(Guid userId)
+    {
+        var current = new FakeCurrentUser(
+            true,
+            userId,
+            "actor",
+            "actor",
+            [PermissionCodes.CorrectiveActionsAssign, PermissionCodes.CorrectiveActionsView],
+            [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
+        var org = new OrganizationalScopeService(current, _db);
+        var noteScope = new NoteScopeService(org, current, _db);
+        var actionScope = new CorrectiveActionScopeService(_db, noteScope);
+        var audit = new AuditService(_db, current, org);
+        var queries = new CorrectiveActionQueryService(_db, current, actionScope, noteScope, audit);
+        return new CorrectiveActionAssignmentService(_db, current, actionScope, audit, queries);
+    }
+
+    private static CorrectiveAction NewAction(Guid noteId, Guid userId, CorrectiveActionStatus status) => new()
+    {
+        ReferenceNumber = $"CA-{Random.Shared.Next(1, 99999999):00000000}",
+        OperationalNoteId = noteId,
+        Title = "إجراء",
+        Description = "وصف",
+        CreatedByUserId = userId,
+        Status = status
+    };
+}
+
+public sealed class CorrectiveActionWorkflowHardeningTests : IDisposable
+{
+    private readonly BaseeraDbContext _db = NoteTestFixtures.CreateDb();
+
+    public void Dispose() => _db.Dispose();
+
+    [Fact]
+    public async Task Critical_sod_is_enforced_before_mutation()
+    {
+        var actor = NoteTestFixtures.AddUser(_db, "actor");
+        var note = NoteTestFixtures.NewNote(ScopeType.Global, actor.Id, status: NoteStatus.Open);
+        _db.OperationalNotes.Add(note);
+        var action = new CorrectiveAction
+        {
+            ReferenceNumber = "CA-00001000",
+            OperationalNoteId = note.Id,
+            Title = "حرج",
+            Description = "وصف",
+            Priority = CorrectiveActionPriority.Critical,
+            Status = CorrectiveActionStatus.PendingVerification,
+            CreatedByUserId = actor.Id
+        };
+        _db.CorrectiveActions.Add(action);
+        _db.SaveChanges();
+        _db.CorrectiveActionStatusHistories.Add(new CorrectiveActionStatusHistory
+        {
+            CorrectiveActionId = action.Id,
+            FromStatus = CorrectiveActionStatus.InProgress,
+            ToStatus = CorrectiveActionStatus.PendingVerification,
+            ChangedByUserId = actor.Id,
+            Reason = "شارك"
+        });
+        _db.SaveChanges();
+
+        var workflow = BuildWorkflow(actor.Id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.VerifyCompletionAsync(action.Id, new CompleteCorrectiveActionRequest("اعتماد", "ملخص", Convert.ToBase64String(action.RowVersion))));
+
+        Assert.Equal(CorrectiveActionStatus.PendingVerification, action.Status);
+        Assert.Null(action.CompletedAtUtc);
+        Assert.Null(action.CompletedByUserId);
+        Assert.DoesNotContain(_db.CorrectiveActionStatusHistories, h => h.CorrectiveActionId == action.Id && h.ToStatus == CorrectiveActionStatus.Completed);
+        Assert.DoesNotContain(_db.AuditLogs, a => a.EntityId == action.Id.ToString() && a.Action == "CorrectiveActionCompleted");
+    }
+
+    private CorrectiveActionWorkflowService BuildWorkflow(Guid userId)
+    {
+        var current = new FakeCurrentUser(
+            true,
+            userId,
+            "actor",
+            "actor",
+            [PermissionCodes.CorrectiveActionsVerifyCompletion, PermissionCodes.CorrectiveActionsView],
+            [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
+        var org = new OrganizationalScopeService(current, _db);
+        var noteScope = new NoteScopeService(org, current, _db);
+        var actionScope = new CorrectiveActionScopeService(_db, noteScope);
+        var audit = new AuditService(_db, current, org);
+        var queries = new CorrectiveActionQueryService(_db, current, actionScope, noteScope, audit);
+        return new CorrectiveActionWorkflowService(_db, current, actionScope, audit, queries);
     }
 }
