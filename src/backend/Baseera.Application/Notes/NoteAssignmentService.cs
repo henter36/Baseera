@@ -1,7 +1,6 @@
 namespace Baseera.Application.Notes;
 
 using Baseera.Application.Abstractions;
-using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +18,12 @@ public sealed class NoteAssignmentService(
     INoteQueryService queries) : INoteAssignmentService
 {
     private const string CurrentAssignmentUniqueIndex = "IX_NoteAssignments_OperationalNoteId";
+    private static readonly string[] WorkPermissionCodes =
+    [
+        PermissionCodes.NotesStartWork,
+        PermissionCodes.NotesUpdate,
+        PermissionCodes.NotesSubmitForVerification
+    ];
 
     public async Task<NoteDetailDto> AssignAsync(Guid id, AssignNoteRequest request, CancellationToken cancellationToken = default)
     {
@@ -33,11 +38,18 @@ public sealed class NoteAssignmentService(
 
         if (request.AssignedToUserId is Guid userId)
         {
-            await ValidateAssigneeUserAsync(userId, note, cancellationToken);
+            await AssignmentTargetValidator.EnsureUserCanReceiveAsync(
+                db,
+                userId,
+                note,
+                WorkPermissionCodes,
+                "المستخدم لا يملك صلاحية مناسبة للعمل على الملاحظة.",
+                "نطاق المستخدم لا يتقاطع مع نطاق الملاحظة.",
+                cancellationToken);
         }
         else if (request.AssignedToDepartmentId is Guid departmentId)
         {
-            await ValidateAssigneeDepartmentAsync(departmentId, cancellationToken);
+            await AssignmentTargetValidator.EnsureDepartmentExistsAsync(db, departmentId, cancellationToken);
         }
 
         var current = await db.NoteAssignments
@@ -168,77 +180,4 @@ public sealed class NoteAssignmentService(
         throw new InvalidOperationException($"لا يمكن التكليف من الحالة {NoteDisplay.StatusAr(status)}.");
     }
 
-    private async Task ValidateAssigneeUserAsync(Guid userId, OperationalNote note, CancellationToken cancellationToken)
-    {
-        var user = await db.UsersIncludingDeleted.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
-        if (user is null || user.IsDeleted)
-        {
-            throw new KeyNotFoundException("المستخدم غير موجود.");
-        }
-
-        if (!user.IsActive || user.ProvisioningStatus != UserProvisioningStatus.Active)
-        {
-            throw new InvalidOperationException("المستخدم غير نشط أو غير مُهيّأ لاستلام التكليف.");
-        }
-
-        await EnsureAssigneeCanWorkAsync(userId, cancellationToken);
-        await EnsureAssigneeScopeIntersectsAsync(userId, note, cancellationToken);
-    }
-
-    private async Task ValidateAssigneeDepartmentAsync(Guid departmentId, CancellationToken cancellationToken)
-    {
-        if (!await db.Departments.AnyAsync(d => d.Id == departmentId && !d.IsDeleted, cancellationToken))
-        {
-            throw new KeyNotFoundException("الإدارة غير موجودة.");
-        }
-    }
-
-    private async Task EnsureAssigneeCanWorkAsync(Guid userId, CancellationToken cancellationToken)
-    {
-        var workPermissions = new[]
-        {
-            PermissionCodes.NotesStartWork,
-            PermissionCodes.NotesUpdate,
-            PermissionCodes.NotesSubmitForVerification
-        };
-
-        var hasWork = await (
-            from ur in db.UserRoles
-            join rp in db.RolePermissions on ur.RoleId equals rp.RoleId
-            join p in db.Permissions on rp.PermissionId equals p.Id
-            where ur.UserId == userId && workPermissions.Contains(p.Code)
-            select p.Code).AnyAsync(cancellationToken);
-
-        if (!hasWork)
-        {
-            throw new InvalidOperationException("المستخدم لا يملك صلاحية مناسبة للعمل على الملاحظة.");
-        }
-    }
-
-    private async Task EnsureAssigneeScopeIntersectsAsync(Guid userId, OperationalNote note, CancellationToken cancellationToken)
-    {
-        var scopes = await db.UserScopes
-            .Where(s => s.UserId == userId && s.IsActive && !s.IsDeleted)
-            .Select(s => new UserScopeSnapshot(s.ScopeType, s.RegionId, s.FacilityId, s.FacilityUnitId))
-            .ToListAsync(cancellationToken);
-
-        if (scopes.Count == 0)
-        {
-            throw new InvalidOperationException("نطاق المستخدم لا يتقاطع مع نطاق الملاحظة.");
-        }
-
-        // Global short-circuit: IntersectsAsync does not treat Global as universal for
-        // Region/Facility/FacilityUnit notes; keep this gate so Global assignees remain universal.
-        if (scopes.Any(s => s.ScopeType == ScopeType.Global))
-        {
-            return;
-        }
-
-        if (await NoteAssigneeScopeIntersection.IntersectsAsync(db, scopes, note, cancellationToken))
-        {
-            return;
-        }
-
-        throw new InvalidOperationException("نطاق المستخدم لا يتقاطع مع نطاق الملاحظة.");
-    }
 }

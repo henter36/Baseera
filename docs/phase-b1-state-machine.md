@@ -53,3 +53,7 @@ Non-critical notes: same transition path; SoD check does not block same-user clo
 |--------|----------|------------|-------|
 | Soft-delete | `POST .../archive` | `Notes.Archive` | `NoteArchived` |
 | Restore | `POST .../restore` | `Notes.Restore` | `NoteRestored` |
+
+## Phase B.2.1 Corrective Action Guard
+
+Closure verification and cancellation now check active corrective actions after permission, scope, and RowVersion validation and before note mutation/history/audit. If any non-archived corrective action is not `Completed` or `Cancelled`, the note transition is rejected with HTTP 409 and an Arabic message containing only the blocking count.

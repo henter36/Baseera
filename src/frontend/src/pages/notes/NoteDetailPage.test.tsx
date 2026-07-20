@@ -19,6 +19,7 @@ const {
   archiveNote,
   uploadAttachment,
   downloadAttachment,
+  listNoteCorrectiveActions,
   currentPermissions,
 } = vi.hoisted(() => ({
   getNote: vi.fn(),
@@ -32,6 +33,7 @@ const {
   archiveNote: vi.fn(),
   uploadAttachment: vi.fn(),
   downloadAttachment: vi.fn(),
+  listNoteCorrectiveActions: vi.fn(),
   currentPermissions: new Set<string>(['Notes.View']),
 }))
 
@@ -59,6 +61,7 @@ vi.mock('../../api/client', async () => {
         cancel: cancelNote,
         startWork: startWorkNote,
         archive: archiveNote,
+        correctiveActions: listNoteCorrectiveActions,
       },
     },
   }
@@ -116,6 +119,8 @@ describe('NoteDetailPage', () => {
     startWorkNote.mockReset()
     archiveNote.mockReset()
     uploadAttachment.mockReset()
+    listNoteCorrectiveActions.mockReset()
+    listNoteCorrectiveActions.mockResolvedValue({ items: [], page: 1, pageSize: 5, totalCount: 0 })
     currentPermissions.clear()
     currentPermissions.add('Notes.View')
     getHistory.mockResolvedValue([])
@@ -276,6 +281,47 @@ describe('NoteDetailPage', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'تنزيل' }))
     await waitFor(() => expect(downloadAttachment).toHaveBeenCalledWith('att-1'))
+  })
+
+  it('renders the corrective actions summary when permitted', async () => {
+    getNote.mockResolvedValue(baseNote)
+    listNoteCorrectiveActions.mockResolvedValue({
+      items: [
+        {
+          id: 'ca-1',
+          referenceNumber: 'CA-00000001',
+          operationalNoteId: 'note-1',
+          operationalNoteReferenceNumber: 'OBS-00000001',
+          title: 'إجراء مرتبط',
+          descriptionSnippet: null,
+          priority: 2,
+          priorityAr: 'عالية',
+          status: 4,
+          statusAr: 'بانتظار التحقق',
+          classification: 0,
+          ownerDepartmentId: null,
+          dueAtUtc: '2020-01-01T00:00:00Z',
+          isOverdue: true,
+          isDueSoon: false,
+          overdueDays: 1,
+          currentAssigneeDisplay: null,
+          createdAtUtc: '2024-01-01T00:00:00Z',
+          rowVersion: 'row-ca',
+          isSensitiveRedacted: false,
+        },
+      ],
+      page: 1,
+      pageSize: 5,
+      totalCount: 1,
+    })
+    currentPermissions.add('CorrectiveActions.View')
+    currentPermissions.add('CorrectiveActions.Create')
+    renderPage()
+
+    expect(await screen.findByText('الإجراءات التصحيحية')).toBeInTheDocument()
+    expect(await screen.findByText('إجراء مرتبط')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'إضافة إجراء' })).toBeInTheDocument()
+    expect(listNoteCorrectiveActions).toHaveBeenCalledWith('note-1', { page: 1, pageSize: 5, sortBy: 'createdAtUtc', sortDesc: true })
   })
 
   it('hides download and shows sensitive permission message for redacted attachments', async () => {

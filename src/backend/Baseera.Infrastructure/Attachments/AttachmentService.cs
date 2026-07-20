@@ -114,7 +114,9 @@ public sealed class AttachmentService(
             db.Attachments.Add(entity);
             await audit.WriteAsync(new AuditEntry
             {
-                Action = "Upload",
+                Action = request.EntityType.Equals("CorrectiveAction", StringComparison.OrdinalIgnoreCase)
+                    ? "CorrectiveActionAttachmentUploaded"
+                    : "Upload",
                 Module = "Attachments",
                 EntityType = nameof(Attachment),
                 EntityId = entity.Id.ToString(),
@@ -160,7 +162,9 @@ public sealed class AttachmentService(
 
         await audit.WriteAsync(new AuditEntry
         {
-            Action = "Download",
+            Action = entity.EntityType.Equals("CorrectiveAction", StringComparison.OrdinalIgnoreCase)
+                ? "CorrectiveActionAttachmentDownloaded"
+                : "Download",
             Module = "Attachments",
             EntityType = nameof(Attachment),
             EntityId = entity.Id.ToString(),
@@ -216,8 +220,28 @@ public sealed class AttachmentService(
             "department" => ResolveDepartmentAccessAsync(entityId, cancellationToken),
             "user" => ResolveUserAccessAsync(entityId, cancellationToken),
             "operationalnote" => ResolveOperationalNoteAccessAsync(entityId, cancellationToken),
+            "correctiveaction" => ResolveCorrectiveActionAccessAsync(entityId, cancellationToken),
             _ => throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.")
         };
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveCorrectiveActionAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var action = await db.CorrectiveActions.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.Id == entityId, cancellationToken);
+        if (action is null || action.IsDeleted)
+        {
+            return (false, false);
+        }
+
+        var note = await db.OperationalNotes.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(n => n.Id == action.OperationalNoteId, cancellationToken);
+        if (note is null || note.IsDeleted)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.CanAccess(note));
     }
 
     private async Task<(bool Exists, bool InScope)> ResolveOperationalNoteAccessAsync(Guid entityId, CancellationToken cancellationToken)

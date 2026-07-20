@@ -3,6 +3,7 @@ namespace Baseera.Application.DependencyInjection;
 using Baseera.Application.Abstractions;
 using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
+using Baseera.Application.CorrectiveActions;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
@@ -26,6 +27,11 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<INoteCommandService, NoteCommandService>();
         services.AddScoped<INoteAssignmentService, NoteAssignmentService>();
         services.AddScoped<INoteWorkflowService, NoteWorkflowService>();
+        services.AddScoped<ICorrectiveActionScopeService, CorrectiveActionScopeService>();
+        services.AddScoped<ICorrectiveActionQueryService, CorrectiveActionQueryService>();
+        services.AddScoped<ICorrectiveActionCommandService, CorrectiveActionCommandService>();
+        services.AddScoped<ICorrectiveActionAssignmentService, CorrectiveActionAssignmentService>();
+        services.AddScoped<ICorrectiveActionWorkflowService, CorrectiveActionWorkflowService>();
         return services;
     }
 }

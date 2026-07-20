@@ -29,6 +29,19 @@ public static class AuthPolicies
     public const string NotesCancel = PermissionPrefix + PermissionCodes.NotesCancel;
     public const string NotesArchive = PermissionPrefix + PermissionCodes.NotesArchive;
     public const string NotesRestore = PermissionPrefix + PermissionCodes.NotesRestore;
+    public const string CorrectiveActionsView = PermissionPrefix + PermissionCodes.CorrectiveActionsView;
+    public const string CorrectiveActionsViewSensitive = PermissionPrefix + PermissionCodes.CorrectiveActionsViewSensitive;
+    public const string CorrectiveActionsCreate = PermissionPrefix + PermissionCodes.CorrectiveActionsCreate;
+    public const string CorrectiveActionsUpdate = PermissionPrefix + PermissionCodes.CorrectiveActionsUpdate;
+    public const string CorrectiveActionsAssign = PermissionPrefix + PermissionCodes.CorrectiveActionsAssign;
+    public const string CorrectiveActionsStartWork = PermissionPrefix + PermissionCodes.CorrectiveActionsStartWork;
+    public const string CorrectiveActionsSubmitForVerification = PermissionPrefix + PermissionCodes.CorrectiveActionsSubmitForVerification;
+    public const string CorrectiveActionsVerifyCompletion = PermissionPrefix + PermissionCodes.CorrectiveActionsVerifyCompletion;
+    public const string CorrectiveActionsReturnForRework = PermissionPrefix + PermissionCodes.CorrectiveActionsReturnForRework;
+    public const string CorrectiveActionsReopen = PermissionPrefix + PermissionCodes.CorrectiveActionsReopen;
+    public const string CorrectiveActionsCancel = PermissionPrefix + PermissionCodes.CorrectiveActionsCancel;
+    public const string CorrectiveActionsArchive = PermissionPrefix + PermissionCodes.CorrectiveActionsArchive;
+    public const string CorrectiveActionsRestore = PermissionPrefix + PermissionCodes.CorrectiveActionsRestore;
 }
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
@@ -82,6 +95,19 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.NotesCancel, PermissionCodes.NotesCancel);
             AddPerm(AuthPolicies.NotesArchive, PermissionCodes.NotesArchive);
             AddPerm(AuthPolicies.NotesRestore, PermissionCodes.NotesRestore);
+            AddPerm(AuthPolicies.CorrectiveActionsView, PermissionCodes.CorrectiveActionsView);
+            AddPerm(AuthPolicies.CorrectiveActionsViewSensitive, PermissionCodes.CorrectiveActionsViewSensitive);
+            AddPerm(AuthPolicies.CorrectiveActionsCreate, PermissionCodes.CorrectiveActionsCreate);
+            AddPerm(AuthPolicies.CorrectiveActionsUpdate, PermissionCodes.CorrectiveActionsUpdate);
+            AddPerm(AuthPolicies.CorrectiveActionsAssign, PermissionCodes.CorrectiveActionsAssign);
+            AddPerm(AuthPolicies.CorrectiveActionsStartWork, PermissionCodes.CorrectiveActionsStartWork);
+            AddPerm(AuthPolicies.CorrectiveActionsSubmitForVerification, PermissionCodes.CorrectiveActionsSubmitForVerification);
+            AddPerm(AuthPolicies.CorrectiveActionsVerifyCompletion, PermissionCodes.CorrectiveActionsVerifyCompletion);
+            AddPerm(AuthPolicies.CorrectiveActionsReturnForRework, PermissionCodes.CorrectiveActionsReturnForRework);
+            AddPerm(AuthPolicies.CorrectiveActionsReopen, PermissionCodes.CorrectiveActionsReopen);
+            AddPerm(AuthPolicies.CorrectiveActionsCancel, PermissionCodes.CorrectiveActionsCancel);
+            AddPerm(AuthPolicies.CorrectiveActionsArchive, PermissionCodes.CorrectiveActionsArchive);
+            AddPerm(AuthPolicies.CorrectiveActionsRestore, PermissionCodes.CorrectiveActionsRestore);
         });
         return services;
     }

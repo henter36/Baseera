@@ -64,9 +64,9 @@ public static class DatabaseInitializer
         var permissionMap = await db.Permissions.ToDictionaryAsync(p => p.Code, cancellationToken);
         var roles = await db.Roles.ToListAsync(cancellationToken);
 
-        void Grant(Role role, params string[] codes)
+        void Grant(Role role, params object[] codes)
         {
-            foreach (var code in codes)
+            foreach (var code in ExpandCodes(codes))
             {
                 if (!permissionMap.TryGetValue(code, out var permission))
                 {
@@ -84,8 +84,61 @@ public static class DatabaseInitializer
             }
         }
 
+        static IEnumerable<string> ExpandCodes(IEnumerable<object> codes)
+        {
+            foreach (var code in codes)
+            {
+                if (code is string value)
+                {
+                    yield return value;
+                }
+                else if (code is IEnumerable<string> values)
+                {
+                    foreach (var nested in values)
+                    {
+                        yield return nested;
+                    }
+                }
+            }
+        }
+
         var admin = roles.First(r => r.Code == RoleCodes.SystemAdministrator);
         Grant(admin, permissionMap.Keys.ToArray());
+
+        string[] caViewOnly = [PermissionCodes.CorrectiveActionsView];
+        string[] caReviewer =
+        [
+            PermissionCodes.CorrectiveActionsView,
+            PermissionCodes.CorrectiveActionsViewSensitive,
+            PermissionCodes.CorrectiveActionsAssign,
+            PermissionCodes.CorrectiveActionsVerifyCompletion,
+            PermissionCodes.CorrectiveActionsReturnForRework,
+            PermissionCodes.CorrectiveActionsReopen,
+            PermissionCodes.CorrectiveActionsCancel,
+            PermissionCodes.CorrectiveActionsArchive,
+            PermissionCodes.CorrectiveActionsRestore
+        ];
+        string[] caDirector =
+        [
+            PermissionCodes.CorrectiveActionsView,
+            PermissionCodes.CorrectiveActionsCreate,
+            PermissionCodes.CorrectiveActionsUpdate,
+            PermissionCodes.CorrectiveActionsAssign,
+            PermissionCodes.CorrectiveActionsVerifyCompletion,
+            PermissionCodes.CorrectiveActionsReturnForRework,
+            PermissionCodes.CorrectiveActionsReopen,
+            PermissionCodes.CorrectiveActionsCancel
+        ];
+        string[] caCoordinator =
+        [
+            PermissionCodes.CorrectiveActionsView,
+            PermissionCodes.CorrectiveActionsCreate,
+            PermissionCodes.CorrectiveActionsUpdate,
+            PermissionCodes.CorrectiveActionsAssign,
+            PermissionCodes.CorrectiveActionsStartWork,
+            PermissionCodes.CorrectiveActionsSubmitForVerification,
+            PermissionCodes.CorrectiveActionsCancel
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -94,10 +147,11 @@ public static class DatabaseInitializer
             PermissionCodes.AuditView,
             PermissionCodes.AttachmentsDownload,
             PermissionCodes.AttachmentsDownloadSensitive,
-            PermissionCodes.NotesView);
+            PermissionCodes.NotesView,
+            caViewOnly);
 
         var readonlyUser = roles.First(r => r.Code == RoleCodes.ReadOnlyUser);
-        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView);
+        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly);
 
         var hq = roles.First(r => r.Code == RoleCodes.HeadquartersExecutive);
         Grant(hq,
@@ -111,7 +165,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesReopen,
             PermissionCodes.NotesCancel,
             PermissionCodes.NotesArchive,
-            PermissionCodes.NotesRestore);
+            PermissionCodes.NotesRestore,
+            caReviewer);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -122,7 +177,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesVerifyClosure,
             PermissionCodes.NotesReturnForRework,
             PermissionCodes.NotesReopen,
-            PermissionCodes.NotesCancel);
+            PermissionCodes.NotesCancel,
+            caDirector);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -138,7 +194,10 @@ public static class DatabaseInitializer
             PermissionCodes.NotesReopen,
             PermissionCodes.NotesCancel,
             PermissionCodes.NotesArchive,
-            PermissionCodes.NotesRestore);
+            PermissionCodes.NotesRestore,
+            caDirector,
+            PermissionCodes.CorrectiveActionsArchive,
+            PermissionCodes.CorrectiveActionsRestore);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -148,7 +207,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesAssign,
             PermissionCodes.NotesStartWork,
             PermissionCodes.NotesSubmitForVerification,
-            PermissionCodes.NotesCancel);
+            PermissionCodes.NotesCancel,
+            caCoordinator);
 
         var facilityDirector = roles.First(r => r.Code == RoleCodes.FacilityDirector);
         Grant(facilityDirector,
@@ -164,7 +224,10 @@ public static class DatabaseInitializer
             PermissionCodes.NotesReopen,
             PermissionCodes.NotesCancel,
             PermissionCodes.NotesArchive,
-            PermissionCodes.NotesRestore);
+            PermissionCodes.NotesRestore,
+            caDirector,
+            PermissionCodes.CorrectiveActionsArchive,
+            PermissionCodes.CorrectiveActionsRestore);
 
         var facilityCoordinator = roles.First(r => r.Code == RoleCodes.FacilityCoordinator);
         Grant(facilityCoordinator,
@@ -173,7 +236,13 @@ public static class DatabaseInitializer
             PermissionCodes.NotesUpdate,
             PermissionCodes.NotesStartWork,
             PermissionCodes.NotesSubmitForVerification,
-            PermissionCodes.NotesCancel);
+            PermissionCodes.NotesCancel,
+            PermissionCodes.CorrectiveActionsView,
+            PermissionCodes.CorrectiveActionsCreate,
+            PermissionCodes.CorrectiveActionsUpdate,
+            PermissionCodes.CorrectiveActionsStartWork,
+            PermissionCodes.CorrectiveActionsSubmitForVerification,
+            PermissionCodes.CorrectiveActionsCancel);
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -278,6 +347,7 @@ public static class DatabaseInitializer
 
     private const string OrganizationModule = "Organization";
     private const string NotesModule = "Notes";
+    private const string CorrectiveActionsModule = "CorrectiveActions";
 
     private static List<Permission> BuildPermissions()
     {
@@ -322,6 +392,19 @@ public static class DatabaseInitializer
             (PermissionCodes.NotesCancel, "إلغاء ملاحظة", NotesModule),
             (PermissionCodes.NotesArchive, "أرشفة ملاحظة", NotesModule),
             (PermissionCodes.NotesRestore, "استعادة ملاحظة", NotesModule),
+            (PermissionCodes.CorrectiveActionsView, "عرض الإجراءات التصحيحية", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsViewSensitive, "عرض الإجراءات التصحيحية الحساسة", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsCreate, "إنشاء إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsUpdate, "تحديث إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsAssign, "تكليف إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsStartWork, "بدء معالجة إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsSubmitForVerification, "إرسال إجراء تصحيحي للتحقق", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsVerifyCompletion, "اعتماد إنجاز إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsReturnForRework, "إعادة إجراء تصحيحي للمعالجة", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsReopen, "إعادة فتح إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsCancel, "إلغاء إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsArchive, "أرشفة إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.CorrectiveActionsRestore, "استعادة إجراء تصحيحي", CorrectiveActionsModule),
             (PermissionCodes.IncidentsApprove, "اعتماد واقعة", "Incidents"),
             (PermissionCodes.FormsDesign, "تصميم نموذج", "Forms"),
             (PermissionCodes.FormsPublish, "نشر نموذج", "Forms"),
