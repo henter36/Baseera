@@ -140,11 +140,92 @@ public static class ApiEndpoints
         }).RequireAuthorization(AuthPolicies.AttachmentsDownload);
 
         MapNotesEndpoints(api);
+        MapNoteTypeEndpoints(api);
         MapCorrectiveActionEndpoints(api);
         MapEscalationEndpoints(api);
         MapNotificationEndpoints(api);
 
         return api;
+    }
+
+    private static void MapNoteTypeEndpoints(RouteGroupBuilder api)
+    {
+        var noteTypes = api.MapGroup("/note-types");
+        noteTypes.MapGet("/", async (INoteTypeManagementService service, CancellationToken ct) =>
+            Results.Ok(await service.ListNoteTypesAsync(cancellationToken: ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        noteTypes.MapGet(EntityIdRoute, async (Guid id, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            var item = await service.GetNoteTypeAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.NotesView);
+
+        noteTypes.MapPost("/", async (CreateNoteTypeRequest request, IValidator<CreateNoteTypeRequest> validator, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateNoteTypeAsync(request, ct);
+            return Results.Created($"/api/v1/note-types/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.NotesManageTypes);
+
+        noteTypes.MapPut(EntityIdRoute, async (Guid id, UpdateNoteTypeRequest request, IValidator<UpdateNoteTypeRequest> validator, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.UpdateNoteTypeAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageTypes);
+
+        noteTypes.MapPost(EntityIdRoute + "/activate", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ActivateNoteTypeAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageTypes);
+
+        noteTypes.MapPost(EntityIdRoute + "/deactivate", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.DeactivateNoteTypeAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageTypes);
+
+        api.MapGet("/roles/{id:guid}/note-type-grants", async (Guid id, INoteTypeManagementService service, CancellationToken ct) =>
+            Results.Ok(await service.GetRoleGrantsAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesManageRoleTypeAccess);
+
+        api.MapPut("/roles/{id:guid}/note-type-grants", async (Guid id, ReplaceRoleNoteTypeGrantsRequest request, IValidator<ReplaceRoleNoteTypeGrantsRequest> validator, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ReplaceRoleGrantsAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageRoleTypeAccess);
+
+        api.MapGet("/users/{id:guid}/note-type-overrides", async (Guid id, INoteTypeManagementService service, CancellationToken ct) =>
+            Results.Ok(await service.GetUserOverridesAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesManageUserTypeOverrides);
+
+        api.MapPut("/users/{id:guid}/note-type-overrides", async (Guid id, ReplaceUserNoteTypeOverridesRequest request, IValidator<ReplaceUserNoteTypeOverridesRequest> validator, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ReplaceUserOverridesAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageUserTypeOverrides);
+
+        api.MapGet("/users/{id:guid}/effective-note-type-access", async (Guid id, INoteTypeManagementService service, CancellationToken ct) =>
+            Results.Ok(await service.GetEffectiveAccessAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesManageUserTypeOverrides);
+
+        api.MapGet("/users/{id:guid}/note-intake-profile", async (Guid id, INoteTypeManagementService service, CancellationToken ct) =>
+            Results.Ok(await service.GetIntakeProfileAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesManageIntakeProfiles);
+
+        api.MapPut("/users/{id:guid}/note-intake-profile", async (Guid id, UpdateUserNoteIntakeProfileRequest request, IValidator<UpdateUserNoteIntakeProfileRequest> validator, INoteTypeManagementService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.UpdateIntakeProfileAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageIntakeProfiles);
+
+        api.MapGet("/me/note-intake-context", async (INoteTypeManagementService service, CancellationToken ct) =>
+            Results.Ok(await service.GetMyIntakeContextAsync(ct))).RequireAuthorization(AuthPolicies.NotesCreate);
+
+        api.MapGet("/me/note-intake-context/facilities", async (Guid regionId, INoteTypeManagementService service, CancellationToken ct) =>
+            Results.Ok(await service.GetMyIntakeFacilitiesAsync(regionId, ct))).RequireAuthorization(AuthPolicies.NotesCreate);
+
+        api.MapGet("/me/note-types", async (INoteTypeAccessService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAccessibleNoteTypesAsync(NoteTypeCapability.View, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        api.MapGet("/me/note-type-access", async (INoteTypeAccessService service, ICurrentUser currentUser, CancellationToken ct) =>
+            Results.Ok(await service.GetEffectiveAccessAsync(currentUser.UserId ?? Guid.Empty, ct))).RequireAuthorization(AuthPolicies.NotesView);
     }
 
     private static void MapEscalationEndpoints(RouteGroupBuilder api)
@@ -440,6 +521,12 @@ public static class ApiEndpoints
 
         notes.MapGet("/{id:guid}/assignments", async (Guid id, INoteQueryService queries, CancellationToken ct) =>
             Results.Ok(await queries.GetAssignmentsAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapGet("/{id:guid}/eligible-assignees", async (Guid id, INoteEligibilityService eligibility, CancellationToken ct) =>
+            Results.Ok(await eligibility.GetEligibleAssigneesAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesAssign);
+
+        notes.MapGet("/{id:guid}/eligible-reviewers", async (Guid id, INoteEligibilityService eligibility, CancellationToken ct) =>
+            Results.Ok(await eligibility.GetEligibleReviewersAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesVerifyClosure);
 
         // Metadata-only (no content); out-of-scope/missing notes surface as 404 via the same
         // KeyNotFoundException path AttachmentService uses for single-attachment downloads.

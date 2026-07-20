@@ -29,11 +29,13 @@ public sealed class NoteWorkflowServiceTests : IDisposable
 
     private INoteWorkflowService BuildWorkflowForUser(Guid userId, params string[] permissions)
     {
+        NoteTestFixtures.GrantPermissions(_db, userId, $"Actor-{userId}", permissions);
         var current = FakeUser(userId, permissions);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
-        var queries = new NoteQueryService(_db, current, scope, audit);
-        return new NoteWorkflowService(_db, current, scope, audit, queries);
+        var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
+        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
     }
 
     private static string RowVersionOf(OperationalNote note) => Convert.ToBase64String(note.RowVersion);
@@ -378,10 +380,12 @@ public sealed class NoteWorkflowServiceTests : IDisposable
         var current = new FakeCurrentUser(true, actor.Id, actor.Id.ToString(), "actor",
             [PermissionCodes.NotesStartWork, PermissionCodes.NotesView],
             [new UserScopeSnapshot(ScopeType.Region, SeedIds.RegionB, null, null)]);
+        NoteTestFixtures.GrantPermissions(_db, actor.Id, $"Actor-{actor.Id}", PermissionCodes.NotesStartWork, PermissionCodes.NotesView);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
-        var queries = new NoteQueryService(_db, current, scope, audit);
-        var workflow = new NoteWorkflowService(_db, current, scope, audit, queries);
+        var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
+        var workflow = new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             workflow.StartWorkAsync(note.Id, new TransitionNoteRequest("بدء", Convert.ToBase64String(note.RowVersion))));
@@ -430,10 +434,12 @@ public sealed class NoteWorkflowServiceTests : IDisposable
     private async Task<IReadOnlyList<NoteStatusHistoryDto>> LoadHistoryAsync(Guid noteId)
     {
         var viewer = NoteTestFixtures.AddUser(_db, "viewer");
+        NoteTestFixtures.GrantPermissions(_db, viewer.Id, $"Viewer-{viewer.Id}", PermissionCodes.NotesView);
         var current = FakeUser(viewer.Id, PermissionCodes.NotesView);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
-        var queries = new NoteQueryService(_db, current, scope, audit);
+        var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
         return await queries.GetHistoryAsync(noteId);
     }
 

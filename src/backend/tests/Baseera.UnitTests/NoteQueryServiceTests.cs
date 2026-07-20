@@ -19,10 +19,12 @@ public sealed class NoteQueryServiceTests : IDisposable
 
     private INoteQueryService BuildService(Guid userId, params string[] permissions)
     {
+        NoteTestFixtures.GrantPermissions(_db, userId, $"Role-{userId}", permissions);
         var current = FakeUser(userId, permissions);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
-        return new NoteQueryService(_db, current, scope, audit);
+        return new NoteQueryService(_db, current, scope, typeAccess, audit);
     }
 
     [Fact]
@@ -205,9 +207,11 @@ public sealed class NoteQueryServiceTests : IDisposable
         var current = new FakeCurrentUser(true, viewer.Id, viewer.Id.ToString(), "viewer",
             [PermissionCodes.NotesView],
             [new UserScopeSnapshot(ScopeType.Region, SeedIds.RegionB, null, null)]);
+        NoteTestFixtures.GrantPermissions(_db, viewer.Id, $"Viewer-{viewer.Id}", PermissionCodes.NotesView);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
-        var queries = new NoteQueryService(_db, current, scope, audit);
+        var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
 
         var detail = await queries.GetDetailAsync(note.Id);
         Assert.Null(detail);

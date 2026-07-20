@@ -379,17 +379,37 @@ public sealed class CorrectiveActionsCoreIntegrationTests : IClassFixture<Baseer
         {
             title,
             description = "وصف تشغيلي كاف",
-            category = NoteCategory.Operational,
+            noteTypeId = SeedIds.NoteTypeOperational,
             severity = NoteSeverity.Medium,
             sourceType = NoteSourceType.Manual,
             classification = 1,
-            scopeType,
-            regionId,
-            facilityId,
+            scopeType = ScopeType.Facility,
+            regionId = ResolveRegionId(regionId, facilityId),
+            facilityId = ResolveFacilityId(regionId, facilityId),
             dueAtUtc = DateTimeOffset.UtcNow.AddDays(5)
         });
         var body = await ReadObjectAsync(created);
         return (body.GetProperty("id").GetGuid(), body.GetProperty("rowVersion").GetString()!);
+    }
+
+    private static Guid ResolveRegionId(Guid? regionId, Guid? facilityId)
+    {
+        if (regionId.HasValue)
+        {
+            return regionId.Value;
+        }
+
+        return facilityId == SeedIds.FacilityB1 ? SeedIds.RegionB : SeedIds.RegionA;
+    }
+
+    private static Guid ResolveFacilityId(Guid? regionId, Guid? facilityId)
+    {
+        if (facilityId.HasValue)
+        {
+            return facilityId.Value;
+        }
+
+        return regionId == SeedIds.RegionB ? SeedIds.FacilityB1 : SeedIds.FacilityA1;
     }
 
     private async Task<ActionDetail> CreateOpenActionAsync(

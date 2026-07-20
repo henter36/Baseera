@@ -37,7 +37,9 @@ export const noteCommonFieldsSchema = z.object({
     .trim()
     .min(1, 'الوصف مطلوب.')
     .max(8000, 'الوصف يجب ألا يتجاوز 8000 حرف.'),
-  category: requiredEnumString('التصنيف غير صالح.'),
+  noteTypeId: z.string().trim().min(1, 'نوع الملاحظة مطلوب.').refine((v) => GUID_RE.test(v), {
+    message: 'نوع الملاحظة غير صالح.',
+  }),
   severity: requiredEnumString('مستوى الخطورة غير صالح.'),
   sourceType: requiredEnumString('نوع المصدر غير صالح.'),
   sourceReference: z
@@ -53,7 +55,7 @@ export const noteCommonFieldsSchema = z.object({
 
 export const createNoteSchema = noteCommonFieldsSchema
   .extend({
-    scopeType: z.string().refine((v) => v !== '' && v !== '-1' && !Number.isNaN(Number(v)), {
+    scopeType: z.string().refine((v) => v === String(ScopeType.Facility), {
       message: 'نطاق الملاحظة مطلوب.',
     }),
     regionId: optionalGuid,
@@ -61,39 +63,12 @@ export const createNoteSchema = noteCommonFieldsSchema
     facilityUnitId: optionalGuid,
   })
   .superRefine((data, ctx) => {
-    const hasRegion = !!data.regionId
     const hasFacility = !!data.facilityId
-    const hasUnit = !!data.facilityUnitId
-    const scopeType = Number(data.scopeType)
-
-    switch (scopeType) {
-      case ScopeType.Global:
-      case ScopeType.Headquarters:
-        if (hasRegion || hasFacility || hasUnit) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['scopeType'],
-            message: 'نطاق عام/مقر رئيسي لا يقبل تحديد منطقة أو سجن أو وحدة.',
-          })
-        }
-        break
-      case ScopeType.Region:
-        if (!hasRegion || hasFacility || hasUnit) {
-          ctx.addIssue({ code: 'custom', path: ['regionId'], message: 'نطاق المنطقة يتطلب اختيار منطقة فقط.' })
-        }
-        break
-      case ScopeType.Facility:
-        if (!hasFacility || hasUnit) {
-          ctx.addIssue({ code: 'custom', path: ['facilityId'], message: 'نطاق السجن يتطلب اختيار سجن دون وحدة.' })
-        }
-        break
-      case ScopeType.FacilityUnit:
-        if (!hasFacility || !hasUnit) {
-          ctx.addIssue({ code: 'custom', path: ['facilityUnitId'], message: 'نطاق الوحدة يتطلب اختيار السجن والوحدة معًا.' })
-        }
-        break
-      default:
-        ctx.addIssue({ code: 'custom', path: ['scopeType'], message: 'نطاق الملاحظة غير مدعوم في هذه المرحلة.' })
+    if (!data.regionId) {
+      ctx.addIssue({ code: 'custom', path: ['regionId'], message: 'يجب اختيار المنطقة أولًا.' })
+    }
+    if (!hasFacility) {
+      ctx.addIssue({ code: 'custom', path: ['facilityId'], message: 'يجب اختيار السجن.' })
     }
 
     if (data.dueAtUtc) {

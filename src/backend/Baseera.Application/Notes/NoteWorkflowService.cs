@@ -20,6 +20,7 @@ public sealed class NoteWorkflowService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     INoteScopeService noteScope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit,
     INoteQueryService queries) : INoteWorkflowService
 {
@@ -63,6 +64,7 @@ public sealed class NoteWorkflowService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesVerifyClosure);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.Review, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Closed);
 
@@ -106,6 +108,7 @@ public sealed class NoteWorkflowService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesReopen);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.Reopen, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Reopened);
 
@@ -143,6 +146,7 @@ public sealed class NoteWorkflowService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesCancel);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.Cancel, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
 
         if (note.Status == NoteStatus.Closed)
@@ -195,6 +199,7 @@ public sealed class NoteWorkflowService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, options.Permission);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, options.Id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, CapabilityForPermission(options.Permission), cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, options.RowVersion);
 
         if (options.ToStatus == NoteStatus.InProgress && note.Status == NoteStatus.Reopened)
@@ -228,6 +233,14 @@ public sealed class NoteWorkflowService(
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
     }
+
+    private static NoteTypeCapability CapabilityForPermission(string permission) => permission switch
+    {
+        PermissionCodes.NotesStartWork => NoteTypeCapability.Process,
+        PermissionCodes.NotesSubmitForVerification => NoteTypeCapability.SubmitForVerification,
+        PermissionCodes.NotesReturnForRework => NoteTypeCapability.Review,
+        _ => NoteTypeCapability.View
+    };
 
     private static void ApplyStartWork(OperationalNote note, Guid actorId, DateTimeOffset now)
     {

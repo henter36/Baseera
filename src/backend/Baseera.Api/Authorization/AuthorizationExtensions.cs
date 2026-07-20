@@ -29,6 +29,10 @@ public static class AuthPolicies
     public const string NotesCancel = PermissionPrefix + PermissionCodes.NotesCancel;
     public const string NotesArchive = PermissionPrefix + PermissionCodes.NotesArchive;
     public const string NotesRestore = PermissionPrefix + PermissionCodes.NotesRestore;
+    public const string NotesManageTypes = PermissionPrefix + PermissionCodes.NotesManageTypes;
+    public const string NotesManageRoleTypeAccess = PermissionPrefix + PermissionCodes.NotesManageRoleTypeAccess;
+    public const string NotesManageUserTypeOverrides = PermissionPrefix + PermissionCodes.NotesManageUserTypeOverrides;
+    public const string NotesManageIntakeProfiles = PermissionPrefix + PermissionCodes.NotesManageIntakeProfiles;
     public const string CorrectiveActionsView = PermissionPrefix + PermissionCodes.CorrectiveActionsView;
     public const string CorrectiveActionsViewSensitive = PermissionPrefix + PermissionCodes.CorrectiveActionsViewSensitive;
     public const string CorrectiveActionsCreate = PermissionPrefix + PermissionCodes.CorrectiveActionsCreate;
@@ -104,6 +108,10 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.NotesCancel, PermissionCodes.NotesCancel);
             AddPerm(AuthPolicies.NotesArchive, PermissionCodes.NotesArchive);
             AddPerm(AuthPolicies.NotesRestore, PermissionCodes.NotesRestore);
+            AddPerm(AuthPolicies.NotesManageTypes, PermissionCodes.NotesManageTypes);
+            AddPerm(AuthPolicies.NotesManageRoleTypeAccess, PermissionCodes.NotesManageRoleTypeAccess);
+            AddPerm(AuthPolicies.NotesManageUserTypeOverrides, PermissionCodes.NotesManageUserTypeOverrides);
+            AddPerm(AuthPolicies.NotesManageIntakeProfiles, PermissionCodes.NotesManageIntakeProfiles);
             AddPerm(AuthPolicies.CorrectiveActionsView, PermissionCodes.CorrectiveActionsView);
             AddPerm(AuthPolicies.CorrectiveActionsViewSensitive, PermissionCodes.CorrectiveActionsViewSensitive);
             AddPerm(AuthPolicies.CorrectiveActionsCreate, PermissionCodes.CorrectiveActionsCreate);

@@ -16,6 +16,7 @@ public sealed class CorrectiveActionAssignmentService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     ICorrectiveActionScopeService actionScope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit,
     ICorrectiveActionQueryService queries) : ICorrectiveActionAssignmentService
 {
@@ -31,10 +32,11 @@ public sealed class CorrectiveActionAssignmentService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsAssign);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, actionScope, id, cancellationToken: cancellationToken);
+        var note = await db.OperationalNotes.FirstAsync(n => n.Id == action.OperationalNoteId, cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         EnsureExactlyOneAssignmentTarget(request);
 
-        var note = await db.OperationalNotes.FirstAsync(n => n.Id == action.OperationalNoteId, cancellationToken);
         if (request.AssignedToUserId is Guid userId)
         {
             await AssignmentTargetValidator.EnsureUserCanReceiveAsync(
@@ -45,6 +47,11 @@ public sealed class CorrectiveActionAssignmentService(
                 "المستخدم لا يملك صلاحية مناسبة للعمل على الإجراء التصحيحي.",
                 "نطاق المستخدم لا يتقاطع مع نطاق الملاحظة الأصلية.",
                 cancellationToken);
+            var assigneeAccess = await typeAccess.GetEffectiveAccessAsync(userId, note.NoteTypeId, cancellationToken);
+            if (assigneeAccess?.Process.Allowed != true)
+            {
+                throw new InvalidOperationException("المستخدم لا يملك صلاحية معالجة نوع الملاحظة الأصلية.");
+            }
         }
         else if (request.AssignedToDepartmentId is Guid departmentId)
         {

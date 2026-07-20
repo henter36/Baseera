@@ -14,6 +14,7 @@ public sealed class NoteAssignmentService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     INoteScopeService noteScope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit,
     INoteQueryService queries) : INoteAssignmentService
 {
@@ -29,6 +30,7 @@ public sealed class NoteAssignmentService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesAssign);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.Assign, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         EnsureExactlyOneAssignmentTarget(request);
 
@@ -46,6 +48,10 @@ public sealed class NoteAssignmentService(
                 "المستخدم لا يملك صلاحية مناسبة للعمل على الملاحظة.",
                 "نطاق المستخدم لا يتقاطع مع نطاق الملاحظة.",
                 cancellationToken);
+            if (!await UserHasTypeCapabilityAsync(userId, note.NoteTypeId, NoteTypeCapability.Process, cancellationToken))
+            {
+                throw new InvalidOperationException("المستخدم لا يملك صلاحية معالجة نوع الملاحظة.");
+            }
         }
         else if (request.AssignedToDepartmentId is Guid departmentId)
         {
@@ -178,6 +184,17 @@ public sealed class NoteAssignmentService(
         }
 
         throw new InvalidOperationException($"لا يمكن التكليف من الحالة {NoteDisplay.StatusAr(status)}.");
+    }
+
+    private async Task<bool> UserHasTypeCapabilityAsync(Guid userId, Guid noteTypeId, NoteTypeCapability capability, CancellationToken cancellationToken)
+    {
+        var access = await typeAccess.GetEffectiveAccessAsync(userId, noteTypeId, cancellationToken);
+        return capability switch
+        {
+            NoteTypeCapability.Process => access?.Process.Allowed == true,
+            NoteTypeCapability.Review => access?.Review.Allowed == true,
+            _ => access?.View.Allowed == true
+        };
     }
 
 }

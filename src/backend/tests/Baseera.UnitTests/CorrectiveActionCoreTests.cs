@@ -236,9 +236,11 @@ public sealed class CorrectiveActionNoteGuardTests : IDisposable
             [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
         var org = new OrganizationalScopeService(current, _db);
         var scope = new NoteScopeService(org, current, _db);
+        NoteTestFixtures.GrantPermissions(_db, userId, $"Actor-{userId}", effectivePermissions);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, org);
-        var queries = new NoteQueryService(_db, current, scope, audit);
-        return new NoteWorkflowService(_db, current, scope, audit, queries);
+        var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
+        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
     }
 }
 
@@ -302,9 +304,11 @@ public sealed class CorrectiveActionAssignmentHardeningTests : IDisposable
         var org = new OrganizationalScopeService(current, _db);
         var noteScope = new NoteScopeService(org, current, _db);
         var actionScope = new CorrectiveActionScopeService(_db, noteScope);
+        NoteTestFixtures.GrantPermissions(_db, userId, $"Actor-{userId}", PermissionCodes.CorrectiveActionsAssign, PermissionCodes.CorrectiveActionsView);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, org);
-        var queries = new CorrectiveActionQueryService(_db, current, actionScope, noteScope, audit);
-        return new CorrectiveActionAssignmentService(_db, current, actionScope, audit, queries);
+        var queries = new CorrectiveActionQueryService(_db, current, actionScope, noteScope, typeAccess, audit);
+        return new CorrectiveActionAssignmentService(_db, current, actionScope, typeAccess, audit, queries);
     }
 
     private static CorrectiveAction NewAction(Guid noteId, Guid userId, CorrectiveActionStatus status) => new()
@@ -375,8 +379,10 @@ public sealed class CorrectiveActionWorkflowHardeningTests : IDisposable
         var org = new OrganizationalScopeService(current, _db);
         var noteScope = new NoteScopeService(org, current, _db);
         var actionScope = new CorrectiveActionScopeService(_db, noteScope);
+        NoteTestFixtures.GrantPermissions(_db, userId, $"Actor-{userId}", PermissionCodes.CorrectiveActionsVerifyCompletion, PermissionCodes.CorrectiveActionsView);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, org);
-        var queries = new CorrectiveActionQueryService(_db, current, actionScope, noteScope, audit);
-        return new CorrectiveActionWorkflowService(_db, current, actionScope, audit, queries);
+        var queries = new CorrectiveActionQueryService(_db, current, actionScope, noteScope, typeAccess, audit);
+        return new CorrectiveActionWorkflowService(_db, current, actionScope, typeAccess, audit, queries);
     }
 }

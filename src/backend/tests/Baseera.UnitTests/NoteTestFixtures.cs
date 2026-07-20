@@ -13,6 +13,8 @@ namespace Baseera.UnitTests;
 /// </summary>
 internal static class NoteTestFixtures
 {
+    public static readonly Guid DefaultNoteTypeId = Guid.Parse("44444444-4444-4444-4444-444444444403");
+
     public static BaseeraDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<BaseeraDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -48,6 +50,8 @@ internal static class NoteTestFixtures
             db.UserRoles.Add(new UserRole { UserId = userId, RoleId = role.Id });
         }
 
+        EnsureDefaultNoteTypeGrant(db, role.Id);
+
         foreach (var code in permissionCodes)
         {
             var permission = db.Permissions.FirstOrDefault(p => p.Code == code);
@@ -81,7 +85,7 @@ internal static class NoteTestFixtures
         ReferenceNumber = reference,
         Title = "عنوان تجريبي",
         Description = "وصف تجريبي",
-        Category = NoteCategory.Operational,
+        NoteTypeId = DefaultNoteTypeId,
         Severity = severity,
         Status = status,
         SourceType = NoteSourceType.Manual,
@@ -93,4 +97,40 @@ internal static class NoteTestFixtures
         ReportedByUserId = reportedBy,
         ReportedAtUtc = DateTimeOffset.UtcNow
     };
+
+    private static void EnsureDefaultNoteTypeGrant(BaseeraDbContext db, Guid roleId)
+    {
+        if (!db.NoteTypes.Any(t => t.Id == DefaultNoteTypeId))
+        {
+            db.NoteTypes.Add(new NoteType
+            {
+                Id = DefaultNoteTypeId,
+                Code = "OPERATIONAL",
+                NameAr = "تشغيلية",
+                IsActive = true,
+                SortOrder = 30,
+                DefaultSeverity = NoteSeverity.Medium
+            });
+        }
+
+        if (!db.RoleNoteTypeGrants.Any(g => g.RoleId == roleId && g.NoteTypeId == DefaultNoteTypeId))
+        {
+            db.RoleNoteTypeGrants.Add(new RoleNoteTypeGrant
+            {
+                RoleId = roleId,
+                NoteTypeId = DefaultNoteTypeId,
+                CanView = true,
+                CanCreate = true,
+                CanAssign = true,
+                CanProcess = true,
+                CanSubmitForVerification = true,
+                CanReview = true,
+                CanCancel = true,
+                CanReopen = true,
+                CanArchive = true,
+                CanRestore = true,
+                IsActive = true
+            });
+        }
+    }
 }

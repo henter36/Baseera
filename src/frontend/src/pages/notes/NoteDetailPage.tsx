@@ -474,7 +474,7 @@ function NoteSummaryGrid({ note }: Readonly<{ note: NoteDetail }>) {
     <div className="detail-grid">
       <div><span className="muted">الحالة</span><div><span className="badge" data-tone={statusTone(note.status)}>{note.statusAr}</span></div></div>
       <div><span className="muted">مستوى الخطورة</span><div><span className="badge" data-tone={severityTone(note.severity)}>{note.severityAr}</span></div></div>
-      <div><span className="muted">التصنيف</span><div>{note.categoryAr}</div></div>
+      <div><span className="muted">نوع الملاحظة</span><div>{note.noteTypeNameAr}{!note.noteTypeIsActive ? ' (غير فعال)' : ''}</div></div>
       <div><span className="muted">مستوى التصنيف الأمني</span><div>{ClassificationLevelLabelsAr[note.classification] ?? note.classification}</div></div>
       <div><span className="muted">المصدر</span><div>{note.sourceAr}{note.sourceReference ? ` — ${note.sourceReference}` : ''}</div></div>
       <div><span className="muted">النطاق</span><div><ScopeLabel note={note} /></div></div>

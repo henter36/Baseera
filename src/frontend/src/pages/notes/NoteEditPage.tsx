@@ -40,7 +40,7 @@ export function NoteEditPage() {
     defaultValues: {
       title: '',
       description: '',
-      category: '0',
+      noteTypeId: '',
       severity: '0',
       sourceType: '0',
       sourceReference: '',
@@ -55,7 +55,7 @@ export function NoteEditPage() {
     methods.reset({
       title: noteQuery.data.title,
       description: noteQuery.data.description,
-      category: String(noteQuery.data.category),
+      noteTypeId: noteQuery.data.noteTypeId,
       severity: String(noteQuery.data.severity),
       sourceType: String(noteQuery.data.sourceType),
       sourceReference: noteQuery.data.sourceReference || '',
@@ -72,7 +72,7 @@ export function NoteEditPage() {
       const body: UpdateNoteRequest = {
         title: values.title,
         description: values.description,
-        category: Number(values.category),
+        noteTypeId: values.noteTypeId,
         severity: Number(values.severity),
         sourceType: Number(values.sourceType),
         sourceReference: values.sourceReference || null,

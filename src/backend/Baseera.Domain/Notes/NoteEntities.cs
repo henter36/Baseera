@@ -45,6 +45,13 @@ public enum NoteCategory
     Other = 5
 }
 
+public enum NoteIntakeLockType
+{
+    None = 0,
+    Region = 1,
+    Facility = 2
+}
+
 public static class NoteDisplay
 {
     public static string StatusAr(NoteStatus status) => status switch
@@ -91,12 +98,95 @@ public static class NoteDisplay
     };
 }
 
+public sealed class NoteType : EntityBase
+{
+    public string Code { get; set; } = string.Empty;
+    public string NameAr { get; set; } = string.Empty;
+    public string? DescriptionAr { get; set; }
+    public string? EntryInstructionsAr { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+    public NoteSeverity DefaultSeverity { get; set; } = NoteSeverity.Medium;
+    public int? DefaultDueDays { get; set; }
+    public Guid? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public Guid? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+    public ICollection<OperationalNote> OperationalNotes { get; set; } = new List<OperationalNote>();
+    public ICollection<RoleNoteTypeGrant> RoleGrants { get; set; } = new List<RoleNoteTypeGrant>();
+    public ICollection<UserNoteTypeOverride> UserOverrides { get; set; } = new List<UserNoteTypeOverride>();
+}
+
+public sealed class RoleNoteTypeGrant : EntityBase
+{
+    public Guid RoleId { get; set; }
+    public Role Role { get; set; } = null!;
+    public Guid NoteTypeId { get; set; }
+    public NoteType NoteType { get; set; } = null!;
+    public bool CanView { get; set; }
+    public bool CanCreate { get; set; }
+    public bool CanAssign { get; set; }
+    public bool CanProcess { get; set; }
+    public bool CanSubmitForVerification { get; set; }
+    public bool CanReview { get; set; }
+    public bool CanCancel { get; set; }
+    public bool CanReopen { get; set; }
+    public bool CanArchive { get; set; }
+    public bool CanRestore { get; set; }
+    public bool IsActive { get; set; } = true;
+    public Guid? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public Guid? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+}
+
+public sealed class UserNoteTypeOverride : EntityBase
+{
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    public Guid NoteTypeId { get; set; }
+    public NoteType NoteType { get; set; } = null!;
+    public bool? CanViewOverride { get; set; }
+    public bool? CanCreateOverride { get; set; }
+    public bool? CanAssignOverride { get; set; }
+    public bool? CanProcessOverride { get; set; }
+    public bool? CanSubmitForVerificationOverride { get; set; }
+    public bool? CanReviewOverride { get; set; }
+    public bool? CanCancelOverride { get; set; }
+    public bool? CanReopenOverride { get; set; }
+    public bool? CanArchiveOverride { get; set; }
+    public bool? CanRestoreOverride { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string Reason { get; set; } = string.Empty;
+    public Guid? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public Guid? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+}
+
+public sealed class UserNoteIntakeProfile : EntityBase
+{
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    public NoteIntakeLockType LockType { get; set; } = NoteIntakeLockType.None;
+    public Guid? RegionId { get; set; }
+    public Region? Region { get; set; }
+    public Guid? FacilityId { get; set; }
+    public Facility? Facility { get; set; }
+    public bool IsActive { get; set; } = true;
+    public Guid? CreatedByUserId { get; set; }
+    public User? CreatedByUser { get; set; }
+    public Guid? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
+}
+
 public class OperationalNote : SoftDeletableEntity, IScopedEntity
 {
     public string ReferenceNumber { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public NoteCategory Category { get; set; }
+    public Guid NoteTypeId { get; set; }
+    public NoteType NoteType { get; set; } = null!;
     public NoteSeverity Severity { get; set; }
     public NoteStatus Status { get; set; } = NoteStatus.Draft;
     public NoteSourceType SourceType { get; set; } = NoteSourceType.Manual;

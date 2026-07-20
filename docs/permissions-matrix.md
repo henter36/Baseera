@@ -107,6 +107,30 @@
 | Notifications.MarkRead | تعليم إشعارات المستخدم نفسه كمقروءة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Notifications.ArchiveOwn | أرشفة إشعارات المستخدم نفسه | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
+## صلاحيات أنواع الملاحظات وإدخالها (مفعّلة في B.2.3.1)
+
+هذه الصلاحيات لا تكفي وحدها لتنفيذ العمليات على الملاحظات؛ يجب تحقق RBAC العملي ونطاق المستخدم الجغرافي والتصنيف الأمني وCapability نوع الملاحظة.
+
+| الصلاحية | الوصف | SystemAdmin | Decision Support Director | Regional Director | Facility Director |
+|----------|-------|:-----------:|:--------------------------:|:------------------:|:-----------------:|
+| Notes.ManageTypes | إدارة أنواع الملاحظات | ✓ | ✓ | | |
+| Notes.ManageRoleTypeAccess | إدارة Grants الأدوار لأنواع الملاحظات | ✓ | ✓ | | |
+| Notes.ManageUserTypeOverrides | إدارة منح/منع المستخدمين المباشرة | ✓ | ✓ | ضمن النطاق | ضمن السجن |
+| Notes.ManageIntakeProfiles | إدارة تثبيت إدخال الملاحظات | ✓ | ✓ | ضمن النطاق | ضمن السجن |
+
+Capabilities النوع:
+
+- CanView
+- CanCreate
+- CanAssign
+- CanProcess
+- CanSubmitForVerification
+- CanReview
+- CanCancel
+- CanReopen
+- CanArchive
+- CanRestore
+
 ### فصل الواجبات على الإجراءات الحرجة
 
 للإجراء التصحيحي ذي أولوية `Critical`: أي مستخدم شارك في المعالجة الفعلية لا يعتمد الإنجاز النهائي، حتى إذا كان `SystemAdministrator`. المشاركة تُستنتج من `CorrectiveActionStatusHistory` عبر:

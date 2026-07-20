@@ -40,6 +40,21 @@
 - Background worker قابل للتعطيل مع SQL lease وidempotency.
 - لا يشمل Email/SMS أو Dashboard أو تقارير أو Phase B.2.3.
 
+### Phase B.2.3.1 — Note Types, Effective Access and Intake Locking
+
+- أنواع الملاحظات أصبحت بيانات قابلة للإدارة عبر `NoteType`.
+- صلاحيات النوع تُحسب من Grants الدور واستثناءات المستخدم المباشرة.
+- إنشاء الملاحظة يبدأ بالمنطقة ثم السجن ثم نوع الملاحظة.
+- Intake profile يثبت منطقة أو سجن إدخال دون منح نطاق عرض جديد.
+- التكليف والمراجعة يستخدمان قوائم مؤهلين مبنية على RBAC + Scope + Type Access + Classification.
+- لا يشمل Auto Routing أو Dashboard أو Reports.
+
+### Phase B.2.3.2 — Note Routing
+
+- مؤجلة إلى PR لاحق.
+- لا يبدأ Dashboard قبل قبول B.2.3.1.
+- Dashboard لاحقًا يجب أن يطبق Effective Type Access.
+
 ## المرحلة C — منشئ النماذج
 
 تصميم، إصدارات، نشر، دورات، تعبئة، مراجعة، متأخرات، إشعارات.

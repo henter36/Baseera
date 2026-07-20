@@ -19,6 +19,7 @@ public sealed class NoteQueryService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     INoteScopeService noteScope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit) : INoteQueryService
 {
     private static readonly HashSet<string> SortAllowlist = new(StringComparer.OrdinalIgnoreCase)
@@ -31,10 +32,22 @@ public sealed class NoteQueryService(
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
         var canSensitive = NoteAccessHelper.CanViewSensitive(currentUser);
         var now = DateTimeOffset.UtcNow;
+        if (query.RequiresMyAction)
+        {
+            query.AssignedToUserId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
+        }
 
         // Sensitive notes stay in the list (so users know they exist within their scope) but are
         // redacted below when the caller lacks Notes.ViewSensitive — never excluded outright.
         var q = await noteScope.FilterQueryableAsync(db.OperationalNotes, cancellationToken);
+        q = await typeAccess.FilterViewableNotesAsync(q, cancellationToken);
+        if (query.RequiresMyAction)
+        {
+            var processTypes = await typeAccess.GetAccessibleNoteTypesAsync(NoteTypeCapability.Process, cancellationToken);
+            var processTypeIds = processTypes.Select(type => type.Id).ToList();
+            q = q.Where(note => processTypeIds.Contains(note.NoteTypeId));
+        }
+
         q = ApplyFilters(q, query, now);
 
         var total = await q.CountAsync(cancellationToken);
@@ -42,7 +55,7 @@ public sealed class NoteQueryService(
 
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
-        var rows = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        var rows = await q.Include(n => n.NoteType).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
 
         var noteIds = rows.Select(r => r.Id).ToList();
         var currentAssignments = await db.NoteAssignments
@@ -76,8 +89,10 @@ public sealed class NoteQueryService(
                 NoteDisplay.StatusAr(n.Status),
                 n.Severity,
                 NoteDisplay.SeverityAr(n.Severity),
-                n.Category,
-                NoteDisplay.CategoryAr(n.Category),
+                n.NoteTypeId,
+                n.NoteType.Code,
+                n.NoteType.NameAr,
+                n.NoteType.IsActive,
                 n.Classification,
                 n.ScopeType,
                 n.RegionId,
@@ -103,8 +118,12 @@ public sealed class NoteQueryService(
     public async Task<NoteDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
-        var note = await db.OperationalNotes.FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
+        var note = await db.OperationalNotes.Include(n => n.NoteType).FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
         if (note is null || !noteScope.CanAccess(note))
+        {
+            return null;
+        }
+        if (!await typeAccess.CanViewAsync(note.NoteTypeId, cancellationToken))
         {
             return null;
         }
@@ -143,8 +162,12 @@ public sealed class NoteQueryService(
             NoteDisplay.StatusAr(note.Status),
             note.Severity,
             NoteDisplay.SeverityAr(note.Severity),
-            note.Category,
-            NoteDisplay.CategoryAr(note.Category),
+            note.NoteTypeId,
+            note.NoteType.Code,
+            note.NoteType.NameAr,
+            note.NoteType.DescriptionAr,
+            note.NoteType.EntryInstructionsAr,
+            note.NoteType.IsActive,
             note.SourceType,
             NoteDisplay.SourceAr(note.SourceType),
             note.SourceReference,
@@ -176,7 +199,8 @@ public sealed class NoteQueryService(
     public async Task<IReadOnlyList<NoteStatusHistoryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
-        _ = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
 
         var rows = await db.NoteStatusHistories
             .Where(h => h.OperationalNoteId == id)
@@ -202,7 +226,8 @@ public sealed class NoteQueryService(
     public async Task<IReadOnlyList<NoteAssignmentDto>> GetAssignmentsAsync(Guid id, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
-        _ = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
 
         var rows = await db.NoteAssignments
             .Where(a => a.OperationalNoteId == id)
@@ -269,9 +294,9 @@ public sealed class NoteQueryService(
             q = q.Where(n => n.Severity == query.Severity.Value);
         }
 
-        if (query.Category.HasValue)
+        if (query.NoteTypeId.HasValue)
         {
-            q = q.Where(n => n.Category == query.Category.Value);
+            q = q.Where(n => n.NoteTypeId == query.NoteTypeId.Value);
         }
 
         if (query.SourceType.HasValue)
@@ -352,6 +377,13 @@ public sealed class NoteQueryService(
         {
             var uid = query.AssignedToUserId.Value;
             q = q.Where(n => n.Assignments.Any(a => a.IsCurrent && a.AssignedToUserId == uid));
+        }
+
+        if (query.RequiresMyAction)
+        {
+            q = q.Where(n =>
+                n.Assignments.Any(a => a.IsCurrent && a.AssignedToUserId == query.AssignedToUserId) &&
+                (n.Status == NoteStatus.Assigned || n.Status == NoteStatus.InProgress || n.Status == NoteStatus.Reopened));
         }
 
         return q;

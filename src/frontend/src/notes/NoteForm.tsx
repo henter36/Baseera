@@ -1,22 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { useFormContext } from 'react-hook-form'
-import { api, type Me } from '../api/client'
+import { api, type Me, type NoteType } from '../api/client'
 import {
   ClassificationLevelLabelsAr,
-  NoteCategoryLabelsAr,
   NoteSeverityLabelsAr,
   NoteSourceTypeLabelsAr,
   ScopeType,
-  ScopeTypeLabelsAr,
   enumOptions,
 } from './noteEnums'
-import { allowedScopeTypes } from './noteScopeOptions'
 
 type NoteFormValues = {
   title: string
   description: string
-  category: string
+  noteTypeId: string
   severity: string
   sourceType: string
   sourceReference?: string
@@ -34,7 +31,17 @@ type NoteFormProps = {
   me?: Me | null
 }
 
-export function NoteForm({ mode, me }: Readonly<NoteFormProps>) {
+function localDateAfterDays(days: number): string {
+  const due = new Date()
+  due.setDate(due.getDate() + days)
+  return due.toISOString().slice(0, 16)
+}
+
+function selectedNoteType(types: NoteType[], id?: string): NoteType | undefined {
+  return types.find((type) => type.id === id)
+}
+
+export function NoteForm({ mode }: Readonly<NoteFormProps>) {
   const {
     register,
     watch,
@@ -42,30 +49,24 @@ export function NoteForm({ mode, me }: Readonly<NoteFormProps>) {
     formState: { errors },
   } = useFormContext<NoteFormValues>()
 
-  const scopeType = mode === 'create' ? watch('scopeType') : undefined
-  const scopeTypeNum = scopeType !== undefined && scopeType !== '' ? Number(scopeType) : undefined
   const regionId = watch('regionId')
+  const noteTypeId = watch('noteTypeId')
 
-  const regionsQuery = useQuery({
-    queryKey: ['note-form-regions'],
-    queryFn: () => api.regions(),
-    enabled:
-      mode === 'create' &&
-      (scopeTypeNum === ScopeType.Region || scopeTypeNum === ScopeType.Facility || scopeTypeNum === ScopeType.FacilityUnit),
+  const intakeQuery = useQuery({
+    queryKey: ['note-intake-context'],
+    queryFn: () => api.myNoteIntakeContext(),
+    enabled: mode === 'create',
+  })
+
+  const noteTypesQuery = useQuery({
+    queryKey: ['note-types-form', mode],
+    queryFn: () => (mode === 'create' ? api.myNoteTypes() : api.noteTypes(true)),
   })
 
   const facilitiesQuery = useQuery({
-    queryKey: ['note-form-facilities', regionId],
-    queryFn: () => api.facilities(regionId || undefined),
-    enabled: mode === 'create' && (scopeTypeNum === ScopeType.Facility || scopeTypeNum === ScopeType.FacilityUnit),
-  })
-
-  const facilityId = watch('facilityId')
-
-  const facilityUnitsQuery = useQuery({
-    queryKey: ['note-form-facility-units', facilityId],
-    queryFn: () => api.facilityUnits(facilityId!),
-    enabled: mode === 'create' && scopeTypeNum === ScopeType.FacilityUnit && !!facilityId,
+    queryKey: ['note-form-facilities', regionId, !!intakeQuery.data],
+    queryFn: () => intakeQuery.data ? api.myNoteIntakeFacilities(regionId!) : api.facilities(regionId || undefined).then((r) => r.items),
+    enabled: mode === 'create' && !!regionId,
   })
 
   const departmentsQuery = useQuery({
@@ -75,18 +76,76 @@ export function NoteForm({ mode, me }: Readonly<NoteFormProps>) {
 
   useEffect(() => {
     if (mode !== 'create') return
-    if (scopeTypeNum !== ScopeType.Region) setValue('regionId', '')
-    if (scopeTypeNum !== ScopeType.Facility && scopeTypeNum !== ScopeType.FacilityUnit) {
-      setValue('facilityId', '')
+    setValue('scopeType', String(ScopeType.Facility))
+    if (intakeQuery.data?.lockedRegionId) {
+      setValue('regionId', intakeQuery.data.lockedRegionId)
     }
-    if (scopeTypeNum !== ScopeType.FacilityUnit) setValue('facilityUnitId', '')
+    if (intakeQuery.data?.lockedFacilityId) {
+      setValue('facilityId', intakeQuery.data.lockedFacilityId)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeTypeNum])
+  }, [intakeQuery.data, mode])
 
-  const scopeOptions = mode === 'create' ? allowedScopeTypes(me ?? null) : []
+  useEffect(() => {
+    if (mode !== 'create') return
+    const type = selectedNoteType(noteTypesQuery.data ?? intakeQuery.data?.creatableNoteTypes ?? [], noteTypeId)
+    if (!type) return
+    setValue('severity', String(type.defaultSeverity))
+    if (type.defaultDueDays !== null && type.defaultDueDays !== undefined) {
+      setValue('dueAtUtc', localDateAfterDays(type.defaultDueDays))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteTypeId])
+
+  const regions = intakeQuery.data?.regions ?? []
+  const noteTypes = mode === 'create' ? intakeQuery.data?.creatableNoteTypes ?? noteTypesQuery.data ?? [] : noteTypesQuery.data ?? []
+  const facilities = facilitiesQuery.data ?? []
+  const type = selectedNoteType(noteTypes, noteTypeId)
+  const regionLocked = !!intakeQuery.data?.lockedRegionId
+  const facilityLocked = !!intakeQuery.data?.lockedFacilityId
 
   return (
     <div className="form-grid">
+      {mode === 'create' && (
+        <>
+          <input type="hidden" value={ScopeType.Facility} {...register('scopeType')} />
+          <label className="field">
+            <span>المنطقة *</span>
+            <select aria-label="المنطقة" {...register('regionId')} disabled={regionLocked}>
+              <option value="">اختر منطقة</option>
+              {regions.map((region) => (
+                <option key={region.id} value={region.id}>{region.nameAr}</option>
+              ))}
+            </select>
+            {errors.regionId && <span className="field-error">{errors.regionId.message as string}</span>}
+          </label>
+
+          <label className="field">
+            <span>السجن *</span>
+            <select aria-label="السجن" {...register('facilityId')} disabled={facilityLocked || !regionId}>
+              <option value="">اختر سجنًا</option>
+              {facilities.map((facility) => (
+                <option key={facility.id} value={facility.id}>{facility.nameAr}</option>
+              ))}
+            </select>
+            {errors.facilityId && <span className="field-error">{errors.facilityId.message as string}</span>}
+          </label>
+        </>
+      )}
+
+      <label className="field field-wide">
+        <span>نوع الملاحظة *</span>
+        <select aria-label="نوع الملاحظة" {...register('noteTypeId')}>
+          <option value="">اختر نوع الملاحظة</option>
+          {noteTypes.map((item) => (
+            <option key={item.id} value={item.id}>{item.nameAr}{!item.isActive ? ' - غير فعال للإنشاء' : ''}</option>
+          ))}
+        </select>
+        {errors.noteTypeId && <span className="field-error">{errors.noteTypeId.message as string}</span>}
+        {type?.descriptionAr && <span className="muted">{type.descriptionAr}</span>}
+        {type?.entryInstructionsAr && <span className="muted">{type.entryInstructionsAr}</span>}
+      </label>
+
       <label className="field">
         <span>العنوان *</span>
         <input aria-label="العنوان" {...register('title')} />
@@ -100,34 +159,25 @@ export function NoteForm({ mode, me }: Readonly<NoteFormProps>) {
       </label>
 
       <label className="field">
-        <span>التصنيف *</span>
-        <select aria-label="التصنيف" {...register('category')}>
-          {enumOptions(NoteCategoryLabelsAr).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.labelAr}
-            </option>
+        <span>مستوى الخطورة *</span>
+        <select aria-label="مستوى الخطورة" {...register('severity')}>
+          {enumOptions(NoteSeverityLabelsAr).map((option) => (
+            <option key={option.value} value={option.value}>{option.labelAr}</option>
           ))}
         </select>
       </label>
 
       <label className="field">
-        <span>مستوى الخطورة *</span>
-        <select aria-label="مستوى الخطورة" {...register('severity')}>
-          {enumOptions(NoteSeverityLabelsAr).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.labelAr}
-            </option>
-          ))}
-        </select>
+        <span>تاريخ الاستحقاق</span>
+        <input aria-label="تاريخ الاستحقاق" type="datetime-local" {...register('dueAtUtc')} />
+        {errors.dueAtUtc && <span className="field-error">{errors.dueAtUtc.message as string}</span>}
       </label>
 
       <label className="field">
         <span>نوع المصدر *</span>
         <select aria-label="نوع المصدر" {...register('sourceType')}>
-          {enumOptions(NoteSourceTypeLabelsAr).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.labelAr}
-            </option>
+          {enumOptions(NoteSourceTypeLabelsAr).map((option) => (
+            <option key={option.value} value={option.value}>{option.labelAr}</option>
           ))}
         </select>
       </label>
@@ -141,10 +191,8 @@ export function NoteForm({ mode, me }: Readonly<NoteFormProps>) {
       <label className="field">
         <span>مستوى التصنيف الأمني *</span>
         <select aria-label="مستوى التصنيف الأمني" {...register('classification')}>
-          {enumOptions(ClassificationLevelLabelsAr).map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.labelAr}
-            </option>
+          {enumOptions(ClassificationLevelLabelsAr).map((option) => (
+            <option key={option.value} value={option.value}>{option.labelAr}</option>
           ))}
         </select>
       </label>
@@ -153,82 +201,12 @@ export function NoteForm({ mode, me }: Readonly<NoteFormProps>) {
         <span>الإدارة المسؤولة</span>
         <select aria-label="الإدارة المسؤولة" {...register('ownerDepartmentId')}>
           <option value="">بدون تحديد إدارة</option>
-          {departmentsQuery.data?.items.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.nameAr}
-            </option>
+          {departmentsQuery.data?.items.map((department) => (
+            <option key={department.id} value={department.id}>{department.nameAr}</option>
           ))}
         </select>
         {errors.ownerDepartmentId && <span className="field-error">{errors.ownerDepartmentId.message as string}</span>}
       </label>
-
-      <label className="field">
-        <span>تاريخ الاستحقاق</span>
-        <input aria-label="تاريخ الاستحقاق" type="datetime-local" {...register('dueAtUtc')} />
-        {errors.dueAtUtc && <span className="field-error">{errors.dueAtUtc.message as string}</span>}
-      </label>
-
-      {mode === 'create' && (
-        <>
-          <label className="field">
-            <span>نطاق الملاحظة *</span>
-            <select aria-label="نطاق الملاحظة" {...register('scopeType')}>
-              <option value="-1">اختر نطاقًا</option>
-              {scopeOptions.map((value) => (
-                <option key={value} value={value}>
-                  {ScopeTypeLabelsAr[value]}
-                </option>
-              ))}
-            </select>
-            {errors.scopeType && <span className="field-error">{errors.scopeType.message as string}</span>}
-          </label>
-
-          {(scopeTypeNum === ScopeType.Region || scopeTypeNum === ScopeType.Facility || scopeTypeNum === ScopeType.FacilityUnit) && (
-            <label className="field">
-              <span>المنطقة {scopeTypeNum === ScopeType.Region ? '*' : ''}</span>
-              <select aria-label="المنطقة" {...register('regionId')}>
-                <option value="">اختر منطقة</option>
-                {regionsQuery.data?.items.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nameAr}
-                  </option>
-                ))}
-              </select>
-              {errors.regionId && <span className="field-error">{errors.regionId.message as string}</span>}
-            </label>
-          )}
-
-          {(scopeTypeNum === ScopeType.Facility || scopeTypeNum === ScopeType.FacilityUnit) && (
-            <label className="field">
-              <span>السجن *</span>
-              <select aria-label="السجن" {...register('facilityId')}>
-                <option value="">اختر سجنًا</option>
-                {facilitiesQuery.data?.items.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nameAr}
-                  </option>
-                ))}
-              </select>
-              {errors.facilityId && <span className="field-error">{errors.facilityId.message as string}</span>}
-            </label>
-          )}
-
-          {scopeTypeNum === ScopeType.FacilityUnit && (
-            <label className="field">
-              <span>الوحدة *</span>
-              <select aria-label="الوحدة" {...register('facilityUnitId')} disabled={!facilityId}>
-                <option value="">{facilityId ? 'اختر وحدة' : 'اختر السجن أولًا'}</option>
-                {facilityUnitsQuery.data?.items.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.nameAr}
-                  </option>
-                ))}
-              </select>
-              {errors.facilityUnitId && <span className="field-error">{errors.facilityUnitId.message as string}</span>}
-            </label>
-          )}
-        </>
-      )}
     </div>
   )
 }

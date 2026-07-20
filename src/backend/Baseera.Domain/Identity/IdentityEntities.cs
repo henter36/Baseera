@@ -108,6 +108,10 @@ public static class PermissionCodes
     public const string NotesCancel = "Notes.Cancel";
     public const string NotesArchive = "Notes.Archive";
     public const string NotesRestore = "Notes.Restore";
+    public const string NotesManageTypes = "Notes.ManageTypes";
+    public const string NotesManageRoleTypeAccess = "Notes.ManageRoleTypeAccess";
+    public const string NotesManageUserTypeOverrides = "Notes.ManageUserTypeOverrides";
+    public const string NotesManageIntakeProfiles = "Notes.ManageIntakeProfiles";
     public const string CorrectiveActionsView = "CorrectiveActions.View";
     public const string CorrectiveActionsViewSensitive = "CorrectiveActions.ViewSensitive";
     public const string CorrectiveActionsCreate = "CorrectiveActions.Create";

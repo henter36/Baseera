@@ -139,8 +139,10 @@ export type NoteListItem = {
   statusAr: string
   severity: number
   severityAr: string
-  category: number
-  categoryAr: string
+  noteTypeId: string
+  noteTypeCode: string
+  noteTypeNameAr: string
+  noteTypeIsActive: boolean
   classification: number
   scopeType: number
   regionId?: string | null
@@ -182,8 +184,12 @@ export type NoteDetail = {
   statusAr: string
   severity: number
   severityAr: string
-  category: number
-  categoryAr: string
+  noteTypeId: string
+  noteTypeCode: string
+  noteTypeNameAr: string
+  noteTypeDescriptionAr?: string | null
+  noteTypeEntryInstructionsAr?: string | null
+  noteTypeIsActive: boolean
   sourceType: number
   sourceAr: string
   sourceReference?: string | null
@@ -230,7 +236,7 @@ export type NoteListFilters = {
   search?: string
   status?: number
   severity?: number
-  category?: number
+  noteTypeId?: string
   sourceType?: number
   classification?: number
   regionId?: string
@@ -245,12 +251,13 @@ export type NoteListFilters = {
   createdTo?: string
   sortBy?: string
   sortDesc?: boolean
+  requiresMyAction?: boolean
 }
 
 export type CreateNoteRequest = {
   title: string
   description: string
-  category: number
+  noteTypeId: string
   severity: number
   sourceType: number
   sourceReference?: string | null
@@ -266,7 +273,7 @@ export type CreateNoteRequest = {
 export type UpdateNoteRequest = {
   title: string
   description: string
-  category: number
+  noteTypeId: string
   severity: number
   sourceType: number
   sourceReference?: string | null
@@ -303,6 +310,30 @@ export type CloseNoteRequest = {
 export type ReopenNoteRequest = {
   reason: string
   rowVersion: string
+}
+
+export type NoteType = {
+  id: string
+  code: string
+  nameAr: string
+  descriptionAr?: string | null
+  entryInstructionsAr?: string | null
+  sortOrder: number
+  isActive: boolean
+  defaultSeverity: number
+  defaultSeverityAr: string
+  defaultDueDays?: number | null
+  rowVersion: string
+}
+
+export type NoteIntakeContext = {
+  lockType: number
+  lockedRegionId?: string | null
+  lockedRegionNameAr?: string | null
+  lockedFacilityId?: string | null
+  lockedFacilityNameAr?: string | null
+  regions: Array<{ id: string; nameAr: string }>
+  creatableNoteTypes: NoteType[]
 }
 
 export type CorrectiveActionListItem = {
@@ -616,10 +647,11 @@ function appendPagingParams(params: URLSearchParams, filters: NoteListFilters): 
 function appendEnumFilterParams(params: URLSearchParams, filters: NoteListFilters): void {
   if (filters.status !== undefined) params.set('status', String(filters.status))
   if (filters.severity !== undefined) params.set('severity', String(filters.severity))
-  if (filters.category !== undefined) params.set('category', String(filters.category))
+  if (filters.noteTypeId) params.set('noteTypeId', filters.noteTypeId)
   if (filters.sourceType !== undefined) params.set('sourceType', String(filters.sourceType))
   if (filters.classification !== undefined) params.set('classification', String(filters.classification))
   if (filters.overdueOnly) params.set('overdueOnly', 'true')
+  if (filters.requiresMyAction) params.set('requiresMyAction', 'true')
 }
 
 function appendScopeFilterParams(params: URLSearchParams, filters: NoteListFilters): void {
@@ -748,6 +780,12 @@ export const api = {
     request<Paged<Department>>(`/api/v1/departments?page=1&pageSize=100&search=${encodeURIComponent(search)}`),
   users: (search = '') =>
     request<Paged<User>>(`/api/v1/users?page=1&pageSize=50&search=${encodeURIComponent(search)}`),
+  noteTypes: (includeInactive = true) =>
+    request<NoteType[]>(`/api/v1/note-types?includeInactive=${includeInactive}`),
+  myNoteTypes: () => request<NoteType[]>('/api/v1/me/note-types'),
+  myNoteIntakeContext: () => request<NoteIntakeContext>('/api/v1/me/note-intake-context'),
+  myNoteIntakeFacilities: (regionId: string) =>
+    request<Array<{ id: string; regionId: string; nameAr: string }>>(`/api/v1/me/note-intake-context/facilities?regionId=${encodeURIComponent(regionId)}`),
   auditLogs: (module = '') => {
     const params = new URLSearchParams({ page: '1', pageSize: '50' })
     if (module) params.set('module', module)

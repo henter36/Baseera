@@ -13,8 +13,10 @@ public sealed record NoteListItemDto(
     string StatusAr,
     NoteSeverity Severity,
     string SeverityAr,
-    NoteCategory Category,
-    string CategoryAr,
+    Guid NoteTypeId,
+    string NoteTypeCode,
+    string NoteTypeNameAr,
+    bool NoteTypeIsActive,
     ClassificationLevel Classification,
     ScopeType ScopeType,
     Guid? RegionId,
@@ -36,8 +38,12 @@ public sealed record NoteDetailDto(
     string StatusAr,
     NoteSeverity Severity,
     string SeverityAr,
-    NoteCategory Category,
-    string CategoryAr,
+    Guid NoteTypeId,
+    string NoteTypeCode,
+    string NoteTypeNameAr,
+    string? NoteTypeDescriptionAr,
+    string? NoteTypeEntryInstructionsAr,
+    bool NoteTypeIsActive,
     NoteSourceType SourceType,
     string SourceAr,
     string? SourceReference,
@@ -97,7 +103,7 @@ public sealed record NoteStatusHistoryDto(
 public sealed record CreateNoteRequest(
     string Title,
     string Description,
-    NoteCategory Category,
+    Guid NoteTypeId,
     NoteSeverity Severity,
     NoteSourceType SourceType,
     string? SourceReference,
@@ -112,7 +118,7 @@ public sealed record CreateNoteRequest(
 public sealed record UpdateNoteRequest(
     string Title,
     string Description,
-    NoteCategory Category,
+    Guid NoteTypeId,
     NoteSeverity Severity,
     NoteSourceType SourceType,
     string? SourceReference,
@@ -143,7 +149,7 @@ public sealed record NoteListQuery
     public string? Search { get; set; }
     public NoteStatus? Status { get; set; }
     public NoteSeverity? Severity { get; set; }
-    public NoteCategory? Category { get; set; }
+    public Guid? NoteTypeId { get; set; }
     public NoteSourceType? SourceType { get; set; }
     public ClassificationLevel? Classification { get; set; }
     public Guid? RegionId { get; set; }
@@ -158,4 +164,158 @@ public sealed record NoteListQuery
     public DateTimeOffset? CreatedTo { get; set; }
     public string? SortBy { get; set; }
     public bool SortDesc { get; set; }
+    public bool RequiresMyAction { get; set; }
 }
+
+public sealed record NoteTypeDto(
+    Guid Id,
+    string Code,
+    string NameAr,
+    string? DescriptionAr,
+    string? EntryInstructionsAr,
+    int SortOrder,
+    bool IsActive,
+    NoteSeverity DefaultSeverity,
+    string DefaultSeverityAr,
+    int? DefaultDueDays,
+    string RowVersion);
+
+public sealed record CreateNoteTypeRequest(
+    string Code,
+    string NameAr,
+    string? DescriptionAr,
+    string? EntryInstructionsAr,
+    int SortOrder,
+    bool IsActive,
+    NoteSeverity DefaultSeverity,
+    int? DefaultDueDays);
+
+public sealed record UpdateNoteTypeRequest(
+    string NameAr,
+    string? DescriptionAr,
+    string? EntryInstructionsAr,
+    int SortOrder,
+    NoteSeverity DefaultSeverity,
+    int? DefaultDueDays,
+    string RowVersion);
+
+public sealed record NoteTypeCapabilityDto(
+    bool CanView,
+    bool CanCreate,
+    bool CanAssign,
+    bool CanProcess,
+    bool CanSubmitForVerification,
+    bool CanReview,
+    bool CanCancel,
+    bool CanReopen,
+    bool CanArchive,
+    bool CanRestore);
+
+public sealed record EffectiveNoteTypeAccessDto(
+    Guid NoteTypeId,
+    string NoteTypeCode,
+    string NoteTypeNameAr,
+    bool NoteTypeIsActive,
+    NoteTypeCapabilityDecisionDto View,
+    NoteTypeCapabilityDecisionDto Create,
+    NoteTypeCapabilityDecisionDto Assign,
+    NoteTypeCapabilityDecisionDto Process,
+    NoteTypeCapabilityDecisionDto SubmitForVerification,
+    NoteTypeCapabilityDecisionDto Review,
+    NoteTypeCapabilityDecisionDto Cancel,
+    NoteTypeCapabilityDecisionDto Reopen,
+    NoteTypeCapabilityDecisionDto Archive,
+    NoteTypeCapabilityDecisionDto Restore);
+
+public sealed record NoteTypeCapabilityDecisionDto(bool Allowed, string Source);
+
+public sealed record RoleNoteTypeGrantDto(
+    Guid NoteTypeId,
+    string NoteTypeCode,
+    string NoteTypeNameAr,
+    NoteTypeCapabilityDto Capabilities,
+    string? RowVersion);
+
+public sealed record ReplaceRoleNoteTypeGrantsRequest(
+    IReadOnlyList<ReplaceRoleNoteTypeGrantItem> Grants,
+    string Reason);
+
+public sealed record ReplaceRoleNoteTypeGrantItem(
+    Guid NoteTypeId,
+    bool CanView,
+    bool CanCreate,
+    bool CanAssign,
+    bool CanProcess,
+    bool CanSubmitForVerification,
+    bool CanReview,
+    bool CanCancel,
+    bool CanReopen,
+    bool CanArchive,
+    bool CanRestore);
+
+public sealed record UserNoteTypeOverrideDto(
+    Guid NoteTypeId,
+    string NoteTypeCode,
+    string NoteTypeNameAr,
+    bool? CanViewOverride,
+    bool? CanCreateOverride,
+    bool? CanAssignOverride,
+    bool? CanProcessOverride,
+    bool? CanSubmitForVerificationOverride,
+    bool? CanReviewOverride,
+    bool? CanCancelOverride,
+    bool? CanReopenOverride,
+    bool? CanArchiveOverride,
+    bool? CanRestoreOverride,
+    string? Reason,
+    string? RowVersion);
+
+public sealed record ReplaceUserNoteTypeOverridesRequest(
+    IReadOnlyList<ReplaceUserNoteTypeOverrideItem> Overrides,
+    string Reason);
+
+public sealed record ReplaceUserNoteTypeOverrideItem(
+    Guid NoteTypeId,
+    bool? CanViewOverride,
+    bool? CanCreateOverride,
+    bool? CanAssignOverride,
+    bool? CanProcessOverride,
+    bool? CanSubmitForVerificationOverride,
+    bool? CanReviewOverride,
+    bool? CanCancelOverride,
+    bool? CanReopenOverride,
+    bool? CanArchiveOverride,
+    bool? CanRestoreOverride);
+
+public sealed record UserNoteIntakeProfileDto(
+    Guid? Id,
+    Guid UserId,
+    NoteIntakeLockType LockType,
+    Guid? RegionId,
+    string? RegionNameAr,
+    Guid? FacilityId,
+    string? FacilityNameAr,
+    bool IsValid,
+    string? InvalidReason,
+    string? RowVersion);
+
+public sealed record UpdateUserNoteIntakeProfileRequest(
+    NoteIntakeLockType LockType,
+    Guid? RegionId,
+    Guid? FacilityId,
+    string Reason,
+    string? RowVersion);
+
+public sealed record NoteIntakeContextDto(
+    NoteIntakeLockType LockType,
+    Guid? LockedRegionId,
+    string? LockedRegionNameAr,
+    Guid? LockedFacilityId,
+    string? LockedFacilityNameAr,
+    IReadOnlyList<NoteIntakeRegionDto> Regions,
+    IReadOnlyList<NoteTypeDto> CreatableNoteTypes);
+
+public sealed record NoteIntakeRegionDto(Guid Id, string NameAr);
+public sealed record NoteIntakeFacilityDto(Guid Id, Guid RegionId, string NameAr);
+public sealed record EligibleUserDto(Guid Id, string DisplayNameAr, string UserName);
+public sealed record NoteTypeTabDto(Guid? NoteTypeId, string Code, string NameAr, string? DescriptionAr, bool IsActive, int Count);

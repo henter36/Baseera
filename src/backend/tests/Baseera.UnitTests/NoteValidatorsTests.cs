@@ -12,7 +12,7 @@ public sealed class CreateNoteRequestValidatorTests
     private static CreateNoteRequest Valid() => new(
         Title: "عطل في الإنارة",
         Description: "إنارة الممر رقم 3 معطلة منذ يومين",
-        Category: NoteCategory.Technical,
+        NoteTypeId: NoteTestFixtures.DefaultNoteTypeId,
         Severity: NoteSeverity.Medium,
         SourceType: NoteSourceType.Manual,
         SourceReference: null,
@@ -71,7 +71,7 @@ public sealed class UpdateNoteRequestValidatorTests
     private static UpdateNoteRequest Valid() => new(
         Title: "عنوان محدّث",
         Description: "وصف محدّث",
-        Category: NoteCategory.Operational,
+        NoteTypeId: NoteTestFixtures.DefaultNoteTypeId,
         Severity: NoteSeverity.Low,
         SourceType: NoteSourceType.Manual,
         SourceReference: null,

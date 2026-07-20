@@ -4,7 +4,7 @@ import { assignNoteSchema, createNoteSchema, updateNoteSchema } from './noteSche
 const validCreateBase = {
   title: 'ملاحظة تجريبية',
   description: 'وصف تفصيلي للملاحظة التشغيلية.',
-  category: '0',
+  noteTypeId: '44444444-4444-4444-4444-444444444403',
   severity: '1',
   sourceType: '0',
   sourceReference: '',
@@ -24,17 +24,18 @@ describe('createNoteSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('accepts Global scope with no region/facility/unit', () => {
-    const result = createNoteSchema.safeParse({ ...validCreateBase, scopeType: '0' })
+  it('accepts Facility scope with region and facility', () => {
+    const result = createNoteSchema.safeParse({
+      ...validCreateBase,
+      scopeType: '3',
+      regionId: '11111111-1111-1111-1111-111111111111',
+      facilityId: '22222222-2222-2222-2222-222222222222',
+    })
     expect(result.success).toBe(true)
   })
 
-  it('rejects Global scope when a region is also provided', () => {
-    const result = createNoteSchema.safeParse({
-      ...validCreateBase,
-      scopeType: '0',
-      regionId: '11111111-1111-1111-1111-111111111111',
-    })
+  it('rejects creation without note type access selection', () => {
+    const result = createNoteSchema.safeParse({ ...validCreateBase, noteTypeId: '', scopeType: '3' })
     expect(result.success).toBe(false)
   })
 
@@ -43,47 +44,42 @@ describe('createNoteSchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('accepts Region scope with a regionId', () => {
-    const result = createNoteSchema.safeParse({
-      ...validCreateBase,
-      scopeType: '2',
-      regionId: '11111111-1111-1111-1111-111111111111',
-    })
-    expect(result.success).toBe(true)
-  })
-
-  it('requires a facilityId for Facility scope and rejects a unit id', () => {
+  it('requires a facilityId for Facility scope', () => {
     const missingFacility = createNoteSchema.safeParse({ ...validCreateBase, scopeType: '3' })
     expect(missingFacility.success).toBe(false)
+  })
 
-    const withUnit = createNoteSchema.safeParse({
+  it('requires a region before facility creation', () => {
+    const result = createNoteSchema.safeParse({
       ...validCreateBase,
       scopeType: '3',
       facilityId: '22222222-2222-2222-2222-222222222222',
-      facilityUnitId: '33333333-3333-3333-3333-333333333333',
     })
-    expect(withUnit.success).toBe(false)
+    expect(result.success).toBe(false)
   })
 
-  it('requires both facilityId and facilityUnitId for FacilityUnit scope', () => {
+  it('rejects FacilityUnit scope from the create form', () => {
     const result = createNoteSchema.safeParse({
       ...validCreateBase,
       scopeType: '4',
+      regionId: '11111111-1111-1111-1111-111111111111',
       facilityId: '22222222-2222-2222-2222-222222222222',
       facilityUnitId: '33333333-3333-3333-3333-333333333333',
     })
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(false)
   })
 
   it('rejects a malformed guid', () => {
-    const result = createNoteSchema.safeParse({ ...validCreateBase, scopeType: '2', regionId: 'not-a-guid' })
+    const result = createNoteSchema.safeParse({ ...validCreateBase, scopeType: '3', regionId: 'not-a-guid' })
     expect(result.success).toBe(false)
   })
 
   it('rejects a due date in the past', () => {
     const result = createNoteSchema.safeParse({
       ...validCreateBase,
-      scopeType: '0',
+      scopeType: '3',
+      regionId: '11111111-1111-1111-1111-111111111111',
+      facilityId: '22222222-2222-2222-2222-222222222222',
       dueAtUtc: '2000-01-01T00:00',
     })
     expect(result.success).toBe(false)
