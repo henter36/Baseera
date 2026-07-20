@@ -34,7 +34,8 @@ type NoteFormProps = {
 function localDateAfterDays(days: number): string {
   const due = new Date()
   due.setDate(due.getDate() + days)
-  return due.toISOString().slice(0, 16)
+  const localDue = new Date(due.getTime() - due.getTimezoneOffset() * 60 * 1000)
+  return localDue.toISOString().slice(0, 16)
 }
 
 function selectedNoteType(types: NoteType[], id?: string): NoteType | undefined {
@@ -64,9 +65,9 @@ export function NoteForm({ mode }: Readonly<NoteFormProps>) {
   })
 
   const facilitiesQuery = useQuery({
-    queryKey: ['note-form-facilities', regionId, !!intakeQuery.data],
-    queryFn: () => intakeQuery.data ? api.myNoteIntakeFacilities(regionId!) : api.facilities(regionId || undefined).then((r) => r.items),
-    enabled: mode === 'create' && !!regionId,
+    queryKey: ['note-form-facilities', regionId],
+    queryFn: () => api.myNoteIntakeFacilities(regionId!),
+    enabled: mode === 'create' && !!regionId && !!intakeQuery.data,
   })
 
   const departmentsQuery = useQuery({

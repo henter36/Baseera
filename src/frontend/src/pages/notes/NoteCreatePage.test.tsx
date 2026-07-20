@@ -114,6 +114,7 @@ function renderPage() {
 describe('NoteCreatePage', () => {
   beforeEach(() => {
     createNote.mockReset()
+    listFacilities.mockClear()
     myNoteTypes.mockClear()
     myIntakeContext.mockClear()
     myIntakeFacilities.mockClear()
@@ -148,9 +149,11 @@ describe('NoteCreatePage', () => {
     const user = userEvent.setup()
 
     expect(myIntakeFacilities).not.toHaveBeenCalled()
+    expect(listFacilities).not.toHaveBeenCalled()
 
     await user.selectOptions(await screen.findByRole('option', { name: 'منطقة الرياض' }).then(() => screen.getByLabelText('المنطقة')), '11111111-1111-4111-8111-111111111111')
     await waitFor(() => expect(myIntakeFacilities).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111'))
+    expect(listFacilities).not.toHaveBeenCalled()
     expect(await screen.findByRole('option', { name: 'سجن الرياض' })).toBeInTheDocument()
   })
 

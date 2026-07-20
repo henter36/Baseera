@@ -11,45 +11,32 @@ namespace Baseera.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateTable(
-                name: "NoteTypes",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Code = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
-                    NameAr = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    DescriptionAr = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    EntryInstructionsAr = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
-                    SortOrder = table.Column<int>(type: "int", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    DefaultSeverity = table.Column<int>(type: "int", nullable: false),
-                    DefaultDueDays = table.Column<int>(type: "int", nullable: true),
-                    CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    UpdatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    CreatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_NoteTypes", x => x.Id);
-                    table.CheckConstraint("CK_NoteTypes_DefaultDueDays_NonNegative", "[DefaultDueDays] IS NULL OR [DefaultDueDays] >= 0");
-                    table.CheckConstraint("CK_NoteTypes_SortOrder_NonNegative", "[SortOrder] >= 0");
-                    table.ForeignKey(
-                        name: "FK_NoteTypes_Users_CreatedByUserId",
-                        column: x => x.CreatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_NoteTypes_Users_UpdatedByUserId",
-                        column: x => x.UpdatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+            migrationBuilder.Sql(
+                """
+                CREATE TABLE [NoteTypes] (
+                    [Id] uniqueidentifier NOT NULL,
+                    [Code] nvarchar(50) NOT NULL,
+                    [NameAr] nvarchar(200) NOT NULL,
+                    [DescriptionAr] nvarchar(1000) NULL,
+                    [EntryInstructionsAr] nvarchar(2000) NULL,
+                    [SortOrder] int NOT NULL,
+                    [IsActive] bit NOT NULL,
+                    [DefaultSeverity] int NOT NULL,
+                    [DefaultDueDays] int NULL,
+                    [CreatedByUserId] uniqueidentifier NULL,
+                    [UpdatedByUserId] uniqueidentifier NULL,
+                    [CreatedAtUtc] datetimeoffset NOT NULL,
+                    [UpdatedAtUtc] datetimeoffset NULL,
+                    [CreatedBy] nvarchar(max) NULL,
+                    [UpdatedBy] nvarchar(max) NULL,
+                    [RowVersion] rowversion NOT NULL,
+                    CONSTRAINT [PK_NoteTypes] PRIMARY KEY ([Id]),
+                    CONSTRAINT [CK_NoteTypes_DefaultDueDays_NonNegative] CHECK ([DefaultDueDays] IS NULL OR [DefaultDueDays] >= 0),
+                    CONSTRAINT [CK_NoteTypes_SortOrder_NonNegative] CHECK ([SortOrder] >= 0),
+                    CONSTRAINT [FK_NoteTypes_Users_CreatedByUserId] FOREIGN KEY ([CreatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_NoteTypes_Users_UpdatedByUserId] FOREIGN KEY ([UpdatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                );
+                """);
 
             migrationBuilder.Sql(
                 """
@@ -96,266 +83,118 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 name: "Category",
                 table: "OperationalNotes");
 
-            migrationBuilder.CreateTable(
-                name: "UserNoteIntakeProfiles",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    LockType = table.Column<int>(type: "int", nullable: false),
-                    RegionId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    FacilityId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    UpdatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    CreatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_UserNoteIntakeProfiles", x => x.Id);
-                    table.CheckConstraint("CK_UserNoteIntakeProfiles_Facility_RequiresFacility", "([LockType] <> 2) OR ([FacilityId] IS NOT NULL)");
-                    table.CheckConstraint("CK_UserNoteIntakeProfiles_None_NoIds", "([LockType] <> 0) OR ([RegionId] IS NULL AND [FacilityId] IS NULL)");
-                    table.CheckConstraint("CK_UserNoteIntakeProfiles_Region_RequiresRegion", "([LockType] <> 1) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NULL)");
-                    table.ForeignKey(
-                        name: "FK_UserNoteIntakeProfiles_Facilities_FacilityId",
-                        column: x => x.FacilityId,
-                        principalTable: "Facilities",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_UserNoteIntakeProfiles_Regions_RegionId",
-                        column: x => x.RegionId,
-                        principalTable: "Regions",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_UserNoteIntakeProfiles_Users_CreatedByUserId",
-                        column: x => x.CreatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_UserNoteIntakeProfiles_Users_UpdatedByUserId",
-                        column: x => x.UpdatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_UserNoteIntakeProfiles_Users_UserId",
-                        column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+            migrationBuilder.Sql(
+                """
+                CREATE TABLE [UserNoteIntakeProfiles] (
+                    [Id] uniqueidentifier NOT NULL,
+                    [UserId] uniqueidentifier NOT NULL,
+                    [LockType] int NOT NULL,
+                    [RegionId] uniqueidentifier NULL,
+                    [FacilityId] uniqueidentifier NULL,
+                    [IsActive] bit NOT NULL,
+                    [CreatedByUserId] uniqueidentifier NULL,
+                    [UpdatedByUserId] uniqueidentifier NULL,
+                    [CreatedAtUtc] datetimeoffset NOT NULL,
+                    [UpdatedAtUtc] datetimeoffset NULL,
+                    [CreatedBy] nvarchar(max) NULL,
+                    [UpdatedBy] nvarchar(max) NULL,
+                    [RowVersion] rowversion NOT NULL,
+                    CONSTRAINT [PK_UserNoteIntakeProfiles] PRIMARY KEY ([Id]),
+                    CONSTRAINT [CK_UserNoteIntakeProfiles_Facility_RequiresFacility] CHECK (([LockType] <> 2) OR ([FacilityId] IS NOT NULL)),
+                    CONSTRAINT [CK_UserNoteIntakeProfiles_None_NoIds] CHECK (([LockType] <> 0) OR ([RegionId] IS NULL AND [FacilityId] IS NULL)),
+                    CONSTRAINT [CK_UserNoteIntakeProfiles_Region_RequiresRegion] CHECK (([LockType] <> 1) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NULL)),
+                    CONSTRAINT [FK_UserNoteIntakeProfiles_Facilities_FacilityId] FOREIGN KEY ([FacilityId]) REFERENCES [Facilities] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_UserNoteIntakeProfiles_Regions_RegionId] FOREIGN KEY ([RegionId]) REFERENCES [Regions] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_UserNoteIntakeProfiles_Users_CreatedByUserId] FOREIGN KEY ([CreatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_UserNoteIntakeProfiles_Users_UpdatedByUserId] FOREIGN KEY ([UpdatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_UserNoteIntakeProfiles_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                );
 
-            migrationBuilder.CreateTable(
-                name: "RoleNoteTypeGrants",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    RoleId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    NoteTypeId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    CanView = table.Column<bool>(type: "bit", nullable: false),
-                    CanCreate = table.Column<bool>(type: "bit", nullable: false),
-                    CanAssign = table.Column<bool>(type: "bit", nullable: false),
-                    CanProcess = table.Column<bool>(type: "bit", nullable: false),
-                    CanSubmitForVerification = table.Column<bool>(type: "bit", nullable: false),
-                    CanReview = table.Column<bool>(type: "bit", nullable: false),
-                    CanCancel = table.Column<bool>(type: "bit", nullable: false),
-                    CanReopen = table.Column<bool>(type: "bit", nullable: false),
-                    CanArchive = table.Column<bool>(type: "bit", nullable: false),
-                    CanRestore = table.Column<bool>(type: "bit", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    UpdatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    CreatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_RoleNoteTypeGrants", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_RoleNoteTypeGrants_NoteTypes_NoteTypeId",
-                        column: x => x.NoteTypeId,
-                        principalTable: "NoteTypes",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_RoleNoteTypeGrants_Roles_RoleId",
-                        column: x => x.RoleId,
-                        principalTable: "Roles",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_RoleNoteTypeGrants_Users_CreatedByUserId",
-                        column: x => x.CreatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_RoleNoteTypeGrants_Users_UpdatedByUserId",
-                        column: x => x.UpdatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                CREATE TABLE [RoleNoteTypeGrants] (
+                    [Id] uniqueidentifier NOT NULL,
+                    [RoleId] uniqueidentifier NOT NULL,
+                    [NoteTypeId] uniqueidentifier NOT NULL,
+                    [CanView] bit NOT NULL,
+                    [CanCreate] bit NOT NULL,
+                    [CanAssign] bit NOT NULL,
+                    [CanProcess] bit NOT NULL,
+                    [CanSubmitForVerification] bit NOT NULL,
+                    [CanReview] bit NOT NULL,
+                    [CanCancel] bit NOT NULL,
+                    [CanReopen] bit NOT NULL,
+                    [CanArchive] bit NOT NULL,
+                    [CanRestore] bit NOT NULL,
+                    [IsActive] bit NOT NULL,
+                    [CreatedByUserId] uniqueidentifier NULL,
+                    [UpdatedByUserId] uniqueidentifier NULL,
+                    [CreatedAtUtc] datetimeoffset NOT NULL,
+                    [UpdatedAtUtc] datetimeoffset NULL,
+                    [CreatedBy] nvarchar(max) NULL,
+                    [UpdatedBy] nvarchar(max) NULL,
+                    [RowVersion] rowversion NOT NULL,
+                    CONSTRAINT [PK_RoleNoteTypeGrants] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_RoleNoteTypeGrants_NoteTypes_NoteTypeId] FOREIGN KEY ([NoteTypeId]) REFERENCES [NoteTypes] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_RoleNoteTypeGrants_Roles_RoleId] FOREIGN KEY ([RoleId]) REFERENCES [Roles] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_RoleNoteTypeGrants_Users_CreatedByUserId] FOREIGN KEY ([CreatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_RoleNoteTypeGrants_Users_UpdatedByUserId] FOREIGN KEY ([UpdatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                );
 
-            migrationBuilder.CreateTable(
-                name: "UserNoteTypeOverrides",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    NoteTypeId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    CanViewOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanCreateOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanAssignOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanProcessOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanSubmitForVerificationOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanReviewOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanCancelOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanReopenOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanArchiveOverride = table.Column<bool>(type: "bit", nullable: true),
-                    CanRestoreOverride = table.Column<bool>(type: "bit", nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    UpdatedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    CreatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    CreatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    UpdatedBy = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_UserNoteTypeOverrides", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_UserNoteTypeOverrides_NoteTypes_NoteTypeId",
-                        column: x => x.NoteTypeId,
-                        principalTable: "NoteTypes",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_UserNoteTypeOverrides_Users_CreatedByUserId",
-                        column: x => x.CreatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_UserNoteTypeOverrides_Users_UpdatedByUserId",
-                        column: x => x.UpdatedByUserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_UserNoteTypeOverrides_Users_UserId",
-                        column: x => x.UserId,
-                        principalTable: "Users",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                CREATE TABLE [UserNoteTypeOverrides] (
+                    [Id] uniqueidentifier NOT NULL,
+                    [UserId] uniqueidentifier NOT NULL,
+                    [NoteTypeId] uniqueidentifier NOT NULL,
+                    [CanViewOverride] bit NULL,
+                    [CanCreateOverride] bit NULL,
+                    [CanAssignOverride] bit NULL,
+                    [CanProcessOverride] bit NULL,
+                    [CanSubmitForVerificationOverride] bit NULL,
+                    [CanReviewOverride] bit NULL,
+                    [CanCancelOverride] bit NULL,
+                    [CanReopenOverride] bit NULL,
+                    [CanArchiveOverride] bit NULL,
+                    [CanRestoreOverride] bit NULL,
+                    [IsActive] bit NOT NULL,
+                    [Reason] nvarchar(1000) NOT NULL,
+                    [CreatedByUserId] uniqueidentifier NULL,
+                    [UpdatedByUserId] uniqueidentifier NULL,
+                    [CreatedAtUtc] datetimeoffset NOT NULL,
+                    [UpdatedAtUtc] datetimeoffset NULL,
+                    [CreatedBy] nvarchar(max) NULL,
+                    [UpdatedBy] nvarchar(max) NULL,
+                    [RowVersion] rowversion NOT NULL,
+                    CONSTRAINT [PK_UserNoteTypeOverrides] PRIMARY KEY ([Id]),
+                    CONSTRAINT [FK_UserNoteTypeOverrides_NoteTypes_NoteTypeId] FOREIGN KEY ([NoteTypeId]) REFERENCES [NoteTypes] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_UserNoteTypeOverrides_Users_CreatedByUserId] FOREIGN KEY ([CreatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_UserNoteTypeOverrides_Users_UpdatedByUserId] FOREIGN KEY ([UpdatedByUserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION,
+                    CONSTRAINT [FK_UserNoteTypeOverrides_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                );
+                """);
+
+            migrationBuilder.Sql(
+                """
+                CREATE UNIQUE INDEX [IX_NoteTypes_Code] ON [NoteTypes] ([Code]);
+                CREATE INDEX [IX_NoteTypes_CreatedByUserId] ON [NoteTypes] ([CreatedByUserId]);
+                CREATE INDEX [IX_NoteTypes_SortOrder] ON [NoteTypes] ([SortOrder]);
+                CREATE INDEX [IX_NoteTypes_UpdatedByUserId] ON [NoteTypes] ([UpdatedByUserId]);
+                CREATE INDEX [IX_RoleNoteTypeGrants_CreatedByUserId] ON [RoleNoteTypeGrants] ([CreatedByUserId]);
+                CREATE INDEX [IX_RoleNoteTypeGrants_NoteTypeId] ON [RoleNoteTypeGrants] ([NoteTypeId]);
+                CREATE UNIQUE INDEX [IX_RoleNoteTypeGrants_RoleId_NoteTypeId] ON [RoleNoteTypeGrants] ([RoleId], [NoteTypeId]);
+                CREATE INDEX [IX_RoleNoteTypeGrants_UpdatedByUserId] ON [RoleNoteTypeGrants] ([UpdatedByUserId]);
+                CREATE INDEX [IX_UserNoteIntakeProfiles_CreatedByUserId] ON [UserNoteIntakeProfiles] ([CreatedByUserId]);
+                CREATE INDEX [IX_UserNoteIntakeProfiles_FacilityId] ON [UserNoteIntakeProfiles] ([FacilityId]);
+                CREATE INDEX [IX_UserNoteIntakeProfiles_RegionId] ON [UserNoteIntakeProfiles] ([RegionId]);
+                CREATE INDEX [IX_UserNoteIntakeProfiles_UpdatedByUserId] ON [UserNoteIntakeProfiles] ([UpdatedByUserId]);
+                CREATE UNIQUE INDEX [IX_UserNoteIntakeProfiles_UserId] ON [UserNoteIntakeProfiles] ([UserId]);
+                CREATE INDEX [IX_UserNoteTypeOverrides_CreatedByUserId] ON [UserNoteTypeOverrides] ([CreatedByUserId]);
+                CREATE INDEX [IX_UserNoteTypeOverrides_NoteTypeId] ON [UserNoteTypeOverrides] ([NoteTypeId]);
+                CREATE INDEX [IX_UserNoteTypeOverrides_UpdatedByUserId] ON [UserNoteTypeOverrides] ([UpdatedByUserId]);
+                CREATE UNIQUE INDEX [IX_UserNoteTypeOverrides_UserId_NoteTypeId] ON [UserNoteTypeOverrides] ([UserId], [NoteTypeId]);
+                """);
 
             migrationBuilder.CreateIndex(
                 name: "IX_OperationalNotes_NoteTypeId",
                 table: "OperationalNotes",
                 column: "NoteTypeId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_NoteTypes_Code",
-                table: "NoteTypes",
-                column: "Code",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_NoteTypes_CreatedByUserId",
-                table: "NoteTypes",
-                column: "CreatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_NoteTypes_SortOrder",
-                table: "NoteTypes",
-                column: "SortOrder");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_NoteTypes_UpdatedByUserId",
-                table: "NoteTypes",
-                column: "UpdatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RoleNoteTypeGrants_CreatedByUserId",
-                table: "RoleNoteTypeGrants",
-                column: "CreatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RoleNoteTypeGrants_NoteTypeId",
-                table: "RoleNoteTypeGrants",
-                column: "NoteTypeId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RoleNoteTypeGrants_RoleId_NoteTypeId",
-                table: "RoleNoteTypeGrants",
-                columns: new[] { "RoleId", "NoteTypeId" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RoleNoteTypeGrants_UpdatedByUserId",
-                table: "RoleNoteTypeGrants",
-                column: "UpdatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteIntakeProfiles_CreatedByUserId",
-                table: "UserNoteIntakeProfiles",
-                column: "CreatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteIntakeProfiles_FacilityId",
-                table: "UserNoteIntakeProfiles",
-                column: "FacilityId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteIntakeProfiles_RegionId",
-                table: "UserNoteIntakeProfiles",
-                column: "RegionId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteIntakeProfiles_UpdatedByUserId",
-                table: "UserNoteIntakeProfiles",
-                column: "UpdatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteIntakeProfiles_UserId",
-                table: "UserNoteIntakeProfiles",
-                column: "UserId",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteTypeOverrides_CreatedByUserId",
-                table: "UserNoteTypeOverrides",
-                column: "CreatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteTypeOverrides_NoteTypeId",
-                table: "UserNoteTypeOverrides",
-                column: "NoteTypeId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteTypeOverrides_UpdatedByUserId",
-                table: "UserNoteTypeOverrides",
-                column: "UpdatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_UserNoteTypeOverrides_UserId_NoteTypeId",
-                table: "UserNoteTypeOverrides",
-                columns: new[] { "UserId", "NoteTypeId" },
-                unique: true);
 
             migrationBuilder.AddForeignKey(
                 name: "FK_OperationalNotes_NoteTypes_NoteTypeId",

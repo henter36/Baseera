@@ -138,6 +138,7 @@ public sealed class ReplaceRoleNoteTypeGrantsRequestValidator : AbstractValidato
     public ReplaceRoleNoteTypeGrantsRequestValidator()
     {
         RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب التعديل مطلوب.").MaximumLength(1000);
+        RuleFor(x => x.Grants).Must(HaveDistinctNoteTypes).WithMessage("لا يمكن تكرار نوع الملاحظة في الطلب.");
         RuleForEach(x => x.Grants).ChildRules(item =>
         {
             item.RuleFor(x => x.NoteTypeId).NotEmpty();
@@ -145,6 +146,8 @@ public sealed class ReplaceRoleNoteTypeGrantsRequestValidator : AbstractValidato
     }
 
     private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+    private static bool HaveDistinctNoteTypes(IEnumerable<ReplaceRoleNoteTypeGrantItem> grants) =>
+        grants.Select(grant => grant.NoteTypeId).Distinct().Count() == grants.Count();
 }
 
 public sealed class ReplaceUserNoteTypeOverridesRequestValidator : AbstractValidator<ReplaceUserNoteTypeOverridesRequest>
@@ -152,6 +155,7 @@ public sealed class ReplaceUserNoteTypeOverridesRequestValidator : AbstractValid
     public ReplaceUserNoteTypeOverridesRequestValidator()
     {
         RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب التعديل مطلوب.").MaximumLength(1000);
+        RuleFor(x => x.Overrides).Must(HaveDistinctNoteTypes).WithMessage("لا يمكن تكرار نوع الملاحظة في الطلب.");
         RuleForEach(x => x.Overrides).ChildRules(item =>
         {
             item.RuleFor(x => x.NoteTypeId).NotEmpty();
@@ -159,6 +163,8 @@ public sealed class ReplaceUserNoteTypeOverridesRequestValidator : AbstractValid
     }
 
     private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+    private static bool HaveDistinctNoteTypes(IEnumerable<ReplaceUserNoteTypeOverrideItem> overrides) =>
+        overrides.Select(overrideRow => overrideRow.NoteTypeId).Distinct().Count() == overrides.Count();
 }
 
 public sealed class UpdateUserNoteIntakeProfileRequestValidator : AbstractValidator<UpdateUserNoteIntakeProfileRequest>

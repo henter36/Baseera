@@ -33,6 +33,7 @@ public interface INoteTypeAccessService
     Task<bool> CanArchiveAsync(Guid noteTypeId, CancellationToken cancellationToken = default);
     Task<bool> CanRestoreAsync(Guid noteTypeId, CancellationToken cancellationToken = default);
     Task<EffectiveNoteTypeAccessDto?> GetEffectiveAccessAsync(Guid userId, Guid noteTypeId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<Guid, EffectiveNoteTypeAccessDto?>> GetEffectiveAccessForUsersAsync(IEnumerable<Guid> userIds, Guid noteTypeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EffectiveNoteTypeAccessDto>> GetEffectiveAccessAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<NoteTypeDto>> GetAccessibleNoteTypesAsync(NoteTypeCapability capability, CancellationToken cancellationToken = default);
     Task<IQueryable<OperationalNote>> FilterViewableNotesAsync(IQueryable<OperationalNote> query, CancellationToken cancellationToken = default);
@@ -104,6 +105,51 @@ public sealed class NoteTypeAccessService(IBaseeraDbContext db, ICurrentUser cur
     {
         var all = await GetEffectiveAccessAsync(userId, cancellationToken);
         return all.FirstOrDefault(item => item.NoteTypeId == noteTypeId);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, EffectiveNoteTypeAccessDto?>> GetEffectiveAccessForUsersAsync(
+        IEnumerable<Guid> userIds,
+        Guid noteTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = userIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new Dictionary<Guid, EffectiveNoteTypeAccessDto?>();
+        }
+
+        var noteType = await db.NoteTypes.AsNoTracking().FirstOrDefaultAsync(type => type.Id == noteTypeId, cancellationToken);
+        if (noteType is null)
+        {
+            return ids.ToDictionary(id => id, _ => (EffectiveNoteTypeAccessDto?)null);
+        }
+
+        var userRoles = await db.UserRoles
+            .AsNoTracking()
+            .Where(role => ids.Contains(role.UserId))
+            .Select(role => new { role.UserId, role.RoleId })
+            .ToListAsync(cancellationToken);
+        var roleIds = userRoles.Select(role => role.RoleId).Distinct().ToList();
+        var grants = await db.RoleNoteTypeGrants
+            .AsNoTracking()
+            .Where(grant => grant.IsActive && grant.NoteTypeId == noteTypeId && roleIds.Contains(grant.RoleId))
+            .ToListAsync(cancellationToken);
+        var overrides = await db.UserNoteTypeOverrides
+            .AsNoTracking()
+            .Where(overrideRow => overrideRow.IsActive && overrideRow.NoteTypeId == noteTypeId && ids.Contains(overrideRow.UserId))
+            .ToListAsync(cancellationToken);
+
+        var rolesByUser = userRoles.ToLookup(role => role.UserId, role => role.RoleId);
+        var grantsByRole = grants.ToLookup(grant => grant.RoleId);
+        var overrideByUser = overrides.ToDictionary(overrideRow => overrideRow.UserId);
+        return ids.ToDictionary(
+            id => id,
+            id =>
+            {
+                var userGrants = rolesByUser[id].SelectMany(roleId => grantsByRole[roleId]);
+                overrideByUser.TryGetValue(id, out var overrideRow);
+                return (EffectiveNoteTypeAccessDto?)BuildAccessDto(noteType, userGrants, overrideRow);
+            });
     }
 
     public async Task<IReadOnlyList<EffectiveNoteTypeAccessDto>> GetEffectiveAccessAsync(Guid userId, CancellationToken cancellationToken = default)

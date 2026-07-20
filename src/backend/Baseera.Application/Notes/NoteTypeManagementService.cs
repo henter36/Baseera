@@ -124,6 +124,8 @@ public sealed class NoteTypeManagementService(
         Ensure(PermissionCodes.NotesManageRoleTypeAccess);
         _ = await RequireRoleAsync(roleId, cancellationToken);
         RequireReason(request.Reason);
+        EnsureDistinctNoteTypeIds(request.Grants.Select(grant => grant.NoteTypeId));
+        await EnsureNoteTypesExistAsync(request.Grants.Select(grant => grant.NoteTypeId), cancellationToken);
         await db.ExecuteInTransactionAsync(async ct =>
         {
             var now = DateTimeOffset.UtcNow;
@@ -139,7 +141,6 @@ public sealed class NoteTypeManagementService(
 
             foreach (var item in request.Grants)
             {
-                await EnsureNoteTypeExistsAsync(item.NoteTypeId, ct);
                 var grant = existing.FirstOrDefault(g => g.NoteTypeId == item.NoteTypeId) ?? new RoleNoteTypeGrant { RoleId = roleId, NoteTypeId = item.NoteTypeId, CreatedBy = currentUser.ExternalSubject, CreatedByUserId = currentUser.UserId };
                 ApplyGrant(item, grant);
                 grant.IsActive = true;
@@ -176,10 +177,8 @@ public sealed class NoteTypeManagementService(
         Ensure(PermissionCodes.NotesManageUserTypeOverrides);
         await RequireUserAsync(userId, cancellationToken);
         RequireReason(request.Reason);
-        if (request.Overrides.Any(HasDirectDeny) && string.IsNullOrWhiteSpace(request.Reason))
-        {
-            throw new InvalidOperationException("سبب المنع المباشر مطلوب.");
-        }
+        EnsureDistinctNoteTypeIds(request.Overrides.Select(overrideRow => overrideRow.NoteTypeId));
+        await EnsureNoteTypesExistAsync(request.Overrides.Select(overrideRow => overrideRow.NoteTypeId), cancellationToken);
 
         await db.ExecuteInTransactionAsync(async ct =>
         {
@@ -196,7 +195,6 @@ public sealed class NoteTypeManagementService(
 
             foreach (var item in request.Overrides)
             {
-                await EnsureNoteTypeExistsAsync(item.NoteTypeId, ct);
                 if (!HasAnyOverride(item))
                 {
                     continue;
@@ -252,13 +250,14 @@ public sealed class NoteTypeManagementService(
             profile = new UserNoteIntakeProfile { UserId = userId, CreatedBy = currentUser.ExternalSubject, CreatedByUserId = currentUser.UserId };
             db.Add(profile);
         }
-        else if (!string.IsNullOrWhiteSpace(request.RowVersion))
-        {
-            NoteAccessHelper.EnsureRowVersion(profile.RowVersion, request.RowVersion!);
-            db.Update(profile);
-        }
         else
         {
+            if (string.IsNullOrWhiteSpace(request.RowVersion))
+            {
+                throw new InvalidOperationException("إصدار السجل مطلوب.");
+            }
+
+            NoteAccessHelper.EnsureRowVersion(profile.RowVersion, request.RowVersion);
             db.Update(profile);
         }
 
@@ -368,6 +367,21 @@ public sealed class NoteTypeManagementService(
 
     private async Task ValidateIntakeProfileAsync(Guid userId, NoteIntakeLockType lockType, Guid? regionId, Guid? facilityId, CancellationToken cancellationToken)
     {
+        ValidateIntakeLockShape(lockType, regionId, facilityId);
+
+        if (regionId.HasValue)
+        {
+            await EnsureRegionLockInScopeAsync(userId, regionId.Value, cancellationToken);
+        }
+
+        if (facilityId.HasValue)
+        {
+            await EnsureFacilityLockInScopeAsync(userId, facilityId.Value, cancellationToken);
+        }
+    }
+
+    private static void ValidateIntakeLockShape(NoteIntakeLockType lockType, Guid? regionId, Guid? facilityId)
+    {
         switch (lockType)
         {
             case NoteIntakeLockType.None when regionId.HasValue || facilityId.HasValue:
@@ -377,23 +391,32 @@ public sealed class NoteTypeManagementService(
             case NoteIntakeLockType.Facility when !facilityId.HasValue:
                 throw new InvalidOperationException("تثبيت الموقع يتطلب FacilityId.");
         }
+    }
 
-        if (regionId.HasValue && !await db.UserScopes.AnyAsync(s => s.UserId == userId && s.IsActive && (s.ScopeType == ScopeType.Global || s.ScopeType == ScopeType.Region && s.RegionId == regionId), cancellationToken))
+    private async Task EnsureRegionLockInScopeAsync(Guid userId, Guid regionId, CancellationToken cancellationToken)
+    {
+        var inScope = await db.UserScopes.AnyAsync(
+            scope => scope.UserId == userId && scope.IsActive &&
+                (scope.ScopeType == ScopeType.Global || scope.ScopeType == ScopeType.Region && scope.RegionId == regionId),
+            cancellationToken);
+        if (!inScope)
         {
             throw new UnauthorizedAccessException("المنطقة المثبتة خارج نطاق المستخدم.");
         }
+    }
 
-        if (facilityId.HasValue)
+    private async Task EnsureFacilityLockInScopeAsync(Guid userId, Guid facilityId, CancellationToken cancellationToken)
+    {
+        var facility = await db.Facilities.AsNoTracking().FirstOrDefaultAsync(f => f.Id == facilityId && f.IsActive, cancellationToken)
+            ?? throw new KeyNotFoundException("الموقع غير موجود.");
+        var inScope = await db.UserScopes.AnyAsync(s => s.UserId == userId && s.IsActive &&
+                (s.ScopeType == ScopeType.Global ||
+                 s.ScopeType == ScopeType.Region && s.RegionId == facility.RegionId ||
+                 s.ScopeType == ScopeType.Facility && s.FacilityId == facility.Id),
+            cancellationToken);
+        if (!inScope)
         {
-            var facility = await db.Facilities.AsNoTracking().FirstOrDefaultAsync(f => f.Id == facilityId.Value && f.IsActive, cancellationToken)
-                ?? throw new KeyNotFoundException("الموقع غير موجود.");
-            if (!await db.UserScopes.AnyAsync(s => s.UserId == userId && s.IsActive &&
-                    (s.ScopeType == ScopeType.Global ||
-                     s.ScopeType == ScopeType.Region && s.RegionId == facility.RegionId ||
-                     s.ScopeType == ScopeType.Facility && s.FacilityId == facility.Id), cancellationToken))
-            {
-                throw new UnauthorizedAccessException("الموقع المثبت خارج نطاق المستخدم.");
-            }
+            throw new UnauthorizedAccessException("الموقع المثبت خارج نطاق المستخدم.");
         }
     }
 
@@ -413,6 +436,30 @@ public sealed class NoteTypeManagementService(
         if (!await db.NoteTypes.AnyAsync(t => t.Id == noteTypeId, cancellationToken))
         {
             throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
+        }
+    }
+
+    private async Task EnsureNoteTypesExistAsync(IEnumerable<Guid> noteTypeIds, CancellationToken cancellationToken)
+    {
+        var ids = noteTypeIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return;
+        }
+
+        var existing = await db.NoteTypes.AsNoTracking().Where(type => ids.Contains(type.Id)).Select(type => type.Id).ToListAsync(cancellationToken);
+        if (existing.Count != ids.Count)
+        {
+            throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
+        }
+    }
+
+    private static void EnsureDistinctNoteTypeIds(IEnumerable<Guid> noteTypeIds)
+    {
+        var ids = noteTypeIds.ToList();
+        if (ids.Count != ids.Distinct().Count())
+        {
+            throw new InvalidOperationException("لا يمكن تكرار نوع الملاحظة في الطلب.");
         }
     }
 
@@ -494,12 +541,6 @@ public sealed class NoteTypeManagementService(
         item.CanProcessOverride.HasValue || item.CanSubmitForVerificationOverride.HasValue ||
         item.CanReviewOverride.HasValue || item.CanCancelOverride.HasValue || item.CanReopenOverride.HasValue ||
         item.CanArchiveOverride.HasValue || item.CanRestoreOverride.HasValue;
-
-    private static bool HasDirectDeny(ReplaceUserNoteTypeOverrideItem item) =>
-        item.CanViewOverride == false || item.CanCreateOverride == false || item.CanAssignOverride == false ||
-        item.CanProcessOverride == false || item.CanSubmitForVerificationOverride == false ||
-        item.CanReviewOverride == false || item.CanCancelOverride == false || item.CanReopenOverride == false ||
-        item.CanArchiveOverride == false || item.CanRestoreOverride == false;
 
     private static void RequireReason(string reason)
     {

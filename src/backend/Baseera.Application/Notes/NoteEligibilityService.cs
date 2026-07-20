@@ -32,7 +32,10 @@ public sealed class NoteEligibilityService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, noteId, cancellationToken: cancellationToken);
-        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
+        if (!await typeAccess.CanViewAsync(note.NoteTypeId, cancellationToken))
+        {
+            throw new KeyNotFoundException("الملاحظة غير موجودة أو خارج نطاقك.");
+        }
 
         var candidates = await db.Users
             .AsNoTracking()
@@ -41,6 +44,18 @@ public sealed class NoteEligibilityService(
                 db.RolePermissions.Any(rp => rp.RoleId == ur.RoleId && rp.Permission.Code == permission)))
             .OrderBy(user => user.DisplayNameAr)
             .ToListAsync(cancellationToken);
+        var candidateIds = candidates.Select(user => user.Id).ToList();
+        if (candidateIds.Count == 0)
+        {
+            return [];
+        }
+
+        var scopes = await db.UserScopes
+            .AsNoTracking()
+            .Where(scope => candidateIds.Contains(scope.UserId) && scope.IsActive)
+            .ToListAsync(cancellationToken);
+        var scopesByUser = scopes.ToLookup(scope => scope.UserId);
+        var accessByUser = await typeAccess.GetEffectiveAccessForUsersAsync(candidateIds, note.NoteTypeId, cancellationToken);
 
         HashSet<Guid> blocked = enforceSoD && note.Severity == NoteSeverity.Critical
             ? await ProcessingParticipantIdsAsync(note.Id, cancellationToken)
@@ -53,12 +68,12 @@ public sealed class NoteEligibilityService(
                 continue;
             }
 
-            if (!await UserIntersectsNoteScopeAsync(user.Id, note, cancellationToken))
+            if (!IntersectsAny(scopesByUser[user.Id], note))
             {
                 continue;
             }
 
-            var access = await typeAccess.GetEffectiveAccessAsync(user.Id, note.NoteTypeId, cancellationToken);
+            accessByUser.TryGetValue(user.Id, out var access);
             if (CapabilityAllowed(access, capability))
             {
                 result.Add(new EligibleUserDto(user.Id, user.DisplayNameAr, user.UserName));
@@ -82,11 +97,8 @@ public sealed class NoteEligibilityService(
             .ToHashSetAsync(cancellationToken);
     }
 
-    private async Task<bool> UserIntersectsNoteScopeAsync(Guid userId, OperationalNote note, CancellationToken cancellationToken)
-    {
-        var scopes = await db.UserScopes.AsNoTracking().Where(scope => scope.UserId == userId && scope.IsActive).ToListAsync(cancellationToken);
-        return scopes.Any(scope => Intersects(scope, note));
-    }
+    private static bool IntersectsAny(IEnumerable<UserScope> scopes, OperationalNote note) =>
+        scopes.Any(scope => Intersects(scope, note));
 
     private static bool Intersects(UserScope scope, OperationalNote note)
     {
@@ -96,7 +108,7 @@ public sealed class NoteEligibilityService(
             Domain.Common.ScopeType.Headquarters => note.ScopeType == Domain.Common.ScopeType.Headquarters,
             Domain.Common.ScopeType.Region => note.RegionId == scope.RegionId,
             Domain.Common.ScopeType.Facility => note.FacilityId == scope.FacilityId,
-            Domain.Common.ScopeType.FacilityUnit => note.FacilityUnitId == scope.FacilityUnitId || note.FacilityId == scope.FacilityId,
+            Domain.Common.ScopeType.FacilityUnit => note.FacilityUnitId == scope.FacilityUnitId || (!note.FacilityUnitId.HasValue && note.FacilityId == scope.FacilityId),
             _ => false
         };
     }
