@@ -211,6 +211,7 @@ public sealed class NoteCommandService(
                 }, ct);
 
                 await routing.RouteOnSubmitAsync(note, note.SubmittedAtUtc.Value, request.Reason, ct);
+                await db.SaveChangesAsync(ct);
                 return note.Id;
             },
             cancellationToken);

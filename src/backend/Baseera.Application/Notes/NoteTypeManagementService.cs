@@ -135,6 +135,11 @@ public sealed class NoteTypeManagementService(
             var requestedTypeIds = request.Grants.Select(grant => grant.NoteTypeId).ToHashSet();
             foreach (var grant in existing)
             {
+                if (!grant.IsActive)
+                {
+                    continue;
+                }
+
                 if (requestedTypeIds.Contains(grant.NoteTypeId))
                 {
                     continue;
@@ -207,6 +212,11 @@ public sealed class NoteTypeManagementService(
             var requestedTypeIds = request.Overrides.Where(HasAnyOverride).Select(overrideRow => overrideRow.NoteTypeId).ToHashSet();
             foreach (var overrideRow in existing)
             {
+                if (!overrideRow.IsActive)
+                {
+                    continue;
+                }
+
                 if (requestedTypeIds.Contains(overrideRow.NoteTypeId))
                 {
                     continue;

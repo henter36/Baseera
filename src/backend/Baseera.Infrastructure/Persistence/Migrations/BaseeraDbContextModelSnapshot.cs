@@ -1534,9 +1534,9 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ScopeType", "RegionId", "FacilityId", "FacilityUnitId");
 
-                    b.HasIndex("NoteTypeId", "ScopeType", "RegionId", "FacilityId", "FacilityUnitId", "Priority", "IsDeleted")
+                    b.HasIndex("NoteTypeId", "ScopeType", "RegionId", "FacilityId", "FacilityUnitId", "Priority")
                         .IsUnique()
-                        .HasFilter("[RegionId] IS NOT NULL AND [FacilityId] IS NOT NULL AND [FacilityUnitId] IS NOT NULL");
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("NoteRoutingRules", null, t =>
                         {

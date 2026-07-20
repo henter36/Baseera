@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Baseera.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(BaseeraDbContext))]
-    [Migration("20260720112034_PhaseB232NoteRoutingAutoAssignment")]
+    [Migration("20260720190543_PhaseB232NoteRoutingAutoAssignment")]
     partial class PhaseB232NoteRoutingAutoAssignment
     {
         /// <inheritdoc />
@@ -1537,9 +1537,9 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ScopeType", "RegionId", "FacilityId", "FacilityUnitId");
 
-                    b.HasIndex("NoteTypeId", "ScopeType", "RegionId", "FacilityId", "FacilityUnitId", "Priority", "IsDeleted")
+                    b.HasIndex("NoteTypeId", "ScopeType", "RegionId", "FacilityId", "FacilityUnitId", "Priority")
                         .IsUnique()
-                        .HasFilter("[RegionId] IS NOT NULL AND [FacilityId] IS NOT NULL AND [FacilityUnitId] IS NOT NULL");
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("NoteRoutingRules", null, t =>
                         {

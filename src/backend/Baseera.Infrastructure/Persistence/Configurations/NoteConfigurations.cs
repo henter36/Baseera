@@ -126,9 +126,10 @@ internal sealed class NoteRoutingRuleConfiguration : IEntityTypeConfiguration<No
             x.RegionId,
             x.FacilityId,
             x.FacilityUnitId,
-            x.Priority,
-            x.IsDeleted
-        }).IsUnique();
+            x.Priority
+        })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
         builder.HasIndex(x => new { x.NoteTypeId, x.IsActive, x.IsDeleted });
         builder.HasIndex(x => new { x.ScopeType, x.RegionId, x.FacilityId, x.FacilityUnitId });
 

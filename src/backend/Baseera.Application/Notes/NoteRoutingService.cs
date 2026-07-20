@@ -31,6 +31,9 @@ public sealed class NoteRoutingService(
     IAuditService audit,
     TimeProvider timeProvider) : INoteRoutingService
 {
+    private const string RoutingRuleNotFoundMessage =
+        "قاعدة التوجيه غير موجودة.";
+
     private const string ModuleName = "NoteRouting";
     private const string AutoRoutingReasonPrefix = "توجيه آلي بواسطة القاعدة";
 
@@ -165,7 +168,7 @@ public sealed class NoteRoutingService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesManageRoutingRules);
         var rule = await db.NoteRoutingRules.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException("قاعدة التوجيه غير موجودة.");
+            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
         if (rule.IsActive)
         {
             throw new InvalidOperationException("يجب تعطيل قاعدة التوجيه قبل تعديل حقولها الجوهرية.");
@@ -220,7 +223,7 @@ public sealed class NoteRoutingService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesManageRoutingRules);
         var rule = await db.NoteRoutingRules.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException("قاعدة التوجيه غير موجودة.");
+            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
         var now = timeProvider.GetUtcNow();
         rule.IsDeleted = true;
@@ -236,7 +239,7 @@ public sealed class NoteRoutingService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesManageRoutingRules);
         var rule = await db.NoteRoutingRulesIncludingDeleted.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException("قاعدة التوجيه غير موجودة.");
+            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
         rule.IsDeleted = false;
         rule.DeletedAtUtc = null;
@@ -365,7 +368,7 @@ public sealed class NoteRoutingService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesActivateRoutingRules);
         var rule = await db.NoteRoutingRules.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException("قاعدة التوجيه غير موجودة.");
+            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
         if (active)
         {
@@ -462,6 +465,7 @@ public sealed class NoteRoutingService(
             decision.ResultStatus = NoteRoutingResultStatus.ManuallyOverridden;
         }
 
+        var fromStatus = note.Status;
         note.Status = NoteStatus.Assigned;
         note.UpdatedAtUtc = now;
         note.UpdatedBy = currentUser.ExternalSubject;
@@ -471,7 +475,7 @@ public sealed class NoteRoutingService(
         db.Add(new NoteStatusHistory
         {
             OperationalNoteId = note.Id,
-            FromStatus = trigger == NoteRoutingTrigger.Submit ? NoteStatus.Open : note.Status,
+            FromStatus = trigger == NoteRoutingTrigger.Submit ? NoteStatus.Open : fromStatus,
             ToStatus = NoteStatus.Assigned,
             ChangedByUserId = currentUser.UserId ?? note.ReportedByUserId,
             ChangedAtUtc = now,

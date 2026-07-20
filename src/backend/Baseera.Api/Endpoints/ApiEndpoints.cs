@@ -18,6 +18,7 @@ using FluentValidation;
 public static class ApiEndpoints
 {
     private const string EntityIdRoute = "/{id:guid}";
+    private const string ArchiveSuffix = "/archive";
 
     public static RouteGroupBuilder MapBaseeraApi(this IEndpointRouteBuilder app)
     {
@@ -261,7 +262,7 @@ public static class ApiEndpoints
         policies.MapPost(EntityIdRoute + "/deactivate", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
             Results.Ok(await service.DeactivateAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsActivate);
 
-        policies.MapPost(EntityIdRoute + "/archive", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+        policies.MapPost(EntityIdRoute + ArchiveSuffix, async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
         {
             await service.ArchiveAsync(id, request, ct);
             return Results.NoContent();
@@ -336,7 +337,7 @@ public static class ApiEndpoints
         notifications.MapPost("/read-all", async (INotificationService service, CancellationToken ct) =>
             Results.Ok(new { count = await service.MarkAllReadAsync(ct) })).RequireAuthorization(AuthPolicies.NotificationsMarkRead);
 
-        notifications.MapPost(EntityIdRoute + "/archive", async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
+        notifications.MapPost(EntityIdRoute + ArchiveSuffix, async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
             Results.Ok(await service.ArchiveAsync(id, request, ct))).RequireAuthorization(AuthPolicies.NotificationsArchiveOwn);
     }
 
@@ -407,7 +408,7 @@ public static class ApiEndpoints
             return Results.Ok(await workflow.CancelAsync(id, request, ct));
         }).RequireAuthorization(AuthPolicies.CorrectiveActionsCancel);
 
-        actions.MapPost(EntityIdRoute + "/archive", async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionCommandService commands, CancellationToken ct) =>
+        actions.MapPost(EntityIdRoute + ArchiveSuffix, async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionCommandService commands, CancellationToken ct) =>
         {
             await validator.ValidateAndThrowAsync(request, ct);
             await commands.ArchiveAsync(id, request, ct);
@@ -490,7 +491,7 @@ public static class ApiEndpoints
             return Results.Ok(await service.DeactivateRuleAsync(id, request, ct));
         }).RequireAuthorization(AuthPolicies.NotesActivateRoutingRules);
 
-        rules.MapPost(EntityIdRoute + "/archive", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        rules.MapPost(EntityIdRoute + ArchiveSuffix, async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteRoutingService service, CancellationToken ct) =>
         {
             await validator.ValidateAndThrowAsync(request, ct);
             await service.ArchiveRuleAsync(id, request, ct);
