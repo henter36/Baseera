@@ -465,6 +465,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>
 }
 
+function jsonRequest<T>(path: string, method: 'POST' | 'PUT', body: unknown): Promise<T> {
+  return request<T>(path, {
+    method,
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+const postJson = <T>(path: string, body: unknown) => jsonRequest<T>(path, 'POST', body)
+const putJson = <T>(path: string, body: unknown) => jsonRequest<T>(path, 'PUT', body)
+
 function appendPagingParams(params: URLSearchParams, filters: NoteListFilters): void {
   params.set('page', String(filters.page ?? 1))
   params.set('pageSize', String(filters.pageSize ?? 20))
@@ -604,36 +615,36 @@ export const api = {
       request<Paged<NoteListItem>>(`/api/v1/notes?${buildNoteQuery(filters)}`),
     get: (id: string) => request<NoteDetail>(`/api/v1/notes/${id}`),
     create: (body: CreateNoteRequest) =>
-      request<NoteDetail>('/api/v1/notes', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>('/api/v1/notes', body),
     update: (id: string, body: UpdateNoteRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}`, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      putJson<NoteDetail>(`/api/v1/notes/${id}`, body),
     submit: (id: string, body: TransitionNoteRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/submit`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/submit`, body),
     assign: (id: string, body: AssignNoteRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/assign`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/assign`, body),
     startWork: (id: string, body: WorkflowActionRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/start-work`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/start-work`, body),
     submitForVerification: (id: string, body: WorkflowActionRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/submit-for-verification`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/submit-for-verification`, body),
     returnForRework: (id: string, body: TransitionNoteRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/return-for-rework`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/return-for-rework`, body),
     verifyClosure: (id: string, body: CloseNoteRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/verify-closure`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/verify-closure`, body),
     reopen: (id: string, body: ReopenNoteRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/reopen`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/reopen`, body),
     cancel: (id: string, body: TransitionNoteRequest) =>
-      request<NoteDetail>(`/api/v1/notes/${id}/cancel`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<NoteDetail>(`/api/v1/notes/${id}/cancel`, body),
     archive: (id: string, body: TransitionNoteRequest) =>
-      request<void>(`/api/v1/notes/${id}/archive`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<void>(`/api/v1/notes/${id}/archive`, body),
     restore: (id: string, body: TransitionNoteRequest) =>
-      request<void>(`/api/v1/notes/${id}/restore`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<void>(`/api/v1/notes/${id}/restore`, body),
     history: (id: string) => request<NoteStatusHistoryEntry[]>(`/api/v1/notes/${id}/history`),
     assignments: (id: string) => request<NoteAssignment[]>(`/api/v1/notes/${id}/assignments`),
     attachments: (id: string) => request<Attachment[]>(`/api/v1/notes/${id}/attachments`),
     correctiveActions: (id: string, filters: CorrectiveActionListFilters = {}) =>
       request<Paged<CorrectiveActionListItem>>(`/api/v1/notes/${id}/corrective-actions?${buildCorrectiveActionQuery(filters)}`),
     createCorrectiveAction: (id: string, body: CreateCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/notes/${id}/corrective-actions`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/notes/${id}/corrective-actions`, body),
   },
 
   correctiveActions: {
@@ -641,27 +652,27 @@ export const api = {
       request<Paged<CorrectiveActionListItem>>(`/api/v1/corrective-actions?${buildCorrectiveActionQuery(filters)}`),
     get: (id: string) => request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}`),
     update: (id: string, body: UpdateCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}`, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      putJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}`, body),
     submit: (id: string, body: TransitionCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit`, body),
     assign: (id: string, body: AssignCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/assign`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/assign`, body),
     startWork: (id: string, body: TransitionCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/start-work`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/start-work`, body),
     submitForVerification: (id: string, body: CompleteCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit-for-verification`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit-for-verification`, body),
     returnForRework: (id: string, body: TransitionCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/return-for-rework`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/return-for-rework`, body),
     verifyCompletion: (id: string, body: CompleteCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/verify-completion`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/verify-completion`, body),
     reopen: (id: string, body: ReopenCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/reopen`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/reopen`, body),
     cancel: (id: string, body: TransitionCorrectiveActionRequest) =>
-      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/cancel`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/cancel`, body),
     archive: (id: string, body: TransitionCorrectiveActionRequest) =>
-      request<void>(`/api/v1/corrective-actions/${id}/archive`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<void>(`/api/v1/corrective-actions/${id}/archive`, body),
     restore: (id: string, body: TransitionCorrectiveActionRequest) =>
-      request<void>(`/api/v1/corrective-actions/${id}/restore`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+      postJson<void>(`/api/v1/corrective-actions/${id}/restore`, body),
     history: (id: string) => request<CorrectiveActionStatusHistoryEntry[]>(`/api/v1/corrective-actions/${id}/history`),
     assignments: (id: string) => request<CorrectiveActionAssignment[]>(`/api/v1/corrective-actions/${id}/assignments`),
     attachments: (id: string) => request<Attachment[]>(`/api/v1/corrective-actions/${id}/attachments`),
