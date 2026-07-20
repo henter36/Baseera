@@ -42,7 +42,7 @@ public sealed class CorrectiveActionWorkflowService(
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.PendingVerification);
-        var actorId = RequireUserId();
+        var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         var from = action.Status;
         var now = DateTimeOffset.UtcNow;
         action.Status = CorrectiveActionStatus.PendingVerification;
@@ -52,8 +52,8 @@ public sealed class CorrectiveActionWorkflowService(
         action.UpdatedAtUtc = now;
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
-        AppendHistory(action.Id, from, CorrectiveActionStatus.PendingVerification, actorId, request.Reason.Trim());
-        await WriteAuditAsync("CorrectiveActionSubmittedForVerification", action, new { Status = from }, new { action.Status, action.CompletionSummary }, request.Reason.Trim(), cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.PendingVerification, actorId, request.Reason.Trim());
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionSubmittedForVerification", action, new { Status = from }, new { action.Status, action.CompletionSummary }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -75,7 +75,7 @@ public sealed class CorrectiveActionWorkflowService(
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Completed);
-        var actorId = RequireUserId();
+        var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         await EnforceCriticalSoDAsync(action, actorId, cancellationToken);
 
         var from = action.Status;
@@ -88,8 +88,8 @@ public sealed class CorrectiveActionWorkflowService(
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
         await CompleteCurrentAssignmentAsync(action.Id, now, cancellationToken);
-        AppendHistory(action.Id, from, CorrectiveActionStatus.Completed, actorId, request.Reason.Trim());
-        await WriteAuditAsync("CorrectiveActionCompleted", action, new { Status = from }, new { action.Status, action.CompletedByUserId, action.CompletionSummary }, request.Reason.Trim(), cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Completed, actorId, request.Reason.Trim());
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionCompleted", action, new { Status = from }, new { action.Status, action.CompletedByUserId, action.CompletionSummary }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -100,7 +100,7 @@ public sealed class CorrectiveActionWorkflowService(
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Reopened);
-        var actorId = RequireUserId();
+        var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         var from = action.Status;
         var now = DateTimeOffset.UtcNow;
         action.Status = CorrectiveActionStatus.Reopened;
@@ -110,8 +110,8 @@ public sealed class CorrectiveActionWorkflowService(
         action.UpdatedAtUtc = now;
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
-        AppendHistory(action.Id, from, CorrectiveActionStatus.Reopened, actorId, request.Reason.Trim());
-        await WriteAuditAsync("CorrectiveActionReopened", action, new { Status = from }, new { action.Status }, request.Reason.Trim(), cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Reopened, actorId, request.Reason.Trim());
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionReopened", action, new { Status = from }, new { action.Status }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -122,7 +122,7 @@ public sealed class CorrectiveActionWorkflowService(
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Cancelled);
-        var actorId = RequireUserId();
+        var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         var from = action.Status;
         var now = DateTimeOffset.UtcNow;
         action.Status = CorrectiveActionStatus.Cancelled;
@@ -133,8 +133,8 @@ public sealed class CorrectiveActionWorkflowService(
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
         await EndCurrentAssignmentAsync(action.Id, now, request.Reason.Trim(), cancellationToken);
-        AppendHistory(action.Id, from, CorrectiveActionStatus.Cancelled, actorId, request.Reason.Trim());
-        await WriteAuditAsync("CorrectiveActionCancelled", action, new { Status = from }, new { action.Status }, request.Reason.Trim(), cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Cancelled, actorId, request.Reason.Trim());
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionCancelled", action, new { Status = from }, new { action.Status }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -158,7 +158,7 @@ public sealed class CorrectiveActionWorkflowService(
         }
 
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, to);
-        var actorId = RequireUserId();
+        var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         var from = action.Status;
         var now = DateTimeOffset.UtcNow;
         action.Status = to;
@@ -166,8 +166,8 @@ public sealed class CorrectiveActionWorkflowService(
         action.UpdatedBy = currentUser.ExternalSubject;
         apply?.Invoke(action, actorId, now);
         db.Update(action);
-        AppendHistory(action.Id, from, to, actorId, reason.Trim());
-        await WriteAuditAsync(auditAction, action, new { Status = from }, new { Status = to }, reason.Trim(), cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, to, actorId, reason.Trim());
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, auditAction, action, new { Status = from }, new { Status = to }, reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -228,31 +228,4 @@ public sealed class CorrectiveActionWorkflowService(
         db.Update(current);
     }
 
-    private void AppendHistory(Guid id, CorrectiveActionStatus? from, CorrectiveActionStatus to, Guid userId, string? reason)
-    {
-        db.Add(new CorrectiveActionStatusHistory
-        {
-            CorrectiveActionId = id,
-            FromStatus = from,
-            ToStatus = to,
-            ChangedByUserId = userId,
-            ChangedAtUtc = DateTimeOffset.UtcNow,
-            Reason = reason
-        });
-    }
-
-    private Task WriteAuditAsync(string actionName, CorrectiveAction action, object? oldValues, object? newValues, string? reason, CancellationToken cancellationToken) =>
-        audit.WriteAsync(new AuditEntry
-        {
-            Action = actionName,
-            Module = CorrectiveActionAccessHelper.ModuleName,
-            EntityType = nameof(CorrectiveAction),
-            EntityId = action.Id.ToString(),
-            OldValues = oldValues,
-            NewValues = newValues,
-            Reason = reason
-        }, cancellationToken);
-
-    private Guid RequireUserId() =>
-        currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
 }

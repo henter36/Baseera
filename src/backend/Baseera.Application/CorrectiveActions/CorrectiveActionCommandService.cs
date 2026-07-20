@@ -40,7 +40,7 @@ public sealed class CorrectiveActionCommandService(
         CancellationToken cancellationToken = default)
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsCreate);
-        var actorId = RequireUserId();
+        var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         var note = await db.OperationalNotes.FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken)
             ?? throw new KeyNotFoundException("الملاحظة غير موجودة.");
         if (!noteScope.CanAccess(note))
@@ -89,8 +89,8 @@ public sealed class CorrectiveActionCommandService(
         };
 
         db.Add(action);
-        AppendHistory(action.Id, null, CorrectiveActionStatus.Draft, actorId, "إنشاء مسودة");
-        await WriteAuditAsync("CorrectiveActionCreated", action, null, new { action.ReferenceNumber, action.OperationalNoteId, action.Priority, action.Classification }, null, cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, null, CorrectiveActionStatus.Draft, actorId, "إنشاء مسودة");
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionCreated", action, null, new { action.ReferenceNumber, action.OperationalNoteId, action.Priority, action.Classification }, null, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -127,7 +127,7 @@ public sealed class CorrectiveActionCommandService(
         action.UpdatedAtUtc = DateTimeOffset.UtcNow;
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
-        await WriteAuditAsync("CorrectiveActionUpdated", action, old, new { action.Title, action.Description, action.Priority, action.Classification, action.OwnerDepartmentId, action.DueAtUtc }, "تحديث حقول الإجراء", cancellationToken);
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionUpdated", action, old, new { action.Title, action.Description, action.Priority, action.Classification, action.OwnerDepartmentId, action.DueAtUtc }, "تحديث حقول الإجراء", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -138,7 +138,7 @@ public sealed class CorrectiveActionCommandService(
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, actionScope, id, cancellationToken: cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Open);
-        var actorId = RequireUserId();
+        var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
         var from = action.Status;
         var now = DateTimeOffset.UtcNow;
         action.Status = CorrectiveActionStatus.Open;
@@ -146,8 +146,8 @@ public sealed class CorrectiveActionCommandService(
         action.UpdatedAtUtc = now;
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
-        AppendHistory(action.Id, from, CorrectiveActionStatus.Open, actorId, request.Reason.Trim());
-        await WriteAuditAsync("CorrectiveActionSubmitted", action, new { Status = from }, new { Status = CorrectiveActionStatus.Open }, request.Reason.Trim(), cancellationToken);
+        CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Open, actorId, request.Reason.Trim());
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionSubmitted", action, new { Status = from }, new { Status = CorrectiveActionStatus.Open }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
     }
@@ -163,7 +163,7 @@ public sealed class CorrectiveActionCommandService(
         action.UpdatedAtUtc = action.DeletedAtUtc;
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
-        await WriteAuditAsync("CorrectiveActionArchived", action, null, null, request.Reason.Trim(), cancellationToken);
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionArchived", action, null, null, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -183,35 +183,8 @@ public sealed class CorrectiveActionCommandService(
         action.UpdatedAtUtc = DateTimeOffset.UtcNow;
         action.UpdatedBy = currentUser.ExternalSubject;
         db.Update(action);
-        await WriteAuditAsync("CorrectiveActionRestored", action, null, null, request.Reason.Trim(), cancellationToken);
+        await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionRestored", action, null, null, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private void AppendHistory(Guid id, CorrectiveActionStatus? from, CorrectiveActionStatus to, Guid userId, string? reason)
-    {
-        db.Add(new CorrectiveActionStatusHistory
-        {
-            CorrectiveActionId = id,
-            FromStatus = from,
-            ToStatus = to,
-            ChangedByUserId = userId,
-            ChangedAtUtc = DateTimeOffset.UtcNow,
-            Reason = reason
-        });
-    }
-
-    private Task WriteAuditAsync(string actionName, CorrectiveAction action, object? oldValues, object? newValues, string? reason, CancellationToken cancellationToken) =>
-        audit.WriteAsync(new AuditEntry
-        {
-            Action = actionName,
-            Module = CorrectiveActionAccessHelper.ModuleName,
-            EntityType = nameof(CorrectiveAction),
-            EntityId = action.Id.ToString(),
-            OldValues = oldValues,
-            NewValues = newValues,
-            Reason = reason
-        }, cancellationToken);
-
-    private Guid RequireUserId() =>
-        currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
 }
