@@ -74,6 +74,7 @@ public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
             workerId = await db.Users.Where(u => u.ExternalSubject == "notes-worker").Select(u => u.Id).FirstAsync();
+            await GrantCanReviewTypeAsync(db, "notes-worker");
         }
 
         var creator = _factory.CreateAuthenticatedClient("notes-creator");
@@ -137,6 +138,8 @@ public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
             var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
             workerAId = await db.Users.Where(u => u.ExternalSubject == "sod-proc-a").Select(u => u.Id).FirstAsync();
             verifierCId = await db.Users.Where(u => u.ExternalSubject == "sod-verifier-c").Select(u => u.Id).FirstAsync();
+            await GrantCanReviewTypeAsync(db, "sod-proc-a");
+            await GrantCanReviewTypeAsync(db, "sod-proc-b");
         }
 
         var admin = _factory.CreateAuthenticatedClient("sod-admin");
@@ -248,7 +251,7 @@ public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
         {
             title = "تحديث أول",
             description = note.Description,
-            category = note.Category,
+            noteTypeId = note.NoteTypeId,
             severity = note.Severity,
             sourceType = NoteSourceType.Manual,
             sourceReference = (string?)null,
@@ -263,7 +266,7 @@ public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
         {
             title = "تحديث متأخر",
             description = "وصف",
-            category = NoteCategory.Operational,
+            noteTypeId = SeedIds.NoteTypeOperational,
             severity = NoteSeverity.Low,
             sourceType = NoteSourceType.Manual,
             sourceReference = (string?)null,
@@ -379,21 +382,56 @@ public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
         {
             title,
             description = "وصف تفصيلي للملاحظة التشغيلية",
-            category = NoteCategory.Operational,
+            noteTypeId = SeedIds.NoteTypeOperational,
             severity,
             sourceType = NoteSourceType.Manual,
             sourceReference = (string?)null,
             classification = ClassificationLevel.Internal,
-            scopeType,
-            regionId,
-            facilityId,
-            facilityUnitId,
+            scopeType = ScopeType.Facility,
+            regionId = ResolveRegionId(regionId, facilityId),
+            facilityId = ResolveFacilityId(regionId, facilityId),
+            facilityUnitId = (Guid?)null,
             ownerDepartmentId = (Guid?)null,
             dueAtUtc = DateTimeOffset.UtcNow.AddDays(3)
         });
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, body);
         return JsonSerializer.Deserialize<NoteDetail>(body, JsonOptions)!;
+    }
+
+    private static Guid ResolveRegionId(Guid? regionId, Guid? facilityId)
+    {
+        if (regionId.HasValue)
+        {
+            return regionId.Value;
+        }
+
+        return facilityId == SeedIds.FacilityB1 ? SeedIds.RegionB : SeedIds.RegionA;
+    }
+
+    private static Guid ResolveFacilityId(Guid? regionId, Guid? facilityId)
+    {
+        if (facilityId.HasValue)
+        {
+            return facilityId.Value;
+        }
+
+        return regionId == SeedIds.RegionB ? SeedIds.FacilityB1 : SeedIds.FacilityA1;
+    }
+
+    private static async Task GrantCanReviewTypeAsync(BaseeraDbContext db, string subject)
+    {
+        var userId = await db.Users.Where(u => u.ExternalSubject == subject).Select(u => u.Id).FirstAsync();
+        db.UserNoteTypeOverrides.Add(new UserNoteTypeOverride
+        {
+            UserId = userId,
+            NoteTypeId = SeedIds.NoteTypeOperational,
+            CanViewOverride = true,
+            CanReviewOverride = true,
+            IsActive = true,
+            Reason = "اختبار فصل الواجبات"
+        });
+        await db.SaveChangesAsync();
     }
 
     private static async Task<NoteDetail> PostTransitionAsync(HttpClient client, string url, string rowVersion, string reason)
@@ -436,7 +474,7 @@ internal sealed record NoteDetail(
     string Description,
     NoteStatus Status,
     NoteSeverity Severity,
-    NoteCategory Category,
+    Guid NoteTypeId,
     string RowVersion);
 internal sealed record NoteHistoryItem(NoteStatus ToStatus, string? Reason);
 internal sealed record AttachmentItem(Guid Id, string OriginalFileName);

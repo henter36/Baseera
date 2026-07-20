@@ -22,6 +22,7 @@ public sealed class CorrectiveActionCommandService(
     ICurrentUser currentUser,
     INoteScopeService noteScope,
     ICorrectiveActionScopeService actionScope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit,
     ICorrectiveActionQueryService queries) : ICorrectiveActionCommandService
 {
@@ -47,6 +48,7 @@ public sealed class CorrectiveActionCommandService(
         {
             throw new KeyNotFoundException("الملاحظة غير موجودة.");
         }
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
 
         if (!CreatableNoteStatuses.Contains(note.Status))
         {
@@ -101,6 +103,7 @@ public sealed class CorrectiveActionCommandService(
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, actionScope, id, cancellationToken: cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         var note = await db.OperationalNotes.FirstAsync(n => n.Id == action.OperationalNoteId, cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
 
         if (action.Status is CorrectiveActionStatus.Completed or CorrectiveActionStatus.Cancelled)
         {
@@ -136,6 +139,7 @@ public sealed class CorrectiveActionCommandService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsUpdate);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, actionScope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Open);
         var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
@@ -156,6 +160,7 @@ public sealed class CorrectiveActionCommandService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsArchive);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, actionScope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         action.IsDeleted = true;
         action.DeletedAtUtc = DateTimeOffset.UtcNow;
@@ -171,6 +176,7 @@ public sealed class CorrectiveActionCommandService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsRestore);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, actionScope, id, includeDeleted: true, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         if (!action.IsDeleted)
         {
             throw new InvalidOperationException("الإجراء التصحيحي غير مؤرشف.");
@@ -185,6 +191,13 @@ public sealed class CorrectiveActionCommandService(
         db.Update(action);
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionRestored", action, null, null, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task EnsureCanViewSourceNoteTypeAsync(Guid noteId, CancellationToken cancellationToken)
+    {
+        var note = await db.OperationalNotes.FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken)
+            ?? throw new KeyNotFoundException("الملاحظة غير موجودة.");
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
     }
 
 }

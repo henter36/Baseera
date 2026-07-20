@@ -28,6 +28,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<UserScope> UserScopes => Set<UserScope>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<NoteType> NoteTypes => Set<NoteType>();
+    public DbSet<RoleNoteTypeGrant> RoleNoteTypeGrants => Set<RoleNoteTypeGrant>();
+    public DbSet<UserNoteTypeOverride> UserNoteTypeOverrides => Set<UserNoteTypeOverride>();
+    public DbSet<UserNoteIntakeProfile> UserNoteIntakeProfiles => Set<UserNoteIntakeProfile>();
     public DbSet<OperationalNote> OperationalNotes => Set<OperationalNote>();
     public DbSet<NoteAssignment> NoteAssignments => Set<NoteAssignment>();
     public DbSet<NoteStatusHistory> NoteStatusHistories => Set<NoteStatusHistory>();
@@ -57,6 +61,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<UserScope> Application.Abstractions.IBaseeraDbContext.UserScopes => UserScopes;
     IQueryable<AuditLog> Application.Abstractions.IBaseeraDbContext.AuditLogs => AuditLogs;
     IQueryable<Attachment> Application.Abstractions.IBaseeraDbContext.Attachments => Attachments;
+    IQueryable<NoteType> Application.Abstractions.IBaseeraDbContext.NoteTypes => NoteTypes;
+    IQueryable<RoleNoteTypeGrant> Application.Abstractions.IBaseeraDbContext.RoleNoteTypeGrants => RoleNoteTypeGrants;
+    IQueryable<UserNoteTypeOverride> Application.Abstractions.IBaseeraDbContext.UserNoteTypeOverrides => UserNoteTypeOverrides;
+    IQueryable<UserNoteIntakeProfile> Application.Abstractions.IBaseeraDbContext.UserNoteIntakeProfiles => UserNoteIntakeProfiles;
     IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotes => OperationalNotes;
     IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotesIncludingDeleted => OperationalNotes.IgnoreQueryFilters();
     IQueryable<NoteAssignment> Application.Abstractions.IBaseeraDbContext.NoteAssignments => NoteAssignments;
@@ -140,6 +148,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<RolePermission>().HasQueryFilter(rp => !rp.Role.IsDeleted);
         modelBuilder.Entity<UserScope>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Attachment>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<RoleNoteTypeGrant>().HasQueryFilter(g => !g.Role.IsDeleted);
+        modelBuilder.Entity<UserNoteTypeOverride>().HasQueryFilter(o => !o.User.IsDeleted);
+        modelBuilder.Entity<UserNoteIntakeProfile>().HasQueryFilter(p => !p.User.IsDeleted);
         modelBuilder.Entity<OperationalNote>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<CorrectiveAction>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<EscalationPolicy>().HasQueryFilter(e => !e.IsDeleted);

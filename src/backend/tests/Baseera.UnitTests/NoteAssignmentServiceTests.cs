@@ -19,11 +19,13 @@ public sealed class NoteAssignmentServiceTests : IDisposable
 
     private INoteAssignmentService BuildService(Guid actorId, params string[] permissions)
     {
+        NoteTestFixtures.GrantPermissions(_db, actorId, $"Actor-{actorId}", permissions);
         var current = FakeUser(actorId, permissions);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
-        var queries = new NoteQueryService(_db, current, scope, audit);
-        return new NoteAssignmentService(_db, current, scope, audit, queries);
+        var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
+        return new NoteAssignmentService(_db, current, scope, typeAccess, audit, queries);
     }
 
     private static string RowVersionOf(OperationalNote note) => Convert.ToBase64String(note.RowVersion);

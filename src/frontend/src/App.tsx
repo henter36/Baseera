@@ -14,6 +14,7 @@ import { CorrectiveActionsListPage } from './pages/corrective-actions/Corrective
 import { NoteCreatePage } from './pages/notes/NoteCreatePage'
 import { NoteDetailPage } from './pages/notes/NoteDetailPage'
 import { NoteEditPage } from './pages/notes/NoteEditPage'
+import { NoteTypesSettingsPage } from './pages/notes/NoteTypesSettingsPage'
 import { NotesListPage } from './pages/notes/NotesListPage'
 import { RegionsPage } from './pages/RegionsPage'
 import { UsersPage } from './pages/UsersPage'
@@ -57,6 +58,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Notifications.ViewOwn') && <NavLink to="/notifications" className={({ isActive }) => isActive ? 'active' : undefined}>الإشعارات {unreadCount > 0 ? `(${unreadCount})` : ''}</NavLink>}
           {hasPermission('Escalations.View') && <NavLink to="/settings/escalations" className={({ isActive }) => isActive ? 'active' : undefined}>التصعيد</NavLink>}
           {hasPermission('Escalations.ViewOccurrences') && <NavLink to="/settings/escalations/occurrences" className={({ isActive }) => isActive ? 'active' : undefined}>حوادث التصعيد</NavLink>}
+          {hasPermission('Notes.ManageTypes') && <NavLink to="/settings/note-types" className={({ isActive }) => isActive ? 'active' : undefined}>أنواع الملاحظات</NavLink>}
           {hasPermission('Users.View') && <NavLink to="/users" className={({ isActive }) => isActive ? 'active' : undefined}>المستخدمون</NavLink>}
           {hasPermission('Audit.View') && <NavLink to="/audit" className={({ isActive }) => isActive ? 'active' : undefined}>سجل التدقيق</NavLink>}
           {hasPermission('Attachments.Upload') && <NavLink to="/attachments" className={({ isActive }) => isActive ? 'active' : undefined}>المرفقات</NavLink>}
@@ -101,6 +103,7 @@ export default function App() {
       <Route path="/settings/escalations/occurrences" element={<Protected><EscalationOccurrencesPage /></Protected>} />
       <Route path="/settings/escalations/:id" element={<Protected><EscalationPolicyDetailPage /></Protected>} />
       <Route path="/settings/escalations/:id/edit" element={<Protected><EscalationPolicyFormPage mode="edit" /></Protected>} />
+      <Route path="/settings/note-types" element={<Protected><NoteTypesSettingsPage /></Protected>} />
       <Route path="/users" element={<Protected><UsersPage /></Protected>} />
       <Route path="/audit" element={<Protected><AuditPage /></Protected>} />
       <Route path="/attachments" element={<Protected><AttachmentsPage /></Protected>} />

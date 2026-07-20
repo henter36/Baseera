@@ -252,7 +252,7 @@ public sealed class EscalationsNotificationsIntegrationTests(BaseeraApiFactory f
             ReferenceNumber = reference,
             Title = reference,
             Description = "ملاحظة لاختبار التصعيد",
-            Category = NoteCategory.Operational,
+            NoteTypeId = SeedIds.NoteTypeOperational,
             Severity = NoteSeverity.High,
             Status = status,
             SourceType = NoteSourceType.Manual,

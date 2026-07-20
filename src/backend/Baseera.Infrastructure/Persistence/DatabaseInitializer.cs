@@ -2,6 +2,7 @@ namespace Baseera.Infrastructure.Persistence;
 
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
+using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,6 +58,7 @@ public static class DatabaseInitializer
         await db.SaveChangesAsync(cancellationToken);
 
         await EnsureRolePermissionsAsync(db, cancellationToken);
+        await EnsureNoteTypesAndRoleGrantsAsync(db, cancellationToken);
     }
 
     private static async Task EnsureRolePermissionsAsync(BaseeraDbContext db, CancellationToken cancellationToken)
@@ -159,6 +161,13 @@ public static class DatabaseInitializer
             PermissionCodes.EscalationsViewOccurrences,
             PermissionCodes.EscalationsRetryFailed
         ];
+        string[] noteTypeManagers =
+        [
+            PermissionCodes.NotesManageTypes,
+            PermissionCodes.NotesManageRoleTypeAccess,
+            PermissionCodes.NotesManageUserTypeOverrides,
+            PermissionCodes.NotesManageIntakeProfiles
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -201,6 +210,7 @@ public static class DatabaseInitializer
             PermissionCodes.NotesReturnForRework,
             PermissionCodes.NotesReopen,
             PermissionCodes.NotesCancel,
+            noteTypeManagers,
             caDirector,
             escalationManager,
             ownNotifications);
@@ -220,6 +230,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesCancel,
             PermissionCodes.NotesArchive,
             PermissionCodes.NotesRestore,
+            PermissionCodes.NotesManageUserTypeOverrides,
+            PermissionCodes.NotesManageIntakeProfiles,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
             PermissionCodes.CorrectiveActionsRestore,
@@ -253,6 +265,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesCancel,
             PermissionCodes.NotesArchive,
             PermissionCodes.NotesRestore,
+            PermissionCodes.NotesManageUserTypeOverrides,
+            PermissionCodes.NotesManageIntakeProfiles,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
             PermissionCodes.CorrectiveActionsRestore,
@@ -277,6 +291,220 @@ public static class DatabaseInitializer
 
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    private static async Task EnsureNoteTypesAndRoleGrantsAsync(BaseeraDbContext db, CancellationToken cancellationToken)
+    {
+        var definitions = InitialNoteTypes();
+        foreach (var definition in definitions)
+        {
+            var existing = await db.NoteTypes.FirstOrDefaultAsync(t => t.Code == definition.Code, cancellationToken);
+            if (existing is null)
+            {
+                db.NoteTypes.Add(new NoteType
+                {
+                    Id = definition.Id,
+                    Code = definition.Code,
+                    NameAr = definition.NameAr,
+                    DescriptionAr = definition.DescriptionAr,
+                    EntryInstructionsAr = definition.EntryInstructionsAr,
+                    SortOrder = definition.SortOrder,
+                    IsActive = true,
+                    DefaultSeverity = definition.DefaultSeverity,
+                    DefaultDueDays = definition.DefaultDueDays,
+                    CreatedBy = "seed"
+                });
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var noteTypeIds = await db.NoteTypes
+            .Select(noteType => noteType.Id)
+            .ToListAsync(cancellationToken);
+        var roles = await db.Roles.ToListAsync(cancellationToken);
+        var existingGrantPairs = await db.RoleNoteTypeGrants
+            .AsNoTracking()
+            .Select(grant => new
+            {
+                grant.RoleId,
+                grant.NoteTypeId
+            })
+            .ToListAsync(cancellationToken);
+        var existingGrantKeys = existingGrantPairs
+            .Select(grant => (grant.RoleId, grant.NoteTypeId))
+            .ToHashSet();
+
+        foreach (var role in roles)
+        {
+            foreach (var noteTypeId in noteTypeIds)
+            {
+                if (!existingGrantKeys.Add((role.Id, noteTypeId)))
+                {
+                    continue;
+                }
+
+                db.RoleNoteTypeGrants.Add(
+                    BuildDefaultGrant(
+                        role.Code,
+                        role.Id,
+                        noteTypeId));
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    [Flags]
+    private enum NoteTypeSeedCapabilities
+    {
+        None = 0,
+        View = 1 << 0,
+        Create = 1 << 1,
+        Assign = 1 << 2,
+        Process = 1 << 3,
+        SubmitForVerification = 1 << 4,
+        Review = 1 << 5,
+        Cancel = 1 << 6,
+        Reopen = 1 << 7,
+        Archive = 1 << 8,
+        Restore = 1 << 9,
+
+        Viewer = View,
+
+        HeadquartersReviewer =
+            View |
+            Create |
+            Assign |
+            Review |
+            Cancel |
+            Reopen,
+
+        ScopedReviewer =
+            HeadquartersReviewer |
+            Archive |
+            Restore,
+
+        RegionalCoordinator =
+            View |
+            Create |
+            Assign |
+            Process |
+            SubmitForVerification |
+            Cancel,
+
+        FacilityCoordinator =
+            View |
+            Create |
+            Process |
+            SubmitForVerification |
+            Cancel,
+
+        All =
+            View |
+            Create |
+            Assign |
+            Process |
+            SubmitForVerification |
+            Review |
+            Cancel |
+            Reopen |
+            Archive |
+            Restore
+    }
+
+    private static readonly IReadOnlyDictionary<string, NoteTypeSeedCapabilities>
+        DefaultNoteTypeCapabilities =
+            new Dictionary<string, NoteTypeSeedCapabilities>
+            {
+                [RoleCodes.SystemAdministrator] =
+                    NoteTypeSeedCapabilities.All,
+
+                [RoleCodes.DecisionSupportDirector] =
+                    NoteTypeSeedCapabilities.All,
+
+                [RoleCodes.HeadquartersExecutive] =
+                    NoteTypeSeedCapabilities.HeadquartersReviewer,
+
+                [RoleCodes.RegionalDirector] =
+                    NoteTypeSeedCapabilities.ScopedReviewer,
+
+                [RoleCodes.FacilityDirector] =
+                    NoteTypeSeedCapabilities.ScopedReviewer,
+
+                [RoleCodes.RegionalCoordinator] =
+                    NoteTypeSeedCapabilities.RegionalCoordinator,
+
+                [RoleCodes.FacilityCoordinator] =
+                    NoteTypeSeedCapabilities.FacilityCoordinator,
+
+                [RoleCodes.Auditor] =
+                    NoteTypeSeedCapabilities.Viewer,
+
+                [RoleCodes.ReadOnlyUser] =
+                    NoteTypeSeedCapabilities.Viewer
+            };
+
+    private static RoleNoteTypeGrant BuildDefaultGrant(
+        string roleCode,
+        Guid roleId,
+        Guid noteTypeId)
+    {
+        var capabilities =
+            DefaultNoteTypeCapabilities.GetValueOrDefault(roleCode);
+
+        return new RoleNoteTypeGrant
+        {
+            RoleId = roleId,
+            NoteTypeId = noteTypeId,
+            CanView = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.View),
+            CanCreate = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Create),
+            CanAssign = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Assign),
+            CanProcess = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Process),
+            CanSubmitForVerification = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.SubmitForVerification),
+            CanReview = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Review),
+            CanCancel = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Cancel),
+            CanReopen = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Reopen),
+            CanArchive = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Archive),
+            CanRestore = HasCapability(
+                capabilities,
+                NoteTypeSeedCapabilities.Restore),
+            IsActive = true,
+            CreatedBy = "seed"
+        };
+    }
+
+    private static bool HasCapability(
+        NoteTypeSeedCapabilities capabilities,
+        NoteTypeSeedCapabilities required) =>
+        (capabilities & required) == required;
+
+    private static (Guid Id, string Code, string NameAr, string DescriptionAr, string EntryInstructionsAr, int SortOrder, NoteSeverity DefaultSeverity, int? DefaultDueDays)[] InitialNoteTypes() =>
+    [
+        (SeedIds.NoteTypeSecurity, "SECURITY", "أمنية", "ملاحظات مرتبطة بالأمن والسلامة الأمنية.", "سجّل الوقائع الأمنية بدقة ودون كشف معلومات حساسة غير لازمة.", 10, NoteSeverity.High, 3),
+        (SeedIds.NoteTypeTechnical, "TECHNICAL", "فنية", "ملاحظات الأعطال والاحتياجات الفنية.", "حدّد الموقع والأثر الفني وأي مرجع صيانة متاح.", 20, NoteSeverity.Medium, 7),
+        (SeedIds.NoteTypeOperational, "OPERATIONAL", "تشغيلية", "ملاحظات سير العمل والتشغيل اليومي.", "اشرح الأثر التشغيلي والإجراء المطلوب.", 30, NoteSeverity.Medium, 5),
+        (SeedIds.NoteTypeHealthSafety, "HEALTH_SAFETY", "صحة وسلامة", "ملاحظات الصحة والسلامة المهنية.", "اذكر الخطر والإجراءات الوقائية العاجلة إن وجدت.", 40, NoteSeverity.High, 3),
+        (SeedIds.NoteTypeAdministrative, "ADMINISTRATIVE", "إدارية", "ملاحظات إدارية عامة.", "اكتب سياقًا مختصرًا والجهة المعنية.", 50, NoteSeverity.Low, 10),
+        (SeedIds.NoteTypeOther, "OTHER", "أخرى", "ملاحظات لا تندرج تحت نوع آخر.", "استخدم هذا النوع عند عدم انطباق الأنواع الأخرى.", 60, NoteSeverity.Medium, 7)
+    ];
 
     private static async Task SeedDemoOrganizationAsync(BaseeraDbContext db, ILogger logger, CancellationToken cancellationToken)
     {
@@ -425,6 +653,10 @@ public static class DatabaseInitializer
             (PermissionCodes.NotesCancel, "إلغاء ملاحظة", NotesModule),
             (PermissionCodes.NotesArchive, "أرشفة ملاحظة", NotesModule),
             (PermissionCodes.NotesRestore, "استعادة ملاحظة", NotesModule),
+            (PermissionCodes.NotesManageTypes, "إدارة أنواع الملاحظات", NotesModule),
+            (PermissionCodes.NotesManageRoleTypeAccess, "إدارة صلاحيات أنواع الملاحظات للأدوار", NotesModule),
+            (PermissionCodes.NotesManageUserTypeOverrides, "إدارة استثناءات أنواع الملاحظات للمستخدمين", NotesModule),
+            (PermissionCodes.NotesManageIntakeProfiles, "إدارة سياق إدخال الملاحظات", NotesModule),
             (PermissionCodes.CorrectiveActionsView, "عرض الإجراءات التصحيحية", CorrectiveActionsModule),
             (PermissionCodes.CorrectiveActionsViewSensitive, "عرض الإجراءات التصحيحية الحساسة", CorrectiveActionsModule),
             (PermissionCodes.CorrectiveActionsCreate, "إنشاء إجراء تصحيحي", CorrectiveActionsModule),
@@ -510,4 +742,10 @@ public static class SeedIds
     public static readonly Guid FacilityA1 = Guid.Parse("33333333-3333-3333-3333-333333333301");
     public static readonly Guid FacilityA2 = Guid.Parse("33333333-3333-3333-3333-333333333302");
     public static readonly Guid FacilityB1 = Guid.Parse("33333333-3333-3333-3333-333333333303");
+    public static readonly Guid NoteTypeSecurity = Guid.Parse("44444444-4444-4444-4444-444444444401");
+    public static readonly Guid NoteTypeTechnical = Guid.Parse("44444444-4444-4444-4444-444444444402");
+    public static readonly Guid NoteTypeOperational = Guid.Parse("44444444-4444-4444-4444-444444444403");
+    public static readonly Guid NoteTypeHealthSafety = Guid.Parse("44444444-4444-4444-4444-444444444404");
+    public static readonly Guid NoteTypeAdministrative = Guid.Parse("44444444-4444-4444-4444-444444444405");
+    public static readonly Guid NoteTypeOther = Guid.Parse("44444444-4444-4444-4444-444444444406");
 }

@@ -12,7 +12,7 @@ public sealed class CreateNoteRequestValidatorTests
     private static CreateNoteRequest Valid() => new(
         Title: "عطل في الإنارة",
         Description: "إنارة الممر رقم 3 معطلة منذ يومين",
-        Category: NoteCategory.Technical,
+        NoteTypeId: NoteTestFixtures.DefaultNoteTypeId,
         Severity: NoteSeverity.Medium,
         SourceType: NoteSourceType.Manual,
         SourceReference: null,
@@ -71,7 +71,7 @@ public sealed class UpdateNoteRequestValidatorTests
     private static UpdateNoteRequest Valid() => new(
         Title: "عنوان محدّث",
         Description: "وصف محدّث",
-        Category: NoteCategory.Operational,
+        NoteTypeId: NoteTestFixtures.DefaultNoteTypeId,
         Severity: NoteSeverity.Low,
         SourceType: NoteSourceType.Manual,
         SourceReference: null,
@@ -195,4 +195,54 @@ public sealed class NoteAttachmentEntityTypeTests
     [Fact]
     public void OperationalNote_entity_type_match_is_case_insensitive() =>
         Assert.True(Baseera.Application.Attachments.AttachmentEntityTypes.IsAllowed("operationalnote"));
+}
+
+public sealed class ReplaceRoleNoteTypeGrantsRequestValidatorTests
+{
+    private readonly ReplaceRoleNoteTypeGrantsRequestValidator _validator = new();
+
+    [Fact]
+    public void Duplicate_note_type_ids_are_rejected()
+    {
+        var item = new ReplaceRoleNoteTypeGrantItem(
+            NoteTestFixtures.DefaultNoteTypeId,
+            CanView: true,
+            CanCreate: false,
+            CanAssign: false,
+            CanProcess: false,
+            CanSubmitForVerification: false,
+            CanReview: false,
+            CanCancel: false,
+            CanReopen: false,
+            CanArchive: false,
+            CanRestore: false);
+        var request = new ReplaceRoleNoteTypeGrantsRequest([item, item], "تعديل الصلاحيات");
+
+        Assert.False(_validator.Validate(request).IsValid);
+    }
+}
+
+public sealed class ReplaceUserNoteTypeOverridesRequestValidatorTests
+{
+    private readonly ReplaceUserNoteTypeOverridesRequestValidator _validator = new();
+
+    [Fact]
+    public void Duplicate_note_type_ids_are_rejected()
+    {
+        var item = new ReplaceUserNoteTypeOverrideItem(
+            NoteTestFixtures.DefaultNoteTypeId,
+            CanViewOverride: true,
+            CanCreateOverride: null,
+            CanAssignOverride: null,
+            CanProcessOverride: null,
+            CanSubmitForVerificationOverride: null,
+            CanReviewOverride: null,
+            CanCancelOverride: null,
+            CanReopenOverride: null,
+            CanArchiveOverride: null,
+            CanRestoreOverride: null);
+        var request = new ReplaceUserNoteTypeOverridesRequest([item, item], "تعديل الاستثناءات");
+
+        Assert.False(_validator.Validate(request).IsValid);
+    }
 }

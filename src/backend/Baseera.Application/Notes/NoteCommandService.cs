@@ -19,6 +19,8 @@ public sealed class NoteCommandService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     INoteScopeService noteScope,
+    IOrganizationalScopeService orgScope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit,
     INoteQueryService queries) : INoteCommandService
 {
@@ -27,16 +29,19 @@ public sealed class NoteCommandService(
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesCreate);
         var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
 
-        noteScope.ValidateScopeShape(request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId);
+        await EnsureCanCreateTypeAsync(request.NoteTypeId, cancellationToken);
+        var intake = await ResolveIntakeAsync(userId, request.RegionId, request.FacilityId, cancellationToken);
+
+        noteScope.ValidateScopeShape(ScopeType.Facility, intake.RegionId, intake.FacilityId, null);
         await noteScope.EnsureOrgEntitiesActiveAsync(
-            request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId, cancellationToken);
+            ScopeType.Facility, intake.RegionId, intake.FacilityId, null, cancellationToken);
 
         var probe = new OperationalNote
         {
-            ScopeType = request.ScopeType,
-            RegionId = request.RegionId,
-            FacilityId = request.FacilityId,
-            FacilityUnitId = request.FacilityUnitId
+            ScopeType = ScopeType.Facility,
+            RegionId = intake.RegionId,
+            FacilityId = intake.FacilityId,
+            FacilityUnitId = null
         };
         if (!noteScope.CanAccess(probe))
         {
@@ -56,16 +61,16 @@ public sealed class NoteCommandService(
             ReferenceNumber = NoteReferenceFormatter.Format(sequence),
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
-            Category = request.Category,
+            NoteTypeId = request.NoteTypeId,
             Severity = request.Severity,
             Status = NoteStatus.Draft,
             SourceType = request.SourceType,
             SourceReference = string.IsNullOrWhiteSpace(request.SourceReference) ? null : request.SourceReference.Trim(),
             Classification = request.Classification,
-            ScopeType = request.ScopeType,
-            RegionId = await NormalizeRegionIdAsync(request, cancellationToken),
-            FacilityId = request.FacilityId,
-            FacilityUnitId = request.FacilityUnitId,
+            ScopeType = ScopeType.Facility,
+            RegionId = intake.RegionId,
+            FacilityId = intake.FacilityId,
+            FacilityUnitId = null,
             OwnerDepartmentId = request.OwnerDepartmentId,
             ReportedByUserId = userId,
             ReportedAtUtc = now,
@@ -96,6 +101,7 @@ public sealed class NoteCommandService(
                 note.Title,
                 note.Status,
                 note.Severity,
+                note.NoteTypeId,
                 note.Classification,
                 note.ScopeType,
                 note.RegionId,
@@ -112,6 +118,8 @@ public sealed class NoteCommandService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
+        await EnsureCanCreateTypeAsync(request.NoteTypeId, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
 
         if (note.Status is NoteStatus.Closed or NoteStatus.Cancelled)
@@ -123,7 +131,7 @@ public sealed class NoteCommandService(
         {
             note.Title,
             note.Description,
-            note.Category,
+            note.NoteTypeId,
             note.Severity,
             note.SourceType,
             note.SourceReference,
@@ -133,7 +141,7 @@ public sealed class NoteCommandService(
         };
         note.Title = request.Title.Trim();
         note.Description = request.Description.Trim();
-        note.Category = request.Category;
+        note.NoteTypeId = request.NoteTypeId;
         note.Severity = request.Severity;
         note.SourceType = request.SourceType;
         note.SourceReference = string.IsNullOrWhiteSpace(request.SourceReference) ? null : request.SourceReference.Trim();
@@ -155,7 +163,7 @@ public sealed class NoteCommandService(
             {
                 note.Title,
                 note.Description,
-                note.Category,
+                note.NoteTypeId,
                 note.Severity,
                 note.SourceType,
                 note.SourceReference,
@@ -174,6 +182,7 @@ public sealed class NoteCommandService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Open);
 
@@ -205,6 +214,7 @@ public sealed class NoteCommandService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesArchive);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.Archive, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
 
         note.IsDeleted = true;
@@ -230,6 +240,7 @@ public sealed class NoteCommandService(
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesRestore);
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, includeDeleted: true, cancellationToken: cancellationToken);
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.Restore, cancellationToken);
         if (!note.IsDeleted)
         {
             throw new InvalidOperationException("الملاحظة غير مؤرشفة.");
@@ -271,15 +282,49 @@ public sealed class NoteCommandService(
         });
     }
 
-    private async Task<Guid?> NormalizeRegionIdAsync(CreateNoteRequest request, CancellationToken cancellationToken)
+    private async Task EnsureCanCreateTypeAsync(Guid noteTypeId, CancellationToken cancellationToken)
     {
-        if (request.ScopeType == ScopeType.Facility && !request.RegionId.HasValue && request.FacilityId.HasValue)
+        var type = await db.NoteTypes.FirstOrDefaultAsync(t => t.Id == noteTypeId, cancellationToken)
+            ?? throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
+        if (!type.IsActive)
         {
-            var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == request.FacilityId.Value, cancellationToken)
-                ?? throw new KeyNotFoundException("السجن غير موجود.");
-            return facility.RegionId;
+            throw new InvalidOperationException("نوع الملاحظة غير فعال للإنشاء.");
         }
 
-        return request.RegionId;
+        await typeAccess.EnsureCanAsync(noteTypeId, NoteTypeCapability.Create, cancellationToken);
+    }
+
+    private async Task<(Guid RegionId, Guid FacilityId)> ResolveIntakeAsync(Guid userId, Guid? requestedRegionId, Guid? requestedFacilityId, CancellationToken cancellationToken)
+    {
+        if (!requestedRegionId.HasValue || !requestedFacilityId.HasValue)
+        {
+            throw new InvalidOperationException("يجب اختيار المنطقة ثم الموقع.");
+        }
+
+        var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == requestedFacilityId.Value && f.IsActive, cancellationToken)
+            ?? throw new KeyNotFoundException("الموقع غير موجود.");
+        if (facility.RegionId != requestedRegionId.Value)
+        {
+            throw new InvalidOperationException("الموقع لا يتبع المنطقة المحددة.");
+        }
+
+        var probe = new OperationalNote { ScopeType = ScopeType.Facility, RegionId = facility.RegionId, FacilityId = facility.Id };
+        if (!orgScope.CanAccess(probe))
+        {
+            throw new UnauthorizedAccessException("الموقع خارج نطاق المستخدم.");
+        }
+
+        var profile = await db.UserNoteIntakeProfiles.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, cancellationToken);
+        if (profile?.LockType == NoteIntakeLockType.Region && profile.RegionId != facility.RegionId)
+        {
+            throw new InvalidOperationException("المنطقة المحددة لا تطابق منطقة الإدخال المثبتة.");
+        }
+
+        if (profile?.LockType == NoteIntakeLockType.Facility && profile.FacilityId != facility.Id)
+        {
+            throw new InvalidOperationException("الموقع المحدد لا يطابق موقع الإدخال المثبت.");
+        }
+
+        return (facility.RegionId, facility.Id);
     }
 }

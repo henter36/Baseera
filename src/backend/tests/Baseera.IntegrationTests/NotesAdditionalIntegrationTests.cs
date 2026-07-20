@@ -35,7 +35,7 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
             {
                 title,
                 description = "وصف تفصيلي إضافي للاختبار",
-                category = NoteCategory.Operational,
+                noteTypeId = SeedIds.NoteTypeOperational,
                 severity,
                 sourceType = NoteSourceType.Manual,
                 sourceReference = (string?)null,
@@ -203,14 +203,14 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
         {
             title = "معلومة سرية جدًا",
             description = "تفاصيل حساسة للغاية",
-            category = NoteCategory.Security,
+            noteTypeId = SeedIds.NoteTypeSecurity,
             severity = NoteSeverity.High,
             sourceType = NoteSourceType.Manual,
             sourceReference = (string?)null,
             classification = ClassificationLevel.Secret,
-            scopeType = ScopeType.Global,
-            regionId = (Guid?)null,
-            facilityId = (Guid?)null,
+            scopeType = ScopeType.Facility,
+            regionId = SeedIds.RegionA,
+            facilityId = SeedIds.FacilityA1,
             facilityUnitId = (Guid?)null,
             ownerDepartmentId = (Guid?)null,
             dueAtUtc = (DateTimeOffset?)null
@@ -530,14 +530,14 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
     {
         title,
         description = "وصف تفصيلي إضافي للاختبار",
-        category = NoteCategory.Operational,
+        noteTypeId = SeedIds.NoteTypeOperational,
         severity = NoteSeverity.Medium,
         sourceType = NoteSourceType.Manual,
         sourceReference = (string?)null,
         classification,
-        scopeType = ScopeType.Global,
-        regionId = (Guid?)null,
-        facilityId = (Guid?)null,
+        scopeType = ScopeType.Facility,
+        regionId = SeedIds.RegionA,
+        facilityId = SeedIds.FacilityA1,
         facilityUnitId = (Guid?)null,
         ownerDepartmentId = (Guid?)null,
         dueAtUtc = DateTimeOffset.UtcNow.AddDays(3)
@@ -567,21 +567,41 @@ public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFa
         {
             title,
             description = "وصف تفصيلي إضافي للاختبار",
-            category = NoteCategory.Operational,
+            noteTypeId = SeedIds.NoteTypeOperational,
             severity = NoteSeverity.Medium,
             sourceType = NoteSourceType.Manual,
             sourceReference = (string?)null,
             classification = ClassificationLevel.Internal,
-            scopeType,
-            regionId,
-            facilityId,
-            facilityUnitId,
+            scopeType = ScopeType.Facility,
+            regionId = ResolveRegionId(regionId, facilityId),
+            facilityId = ResolveFacilityId(regionId, facilityId),
+            facilityUnitId = (Guid?)null,
             ownerDepartmentId = (Guid?)null,
             dueAtUtc = DateTimeOffset.UtcNow.AddDays(3)
         });
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, body);
         return JsonSerializer.Deserialize<NoteDetail>(body, JsonOptions)!;
+    }
+
+    private static Guid ResolveRegionId(Guid? regionId, Guid? facilityId)
+    {
+        if (regionId.HasValue)
+        {
+            return regionId.Value;
+        }
+
+        return facilityId == SeedIds.FacilityB1 ? SeedIds.RegionB : SeedIds.RegionA;
+    }
+
+    private static Guid ResolveFacilityId(Guid? regionId, Guid? facilityId)
+    {
+        if (facilityId.HasValue)
+        {
+            return facilityId.Value;
+        }
+
+        return regionId == SeedIds.RegionB ? SeedIds.FacilityB1 : SeedIds.FacilityA1;
     }
 
     private static async Task<NoteDetail> PostAsync(HttpClient client, string url, string rowVersion, string reason)

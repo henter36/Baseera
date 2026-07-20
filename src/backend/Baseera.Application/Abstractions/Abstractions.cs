@@ -28,6 +28,10 @@ public interface IBaseeraDbContext
     IQueryable<UserScope> UserScopes { get; }
     IQueryable<AuditLog> AuditLogs { get; }
     IQueryable<Attachment> Attachments { get; }
+    IQueryable<NoteType> NoteTypes { get; }
+    IQueryable<RoleNoteTypeGrant> RoleNoteTypeGrants { get; }
+    IQueryable<UserNoteTypeOverride> UserNoteTypeOverrides { get; }
+    IQueryable<UserNoteIntakeProfile> UserNoteIntakeProfiles { get; }
     IQueryable<OperationalNote> OperationalNotes { get; }
     /// <summary>Includes soft-deleted notes for archive restore only.</summary>
     IQueryable<OperationalNote> OperationalNotesIncludingDeleted { get; }

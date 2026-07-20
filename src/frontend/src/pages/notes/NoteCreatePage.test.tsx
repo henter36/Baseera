@@ -6,24 +6,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Me } from '../../api/client'
 import { NoteCreatePage } from './NoteCreatePage'
 
-const { createNote, listRegions, listFacilities, listFacilityUnits, listDepartments, navigateMock } = vi.hoisted(() => ({
+const NOTE_TYPE_ID = '44444444-4444-4444-4444-444444444403'
+
+const { createNote, listRegions, listFacilities, listDepartments, myNoteTypes, myIntakeContext, myIntakeFacilities, navigateMock } = vi.hoisted(() => ({
   createNote: vi.fn(),
   listRegions: vi.fn(async () => ({
-    items: [{ id: 'region-1', code: 'RG-1', nameAr: 'منطقة الرياض', isActive: true, createdAtUtc: '', rowVersion: '' }],
+    items: [{ id: '11111111-1111-4111-8111-111111111111', code: 'RG-1', nameAr: 'منطقة الرياض', isActive: true, createdAtUtc: '', rowVersion: '' }],
     page: 1,
     pageSize: 50,
     totalCount: 1,
   })),
   listFacilities: vi.fn(async () => ({
-    items: [{ id: 'facility-1', regionId: 'region-1', code: 'F-1', nameAr: 'سجن الرياض', isActive: true, rowVersion: '' }],
+    items: [{ id: '22222222-2222-4222-8222-222222222222', regionId: '11111111-1111-4111-8111-111111111111', code: 'F-1', nameAr: 'سجن الرياض', isActive: true, rowVersion: '' }],
     page: 1,
     pageSize: 50,
-    totalCount: 1,
-  })),
-  listFacilityUnits: vi.fn(async () => ({
-    items: [{ id: 'unit-1', facilityId: 'facility-1', code: 'U-1', nameAr: 'الوحدة الأولى', isActive: true }],
-    page: 1,
-    pageSize: 100,
     totalCount: 1,
   })),
   listDepartments: vi.fn(async () => ({
@@ -32,6 +28,41 @@ const { createNote, listRegions, listFacilities, listFacilityUnits, listDepartme
     pageSize: 100,
     totalCount: 1,
   })),
+  myNoteTypes: vi.fn(async () => [{
+    id: NOTE_TYPE_ID,
+    code: 'OPERATIONAL',
+    nameAr: 'تشغيلية',
+    descriptionAr: 'ملاحظات تشغيلية',
+    entryInstructionsAr: 'اكتب الأثر التشغيلي.',
+    sortOrder: 30,
+    isActive: true,
+    defaultSeverity: 1,
+    defaultSeverityAr: 'متوسطة',
+    defaultDueDays: 5,
+    rowVersion: 'rv',
+  }]),
+  myIntakeContext: vi.fn(async () => ({
+    lockType: 0,
+    lockedRegionId: null,
+    lockedRegionNameAr: null,
+    lockedFacilityId: null,
+    lockedFacilityNameAr: null,
+    regions: [{ id: '11111111-1111-4111-8111-111111111111', nameAr: 'منطقة الرياض' }],
+    creatableNoteTypes: [{
+      id: NOTE_TYPE_ID,
+      code: 'OPERATIONAL',
+      nameAr: 'تشغيلية',
+      descriptionAr: 'ملاحظات تشغيلية',
+      entryInstructionsAr: 'اكتب الأثر التشغيلي.',
+      sortOrder: 30,
+      isActive: true,
+      defaultSeverity: 1,
+      defaultSeverityAr: 'متوسطة',
+      defaultDueDays: 5,
+      rowVersion: 'rv',
+    }],
+  })),
+  myIntakeFacilities: vi.fn(async () => [{ id: '22222222-2222-4222-8222-222222222222', regionId: '11111111-1111-4111-8111-111111111111', nameAr: 'سجن الرياض' }]),
   navigateMock: vi.fn(),
 }))
 
@@ -60,8 +91,10 @@ vi.mock('../../api/client', async () => {
       ...actual.api,
       regions: listRegions,
       facilities: listFacilities,
-      facilityUnits: listFacilityUnits,
       departments: listDepartments,
+      myNoteTypes,
+      myNoteIntakeContext: myIntakeContext,
+      myNoteIntakeFacilities: myIntakeFacilities,
       notes: { ...actual.api.notes, create: createNote },
     },
   }
@@ -81,6 +114,10 @@ function renderPage() {
 describe('NoteCreatePage', () => {
   beforeEach(() => {
     createNote.mockReset()
+    listFacilities.mockClear()
+    myNoteTypes.mockClear()
+    myIntakeContext.mockClear()
+    myIntakeFacilities.mockClear()
     navigateMock.mockReset()
   })
 
@@ -91,40 +128,33 @@ describe('NoteCreatePage', () => {
 
     expect(await screen.findByText('العنوان مطلوب.')).toBeInTheDocument()
     expect(screen.getByText('الوصف مطلوب.')).toBeInTheDocument()
-    expect(screen.getByText('نطاق الملاحظة مطلوب.')).toBeInTheDocument()
+    expect(screen.getByText('يجب اختيار المنطقة أولًا.')).toBeInTheDocument()
+    expect(screen.getByText('يجب اختيار السجن.')).toBeInTheDocument()
+    expect(screen.getByText('نوع الملاحظة مطلوب.')).toBeInTheDocument()
     expect(createNote).not.toHaveBeenCalled()
   })
 
-  it('reveals region and facility fields only for scope types that need them', async () => {
+  it('shows region then facility then note type in the create flow', async () => {
     renderPage()
     const user = userEvent.setup()
 
-    expect(screen.queryByLabelText('المنطقة')).not.toBeInTheDocument()
-
-    await user.selectOptions(screen.getByLabelText('نطاق الملاحظة'), '2')
     expect(await screen.findByLabelText('المنطقة')).toBeInTheDocument()
-    expect(screen.queryByLabelText('السجن')).not.toBeInTheDocument()
-
-    await user.selectOptions(screen.getByLabelText('نطاق الملاحظة'), '3')
+    await user.selectOptions(await screen.findByRole('option', { name: 'منطقة الرياض' }).then(() => screen.getByLabelText('المنطقة')), '11111111-1111-4111-8111-111111111111')
     expect(await screen.findByLabelText('السجن')).toBeInTheDocument()
-    expect(screen.queryByLabelText('الوحدة')).not.toBeInTheDocument()
-
-    await user.selectOptions(screen.getByLabelText('نطاق الملاحظة'), '4')
-    expect(await screen.findByLabelText('الوحدة')).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: 'تشغيلية' })).toBeInTheDocument()
   })
 
-  it('loads facility units only after a facility is selected, for the FacilityUnit scope', async () => {
+  it('loads facilities only after a region is selected', async () => {
     renderPage()
     const user = userEvent.setup()
 
-    await user.selectOptions(screen.getByLabelText('نطاق الملاحظة'), '4')
-    const unitSelect = await screen.findByLabelText('الوحدة')
-    expect(unitSelect).toBeDisabled()
-    expect(listFacilityUnits).not.toHaveBeenCalled()
+    expect(myIntakeFacilities).not.toHaveBeenCalled()
+    expect(listFacilities).not.toHaveBeenCalled()
 
-    await user.selectOptions(await screen.findByLabelText('السجن'), 'facility-1')
-    await waitFor(() => expect(listFacilityUnits).toHaveBeenCalledWith('facility-1'))
-    expect(await screen.findByRole('option', { name: 'الوحدة الأولى' })).toBeInTheDocument()
+    await user.selectOptions(await screen.findByRole('option', { name: 'منطقة الرياض' }).then(() => screen.getByLabelText('المنطقة')), '11111111-1111-4111-8111-111111111111')
+    await waitFor(() => expect(myIntakeFacilities).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111'))
+    expect(listFacilities).not.toHaveBeenCalled()
+    expect(await screen.findByRole('option', { name: 'سجن الرياض' })).toBeInTheDocument()
   })
 
   it('submits with numeric enum values and navigates to the new note on success', async () => {
@@ -134,7 +164,9 @@ describe('NoteCreatePage', () => {
 
     await user.type(screen.getByLabelText('العنوان'), 'ملاحظة تجريبية')
     await user.type(screen.getByLabelText('الوصف'), 'وصف تفصيلي كافٍ.')
-    await user.selectOptions(screen.getByLabelText('نطاق الملاحظة'), '0')
+    await user.selectOptions(await screen.findByRole('option', { name: 'منطقة الرياض' }).then(() => screen.getByLabelText('المنطقة')), '11111111-1111-4111-8111-111111111111')
+    await user.selectOptions(await screen.findByRole('option', { name: 'سجن الرياض' }).then(() => screen.getByLabelText('السجن')), '22222222-2222-4222-8222-222222222222')
+    await user.selectOptions(screen.getByLabelText('نوع الملاحظة'), NOTE_TYPE_ID)
     await user.click(screen.getByRole('button', { name: 'حفظ المسودة' }))
 
     await waitFor(() => expect(createNote).toHaveBeenCalledTimes(1))
@@ -142,11 +174,13 @@ describe('NoteCreatePage', () => {
     expect(payload).toMatchObject({
       title: 'ملاحظة تجريبية',
       description: 'وصف تفصيلي كافٍ.',
-      category: 0,
-      severity: 0,
+      noteTypeId: NOTE_TYPE_ID,
+      severity: 1,
       sourceType: 0,
       classification: 0,
-      scopeType: 0,
+      scopeType: 3,
+      regionId: '11111111-1111-4111-8111-111111111111',
+      facilityId: '22222222-2222-4222-8222-222222222222',
     })
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/notes/note-42'))
   })
@@ -159,7 +193,9 @@ describe('NoteCreatePage', () => {
 
     await user.type(screen.getByLabelText('العنوان'), 'ملاحظة تجريبية')
     await user.type(screen.getByLabelText('الوصف'), 'وصف تفصيلي كافٍ.')
-    await user.selectOptions(screen.getByLabelText('نطاق الملاحظة'), '0')
+    await user.selectOptions(await screen.findByRole('option', { name: 'منطقة الرياض' }).then(() => screen.getByLabelText('المنطقة')), '11111111-1111-4111-8111-111111111111')
+    await user.selectOptions(await screen.findByRole('option', { name: 'سجن الرياض' }).then(() => screen.getByLabelText('السجن')), '22222222-2222-4222-8222-222222222222')
+    await user.selectOptions(screen.getByLabelText('نوع الملاحظة'), NOTE_TYPE_ID)
 
     const submitButton = screen.getByRole('button', { name: 'حفظ المسودة' })
     await user.click(submitButton)

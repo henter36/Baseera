@@ -21,11 +21,14 @@ public sealed class NoteCommandServiceTests : IDisposable
     {
         var reporter = NoteTestFixtures.AddUser(_db, "reporter");
         var actor = NoteTestFixtures.AddUser(_db, "actor");
+        NoteTestFixtures.GrantPermissions(_db, actor.Id, "Actor", permissions);
         var current = FakeUser(actor.Id, permissions);
         var scope = new NoteScopeService(new OrganizationalScopeService(current, _db), current, _db);
+        var orgScope = new OrganizationalScopeService(current, _db);
+        var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
-        var queries = new NoteQueryService(_db, current, scope, audit);
-        return (new NoteCommandService(_db, current, scope, audit, queries), actor.Id, reporter.Id);
+        var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
+        return (new NoteCommandService(_db, current, scope, orgScope, typeAccess, audit, queries), actor.Id, reporter.Id);
     }
 
     private static string RowVersionOf(OperationalNote note) => Convert.ToBase64String(note.RowVersion);
@@ -33,7 +36,7 @@ public sealed class NoteCommandServiceTests : IDisposable
     private static UpdateNoteRequest UpdateRequest(OperationalNote note) => new(
         Title: "عنوان محدّث",
         Description: "وصف محدّث بالكامل",
-        Category: NoteCategory.Security,
+        NoteTypeId: NoteTestFixtures.DefaultNoteTypeId,
         Severity: NoteSeverity.High,
         SourceType: NoteSourceType.Report,
         SourceReference: "REP-1",

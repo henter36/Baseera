@@ -5,7 +5,6 @@ import { api, ApiError, type NoteListFilters } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import {
   ClassificationLevelLabelsAr,
-  NoteCategoryLabelsAr,
   NoteSeverityLabelsAr,
   NoteStatusLabelsAr,
   enumOptions,
@@ -42,7 +41,8 @@ export function NotesListPage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [severity, setSeverity] = useState('')
-  const [category, setCategory] = useState('')
+  const [noteTypeId, setNoteTypeId] = useState('')
+  const [requiresMyAction, setRequiresMyAction] = useState(false)
   const [classification, setClassification] = useState('')
   const [regionId, setRegionId] = useState('')
   const [facilityId, setFacilityId] = useState('')
@@ -59,6 +59,7 @@ export function NotesListPage() {
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null)
 
   const regionsQuery = useQuery({ queryKey: ['notes-filter-regions'], queryFn: () => api.regions(), enabled: canView })
+  const noteTypesQuery = useQuery({ queryKey: ['notes-filter-note-types'], queryFn: () => api.myNoteTypes(), enabled: canView })
   const facilitiesQuery = useQuery({
     queryKey: ['notes-filter-facilities', regionId],
     queryFn: () => api.facilities(regionId || undefined),
@@ -72,7 +73,8 @@ export function NotesListPage() {
       search: search || undefined,
       status: status === '' ? undefined : Number(status),
       severity: severity === '' ? undefined : Number(severity),
-      category: category === '' ? undefined : Number(category),
+      noteTypeId: noteTypeId || undefined,
+      requiresMyAction: requiresMyAction || undefined,
       classification: classification === '' ? undefined : Number(classification),
       regionId: regionId || undefined,
       facilityId: facilityId || undefined,
@@ -82,7 +84,7 @@ export function NotesListPage() {
       sortBy,
       sortDesc,
     }),
-    [page, search, status, severity, category, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, sortBy, sortDesc],
+    [page, search, status, severity, noteTypeId, requiresMyAction, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, sortBy, sortDesc],
   )
 
   const query = useQuery({
@@ -153,12 +155,6 @@ export function NotesListPage() {
             <option key={o.value} value={o.value}>{o.labelAr}</option>
           ))}
         </select>
-        <select aria-label="التصنيف" value={category} onChange={(e) => { setPage(1); setCategory(e.target.value) }}>
-          <option value="">كل التصنيفات</option>
-          {enumOptions(NoteCategoryLabelsAr).map((o) => (
-            <option key={o.value} value={o.value}>{o.labelAr}</option>
-          ))}
-        </select>
         <select
           aria-label="مستوى التصنيف الأمني"
           value={classification}
@@ -203,6 +199,44 @@ export function NotesListPage() {
         </label>
       </div>
 
+      {noteTypesQuery.data && (
+        <div className="tabs" role="tablist" aria-label="أنواع الملاحظات">
+          {noteTypesQuery.data.length > 1 && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!noteTypeId && !requiresMyAction}
+              className={!noteTypeId && !requiresMyAction ? 'active' : undefined}
+              onClick={() => { setPage(1); setNoteTypeId(''); setRequiresMyAction(false) }}
+            >
+              الكل
+            </button>
+          )}
+          {noteTypesQuery.data.map((type) => (
+            <button
+              type="button"
+              role="tab"
+              key={type.id}
+              aria-selected={noteTypeId === type.id}
+              className={noteTypeId === type.id ? 'active' : undefined}
+              onClick={() => { setPage(1); setNoteTypeId(type.id); setRequiresMyAction(false) }}
+              title={type.descriptionAr || undefined}
+            >
+              {type.nameAr}{!type.isActive ? ' (غير فعال)' : ''}
+            </button>
+          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={requiresMyAction}
+            className={requiresMyAction ? 'active' : undefined}
+            onClick={() => { setPage(1); setRequiresMyAction(true); setNoteTypeId('') }}
+          >
+            تتطلب إجراء مني
+          </button>
+        </div>
+      )}
+
       {query.isLoading && <div className="loading">جاري التحميل…</div>}
 
       {query.isError && (
@@ -246,7 +280,7 @@ export function NotesListPage() {
                   <td>
                     <span className="badge" data-tone={severityTone(note.severity)}>{note.severityAr}</span>
                   </td>
-                  <td>{note.categoryAr}</td>
+                  <td>{note.noteTypeNameAr}{!note.noteTypeIsActive ? ' (غير فعال)' : ''}</td>
                   <td>
                     {formatDate(note.dueAtUtc)}
                     {note.isOverdue && <span className="badge" data-tone="danger" style={{ marginRight: '0.35rem' }}>متأخرة</span>}

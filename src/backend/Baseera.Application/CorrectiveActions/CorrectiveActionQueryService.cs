@@ -22,6 +22,7 @@ public sealed class CorrectiveActionQueryService(
     ICurrentUser currentUser,
     ICorrectiveActionScopeService scope,
     INoteScopeService noteScope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit) : ICorrectiveActionQueryService
 {
     private static readonly HashSet<string> SortAllowlist = new(StringComparer.OrdinalIgnoreCase)
@@ -35,6 +36,7 @@ public sealed class CorrectiveActionQueryService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsView);
         var q = await scope.FilterQueryableAsync(db.CorrectiveActions, cancellationToken);
+        q = await FilterByViewableNoteTypesAsync(q, cancellationToken);
         return await ListScopedAsync(q.AsNoTracking(), query, cancellationToken);
     }
 
@@ -49,6 +51,7 @@ public sealed class CorrectiveActionQueryService(
         {
             throw new KeyNotFoundException("الملاحظة غير موجودة.");
         }
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
 
         var q = await scope.FilterQueryableAsync(db.CorrectiveActions.Where(a => a.OperationalNoteId == noteId), cancellationToken);
         query.NoteId = noteId;
@@ -60,6 +63,11 @@ public sealed class CorrectiveActionQueryService(
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsView);
         var action = await db.CorrectiveActions.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
         if (action is null || !await scope.CanAccessAsync(action, cancellationToken))
+        {
+            return null;
+        }
+        var sourceNote = await db.OperationalNotes.AsNoTracking().FirstOrDefaultAsync(n => n.Id == action.OperationalNoteId, cancellationToken);
+        if (sourceNote is null || !await typeAccess.CanViewAsync(sourceNote.NoteTypeId, cancellationToken))
         {
             return null;
         }
@@ -126,7 +134,8 @@ public sealed class CorrectiveActionQueryService(
     public async Task<IReadOnlyList<CorrectiveActionStatusHistoryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken = default)
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsView);
-        _ = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
 
         var rows = await db.CorrectiveActionStatusHistories
             .Where(h => h.CorrectiveActionId == id)
@@ -151,7 +160,8 @@ public sealed class CorrectiveActionQueryService(
     public async Task<IReadOnlyList<CorrectiveActionAssignmentDto>> GetAssignmentsAsync(Guid id, CancellationToken cancellationToken = default)
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsView);
-        _ = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
 
         var rows = await db.CorrectiveActionAssignments
             .Where(a => a.CorrectiveActionId == id)
@@ -178,6 +188,21 @@ public sealed class CorrectiveActionQueryService(
         var rows = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
         var items = await MapListItemsAsync(rows, now, query.DueSoonDays ?? 7, cancellationToken);
         return new PagedResult<CorrectiveActionListItemDto> { Items = items, Page = page, PageSize = pageSize, TotalCount = total };
+    }
+
+    private async Task<IQueryable<CorrectiveAction>> FilterByViewableNoteTypesAsync(
+        IQueryable<CorrectiveAction> query,
+        CancellationToken cancellationToken)
+    {
+        var notes = await typeAccess.FilterViewableNotesAsync(db.OperationalNotes, cancellationToken);
+        return query.Where(action => notes.Any(note => note.Id == action.OperationalNoteId));
+    }
+
+    private async Task EnsureCanViewSourceNoteTypeAsync(Guid noteId, CancellationToken cancellationToken)
+    {
+        var note = await db.OperationalNotes.FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken)
+            ?? throw new KeyNotFoundException("الملاحظة غير موجودة.");
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
     }
 
     private async Task<IReadOnlyList<CorrectiveActionListItemDto>> MapListItemsAsync(

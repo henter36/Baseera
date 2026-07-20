@@ -18,7 +18,7 @@ public sealed class NoteListQueryParams
     public string? Search { get; set; }
     public NoteStatus? Status { get; set; }
     public NoteSeverity? Severity { get; set; }
-    public NoteCategory? Category { get; set; }
+    public Guid? NoteTypeId { get; set; }
     public NoteSourceType? SourceType { get; set; }
     public ClassificationLevel? Classification { get; set; }
     public Guid? RegionId { get; set; }
@@ -27,6 +27,7 @@ public sealed class NoteListQueryParams
     public Guid? OwnerDepartmentId { get; set; }
     public Guid? AssignedToUserId { get; set; }
     public bool? OverdueOnly { get; set; }
+    public bool? RequiresMyAction { get; set; }
     public DateTimeOffset? DueFrom { get; set; }
     public DateTimeOffset? DueTo { get; set; }
     public DateTimeOffset? CreatedFrom { get; set; }
@@ -41,7 +42,7 @@ public sealed class NoteListQueryParams
         Search = Search,
         Status = Status,
         Severity = Severity,
-        Category = Category,
+        NoteTypeId = NoteTypeId,
         SourceType = SourceType,
         Classification = Classification,
         RegionId = RegionId,
@@ -50,6 +51,7 @@ public sealed class NoteListQueryParams
         OwnerDepartmentId = OwnerDepartmentId,
         AssignedToUserId = AssignedToUserId,
         OverdueOnly = OverdueOnly ?? false,
+        RequiresMyAction = RequiresMyAction ?? false,
         DueFrom = DueFrom,
         DueTo = DueTo,
         CreatedFrom = CreatedFrom,

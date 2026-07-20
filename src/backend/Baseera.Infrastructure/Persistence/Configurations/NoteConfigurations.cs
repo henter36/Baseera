@@ -4,6 +4,88 @@ using Baseera.Domain.Notes;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
+internal sealed class NoteTypeConfiguration : IEntityTypeConfiguration<NoteType>
+{
+    public void Configure(EntityTypeBuilder<NoteType> builder)
+    {
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
+        builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.DescriptionAr).HasMaxLength(1000);
+        builder.Property(x => x.EntryInstructionsAr).HasMaxLength(2000);
+        builder.HasIndex(x => x.Code).IsUnique();
+        builder.HasIndex(x => x.SortOrder);
+        builder.ToTable("NoteTypes", t =>
+        {
+            t.HasCheckConstraint("CK_NoteTypes_SortOrder_NonNegative", "[SortOrder] >= 0");
+            t.HasCheckConstraint("CK_NoteTypes_DefaultDueDays_NonNegative", "[DefaultDueDays] IS NULL OR [DefaultDueDays] >= 0");
+        });
+        builder.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class RoleNoteTypeGrantConfiguration : IEntityTypeConfiguration<RoleNoteTypeGrant>
+{
+    public void Configure(EntityTypeBuilder<RoleNoteTypeGrant> builder)
+    {
+        builder.HasKey(x => x.Id);
+        builder.HasIndex(x => new { x.RoleId, x.NoteTypeId }).IsUnique();
+        builder.HasIndex(x => x.NoteTypeId);
+        builder.HasOne(x => x.Role).WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.NoteType).WithMany(x => x.RoleGrants).HasForeignKey(x => x.NoteTypeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class UserNoteTypeOverrideConfiguration : IEntityTypeConfiguration<UserNoteTypeOverride>
+{
+    public void Configure(EntityTypeBuilder<UserNoteTypeOverride> builder)
+    {
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+        builder.HasIndex(x => new { x.UserId, x.NoteTypeId }).IsUnique();
+        builder.HasIndex(x => x.NoteTypeId);
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.NoteType).WithMany(x => x.UserOverrides).HasForeignKey(x => x.NoteTypeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class UserNoteIntakeProfileConfiguration : IEntityTypeConfiguration<UserNoteIntakeProfile>
+{
+    public void Configure(EntityTypeBuilder<UserNoteIntakeProfile> builder)
+    {
+        builder.ToTable("UserNoteIntakeProfiles", t =>
+        {
+            t.HasCheckConstraint(
+                "CK_UserNoteIntakeProfiles_None_NoIds",
+                "([LockType] <> 0) OR ([RegionId] IS NULL AND [FacilityId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_UserNoteIntakeProfiles_Region_RequiresRegion",
+                "([LockType] <> 1) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_UserNoteIntakeProfiles_Facility_RequiresFacility",
+                "([LockType] <> 2) OR ([FacilityId] IS NOT NULL)");
+        });
+        builder.HasKey(x => x.Id);
+        builder.HasIndex(x => x.UserId).IsUnique();
+        builder.HasIndex(x => x.RegionId);
+        builder.HasIndex(x => x.FacilityId);
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Region).WithMany().HasForeignKey(x => x.RegionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Facility).WithMany().HasForeignKey(x => x.FacilityId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.ConfigureRowVersion();
+    }
+}
+
 internal sealed class OperationalNoteConfiguration : IEntityTypeConfiguration<OperationalNote>
 {
     public void Configure(EntityTypeBuilder<OperationalNote> builder)
@@ -36,6 +118,7 @@ internal sealed class OperationalNoteConfiguration : IEntityTypeConfiguration<Op
         builder.Property(x => x.ReopenReason).HasMaxLength(2000);
 
         builder.HasIndex(x => x.ReferenceNumber).IsUnique();
+        builder.HasIndex(x => x.NoteTypeId);
         builder.HasIndex(x => x.Status);
         builder.HasIndex(x => x.Severity);
         builder.HasIndex(x => x.DueAtUtc);
@@ -46,6 +129,7 @@ internal sealed class OperationalNoteConfiguration : IEntityTypeConfiguration<Op
         builder.HasIndex(x => x.ReportedByUserId);
         builder.HasIndex(x => x.CreatedAtUtc);
 
+        builder.HasOne(x => x.NoteType).WithMany(t => t.OperationalNotes).HasForeignKey(x => x.NoteTypeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Region).WithMany().HasForeignKey(x => x.RegionId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Facility).WithMany().HasForeignKey(x => x.FacilityId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.FacilityUnit).WithMany().HasForeignKey(x => x.FacilityUnitId).OnDelete(DeleteBehavior.Restrict);

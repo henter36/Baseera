@@ -78,6 +78,10 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Identity.UserScope> UserScopes => Enumerable.Empty<Domain.Identity.UserScope>().AsQueryable();
         public IQueryable<Domain.Audit.AuditLog> AuditLogs => Enumerable.Empty<Domain.Audit.AuditLog>().AsQueryable();
         public IQueryable<Domain.Attachments.Attachment> Attachments => Enumerable.Empty<Domain.Attachments.Attachment>().AsQueryable();
+        public IQueryable<NoteType> NoteTypes => Enumerable.Empty<NoteType>().AsQueryable();
+        public IQueryable<RoleNoteTypeGrant> RoleNoteTypeGrants => Enumerable.Empty<RoleNoteTypeGrant>().AsQueryable();
+        public IQueryable<UserNoteTypeOverride> UserNoteTypeOverrides => Enumerable.Empty<UserNoteTypeOverride>().AsQueryable();
+        public IQueryable<UserNoteIntakeProfile> UserNoteIntakeProfiles => Enumerable.Empty<UserNoteIntakeProfile>().AsQueryable();
         public IQueryable<OperationalNote> OperationalNotes => Enumerable.Empty<OperationalNote>().AsQueryable();
         public IQueryable<OperationalNote> OperationalNotesIncludingDeleted => OperationalNotes;
         public IQueryable<NoteAssignment> NoteAssignments => Enumerable.Empty<NoteAssignment>().AsQueryable();
@@ -115,7 +119,7 @@ public sealed class NoteValidatorTests
         var result = validator.TestValidate(new CreateNoteRequest(
             "   ",
             "وصف صالح للملاحظة",
-            NoteCategory.Operational,
+            NoteTestFixtures.DefaultNoteTypeId,
             NoteSeverity.Medium,
             NoteSourceType.Manual,
             null,
@@ -234,7 +238,8 @@ public sealed class NoteCriticalSoDTests
         var processorId = Guid.NewGuid();
         var (db, scope, current, audit) = CreateHarness(processorId, Domain.Identity.PermissionCodes.NotesVerifyClosure);
         var note = SeedCriticalPending(db, processorId);
-        var workflow = new NoteWorkflowService(db, current, scope, audit, new StubQueryService());
+        var typeAccess = new NoteTypeAccessService(db, current);
+        var workflow = new NoteWorkflowService(db, current, scope, typeAccess, audit, new StubQueryService());
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("إغلاق", "ملخص", Convert.ToBase64String(note.RowVersion))));
@@ -248,16 +253,9 @@ public sealed class NoteCriticalSoDTests
         var verifierId = Guid.NewGuid();
         var (db, scope, current, audit) = CreateHarness(verifierId, Domain.Identity.PermissionCodes.NotesVerifyClosure);
         var note = SeedCriticalPending(db, processorId);
-        db.Users.Add(new Domain.Identity.User
-        {
-            Id = verifierId,
-            ExternalSubject = "verifier",
-            UserName = "verifier",
-            DisplayNameAr = "معتمد"
-        });
-        db.SaveChanges();
 
-        var workflow = new NoteWorkflowService(db, current, scope, audit, new StubQueryService());
+        var typeAccess = new NoteTypeAccessService(db, current);
+        var workflow = new NoteWorkflowService(db, current, scope, typeAccess, audit, new StubQueryService());
         var result = await workflow.VerifyClosureAsync(
             note.Id,
             new CloseNoteRequest("إغلاق معتمد", "تم التحقق", Convert.ToBase64String(note.RowVersion)));
@@ -284,6 +282,7 @@ public sealed class NoteCriticalSoDTests
             ReferenceNumber = "OBS-00000999",
             Title = "حرجة",
             Description = "وصف",
+            NoteTypeId = NoteTestFixtures.DefaultNoteTypeId,
             Severity = NoteSeverity.Critical,
             Status = NoteStatus.PendingVerification,
             ScopeType = Domain.Common.ScopeType.Global,
@@ -326,6 +325,15 @@ public sealed class NoteCriticalSoDTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         var db = new Infrastructure.Persistence.BaseeraDbContext(options);
+        var user = new Domain.Identity.User
+        {
+            Id = userId,
+            ExternalSubject = "actor",
+            UserName = "actor",
+            DisplayNameAr = "actor"
+        };
+        db.Users.Add(user);
+        NoteTestFixtures.GrantPermissions(db, userId, "CriticalHarness", permission, Domain.Identity.PermissionCodes.NotesView);
         var current = new FakeCurrentUser(
             true,
             userId,
@@ -352,7 +360,7 @@ public sealed class NoteCriticalSoDTests
         public Task<NoteDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult<NoteDetailDto?>(new NoteDetailDto(
                 id, "OBS-00000999", "حرجة", "وصف", NoteStatus.Closed, "مغلقة",
-                NoteSeverity.Critical, "حرجة", NoteCategory.Operational, "تشغيلية",
+                NoteSeverity.Critical, "حرجة", NoteTestFixtures.DefaultNoteTypeId, "OPERATIONAL", "تشغيلية", null, null, true,
                 NoteSourceType.Manual, "يدوي", null, Domain.Attachments.ClassificationLevel.Internal,
                 Domain.Common.ScopeType.Global, null, null, null, null, Guid.Empty, null,
                 DateTimeOffset.UtcNow, null, false, null, null, null, DateTimeOffset.UtcNow, null, null,

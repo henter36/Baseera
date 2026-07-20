@@ -8,7 +8,8 @@
 | **Phase A.1** — تحصين الأمن والتفويض | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-a1-completion-report.md`](docs/phase-a1-completion-report.md) |
 | **Phase B.1** — نواة الملاحظات التشغيلية والتكليفات | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b1-completion-report.md`](docs/phase-b1-completion-report.md) |
 | **Phase B.2.1** — نواة الإجراءات التصحيحية | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b2-corrective-actions-completion-report.md`](docs/phase-b2-corrective-actions-completion-report.md) |
-| **Phase B.2.2** — نواة التصعيد والإشعارات الداخلية | المرحلة الحالية |
+| **Phase B.2.2** — نواة التصعيد والإشعارات الداخلية | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b22-escalations-notifications-completion-report.md`](docs/phase-b22-escalations-notifications-completion-report.md) |
+| **Phase B.2.3.1** — أنواع الملاحظات والصلاحيات الفعلية وتثبيت الإدخال | المرحلة الحالية |
 
 ## المتطلبات
 

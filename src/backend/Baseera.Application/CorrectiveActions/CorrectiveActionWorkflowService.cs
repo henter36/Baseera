@@ -1,6 +1,7 @@
 namespace Baseera.Application.CorrectiveActions;
 
 using Baseera.Application.Abstractions;
+using Baseera.Application.Notes;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public sealed class CorrectiveActionWorkflowService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     ICorrectiveActionScopeService scope,
+    INoteTypeAccessService typeAccess,
     IAuditService audit,
     ICorrectiveActionQueryService queries) : ICorrectiveActionWorkflowService
 {
@@ -41,6 +43,7 @@ public sealed class CorrectiveActionWorkflowService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsSubmitForVerification);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.PendingVerification);
         var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
@@ -75,6 +78,7 @@ public sealed class CorrectiveActionWorkflowService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsVerifyCompletion);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Completed);
         var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
@@ -100,6 +104,7 @@ public sealed class CorrectiveActionWorkflowService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsReopen);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Reopened);
         var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
@@ -122,6 +127,7 @@ public sealed class CorrectiveActionWorkflowService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, PermissionCodes.CorrectiveActionsCancel);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, request.RowVersion);
         CorrectiveActionStateMachine.EnsureAllowed(action.Status, CorrectiveActionStatus.Cancelled);
         var actorId = CorrectiveActionServiceSupport.RequireUserId(currentUser);
@@ -147,6 +153,7 @@ public sealed class CorrectiveActionWorkflowService(
     {
         CorrectiveActionAccessHelper.EnsurePermission(currentUser, options.Permission);
         var action = await CorrectiveActionAccessHelper.LoadInScopeOrNotFoundAsync(db, scope, options.Id, cancellationToken: cancellationToken);
+        await EnsureCanViewSourceNoteTypeAsync(action.OperationalNoteId, cancellationToken);
         CorrectiveActionAccessHelper.EnsureRowVersion(action.RowVersion, options.RowVersion);
         if (options.ToStatus == CorrectiveActionStatus.InProgress && action.Status == CorrectiveActionStatus.Reopened)
         {
@@ -181,6 +188,13 @@ public sealed class CorrectiveActionWorkflowService(
     {
         action.WorkStartedAtUtc ??= now;
         action.LastProcessedByUserId = actorId;
+    }
+
+    private async Task EnsureCanViewSourceNoteTypeAsync(Guid noteId, CancellationToken cancellationToken)
+    {
+        var note = await db.OperationalNotes.FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken)
+            ?? throw new KeyNotFoundException("الملاحظة غير موجودة.");
+        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
     }
 
     private async Task EnforceCriticalSoDAsync(CorrectiveAction action, Guid verifierId, CancellationToken cancellationToken)

@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type NoteDetail } from '../../api/client'
 import { NoteEditPage } from './NoteEditPage'
 
-const { getNote, updateNote, listDepartments, navigateMock } = vi.hoisted(() => ({
+const { getNote, updateNote, listDepartments, noteTypes, navigateMock } = vi.hoisted(() => ({
   getNote: vi.fn(),
   updateNote: vi.fn(),
   listDepartments: vi.fn(async () => ({
@@ -15,6 +15,19 @@ const { getNote, updateNote, listDepartments, navigateMock } = vi.hoisted(() => 
     pageSize: 100,
     totalCount: 1,
   })),
+  noteTypes: vi.fn(async () => [{
+    id: '44444444-4444-4444-4444-444444444403',
+    code: 'OPERATIONAL',
+    nameAr: 'تشغيلية',
+    descriptionAr: 'ملاحظات تشغيلية',
+    entryInstructionsAr: null,
+    sortOrder: 30,
+    isActive: true,
+    defaultSeverity: 1,
+    defaultSeverityAr: 'متوسطة',
+    defaultDueDays: 5,
+    rowVersion: 'rv',
+  }]),
   navigateMock: vi.fn(),
 }))
 
@@ -34,6 +47,7 @@ vi.mock('../../api/client', async () => {
     api: {
       ...actual.api,
       departments: listDepartments,
+      noteTypes,
       notes: { ...actual.api.notes, get: getNote, update: updateNote },
     },
   }
@@ -48,8 +62,12 @@ const baseNote: NoteDetail = {
   statusAr: 'مفتوحة',
   severity: 1,
   severityAr: 'متوسطة',
-  category: 0,
-  categoryAr: 'أمنية',
+  noteTypeId: '44444444-4444-4444-4444-444444444403',
+  noteTypeCode: 'OPERATIONAL',
+  noteTypeNameAr: 'تشغيلية',
+  noteTypeDescriptionAr: 'ملاحظات تشغيلية',
+  noteTypeEntryInstructionsAr: null,
+  noteTypeIsActive: true,
   sourceType: 0,
   sourceAr: 'يدوي',
   sourceReference: null,
