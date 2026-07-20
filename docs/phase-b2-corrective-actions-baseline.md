@@ -97,13 +97,13 @@ Use a connection string shape like this, with credentials loaded from a local se
 export BASEERA_TEST_CONNECTION='Server=<host>,<port>;User Id=<user>;Password=<from-secret-store>;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true'
 ```
 
-The integration fixture creates a unique test database per run. Prefer omitting a fixed `Database` value to avoid collisions between concurrent or repeated test runs.
+The integration fixture replaces any supplied `Database` value with a unique per-run name. The example omits `Database` for clarity; providing one is optional and it will be overridden by the fixture.
 
 Do not commit SQL Server passwords or real connection strings to Git.
 
 ## Successful baseline rerun
 
-The baseline was rerun after loading the local developer environment from `$HOME/.baseera-dev.env`, starting the `baseera-sql` container, deriving the mapped SQL Server port from Docker, exporting `BASEERA_TEST_CONNECTION` without a fixed database name, and verifying SQL Server readiness with `SELECT 1`.
+The baseline was rerun after loading the local developer environment from `$HOME/.baseera-dev.env`, starting the `baseera-sql` container, deriving the mapped SQL Server port from Docker, exporting `BASEERA_TEST_CONNECTION` with the fixture-controlled database behavior above, and verifying SQL Server readiness with `SELECT 1`.
 
 ### Backend build
 
