@@ -318,18 +318,36 @@ public static class DatabaseInitializer
 
         await db.SaveChangesAsync(cancellationToken);
 
-        var noteTypes = await db.NoteTypes.ToListAsync(cancellationToken);
+        var noteTypeIds = await db.NoteTypes
+            .Select(noteType => noteType.Id)
+            .ToListAsync(cancellationToken);
         var roles = await db.Roles.ToListAsync(cancellationToken);
+        var existingGrantPairs = await db.RoleNoteTypeGrants
+            .AsNoTracking()
+            .Select(grant => new
+            {
+                grant.RoleId,
+                grant.NoteTypeId
+            })
+            .ToListAsync(cancellationToken);
+        var existingGrantKeys = existingGrantPairs
+            .Select(grant => (grant.RoleId, grant.NoteTypeId))
+            .ToHashSet();
+
         foreach (var role in roles)
         {
-            foreach (var noteType in noteTypes)
+            foreach (var noteTypeId in noteTypeIds)
             {
-                if (await db.RoleNoteTypeGrants.AnyAsync(g => g.RoleId == role.Id && g.NoteTypeId == noteType.Id, cancellationToken))
+                if (!existingGrantKeys.Add((role.Id, noteTypeId)))
                 {
                     continue;
                 }
 
-                db.RoleNoteTypeGrants.Add(BuildDefaultGrant(role.Code, role.Id, noteType.Id));
+                db.RoleNoteTypeGrants.Add(
+                    BuildDefaultGrant(
+                        role.Code,
+                        role.Id,
+                        noteTypeId));
             }
         }
 

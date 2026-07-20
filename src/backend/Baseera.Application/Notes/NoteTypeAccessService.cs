@@ -33,8 +33,8 @@ public interface INoteTypeAccessService
     Task<bool> CanArchiveAsync(Guid noteTypeId, CancellationToken cancellationToken = default);
     Task<bool> CanRestoreAsync(Guid noteTypeId, CancellationToken cancellationToken = default);
     Task<EffectiveNoteTypeAccessDto?> GetEffectiveAccessAsync(Guid userId, Guid noteTypeId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyDictionary<Guid, EffectiveNoteTypeAccessDto?>> GetEffectiveAccessForUsersAsync(IEnumerable<Guid> userIds, Guid noteTypeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EffectiveNoteTypeAccessDto>> GetEffectiveAccessAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<Guid, EffectiveNoteTypeAccessDto?>> GetEffectiveAccessForUsersAsync(IEnumerable<Guid> userIds, Guid noteTypeId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<NoteTypeDto>> GetAccessibleNoteTypesAsync(NoteTypeCapability capability, CancellationToken cancellationToken = default);
     Task<IQueryable<OperationalNote>> FilterViewableNotesAsync(IQueryable<OperationalNote> query, CancellationToken cancellationToken = default);
     Task EnsureCanAsync(Guid noteTypeId, NoteTypeCapability capability, CancellationToken cancellationToken = default);
@@ -107,6 +107,18 @@ public sealed class NoteTypeAccessService(IBaseeraDbContext db, ICurrentUser cur
         return all.FirstOrDefault(item => item.NoteTypeId == noteTypeId);
     }
 
+    public async Task<IReadOnlyList<EffectiveNoteTypeAccessDto>> GetEffectiveAccessAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var noteTypes = await db.NoteTypes.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(t => t.NameAr).ToListAsync(cancellationToken);
+        var roleIds = await db.UserRoles.Where(role => role.UserId == userId).Select(role => role.RoleId).ToListAsync(cancellationToken);
+        var grants = await db.RoleNoteTypeGrants.AsNoTracking().Where(grant => grant.IsActive && roleIds.Contains(grant.RoleId)).ToListAsync(cancellationToken);
+        var overrides = await db.UserNoteTypeOverrides.AsNoTracking().Where(overrideRow => overrideRow.IsActive && overrideRow.UserId == userId).ToListAsync(cancellationToken);
+
+        return noteTypes
+            .Select(noteType => BuildAccessDto(noteType, grants.Where(g => g.NoteTypeId == noteType.Id), overrides.FirstOrDefault(o => o.NoteTypeId == noteType.Id)))
+            .ToList();
+    }
+
     public async Task<IReadOnlyDictionary<Guid, EffectiveNoteTypeAccessDto?>> GetEffectiveAccessForUsersAsync(
         IEnumerable<Guid> userIds,
         Guid noteTypeId,
@@ -148,20 +160,8 @@ public sealed class NoteTypeAccessService(IBaseeraDbContext db, ICurrentUser cur
             {
                 var userGrants = rolesByUser[id].SelectMany(roleId => grantsByRole[roleId]);
                 overrideByUser.TryGetValue(id, out var overrideRow);
-                return (EffectiveNoteTypeAccessDto?)BuildAccessDto(noteType, userGrants, overrideRow);
+                return BuildAccessDto(noteType, userGrants, overrideRow);
             });
-    }
-
-    public async Task<IReadOnlyList<EffectiveNoteTypeAccessDto>> GetEffectiveAccessAsync(Guid userId, CancellationToken cancellationToken = default)
-    {
-        var noteTypes = await db.NoteTypes.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(t => t.NameAr).ToListAsync(cancellationToken);
-        var roleIds = await db.UserRoles.Where(role => role.UserId == userId).Select(role => role.RoleId).ToListAsync(cancellationToken);
-        var grants = await db.RoleNoteTypeGrants.AsNoTracking().Where(grant => grant.IsActive && roleIds.Contains(grant.RoleId)).ToListAsync(cancellationToken);
-        var overrides = await db.UserNoteTypeOverrides.AsNoTracking().Where(overrideRow => overrideRow.IsActive && overrideRow.UserId == userId).ToListAsync(cancellationToken);
-
-        return noteTypes
-            .Select(noteType => BuildAccessDto(noteType, grants.Where(g => g.NoteTypeId == noteType.Id), overrides.FirstOrDefault(o => o.NoteTypeId == noteType.Id)))
-            .ToList();
     }
 
     private async Task<bool> CanAsync(Guid noteTypeId, NoteTypeCapability capability, CancellationToken cancellationToken)

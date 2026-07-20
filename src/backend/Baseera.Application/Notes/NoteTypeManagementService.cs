@@ -32,6 +32,8 @@ public sealed class NoteTypeManagementService(
     INoteTypeAccessService access,
     IAuditService audit) : INoteTypeManagementService
 {
+    private const string NoteTypeNotFoundMessage = "نوع الملاحظة غير موجود.";
+
     public async Task<IReadOnlyList<NoteTypeDto>> ListNoteTypesAsync(bool includeInactive = true, CancellationToken cancellationToken = default)
     {
         EnsureAny(PermissionCodes.NotesManageTypes, PermissionCodes.NotesView);
@@ -88,7 +90,7 @@ public sealed class NoteTypeManagementService(
     public async Task<NoteTypeDto> UpdateNoteTypeAsync(Guid id, UpdateNoteTypeRequest request, CancellationToken cancellationToken = default)
     {
         Ensure(PermissionCodes.NotesManageTypes);
-        var type = await db.NoteTypes.FirstOrDefaultAsync(t => t.Id == id, cancellationToken) ?? throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
+        var type = await db.NoteTypes.FirstOrDefaultAsync(t => t.Id == id, cancellationToken) ?? throw new KeyNotFoundException(NoteTypeNotFoundMessage);
         NoteAccessHelper.EnsureRowVersion(type.RowVersion, request.RowVersion);
         var old = new { type.NameAr, type.DescriptionAr, type.EntryInstructionsAr, type.SortOrder, type.DefaultSeverity, type.DefaultDueDays };
         type.NameAr = request.NameAr.Trim();
@@ -312,7 +314,7 @@ public sealed class NoteTypeManagementService(
     private async Task<NoteTypeDto> SetActiveAsync(Guid id, TransitionNoteRequest request, bool isActive, string action, CancellationToken cancellationToken)
     {
         Ensure(PermissionCodes.NotesManageTypes);
-        var type = await db.NoteTypes.FirstOrDefaultAsync(t => t.Id == id, cancellationToken) ?? throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
+        var type = await db.NoteTypes.FirstOrDefaultAsync(t => t.Id == id, cancellationToken) ?? throw new KeyNotFoundException(NoteTypeNotFoundMessage);
         NoteAccessHelper.EnsureRowVersion(type.RowVersion, request.RowVersion);
         type.IsActive = isActive;
         type.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -435,7 +437,7 @@ public sealed class NoteTypeManagementService(
     {
         if (!await db.NoteTypes.AnyAsync(t => t.Id == noteTypeId, cancellationToken))
         {
-            throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
+            throw new KeyNotFoundException(NoteTypeNotFoundMessage);
         }
     }
 
@@ -450,7 +452,7 @@ public sealed class NoteTypeManagementService(
         var existing = await db.NoteTypes.AsNoTracking().Where(type => ids.Contains(type.Id)).Select(type => type.Id).ToListAsync(cancellationToken);
         if (existing.Count != ids.Count)
         {
-            throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
+            throw new KeyNotFoundException(NoteTypeNotFoundMessage);
         }
     }
 
