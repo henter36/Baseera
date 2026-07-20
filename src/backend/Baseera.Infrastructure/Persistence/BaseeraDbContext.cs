@@ -4,6 +4,7 @@ using Baseera.Domain.Attachments;
 using Baseera.Domain.Audit;
 using Baseera.Domain.Common;
 using Baseera.Domain.CorrectiveActions;
+using Baseera.Domain.Escalations;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
@@ -33,6 +34,12 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<CorrectiveAction> CorrectiveActions => Set<CorrectiveAction>();
     public DbSet<CorrectiveActionAssignment> CorrectiveActionAssignments => Set<CorrectiveActionAssignment>();
     public DbSet<CorrectiveActionStatusHistory> CorrectiveActionStatusHistories => Set<CorrectiveActionStatusHistory>();
+    public DbSet<EscalationPolicy> EscalationPolicies => Set<EscalationPolicy>();
+    public DbSet<EscalationRule> EscalationRules => Set<EscalationRule>();
+    public DbSet<EscalationOccurrence> EscalationOccurrences => Set<EscalationOccurrence>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<NotificationDeliveryAttempt> NotificationDeliveryAttempts => Set<NotificationDeliveryAttempt>();
+    public DbSet<BackgroundJobLease> BackgroundJobLeases => Set<BackgroundJobLease>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -58,6 +65,36 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<CorrectiveAction> Application.Abstractions.IBaseeraDbContext.CorrectiveActionsIncludingDeleted => CorrectiveActions.IgnoreQueryFilters();
     IQueryable<CorrectiveActionAssignment> Application.Abstractions.IBaseeraDbContext.CorrectiveActionAssignments => CorrectiveActionAssignments;
     IQueryable<CorrectiveActionStatusHistory> Application.Abstractions.IBaseeraDbContext.CorrectiveActionStatusHistories => CorrectiveActionStatusHistories;
+    IQueryable<EscalationPolicy> Application.Abstractions.IBaseeraDbContext.EscalationPolicies => EscalationPolicies;
+    IQueryable<EscalationPolicy> Application.Abstractions.IBaseeraDbContext.EscalationPoliciesIncludingDeleted => EscalationPolicies.IgnoreQueryFilters();
+    IQueryable<EscalationRule> Application.Abstractions.IBaseeraDbContext.EscalationRules => EscalationRules;
+    IQueryable<EscalationRule> Application.Abstractions.IBaseeraDbContext.EscalationRulesIncludingDeleted => EscalationRules.IgnoreQueryFilters();
+    IQueryable<EscalationOccurrence> Application.Abstractions.IBaseeraDbContext.EscalationOccurrences => EscalationOccurrences;
+    IQueryable<Notification> Application.Abstractions.IBaseeraDbContext.Notifications => Notifications;
+    IQueryable<NotificationDeliveryAttempt> Application.Abstractions.IBaseeraDbContext.NotificationDeliveryAttempts => NotificationDeliveryAttempts;
+    IQueryable<BackgroundJobLease> Application.Abstractions.IBaseeraDbContext.BackgroundJobLeases => BackgroundJobLeases;
+
+    public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
+    public void ClearChanges() => ChangeTracker.Clear();
+
+    public async Task<TResult> ExecuteInTransactionAsync<TResult>(
+        Func<CancellationToken, Task<TResult>> operation,
+        CancellationToken cancellationToken = default)
+    {
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            return await operation(cancellationToken);
+        }
+
+        var strategy = Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            var result = await operation(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        });
+    }
 
     public new void Add<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Add(entity);
     public new void Update<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Update(entity);
@@ -105,11 +142,16 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<Attachment>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<OperationalNote>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<CorrectiveAction>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<EscalationPolicy>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<EscalationRule>().HasQueryFilter(e => !e.IsDeleted);
         // Join/dependent entities must filter deleted OperationalNote/User to avoid EF 10622 with required navigations.
         modelBuilder.Entity<NoteAssignment>().HasQueryFilter(na => !na.OperationalNote.IsDeleted && !na.AssignedByUser.IsDeleted);
         modelBuilder.Entity<NoteStatusHistory>().HasQueryFilter(h => !h.OperationalNote.IsDeleted && !h.ChangedByUser.IsDeleted);
         modelBuilder.Entity<CorrectiveActionAssignment>().HasQueryFilter(a => !a.CorrectiveAction.IsDeleted && !a.AssignedByUser.IsDeleted);
         modelBuilder.Entity<CorrectiveActionStatusHistory>().HasQueryFilter(h => !h.CorrectiveAction.IsDeleted && !h.ChangedByUser.IsDeleted);
+        modelBuilder.Entity<EscalationRule>().HasQueryFilter(r => !r.IsDeleted && !r.EscalationPolicy.IsDeleted);
+        modelBuilder.Entity<Notification>().HasQueryFilter(n => !n.RecipientUser.IsDeleted);
+        modelBuilder.Entity<NotificationDeliveryAttempt>().HasQueryFilter(a => !a.Notification.RecipientUser.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {
@@ -145,6 +187,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(this);
         NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
+        EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
     }
 }
 
@@ -201,6 +244,30 @@ internal static class CorrectiveActionStatusHistoryAppendOnlyGuard
     }
 }
 
+internal static class EscalationAppendOnlyGuard
+{
+    public static void EnsureEntriesAreAppendOnly(DbContext context)
+    {
+        var invalidOccurrences = context.ChangeTracker
+            .Entries<EscalationOccurrence>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        var invalidAttempts = context.ChangeTracker
+            .Entries<NotificationDeliveryAttempt>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidOccurrences.Any())
+        {
+            throw new InvalidOperationException("EscalationOccurrence is append-only and cannot be modified or deleted.");
+        }
+
+        if (invalidAttempts.Any())
+        {
+            throw new InvalidOperationException("NotificationDeliveryAttempt is append-only and cannot be modified or deleted.");
+        }
+    }
+}
+
 public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
 {
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
@@ -210,6 +277,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChanges(eventData, result);
@@ -225,6 +293,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChangesAsync(eventData, result, cancellationToken);

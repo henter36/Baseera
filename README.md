@@ -7,8 +7,8 @@
 | **Phase A** — التأسيس | مكتملة ومقبولة |
 | **Phase A.1** — تحصين الأمن والتفويض | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-a1-completion-report.md`](docs/phase-a1-completion-report.md) |
 | **Phase B.1** — نواة الملاحظات التشغيلية والتكليفات | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b1-completion-report.md`](docs/phase-b1-completion-report.md) |
-| **Phase B.2.1** — نواة الإجراءات التصحيحية | قيد PR — [`docs/phase-b2-corrective-actions-completion-report.md`](docs/phase-b2-corrective-actions-completion-report.md) |
-| **المرحلة التالية** | Phase B.2.2 |
+| **Phase B.2.1** — نواة الإجراءات التصحيحية | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b2-corrective-actions-completion-report.md`](docs/phase-b2-corrective-actions-completion-report.md) |
+| **Phase B.2.2** — نواة التصعيد والإشعارات الداخلية | المرحلة الحالية |
 
 ## المتطلبات
 

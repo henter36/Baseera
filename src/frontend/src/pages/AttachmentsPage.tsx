@@ -54,7 +54,7 @@ export function AttachmentsPage() {
           type="file"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
-        <button disabled={upload.isPending} onClick={() => upload.mutate()}>
+        <button type="button" disabled={upload.isPending} onClick={() => upload.mutate()}>
           رفع
         </button>
       </div>

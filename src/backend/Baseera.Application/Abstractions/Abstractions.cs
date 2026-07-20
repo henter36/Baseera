@@ -4,6 +4,7 @@ using Baseera.Domain.Audit;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.CorrectiveActions;
+using Baseera.Domain.Escalations;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
@@ -36,9 +37,20 @@ public interface IBaseeraDbContext
     IQueryable<CorrectiveAction> CorrectiveActionsIncludingDeleted { get; }
     IQueryable<CorrectiveActionAssignment> CorrectiveActionAssignments { get; }
     IQueryable<CorrectiveActionStatusHistory> CorrectiveActionStatusHistories { get; }
+    IQueryable<EscalationPolicy> EscalationPolicies { get; }
+    IQueryable<EscalationPolicy> EscalationPoliciesIncludingDeleted { get; }
+    IQueryable<EscalationRule> EscalationRules { get; }
+    IQueryable<EscalationRule> EscalationRulesIncludingDeleted { get; }
+    IQueryable<EscalationOccurrence> EscalationOccurrences { get; }
+    IQueryable<Notification> Notifications { get; }
+    IQueryable<NotificationDeliveryAttempt> NotificationDeliveryAttempts { get; }
+    IQueryable<BackgroundJobLease> BackgroundJobLeases { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
+    void Detach<TEntity>(TEntity entity) where TEntity : class;
+    void ClearChanges();
+    Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default);
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);

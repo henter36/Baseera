@@ -5,6 +5,7 @@ using Baseera.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -15,9 +16,16 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _databaseName = $"Baseera_Test_{Guid.NewGuid():N}";
     private readonly string _connectionString;
+    private readonly IInterceptor? _interceptor;
 
     public BaseeraApiFactory()
+        : this(null)
     {
+    }
+
+    private BaseeraApiFactory(IInterceptor? interceptor)
+    {
+        _interceptor = interceptor;
         var raw = Environment.GetEnvironmentVariable("BASEERA_TEST_CONNECTION");
         if (string.IsNullOrWhiteSpace(raw))
         {
@@ -53,7 +61,14 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
                 ["Attachments:RootPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName)
             });
         });
+
+        if (_interceptor is not null)
+        {
+            builder.ConfigureServices(services => services.AddSingleton(_interceptor));
+        }
     }
+
+    public static BaseeraApiFactory WithInterceptor(IInterceptor interceptor) => new(interceptor);
 
     public async Task SeedUserAsync(
         string subject,
