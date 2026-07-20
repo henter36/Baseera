@@ -40,5 +40,6 @@
 - Unit: 268 passed, 0 skipped.
 - Integration: 67 passed, 0 skipped.
 - Frontend: 91 passed, 0 skipped.
-- Sonar issues for this hardening round: 0 expected after fixes.
-- Final SHA: recorded in PR #5 head after push.
+- SonarCloud Quality Gate: Passed on hardening commit `cf7bce28a601c19f28dc298a40d9eff7f012a235`.
+- Eight targeted Sonar findings: 0 open after the hardening fixes.
+- Final implementation SHA before documentation finalization: `cf7bce28a601c19f28dc298a40d9eff7f012a235`.
