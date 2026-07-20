@@ -381,6 +381,7 @@ public sealed class EscalationProcessor(
         }
 
         await audit.WriteAsync(new AuditEntry { Action = "EscalationRunStarted", Module = EscalationModules.Escalations, EntityType = JobName, NewValues = new { leaseOwner, options.BatchSize, options.MaximumAttempts, options.RetryBaseSeconds } }, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
         var policies = await db.EscalationPolicies.AsNoTracking()
             .Where(p => p.IsEnabled)
             .Include(p => p.Rules)
@@ -395,7 +396,7 @@ public sealed class EscalationProcessor(
                 result.CandidatesEvaluated += candidates.Count;
                 foreach (var candidate in candidates)
                 {
-                    await ProcessCandidateAsync(policy, rule, candidate, now, result, cancellationToken);
+                    await ProcessCandidateSafelyAsync(policy, rule, candidate, now, result, cancellationToken);
                 }
             }
         }
@@ -404,6 +405,61 @@ public sealed class EscalationProcessor(
         await audit.WriteAsync(new AuditEntry { Action = "EscalationRunCompleted", Module = EscalationModules.Escalations, EntityType = JobName, NewValues = final }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return final;
+    }
+
+    private async Task ProcessCandidateSafelyAsync(
+        EscalationPolicy policy,
+        EscalationRule rule,
+        EscalationCandidate candidate,
+        DateTimeOffset now,
+        MutableRunResult result,
+        CancellationToken cancellationToken)
+    {
+        var occurrencesBefore = result.OccurrencesCreated;
+        var notificationsBefore = result.NotificationsCreated;
+        var suppressedBefore = result.Suppressed;
+        try
+        {
+            await db.ExecuteInTransactionAsync(async ct =>
+            {
+                await ProcessCandidateAsync(policy, rule, candidate, now, result, ct);
+                await db.SaveChangesAsync(ct);
+                return true;
+            }, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (DbUpdateException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            db.ClearChanges();
+            result.OccurrencesCreated = occurrencesBefore;
+            result.NotificationsCreated = notificationsBefore;
+            result.Suppressed = suppressedBefore;
+            result.Failed++;
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "EscalationCandidateFailed",
+                Module = EscalationModules.Escalations,
+                EntityType = candidate.TargetType.ToString(),
+                EntityId = candidate.TargetId.ToString(),
+                NewValues = new
+                {
+                    policyId = policy.Id,
+                    ruleId = rule.Id,
+                    candidate.TargetType,
+                    candidate.ReferenceNumber,
+                    errorType = ex.GetType().Name
+                },
+                Outcome = "Failed"
+            }, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private async Task<List<EscalationCandidate>> LoadCandidatesAsync(EscalationPolicy policy, EscalationRule rule, DateTimeOffset now, int batchSize, CancellationToken cancellationToken)
@@ -1009,16 +1065,17 @@ public sealed class EscalationOccurrenceService(
         }
 
         var now = timeProvider.GetUtcNow();
-        foreach (var notification in notifications)
+        var notificationIds = notifications.Select(notification => notification.Id).ToList();
+        foreach (var notificationId in notificationIds)
         {
             var nextAttempt = await db.NotificationDeliveryAttempts
-                .Where(a => a.NotificationId == notification.Id && a.Channel == NotificationChannel.InApp)
+                .Where(a => a.NotificationId == notificationId && a.Channel == NotificationChannel.InApp)
                 .Select(a => a.AttemptNumber)
                 .DefaultIfEmpty()
                 .MaxAsync(cancellationToken) + 1;
             db.Add(new NotificationDeliveryAttempt
             {
-                NotificationId = notification.Id,
+                NotificationId = notificationId,
                 Channel = NotificationChannel.InApp,
                 AttemptNumber = nextAttempt,
                 Status = NotificationDeliveryStatus.Delivered,
@@ -1027,7 +1084,7 @@ public sealed class EscalationOccurrenceService(
             });
         }
 
-        await audit.WriteAsync(new AuditEntry { Action = "NotificationDeliveryRetried", Module = "Notifications", EntityType = nameof(EscalationOccurrence), EntityId = id.ToString(), NewValues = new { Count = notifications.Count } }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "NotificationDeliveryRetried", Module = "Notifications", EntityType = nameof(EscalationOccurrence), EntityId = id.ToString(), NewValues = new { Count = notificationIds.Count } }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 

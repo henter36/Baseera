@@ -63,7 +63,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </nav>
         <div style={{ marginTop: '2rem', fontSize: '0.9rem' }}>
           <div>{me?.displayNameAr}</div>
-          <button className="secondary" style={{ marginTop: '0.75rem' }} onClick={logout}>
+          <button type="button" className="secondary" style={{ marginTop: '0.75rem' }} onClick={logout}>
             تسجيل الخروج
           </button>
         </div>

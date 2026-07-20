@@ -172,28 +172,28 @@ public static class ApiEndpoints
             return Results.Ok(await service.UpdateAsync(id, request, ct));
         }).RequireAuthorization(AuthPolicies.EscalationsManage);
 
-        policies.MapPost("/{id:guid}/activate", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+        policies.MapPost(EntityIdRoute + "/activate", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
             Results.Ok(await service.ActivateAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsActivate);
 
-        policies.MapPost("/{id:guid}/deactivate", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+        policies.MapPost(EntityIdRoute + "/deactivate", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
             Results.Ok(await service.DeactivateAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsActivate);
 
-        policies.MapPost("/{id:guid}/archive", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+        policies.MapPost(EntityIdRoute + "/archive", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
         {
             await service.ArchiveAsync(id, request, ct);
             return Results.NoContent();
         }).RequireAuthorization(AuthPolicies.EscalationsManage);
 
-        policies.MapPost("/{id:guid}/restore", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+        policies.MapPost(EntityIdRoute + "/restore", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
         {
             await service.RestoreAsync(id, request, ct);
             return Results.NoContent();
         }).RequireAuthorization(AuthPolicies.EscalationsManage);
 
-        policies.MapGet("/{id:guid}/rules", async (Guid id, IEscalationRuleService service, CancellationToken ct) =>
+        policies.MapGet(EntityIdRoute + "/rules", async (Guid id, IEscalationRuleService service, CancellationToken ct) =>
             Results.Ok(await service.ListAsync(id, ct))).RequireAuthorization(AuthPolicies.EscalationsView);
 
-        policies.MapPost("/{id:guid}/rules", async (Guid id, CreateEscalationRuleRequest request, IValidator<CreateEscalationRuleRequest> validator, IEscalationRuleService service, CancellationToken ct) =>
+        policies.MapPost(EntityIdRoute + "/rules", async (Guid id, CreateEscalationRuleRequest request, IValidator<CreateEscalationRuleRequest> validator, IEscalationRuleService service, CancellationToken ct) =>
         {
             await validator.ValidateAndThrowAsync(request, ct);
             return Results.Created($"/api/v1/escalation-policies/{id}/rules", await service.CreateAsync(id, request, ct));
@@ -206,10 +206,10 @@ public static class ApiEndpoints
             return Results.Ok(await service.UpdateAsync(id, request, ct));
         }).RequireAuthorization(AuthPolicies.EscalationsManage);
 
-        rules.MapPost("/{id:guid}/enable", async (Guid id, RowVersionRequest request, IEscalationRuleService service, CancellationToken ct) =>
+        rules.MapPost(EntityIdRoute + "/enable", async (Guid id, RowVersionRequest request, IEscalationRuleService service, CancellationToken ct) =>
             Results.Ok(await service.EnableAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsManage);
 
-        rules.MapPost("/{id:guid}/disable", async (Guid id, RowVersionRequest request, IEscalationRuleService service, CancellationToken ct) =>
+        rules.MapPost(EntityIdRoute + "/disable", async (Guid id, RowVersionRequest request, IEscalationRuleService service, CancellationToken ct) =>
             Results.Ok(await service.DisableAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsManage);
 
         var escalations = api.MapGroup("/escalations");
@@ -219,13 +219,13 @@ public static class ApiEndpoints
         escalations.MapGet("/occurrences", async ([AsParameters] EscalationOccurrenceQueryParams query, IEscalationOccurrenceService service, CancellationToken ct) =>
             Results.Ok(await service.ListAsync(query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.EscalationsViewOccurrences);
 
-        escalations.MapGet("/occurrences/{id:guid}", async (Guid id, IEscalationOccurrenceService service, CancellationToken ct) =>
+        escalations.MapGet("/occurrences" + EntityIdRoute, async (Guid id, IEscalationOccurrenceService service, CancellationToken ct) =>
         {
             var item = await service.GetAsync(id, ct);
             return item is null ? Results.NotFound() : Results.Ok(item);
         }).RequireAuthorization(AuthPolicies.EscalationsViewOccurrences);
 
-        escalations.MapPost("/occurrences/{id:guid}/retry", async (Guid id, IEscalationOccurrenceService service, CancellationToken ct) =>
+        escalations.MapPost("/occurrences" + EntityIdRoute + "/retry", async (Guid id, IEscalationOccurrenceService service, CancellationToken ct) =>
         {
             await service.RetryAsync(id, ct);
             return Results.NoContent();
@@ -247,13 +247,13 @@ public static class ApiEndpoints
             return item is null ? Results.NotFound() : Results.Ok(item);
         }).RequireAuthorization(AuthPolicies.NotificationsViewOwn);
 
-        notifications.MapPost("/{id:guid}/read", async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
+        notifications.MapPost(EntityIdRoute + "/read", async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
             Results.Ok(await service.MarkReadAsync(id, request, ct))).RequireAuthorization(AuthPolicies.NotificationsMarkRead);
 
         notifications.MapPost("/read-all", async (INotificationService service, CancellationToken ct) =>
             Results.Ok(new { count = await service.MarkAllReadAsync(ct) })).RequireAuthorization(AuthPolicies.NotificationsMarkRead);
 
-        notifications.MapPost("/{id:guid}/archive", async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
+        notifications.MapPost(EntityIdRoute + "/archive", async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
             Results.Ok(await service.ArchiveAsync(id, request, ct))).RequireAuthorization(AuthPolicies.NotificationsArchiveOwn);
     }
 
