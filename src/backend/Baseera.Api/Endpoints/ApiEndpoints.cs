@@ -5,6 +5,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.Common;
+using Baseera.Application.CorrectiveActions;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
@@ -136,8 +137,100 @@ public static class ApiEndpoints
         }).RequireAuthorization(AuthPolicies.AttachmentsDownload);
 
         MapNotesEndpoints(api);
+        MapCorrectiveActionEndpoints(api);
 
         return api;
+    }
+
+    private static void MapCorrectiveActionEndpoints(RouteGroupBuilder api)
+    {
+        var actions = api.MapGroup("/corrective-actions");
+
+        actions.MapGet("/", async ([AsParameters] CorrectiveActionListQueryParams query, ICorrectiveActionQueryService queries, CancellationToken ct) =>
+            Results.Ok(await queries.ListAsync(query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.CorrectiveActionsView);
+
+        actions.MapGet("/{id:guid}", async (Guid id, ICorrectiveActionQueryService queries, CancellationToken ct) =>
+        {
+            var item = await queries.GetDetailAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsView);
+
+        actions.MapPut("/{id:guid}", async (Guid id, UpdateCorrectiveActionRequest request, IValidator<UpdateCorrectiveActionRequest> validator, ICorrectiveActionCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await commands.UpdateAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsUpdate);
+
+        actions.MapPost("/{id:guid}/submit", async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await commands.SubmitAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsUpdate);
+
+        actions.MapPost("/{id:guid}/assign", async (Guid id, AssignCorrectiveActionRequest request, IValidator<AssignCorrectiveActionRequest> validator, ICorrectiveActionAssignmentService assignments, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await assignments.AssignAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsAssign);
+
+        actions.MapPost("/{id:guid}/start-work", async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.StartWorkAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsStartWork);
+
+        actions.MapPost("/{id:guid}/submit-for-verification", async (Guid id, CompleteCorrectiveActionRequest request, IValidator<CompleteCorrectiveActionRequest> validator, ICorrectiveActionWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.SubmitForVerificationAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsSubmitForVerification);
+
+        actions.MapPost("/{id:guid}/return-for-rework", async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.ReturnForReworkAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsReturnForRework);
+
+        actions.MapPost("/{id:guid}/verify-completion", async (Guid id, CompleteCorrectiveActionRequest request, IValidator<CompleteCorrectiveActionRequest> validator, ICorrectiveActionWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.VerifyCompletionAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsVerifyCompletion);
+
+        actions.MapPost("/{id:guid}/reopen", async (Guid id, ReopenCorrectiveActionRequest request, IValidator<ReopenCorrectiveActionRequest> validator, ICorrectiveActionWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.ReopenAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsReopen);
+
+        actions.MapPost("/{id:guid}/cancel", async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionWorkflowService workflow, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.CancelAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsCancel);
+
+        actions.MapPost("/{id:guid}/archive", async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await commands.ArchiveAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsArchive);
+
+        actions.MapPost("/{id:guid}/restore", async (Guid id, TransitionCorrectiveActionRequest request, IValidator<TransitionCorrectiveActionRequest> validator, ICorrectiveActionCommandService commands, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await commands.RestoreAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsRestore);
+
+        actions.MapGet("/{id:guid}/history", async (Guid id, ICorrectiveActionQueryService queries, CancellationToken ct) =>
+            Results.Ok(await queries.GetHistoryAsync(id, ct))).RequireAuthorization(AuthPolicies.CorrectiveActionsView);
+
+        actions.MapGet("/{id:guid}/assignments", async (Guid id, ICorrectiveActionQueryService queries, CancellationToken ct) =>
+            Results.Ok(await queries.GetAssignmentsAsync(id, ct))).RequireAuthorization(AuthPolicies.CorrectiveActionsView);
+
+        actions.MapGet("/{id:guid}/attachments", async (Guid id, IAttachmentAppService attachments, CancellationToken ct) =>
+            Results.Ok(await attachments.ListForEntityAsync("CorrectiveAction", id, ct))).RequireAuthorization(AuthPolicies.CorrectiveActionsView);
     }
 
     private static void MapNotesEndpoints(RouteGroupBuilder api)
@@ -237,6 +330,16 @@ public static class ApiEndpoints
         // KeyNotFoundException path AttachmentService uses for single-attachment downloads.
         notes.MapGet("/{id:guid}/attachments", async (Guid id, IAttachmentAppService attachments, CancellationToken ct) =>
             Results.Ok(await attachments.ListForEntityAsync("OperationalNote", id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapGet("/{id:guid}/corrective-actions", async (Guid id, [AsParameters] CorrectiveActionListQueryParams query, ICorrectiveActionQueryService actions, CancellationToken ct) =>
+            Results.Ok(await actions.ListForNoteAsync(id, query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.CorrectiveActionsView);
+
+        notes.MapPost("/{id:guid}/corrective-actions", async (Guid id, CreateCorrectiveActionRequest request, IValidator<CreateCorrectiveActionRequest> validator, ICorrectiveActionCommandService actions, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await actions.CreateDraftAsync(id, request, ct);
+            return Results.Created($"/api/v1/corrective-actions/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.CorrectiveActionsCreate);
     }
 
     private static async Task<IResult> ListNotesAsync(

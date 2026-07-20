@@ -82,10 +82,15 @@ public sealed class NoteScopeShapeTests
         public IQueryable<OperationalNote> OperationalNotesIncludingDeleted => OperationalNotes;
         public IQueryable<NoteAssignment> NoteAssignments => Enumerable.Empty<NoteAssignment>().AsQueryable();
         public IQueryable<NoteStatusHistory> NoteStatusHistories => Enumerable.Empty<NoteStatusHistory>().AsQueryable();
+        public IQueryable<Domain.CorrectiveActions.CorrectiveAction> CorrectiveActions => Enumerable.Empty<Domain.CorrectiveActions.CorrectiveAction>().AsQueryable();
+        public IQueryable<Domain.CorrectiveActions.CorrectiveAction> CorrectiveActionsIncludingDeleted => CorrectiveActions;
+        public IQueryable<Domain.CorrectiveActions.CorrectiveActionAssignment> CorrectiveActionAssignments => Enumerable.Empty<Domain.CorrectiveActions.CorrectiveActionAssignment>().AsQueryable();
+        public IQueryable<Domain.CorrectiveActions.CorrectiveActionStatusHistory> CorrectiveActionStatusHistories => Enumerable.Empty<Domain.CorrectiveActions.CorrectiveActionStatusHistory>().AsQueryable();
         public void Add<TEntity>(TEntity entity) where TEntity : class { }
         public void Update<TEntity>(TEntity entity) where TEntity : class { }
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
+        public Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
     }
 }
 

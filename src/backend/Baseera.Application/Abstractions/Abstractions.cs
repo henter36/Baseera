@@ -3,6 +3,7 @@ namespace Baseera.Application.Abstractions;
 using Baseera.Domain.Audit;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
+using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
@@ -31,11 +32,16 @@ public interface IBaseeraDbContext
     IQueryable<OperationalNote> OperationalNotesIncludingDeleted { get; }
     IQueryable<NoteAssignment> NoteAssignments { get; }
     IQueryable<NoteStatusHistory> NoteStatusHistories { get; }
+    IQueryable<CorrectiveAction> CorrectiveActions { get; }
+    IQueryable<CorrectiveAction> CorrectiveActionsIncludingDeleted { get; }
+    IQueryable<CorrectiveActionAssignment> CorrectiveActionAssignments { get; }
+    IQueryable<CorrectiveActionStatusHistory> CorrectiveActionStatusHistories { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
+    Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ICurrentUser

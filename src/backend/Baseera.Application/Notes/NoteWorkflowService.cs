@@ -1,6 +1,7 @@
 namespace Baseera.Application.Notes;
 
 using Baseera.Application.Abstractions;
+using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Microsoft.EntityFrameworkCore;
@@ -67,6 +68,11 @@ public sealed class NoteWorkflowService(
 
         var actorId = RequireUserId();
         await EnforceCriticalSoDAsync(note, actorId, cancellationToken);
+        await EnsureNoBlockingCorrectiveActionsAsync(
+            note.Id,
+            "NoteClosureBlockedByCorrectiveActions",
+            "لا يمكن إغلاق الملاحظة لوجود {0} إجراء تصحيحي نشط.",
+            cancellationToken);
 
         var from = note.Status;
         var now = DateTimeOffset.UtcNow;
@@ -145,6 +151,11 @@ public sealed class NoteWorkflowService(
         }
 
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Cancelled);
+        await EnsureNoBlockingCorrectiveActionsAsync(
+            note.Id,
+            "NoteCancellationBlockedByCorrectiveActions",
+            "لا يمكن إلغاء الملاحظة لوجود {0} إجراء تصحيحي نشط. يجب إكمال الإجراءات أو إلغاؤها بسبب واضح أولًا.",
+            cancellationToken);
 
         var actorId = RequireUserId();
         var from = note.Status;
@@ -270,6 +281,36 @@ public sealed class NoteWorkflowService(
         {
             throw new InvalidOperationException("لا يوجد تكليف حالي للانتقال إلى قيد المعالجة.");
         }
+    }
+
+    private async Task EnsureNoBlockingCorrectiveActionsAsync(
+        Guid noteId,
+        string auditAction,
+        string messageTemplate,
+        CancellationToken cancellationToken)
+    {
+        var blockingCount = await db.CorrectiveActions.CountAsync(
+            action =>
+                action.OperationalNoteId == noteId &&
+                action.Status != CorrectiveActionStatus.Completed &&
+                action.Status != CorrectiveActionStatus.Cancelled,
+            cancellationToken);
+        if (blockingCount == 0)
+        {
+            return;
+        }
+
+        await audit.WriteAsync(new AuditEntry
+        {
+            Action = auditAction,
+            Module = NoteAccessHelper.ModuleName,
+            EntityType = nameof(OperationalNote),
+            EntityId = noteId.ToString(),
+            NewValues = new { BlockingCorrectiveActions = blockingCount },
+            Outcome = "Blocked"
+        }, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        throw new InvalidOperationException(string.Format(messageTemplate, blockingCount));
     }
 
     private async Task CompleteCurrentAssignmentAsync(Guid noteId, DateTimeOffset now, CancellationToken cancellationToken)

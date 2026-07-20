@@ -15,7 +15,8 @@ public static class AttachmentEntityTypes
         "Building",
         "Department",
         "User",
-        "OperationalNote"
+        "OperationalNote",
+        "CorrectiveAction"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     public static bool IsAllowed(string entityType) => Allowed.Contains(entityType);

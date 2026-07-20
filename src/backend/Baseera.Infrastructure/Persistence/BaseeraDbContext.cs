@@ -3,6 +3,7 @@ namespace Baseera.Infrastructure.Persistence;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Audit;
 using Baseera.Domain.Common;
+using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
@@ -29,6 +30,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<OperationalNote> OperationalNotes => Set<OperationalNote>();
     public DbSet<NoteAssignment> NoteAssignments => Set<NoteAssignment>();
     public DbSet<NoteStatusHistory> NoteStatusHistories => Set<NoteStatusHistory>();
+    public DbSet<CorrectiveAction> CorrectiveActions => Set<CorrectiveAction>();
+    public DbSet<CorrectiveActionAssignment> CorrectiveActionAssignments => Set<CorrectiveActionAssignment>();
+    public DbSet<CorrectiveActionStatusHistory> CorrectiveActionStatusHistories => Set<CorrectiveActionStatusHistory>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -50,6 +54,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotesIncludingDeleted => OperationalNotes.IgnoreQueryFilters();
     IQueryable<NoteAssignment> Application.Abstractions.IBaseeraDbContext.NoteAssignments => NoteAssignments;
     IQueryable<NoteStatusHistory> Application.Abstractions.IBaseeraDbContext.NoteStatusHistories => NoteStatusHistories;
+    IQueryable<CorrectiveAction> Application.Abstractions.IBaseeraDbContext.CorrectiveActions => CorrectiveActions;
+    IQueryable<CorrectiveAction> Application.Abstractions.IBaseeraDbContext.CorrectiveActionsIncludingDeleted => CorrectiveActions.IgnoreQueryFilters();
+    IQueryable<CorrectiveActionAssignment> Application.Abstractions.IBaseeraDbContext.CorrectiveActionAssignments => CorrectiveActionAssignments;
+    IQueryable<CorrectiveActionStatusHistory> Application.Abstractions.IBaseeraDbContext.CorrectiveActionStatusHistories => CorrectiveActionStatusHistories;
 
     public new void Add<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Add(entity);
     public new void Update<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Update(entity);
@@ -62,9 +70,20 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         return rows.Single().Value;
     }
 
+    public async Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default)
+    {
+        var rows = await Database
+            .SqlQueryRaw<SequenceValueRow>("SELECT NEXT VALUE FOR [CorrectiveActionReferenceSequence] AS [Value]")
+            .ToListAsync(cancellationToken);
+        return rows.Single().Value;
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasSequence<long>("OperationalNoteReferenceSequence")
+            .StartsAt(1)
+            .IncrementsBy(1);
+        modelBuilder.HasSequence<long>("CorrectiveActionReferenceSequence")
             .StartsAt(1)
             .IncrementsBy(1);
 
@@ -85,9 +104,12 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<UserScope>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Attachment>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<OperationalNote>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<CorrectiveAction>().HasQueryFilter(e => !e.IsDeleted);
         // Join/dependent entities must filter deleted OperationalNote/User to avoid EF 10622 with required navigations.
         modelBuilder.Entity<NoteAssignment>().HasQueryFilter(na => !na.OperationalNote.IsDeleted && !na.AssignedByUser.IsDeleted);
         modelBuilder.Entity<NoteStatusHistory>().HasQueryFilter(h => !h.OperationalNote.IsDeleted && !h.ChangedByUser.IsDeleted);
+        modelBuilder.Entity<CorrectiveActionAssignment>().HasQueryFilter(a => !a.CorrectiveAction.IsDeleted && !a.AssignedByUser.IsDeleted);
+        modelBuilder.Entity<CorrectiveActionStatusHistory>().HasQueryFilter(h => !h.CorrectiveAction.IsDeleted && !h.ChangedByUser.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {
@@ -122,6 +144,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     {
         AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(this);
         NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
+        CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
     }
 }
 
@@ -163,6 +186,21 @@ internal static class NoteStatusHistoryAppendOnlyGuard
     }
 }
 
+internal static class CorrectiveActionStatusHistoryAppendOnlyGuard
+{
+    public static void EnsureEntriesAreAppendOnly(DbContext context)
+    {
+        var invalidEntries = context.ChangeTracker
+            .Entries<CorrectiveActionStatusHistory>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidEntries.Any())
+        {
+            throw new InvalidOperationException("CorrectiveActionStatusHistory is append-only and cannot be modified or deleted.");
+        }
+    }
+}
+
 public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
 {
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
@@ -171,6 +209,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         {
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChanges(eventData, result);
@@ -185,6 +224,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         {
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChangesAsync(eventData, result, cancellationToken);

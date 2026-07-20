@@ -5,6 +5,7 @@ import {
   api,
   ApiError,
   type Attachment,
+  type CorrectiveActionListItem,
   type NoteAssignment,
   type NoteDetail,
   type NoteStatusHistoryEntry,
@@ -18,6 +19,11 @@ import {
   statusTone,
 } from '../../notes/noteEnums'
 import { type NoteActionDef, getAllowedActions } from '../../notes/noteWorkflow'
+import {
+  CorrectiveActionStatus,
+  correctiveActionPriorityTone,
+  correctiveActionStatusTone,
+} from '../../correctiveActions/correctiveActionEnums'
 
 function formatDate(value?: string | null): string {
   if (!value) return '—'
@@ -530,6 +536,73 @@ function CurrentAssignmentSection({ note }: Readonly<{ note: NoteDetail }>) {
   )
 }
 
+function CorrectiveActionsSection({ noteId }: Readonly<{ noteId: string }>) {
+  const canView = usePermission('CorrectiveActions.View')
+  const canCreate = usePermission('CorrectiveActions.Create')
+  const query = useQuery({
+    queryKey: ['note-corrective-actions-summary', noteId],
+    queryFn: () => api.notes.correctiveActions(noteId, { page: 1, pageSize: 5, sortBy: 'createdAtUtc', sortDesc: true }),
+    enabled: canView,
+  })
+
+  if (!canView) return null
+
+  const items = query.data?.items ?? []
+  const countBy = (predicate: (item: CorrectiveActionListItem) => boolean) => items.filter(predicate).length
+  const completed = countBy((i) => i.status === CorrectiveActionStatus.Completed)
+  const inProgress = countBy((i) => i.status === CorrectiveActionStatus.InProgress)
+  const pending = countBy((i) => i.status === CorrectiveActionStatus.PendingVerification)
+  const overdue = countBy((i) => i.isOverdue)
+
+  return (
+    <div className="panel-section">
+      <div className="page-header">
+        <h2 className="section-title">الإجراءات التصحيحية</h2>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {canCreate && <Link to={`/notes/${noteId}/corrective-actions/new`}><button type="button" className="secondary">إضافة إجراء</button></Link>}
+          <Link to={`/corrective-actions?noteId=${noteId}`}><button type="button" className="secondary">عرض الجميع</button></Link>
+        </div>
+      </div>
+      {query.isLoading && <div className="loading">جاري تحميل الإجراءات…</div>}
+      {query.isError && (
+        <div className="error" role="alert">
+          <span>تعذر تحميل الإجراءات التصحيحية.</span>
+          <button type="button" className="secondary" onClick={() => query.refetch()}>إعادة المحاولة</button>
+        </div>
+      )}
+      {query.data && (
+        <>
+          <div className="detail-grid">
+            <div><span className="muted">الإجمالي</span><div>{query.data.totalCount}</div></div>
+            <div><span className="muted">المكتمل ضمن العينة</span><div>{completed}</div></div>
+            <div><span className="muted">قيد التنفيذ ضمن العينة</span><div>{inProgress}</div></div>
+            <div><span className="muted">بانتظار التحقق ضمن العينة</span><div>{pending}</div></div>
+            <div><span className="muted">المتأخر ضمن العينة</span><div>{overdue}</div></div>
+          </div>
+          {items.length === 0 && <div className="empty">لا توجد إجراءات تصحيحية لهذه الملاحظة.</div>}
+          {items.length > 0 && (
+            <table>
+              <thead><tr><th>الرقم</th><th>العنوان</th><th>الحالة</th><th>الأولوية</th><th>الاستحقاق</th><th></th></tr></thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.referenceNumber}</td>
+                    <td>{item.title}</td>
+                    <td><span className="badge" data-tone={correctiveActionStatusTone(item.status)}>{item.statusAr}</span></td>
+                    <td><span className="badge" data-tone={correctiveActionPriorityTone(item.priority)}>{item.priorityAr}</span></td>
+                    <td>{formatDate(item.dueAtUtc)} {item.isOverdue && <span className="badge" data-tone="danger">متأخر</span>}</td>
+                    <td><Link to={`/corrective-actions/${item.id}`}>عرض</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function AssignmentsHistorySection({
   assignments,
   isLoading,
@@ -718,6 +791,7 @@ export function NoteDetailPage() {
 
       <NoteSummaryGrid note={note} />
       <NoteDescriptionSection note={note} />
+      <CorrectiveActionsSection noteId={note.id} />
       <CurrentAssignmentSection note={note} />
       <AssignmentsHistorySection assignments={assignmentsQuery.data} isLoading={assignmentsQuery.isLoading} />
       <StatusTimelineSection history={historyQuery.data} isLoading={historyQuery.isLoading} />

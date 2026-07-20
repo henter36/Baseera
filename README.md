@@ -7,7 +7,8 @@
 | **Phase A** — التأسيس | مكتملة ومقبولة |
 | **Phase A.1** — تحصين الأمن والتفويض | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-a1-completion-report.md`](docs/phase-a1-completion-report.md) |
 | **Phase B.1** — نواة الملاحظات التشغيلية والتكليفات | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b1-completion-report.md`](docs/phase-b1-completion-report.md) |
-| **المرحلة التالية** | Phase B.2 |
+| **Phase B.2.1** — نواة الإجراءات التصحيحية | قيد PR — [`docs/phase-b2-corrective-actions-completion-report.md`](docs/phase-b2-corrective-actions-completion-report.md) |
+| **المرحلة التالية** | Phase B.2.2 |
 
 ## المتطلبات
 
@@ -49,8 +50,8 @@ npm run dev
 # Unit
 dotnet test src/backend/tests/Baseera.UnitTests
 
-# Integration — يتطلب متغير بيئة؛ لا يوجد fallback في الكود
-export BASEERA_TEST_CONNECTION='Server=<host>,<port>;Database=Baseera_Test;User Id=<user>;Password=<from-secret-store>;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true'
+# Integration — يتطلب متغير بيئة؛ Fixture ينشئ قاعدة اختبار فريدة
+export BASEERA_TEST_CONNECTION='Server=<host>,<port>;User Id=<user>;Password=<from-secret-store>;Encrypt=False;TrustServerCertificate=True;MultipleActiveResultSets=true'
 dotnet test src/backend/tests/Baseera.IntegrationTests
 
 cd src/frontend

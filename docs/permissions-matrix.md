@@ -73,6 +73,34 @@
 
 `Auditor` و `ReadOnlyUser` يحصلان فقط على `Notes.View`.
 
+## صلاحيات الإجراءات التصحيحية (مفعّلة في B.2.1)
+
+النطاق مشتق من `OperationalNote` الأصلية. السجل غير الموجود أو خارج النطاق يعود `404 Not Found` لمنع التعداد، ونقص الصلاحية داخل النطاق يعود `403 Forbidden`.
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Regional Coordinator | Facility Director | Facility Coordinator | Auditor | ReadOnlyUser |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:---------------------:|:-------------------:|:----------------------:|:-------:|:------------:|
+| CorrectiveActions.View | عرض الإجراءات ضمن النطاق | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| CorrectiveActions.ViewSensitive | عرض محتوى حساس دون حجب | ✓ | ✓ | صريح | | | | | صريح | صريح |
+| CorrectiveActions.Create | إنشاء إجراء مرتبط بملاحظة | ✓ | | ✓ | ✓ | ✓ | ✓ | ✓ | | |
+| CorrectiveActions.Update | تحديث الحقول القابلة للتحرير | ✓ | | ✓ | ✓ | ✓ | ✓ | ✓ | | |
+| CorrectiveActions.Assign | تكليف/إعادة تكليف | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | |
+| CorrectiveActions.StartWork | بدء المعالجة | ✓ | | | | ✓ | | ✓ | | |
+| CorrectiveActions.SubmitForVerification | إرسال للتحقق | ✓ | | | | ✓ | | ✓ | | |
+| CorrectiveActions.VerifyCompletion | اعتماد الإنجاز | ✓ | ✓ | ✓ | ✓ | | ✓ | | | |
+| CorrectiveActions.ReturnForRework | إعادة للمعالجة | ✓ | ✓ | ✓ | ✓ | | ✓ | | | |
+| CorrectiveActions.Reopen | إعادة فتح إجراء مكتمل | ✓ | ✓ | ✓ | ✓ | | ✓ | | | |
+| CorrectiveActions.Cancel | إلغاء إجراء | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | |
+| CorrectiveActions.Archive | أرشفة حذف ناعم | ✓ | ✓ | | ✓ | | ✓ | | | |
+| CorrectiveActions.Restore | استعادة من الأرشفة | ✓ | ✓ | | ✓ | | ✓ | | | |
+
+### فصل الواجبات على الإجراءات الحرجة
+
+للإجراء التصحيحي ذي أولوية `Critical`: أي مستخدم شارك في المعالجة الفعلية لا يعتمد الإنجاز النهائي، حتى إذا كان `SystemAdministrator`. المشاركة تُستنتج من `CorrectiveActionStatusHistory` عبر:
+
+- `Assigned → InProgress`
+- `Reopened → InProgress`
+- `InProgress → PendingVerification`
+
 ### فصل الواجبات على الملاحظات الحرجة (Critical SoD)
 
 لملاحظة بمستوى خطورة Critical تحديدًا: **لا يجوز لأي مستخدم شارك في المعالجة الفعلية للملاحظة الحرجة
@@ -111,6 +139,7 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 |---------|---------|
 | حركة تسليح | المنشئ ≠ المعتمد لنفس الحركة |
 | ملاحظة حرجة | أي مشارك في المعالجة الفعلية ≠ المعتمد النهائي (مُفعّلة عبر NoteStatusHistory؛ SystemAdministrator لا يتجاوز) |
+| إجراء تصحيحي حرج | أي مشارك في المعالجة الفعلية ≠ معتمد الإنجاز (مُفعّلة عبر CorrectiveActionStatusHistory؛ SystemAdministrator لا يتجاوز) |
 | واقعة جسيمة | مدخل التقرير ≠ المعتمد النهائي |
 | تصدير حساس | يتطلب `Reports.ExportSensitive` أو `Attachments.DownloadSensitive` + تسجيل تدقيق |
 

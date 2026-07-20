@@ -22,6 +22,10 @@
 
 Corrective multi-actions, auto-escalation, notifications, background jobs, executive dashboard, reports/export, form builder, vehicles/armament/workforce, AI, external integrations, maps/GPS, Phase B.2/B.3.
 
+## Phase B.2.1 Addendum
+
+Phase B.2.1 adds corrective actions as the first allowed corrective multi-action slice. It also hardens B.1 note workflow by blocking note closure or cancellation while active corrective actions remain. Completed and Cancelled corrective actions do not block the note transition.
+
 ## Local test results (implementation tip)
 
 | Suite | Before | After | Skipped |

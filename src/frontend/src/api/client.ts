@@ -305,6 +305,120 @@ export type ReopenNoteRequest = {
   rowVersion: string
 }
 
+export type CorrectiveActionListItem = {
+  id: string
+  referenceNumber: string
+  operationalNoteId: string
+  operationalNoteReferenceNumber?: string | null
+  title: string
+  descriptionSnippet?: string | null
+  priority: number
+  priorityAr: string
+  status: number
+  statusAr: string
+  classification: number
+  ownerDepartmentId?: string | null
+  dueAtUtc?: string | null
+  isOverdue: boolean
+  isDueSoon: boolean
+  overdueDays?: number | null
+  currentAssigneeDisplay?: string | null
+  createdAtUtc: string
+  rowVersion: string
+  isSensitiveRedacted: boolean
+}
+
+export type CorrectiveActionAssignment = {
+  id: string
+  correctiveActionId: string
+  assignedToUserId?: string | null
+  assignedToUserDisplayName?: string | null
+  assignedToDepartmentId?: string | null
+  assignedToDepartmentName?: string | null
+  assignedByUserId: string
+  assignedByDisplayName?: string | null
+  assignedAtUtc: string
+  dueAtUtc?: string | null
+  reason: string
+  acceptedAtUtc?: string | null
+  completedAtUtc?: string | null
+  endedAtUtc?: string | null
+  endReason?: string | null
+  isCurrent: boolean
+}
+
+export type CorrectiveActionDetail = CorrectiveActionListItem & {
+  description: string
+  createdByUserId: string
+  createdByDisplayName?: string | null
+  submittedAtUtc?: string | null
+  workStartedAtUtc?: string | null
+  submittedForVerificationAtUtc?: string | null
+  completedAtUtc?: string | null
+  completedByUserId?: string | null
+  completionSummary?: string | null
+  reopenedAtUtc?: string | null
+  reopenReason?: string | null
+  cancelledAtUtc?: string | null
+  cancelReason?: string | null
+  currentAssignment?: CorrectiveActionAssignment | null
+}
+
+export type CorrectiveActionStatusHistoryEntry = {
+  id: string
+  fromStatus?: number | null
+  toStatus: number
+  toStatusAr: string
+  changedByUserId: string
+  changedByDisplayName?: string | null
+  changedAtUtc: string
+  reason?: string | null
+  assignmentId?: string | null
+  metadataJson?: string | null
+}
+
+export type CorrectiveActionListFilters = {
+  page?: number
+  pageSize?: number
+  search?: string
+  noteId?: string
+  status?: number
+  priority?: number
+  classification?: number
+  ownerDepartmentId?: string
+  assignedToUserId?: string
+  regionId?: string
+  facilityId?: string
+  facilityUnitId?: string
+  overdueOnly?: boolean
+  dueSoonDays?: number
+  dueFrom?: string
+  dueTo?: string
+  createdFrom?: string
+  createdTo?: string
+  sortBy?: string
+  sortDesc?: boolean
+}
+
+export type CreateCorrectiveActionRequest = {
+  title: string
+  description: string
+  priority: number
+  classification?: number | null
+  ownerDepartmentId?: string | null
+  dueAtUtc?: string | null
+}
+
+export type UpdateCorrectiveActionRequest = CreateCorrectiveActionRequest & {
+  classification: number
+  rowVersion: string
+}
+
+export type AssignCorrectiveActionRequest = AssignNoteRequest
+export type TransitionCorrectiveActionRequest = TransitionNoteRequest
+export type CompleteCorrectiveActionRequest = { reason: string; completionSummary: string; rowVersion: string }
+export type ReopenCorrectiveActionRequest = ReopenNoteRequest
+
 export type Attachment = {
   id: string
   entityType: string
@@ -389,6 +503,31 @@ function buildNoteQuery(filters: NoteListFilters): string {
   appendEnumFilterParams(params, filters)
   appendScopeFilterParams(params, filters)
   appendDateRangeParams(params, filters)
+  return params.toString()
+}
+
+function buildCorrectiveActionQuery(filters: CorrectiveActionListFilters): string {
+  const params = new URLSearchParams()
+  params.set('page', String(filters.page ?? 1))
+  params.set('pageSize', String(filters.pageSize ?? 20))
+  if (filters.search) params.set('search', filters.search)
+  if (filters.noteId) params.set('noteId', filters.noteId)
+  if (filters.status !== undefined) params.set('status', String(filters.status))
+  if (filters.priority !== undefined) params.set('priority', String(filters.priority))
+  if (filters.classification !== undefined) params.set('classification', String(filters.classification))
+  if (filters.ownerDepartmentId) params.set('ownerDepartmentId', filters.ownerDepartmentId)
+  if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
+  if (filters.regionId) params.set('regionId', filters.regionId)
+  if (filters.facilityId) params.set('facilityId', filters.facilityId)
+  if (filters.facilityUnitId) params.set('facilityUnitId', filters.facilityUnitId)
+  if (filters.overdueOnly) params.set('overdueOnly', 'true')
+  if (filters.dueSoonDays !== undefined) params.set('dueSoonDays', String(filters.dueSoonDays))
+  if (filters.dueFrom) params.set('dueFrom', filters.dueFrom)
+  if (filters.dueTo) params.set('dueTo', filters.dueTo)
+  if (filters.createdFrom) params.set('createdFrom', filters.createdFrom)
+  if (filters.createdTo) params.set('createdTo', filters.createdTo)
+  if (filters.sortBy) params.set('sortBy', filters.sortBy)
+  if (filters.sortDesc) params.set('sortDesc', 'true')
   return params.toString()
 }
 
@@ -491,5 +630,40 @@ export const api = {
     history: (id: string) => request<NoteStatusHistoryEntry[]>(`/api/v1/notes/${id}/history`),
     assignments: (id: string) => request<NoteAssignment[]>(`/api/v1/notes/${id}/assignments`),
     attachments: (id: string) => request<Attachment[]>(`/api/v1/notes/${id}/attachments`),
+    correctiveActions: (id: string, filters: CorrectiveActionListFilters = {}) =>
+      request<Paged<CorrectiveActionListItem>>(`/api/v1/notes/${id}/corrective-actions?${buildCorrectiveActionQuery(filters)}`),
+    createCorrectiveAction: (id: string, body: CreateCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/notes/${id}/corrective-actions`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+  },
+
+  correctiveActions: {
+    list: (filters: CorrectiveActionListFilters = {}) =>
+      request<Paged<CorrectiveActionListItem>>(`/api/v1/corrective-actions?${buildCorrectiveActionQuery(filters)}`),
+    get: (id: string) => request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}`),
+    update: (id: string, body: UpdateCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}`, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    submit: (id: string, body: TransitionCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    assign: (id: string, body: AssignCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/assign`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    startWork: (id: string, body: TransitionCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/start-work`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    submitForVerification: (id: string, body: CompleteCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/submit-for-verification`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    returnForRework: (id: string, body: TransitionCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/return-for-rework`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    verifyCompletion: (id: string, body: CompleteCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/verify-completion`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    reopen: (id: string, body: ReopenCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/reopen`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    cancel: (id: string, body: TransitionCorrectiveActionRequest) =>
+      request<CorrectiveActionDetail>(`/api/v1/corrective-actions/${id}/cancel`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    archive: (id: string, body: TransitionCorrectiveActionRequest) =>
+      request<void>(`/api/v1/corrective-actions/${id}/archive`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    restore: (id: string, body: TransitionCorrectiveActionRequest) =>
+      request<void>(`/api/v1/corrective-actions/${id}/restore`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    history: (id: string) => request<CorrectiveActionStatusHistoryEntry[]>(`/api/v1/corrective-actions/${id}/history`),
+    assignments: (id: string) => request<CorrectiveActionAssignment[]>(`/api/v1/corrective-actions/${id}/assignments`),
+    attachments: (id: string) => request<Attachment[]>(`/api/v1/corrective-actions/${id}/attachments`),
   },
 }

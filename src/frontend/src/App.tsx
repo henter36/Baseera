@@ -4,6 +4,10 @@ import { AttachmentsPage } from './pages/AttachmentsPage'
 import { AuditPage } from './pages/AuditPage'
 import { FacilitiesPage } from './pages/FacilitiesPage'
 import { LoginPage } from './pages/LoginPage'
+import { CorrectiveActionCreatePage } from './pages/corrective-actions/CorrectiveActionCreatePage'
+import { CorrectiveActionDetailPage } from './pages/corrective-actions/CorrectiveActionDetailPage'
+import { CorrectiveActionEditPage } from './pages/corrective-actions/CorrectiveActionEditPage'
+import { CorrectiveActionsListPage } from './pages/corrective-actions/CorrectiveActionsListPage'
 import { NoteCreatePage } from './pages/notes/NoteCreatePage'
 import { NoteDetailPage } from './pages/notes/NoteDetailPage'
 import { NoteEditPage } from './pages/notes/NoteEditPage'
@@ -22,6 +26,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Organization.View') && <NavLink to="/regions" className={({ isActive }) => isActive ? 'active' : undefined}>المناطق</NavLink>}
           {hasPermission('Organization.View') && <NavLink to="/facilities" className={({ isActive }) => isActive ? 'active' : undefined}>السجون</NavLink>}
           {hasPermission('Notes.View') && <NavLink to="/notes" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
+          {hasPermission('CorrectiveActions.View') && <NavLink to="/corrective-actions" className={({ isActive }) => isActive ? 'active' : undefined}>الإجراءات التصحيحية</NavLink>}
           {hasPermission('Users.View') && <NavLink to="/users" className={({ isActive }) => isActive ? 'active' : undefined}>المستخدمون</NavLink>}
           {hasPermission('Audit.View') && <NavLink to="/audit" className={({ isActive }) => isActive ? 'active' : undefined}>سجل التدقيق</NavLink>}
           {hasPermission('Attachments.Upload') && <NavLink to="/attachments" className={({ isActive }) => isActive ? 'active' : undefined}>المرفقات</NavLink>}
@@ -56,6 +61,10 @@ export default function App() {
       <Route path="/notes/new" element={<Protected><NoteCreatePage /></Protected>} />
       <Route path="/notes/:id" element={<Protected><NoteDetailPage /></Protected>} />
       <Route path="/notes/:id/edit" element={<Protected><NoteEditPage /></Protected>} />
+      <Route path="/notes/:noteId/corrective-actions/new" element={<Protected><CorrectiveActionCreatePage /></Protected>} />
+      <Route path="/corrective-actions" element={<Protected><CorrectiveActionsListPage /></Protected>} />
+      <Route path="/corrective-actions/:id" element={<Protected><CorrectiveActionDetailPage /></Protected>} />
+      <Route path="/corrective-actions/:id/edit" element={<Protected><CorrectiveActionEditPage /></Protected>} />
       <Route path="/users" element={<Protected><UsersPage /></Protected>} />
       <Route path="/audit" element={<Protected><AuditPage /></Protected>} />
       <Route path="/attachments" element={<Protected><AttachmentsPage /></Protected>} />

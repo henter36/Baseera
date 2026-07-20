@@ -2,6 +2,7 @@ namespace Baseera.Domain.Notes;
 
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
+using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Organization;
 
@@ -134,6 +135,7 @@ public class OperationalNote : SoftDeletableEntity, IScopedEntity
 
     public ICollection<NoteAssignment> Assignments { get; set; } = new List<NoteAssignment>();
     public ICollection<NoteStatusHistory> StatusHistory { get; set; } = new List<NoteStatusHistory>();
+    public ICollection<CorrectiveAction> CorrectiveActions { get; set; } = new List<CorrectiveAction>();
 }
 
 public class NoteAssignment : EntityBase
