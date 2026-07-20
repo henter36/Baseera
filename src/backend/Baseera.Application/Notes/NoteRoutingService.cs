@@ -318,6 +318,12 @@ public sealed class NoteRoutingService(
             warnings.Add("لا يوجد مستخدم مؤهل للدور المحدد.");
         }
 
+        var due = await ComputeDueAtAsync(
+            effectiveNote,
+            resolution.Rule,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+
         return new NoteRoutingPreviewDto(
             resolution.Rule is null ? null : ToRuleDto(resolution.Rule),
             resolution.Specificity,
@@ -326,8 +332,8 @@ public sealed class NoteRoutingService(
             expectedUser?.UserId,
             expectedUser is null ? 0 : 1,
             resolution.Rule?.ReviewerRoleId,
-            ComputeDueAt(effectiveNote, resolution.Rule, timeProvider.GetUtcNow()).DueAt,
-            ComputeDueAt(effectiveNote, resolution.Rule, timeProvider.GetUtcNow()).Source,
+            due.DueAt,
+            due.Source,
             warnings);
     }
 
@@ -338,6 +344,12 @@ public sealed class NoteRoutingService(
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesViewRoutingDiagnostics);
         var to = query.ToUtc ?? timeProvider.GetUtcNow();
         var from = query.FromUtc ?? to.AddDays(-30);
+        if (from > to)
+        {
+            throw new InvalidOperationException(
+                "تاريخ البدء لا يمكن أن يكون بعد تاريخ الانتهاء.");
+        }
+
         if ((to - from).TotalDays > 90)
         {
             throw new InvalidOperationException("لا يمكن أن تتجاوز فترة قياس فاعلية التوجيه 90 يومًا.");
@@ -420,9 +432,23 @@ public sealed class NoteRoutingService(
 
         var attemptNumber = await db.NoteRoutingDecisions
             .CountAsync(decision => decision.OperationalNoteId == note.Id, cancellationToken) + 1;
-        var resolution = await ResolveRuleAsync(note, trigger, cancellationToken);
-        var due = ComputeDueAt(note, resolution.Rule, now);
-        var decision = NewDecision(note, trigger, attemptNumber, decisionKey, resolution.Rule, now, due.Source);
+        var resolution = await ResolveRuleAsync(
+            note,
+            trigger,
+            cancellationToken);
+        var due = await ComputeDueAtAsync(
+            note,
+            resolution.Rule,
+            now,
+            cancellationToken);
+        var decision = NewDecision(
+            note,
+            trigger,
+            attemptNumber,
+            decisionKey,
+            resolution.Rule,
+            now,
+            due.Source);
         decision.DueAtBeforeUtc = note.DueAtUtc;
         decision.DueAtAfterUtc = due.DueAt;
 
@@ -798,7 +824,11 @@ public sealed class NoteRoutingService(
             ResultStatus = NoteRoutingResultStatus.Failed
         };
 
-    private (DateTimeOffset? DueAt, string Source) ComputeDueAt(OperationalNote note, NoteRoutingRule? rule, DateTimeOffset submittedAtUtc)
+    private async Task<(DateTimeOffset? DueAt, string Source)> ComputeDueAtAsync(
+        OperationalNote note,
+        NoteRoutingRule? rule,
+        DateTimeOffset submittedAtUtc,
+        CancellationToken cancellationToken)
     {
         if (note.DueAtUtc.HasValue)
         {
@@ -807,14 +837,22 @@ public sealed class NoteRoutingService(
 
         if (rule?.DefaultDueDays is int ruleDays)
         {
-            return (submittedAtUtc.AddDays(ruleDays), "RoutingRule");
+            return (
+                submittedAtUtc.AddDays(ruleDays),
+                "RoutingRule");
         }
 
-        var noteTypeDays = db.NoteTypes.AsNoTracking()
+        var noteTypeDays = await db.NoteTypes
+            .AsNoTracking()
             .Where(type => type.Id == note.NoteTypeId)
             .Select(type => type.DefaultDueDays)
-            .FirstOrDefault();
-        return noteTypeDays.HasValue ? (submittedAtUtc.AddDays(noteTypeDays.Value), "NoteType") : (null, "None");
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return noteTypeDays.HasValue
+            ? (
+                submittedAtUtc.AddDays(noteTypeDays.Value),
+                "NoteType")
+            : (null, "None");
     }
 
     private void AppendRuleHistory(

@@ -436,29 +436,14 @@ public static class ApiEndpoints
     {
         var rules = api.MapGroup("/note-routing-rules");
         rules.MapGet("/", async (
-            Guid? noteTypeId,
-            ScopeType? scopeType,
-            Guid? regionId,
-            Guid? facilityId,
-            Guid? facilityUnitId,
-            bool? isActive,
-            NoteRoutingProcessingTargetType? processingTargetType,
-            int? page,
-            int? pageSize,
+            [AsParameters] NoteRoutingRuleQueryParams query,
             INoteRoutingService service,
             CancellationToken ct) =>
-            Results.Ok(await service.ListRulesAsync(new NoteRoutingRuleQuery
-            {
-                NoteTypeId = noteTypeId,
-                ScopeType = scopeType,
-                RegionId = regionId,
-                FacilityId = facilityId,
-                FacilityUnitId = facilityUnitId,
-                IsActive = isActive,
-                ProcessingTargetType = processingTargetType,
-                Page = page ?? 1,
-                PageSize = pageSize ?? 20
-            }, ct))).RequireAuthorization(AuthPolicies.NotesViewRouting);
+            Results.Ok(
+                await service.ListRulesAsync(
+                    query.ToQuery(),
+                    ct)))
+            .RequireAuthorization(AuthPolicies.NotesViewRouting);
 
         rules.MapGet(EntityIdRoute, async (Guid id, INoteRoutingService service, CancellationToken ct) =>
         {

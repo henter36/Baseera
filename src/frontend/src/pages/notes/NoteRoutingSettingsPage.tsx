@@ -10,6 +10,8 @@ import {
 import { usePermission } from '../../auth/AuthProvider'
 
 const PAGE_SIZE = 50
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function describeScope(rule: NoteRoutingRule): string {
   if (rule.facilityUnitId) return 'وحدة'
@@ -51,9 +53,12 @@ function normalizeRequest(form: NoteRoutingRuleRequest): NoteRoutingRuleRequest 
     code: form.code.trim(),
     nameAr: form.nameAr.trim(),
     descriptionAr: form.descriptionAr?.trim() || null,
-    regionId: form.regionId || null,
-    facilityId: form.facilityId || null,
-    facilityUnitId: form.facilityUnitId || null,
+    regionId:
+      form.scopeType >= 2 ? form.regionId || null : null,
+    facilityId:
+      form.scopeType >= 3 ? form.facilityId || null : null,
+    facilityUnitId:
+      form.scopeType >= 4 ? form.facilityUnitId || null : null,
     processingDepartmentId: form.processingTargetType === 0 ? form.processingDepartmentId || null : null,
     processingRoleId: form.processingTargetType === 1 ? form.processingRoleId || null : null,
     reviewerRoleId: form.reviewerRoleId || null,
@@ -71,6 +76,13 @@ function validateRequest(form: NoteRoutingRuleRequest): string | null {
   if (form.defaultDueDays != null && form.defaultDueDays < 0) return 'مدة الاستحقاق لا تكون سالبة.'
   if (form.processingTargetType === 0 && !form.processingDepartmentId) return 'معرف الإدارة مطلوب لهدف الإدارة.'
   if (form.processingTargetType === 1 && !form.processingRoleId) return 'معرف الدور مطلوب لهدف الدور.'
+  if (form.noteTypeId && !UUID_REGEX.test(form.noteTypeId)) return 'معرف نوع الملاحظة غير صالح.'
+  if (form.regionId && !UUID_REGEX.test(form.regionId)) return 'معرف المنطقة غير صالح.'
+  if (form.facilityId && !UUID_REGEX.test(form.facilityId)) return 'معرف الموقع غير صالح.'
+  if (form.facilityUnitId && !UUID_REGEX.test(form.facilityUnitId)) return 'معرف الوحدة غير صالح.'
+  if (form.processingDepartmentId && !UUID_REGEX.test(form.processingDepartmentId)) return 'معرف الإدارة غير صالح.'
+  if (form.processingRoleId && !UUID_REGEX.test(form.processingRoleId)) return 'معرف الدور غير صالح.'
+  if (form.reviewerRoleId && !UUID_REGEX.test(form.reviewerRoleId)) return 'معرف دور المراجعة غير صالح.'
   return null
 }
 
@@ -144,7 +156,11 @@ export function NoteRoutingSettingsPage() {
         <Link className="secondary" to="/settings/note-routing/effectiveness">فاعلية التوجيه</Link>
       </div>
 
-      {message && <div className="success" role="status">{message}</div>}
+      {message && (
+        <output className="success" aria-live="polite">
+          {message}
+        </output>
+      )}
       {error && <div className="error" role="alert">{error}</div>}
 
       {canManage && (
@@ -153,14 +169,33 @@ export function NoteRoutingSettingsPage() {
           <div className="form-grid">
             <label>الرمز<input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></label>
             <label>الاسم<input value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} /></label>
-            <label>نوع الملاحظة
+            <label>
+              <span>نوع الملاحظة</span>
               <select value={form.noteTypeId} onChange={(e) => setForm({ ...form, noteTypeId: e.target.value })}>
                 <option value="">اختر النوع</option>
                 {noteTypesQuery.data?.map((type) => <option key={type.id} value={type.id}>{type.nameAr}</option>)}
               </select>
             </label>
-            <label>نوع النطاق
-              <select value={form.scopeType} onChange={(e) => setForm({ ...form, scopeType: Number(e.target.value) })}>
+            <label>
+              <span>نوع النطاق</span>
+              <select
+                value={form.scopeType}
+                onChange={(e) => {
+                  const scopeType = Number(e.target.value)
+                  setForm({
+                    ...form,
+                    scopeType,
+                    regionId:
+                      scopeType >= 2 ? form.regionId : '',
+                    facilityId:
+                      scopeType >= 3 ? form.facilityId : '',
+                    facilityUnitId:
+                      scopeType >= 4
+                        ? form.facilityUnitId
+                        : '',
+                  })
+                }}
+              >
                 <option value={0}>عام</option>
                 <option value={1}>المقر</option>
                 <option value={2}>منطقة</option>
@@ -168,18 +203,88 @@ export function NoteRoutingSettingsPage() {
                 <option value={4}>وحدة</option>
               </select>
             </label>
-            <label>RegionId<input value={form.regionId || ''} onChange={(e) => setForm({ ...form, regionId: e.target.value })} /></label>
-            <label>FacilityId<input value={form.facilityId || ''} onChange={(e) => setForm({ ...form, facilityId: e.target.value })} /></label>
-            <label>FacilityUnitId<input value={form.facilityUnitId || ''} onChange={(e) => setForm({ ...form, facilityUnitId: e.target.value })} /></label>
+            <label>
+              <span>RegionId</span>
+              <input
+                disabled={form.scopeType < 2}
+                value={form.scopeType >= 2 ? form.regionId || '' : ''}
+                onChange={(e) => setForm({ ...form, regionId: e.target.value })}
+              />
+            </label>
+            <label>
+              <span>FacilityId</span>
+              <input
+                disabled={form.scopeType < 3}
+                value={form.scopeType >= 3 ? form.facilityId || '' : ''}
+                onChange={(e) => setForm({ ...form, facilityId: e.target.value })}
+              />
+            </label>
+            <label>
+              <span>FacilityUnitId</span>
+              <input
+                disabled={form.scopeType < 4}
+                value={form.scopeType >= 4 ? form.facilityUnitId || '' : ''}
+                onChange={(e) => setForm({ ...form, facilityUnitId: e.target.value })}
+              />
+            </label>
             <label>الأولوية<input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} /></label>
-            <label>هدف المعالجة
-              <select value={form.processingTargetType} onChange={(e) => setForm({ ...form, processingTargetType: Number(e.target.value) })}>
+            <label>
+              <span>هدف المعالجة</span>
+              <select
+                value={form.processingTargetType}
+                onChange={(e) => {
+                  const processingTargetType =
+                    Number(e.target.value)
+                  setForm({
+                    ...form,
+                    processingTargetType,
+                    processingDepartmentId:
+                      processingTargetType === 0
+                        ? form.processingDepartmentId
+                        : '',
+                    processingRoleId:
+                      processingTargetType === 1
+                        ? form.processingRoleId
+                        : '',
+                  })
+                }}
+              >
                 <option value={0}>إدارة</option>
                 <option value={1}>دور</option>
               </select>
             </label>
-            <label>ProcessingDepartmentId<input value={form.processingDepartmentId || ''} onChange={(e) => setForm({ ...form, processingDepartmentId: e.target.value })} /></label>
-            <label>ProcessingRoleId<input value={form.processingRoleId || ''} onChange={(e) => setForm({ ...form, processingRoleId: e.target.value })} /></label>
+            <label>
+              <span>ProcessingDepartmentId</span>
+              <input
+                disabled={form.processingTargetType !== 0}
+                value={
+                  form.processingTargetType === 0
+                    ? form.processingDepartmentId || ''
+                    : ''
+                }
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    processingDepartmentId: e.target.value,
+                  })}
+              />
+            </label>
+            <label>
+              <span>ProcessingRoleId</span>
+              <input
+                disabled={form.processingTargetType !== 1}
+                value={
+                  form.processingTargetType === 1
+                    ? form.processingRoleId || ''
+                    : ''
+                }
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    processingRoleId: e.target.value,
+                  })}
+              />
+            </label>
             <label>ReviewerRoleId<input value={form.reviewerRoleId || ''} onChange={(e) => setForm({ ...form, reviewerRoleId: e.target.value })} /></label>
             <label>DefaultDueDays<input type="number" value={form.defaultDueDays ?? ''} onChange={(e) => setForm({ ...form, defaultDueDays: e.target.value ? Number(e.target.value) : null })} /></label>
             <label>السبب<input value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} /></label>
