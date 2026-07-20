@@ -9,37 +9,56 @@ export function NotificationsPage() {
   const [items, setItems] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [version, setVersion] = useState(0)
+  const [pendingAction, setPendingAction] = useState('')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const result = await api.notifications.list({ status, pageSize: 20 })
-      setItems(result.items)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'تعذر تحميل الإشعارات.')
-    } finally {
-      setLoading(false)
-    }
-  }, [status])
+  const reload = useCallback(() => setVersion((current) => current + 1), [])
 
   useEffect(() => {
+    let active = true
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const result = await api.notifications.list({ status, pageSize: 20 })
+        if (active) setItems(result.items)
+      } catch (err) {
+        if (active) setError(err instanceof ApiError ? err.message : 'تعذر تحميل الإشعارات.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
     void load()
-  }, [load])
+    return () => {
+      active = false
+    }
+  }, [status, version])
+
+  const runMutation = async (actionKey: string, operation: () => Promise<void>) => {
+    if (pendingAction) return
+    setPendingAction(actionKey)
+    setError('')
+    try {
+      await operation()
+      window.dispatchEvent(new Event('baseera:notifications-changed'))
+      reload()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'تعذر تنفيذ العملية.')
+    } finally {
+      setPendingAction('')
+    }
+  }
 
   const markRead = async (item: Notification) => {
-    await api.notifications.markRead(item.id, { rowVersion: item.rowVersion })
-    await load()
+    await runMutation(`read-${item.id}`, () => api.notifications.markRead(item.id, { rowVersion: item.rowVersion }).then(() => undefined))
   }
 
   const archive = async (item: Notification) => {
-    await api.notifications.archive(item.id, { rowVersion: item.rowVersion })
-    await load()
+    await runMutation(`archive-${item.id}`, () => api.notifications.archive(item.id, { rowVersion: item.rowVersion }).then(() => undefined))
   }
 
   const markAll = async () => {
-    await api.notifications.markAllRead()
-    await load()
+    await runMutation('read-all', () => api.notifications.markAllRead().then(() => undefined))
   }
 
   return (
@@ -49,7 +68,7 @@ export function NotificationsPage() {
           <h1>الإشعارات</h1>
           <p>صندوق الوارد الداخلي الخاص بالمستخدم الحالي.</p>
         </div>
-        <button onClick={markAll}>تعليم الكل كمقروء</button>
+        <button onClick={markAll} disabled={Boolean(pendingAction)}>تعليم الكل كمقروء</button>
       </div>
 
       <div className="filters">
@@ -59,7 +78,7 @@ export function NotificationsPage() {
           <option value={1}>مقروء</option>
           <option value={2}>مؤرشف</option>
         </select>
-        <button className="secondary" onClick={load}>إعادة المحاولة</button>
+        <button className="secondary" onClick={reload}>إعادة المحاولة</button>
       </div>
 
       {loading && <div className="loading">جاري تحميل الإشعارات…</div>}
@@ -89,8 +108,8 @@ export function NotificationsPage() {
                 <td>{statusLabel[item.status] ?? item.status}</td>
                 <td>{new Date(item.createdAtUtc).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}</td>
                 <td>
-                  {item.status === 0 && <button className="secondary" onClick={() => markRead(item)}>مقروء</button>}
-                  {item.status !== 2 && <button className="secondary" onClick={() => archive(item)}>أرشفة</button>}
+                  {item.status === 0 && <button className="secondary" disabled={Boolean(pendingAction)} onClick={() => markRead(item)}>مقروء</button>}
+                  {item.status !== 2 && <button className="secondary" disabled={Boolean(pendingAction)} onClick={() => archive(item)}>أرشفة</button>}
                 </td>
               </tr>
             ))}

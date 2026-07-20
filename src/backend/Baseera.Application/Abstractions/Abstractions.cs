@@ -48,6 +48,8 @@ public interface IBaseeraDbContext
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
+    void Detach<TEntity>(TEntity entity) where TEntity : class;
+    Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default);
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);

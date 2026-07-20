@@ -13,6 +13,7 @@ export function EscalationPolicyDetailPage() {
   const load = useCallback(async () => {
     if (!id) return
     try {
+      setError('')
       setPolicy(await api.escalationPolicies.get(id))
       setRules(await api.escalationPolicies.rules(id))
     } catch (err) {
@@ -24,29 +25,39 @@ export function EscalationPolicyDetailPage() {
 
   const toggle = async () => {
     if (!policy) return
-    if (policy.isEnabled) await api.escalationPolicies.deactivate(policy.id, { rowVersion: policy.rowVersion })
-    else await api.escalationPolicies.activate(policy.id, { rowVersion: policy.rowVersion })
-    await load()
+    try {
+      setError('')
+      if (policy.isEnabled) await api.escalationPolicies.deactivate(policy.id, { rowVersion: policy.rowVersion })
+      else await api.escalationPolicies.activate(policy.id, { rowVersion: policy.rowVersion })
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'تعذر تغيير حالة السياسة.')
+    }
   }
 
   const addRule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    await api.escalationPolicies.createRule(id!, {
-      level: Number(form.get('level')),
-      priority: Number(form.get('priority')),
-      triggerType: Number(form.get('triggerType')),
-      thresholdDays: Number(form.get('thresholdDays')),
-      repeatEveryDays: Number(form.get('repeatEveryDays')) || null,
-      maximumOccurrences: Number(form.get('maximumOccurrences')) || null,
-      recipientStrategy: Number(form.get('recipientStrategy')),
-      recipientRoleCode: String(form.get('recipientRoleCode') ?? '') || null,
-      specificRecipientUserId: null,
-      titleTemplateAr: String(form.get('titleTemplateAr') ?? '').trim(),
-      messageTemplateAr: String(form.get('messageTemplateAr') ?? '').trim(),
-    })
-    event.currentTarget.reset()
-    await load()
+    try {
+      setError('')
+      await api.escalationPolicies.createRule(id!, {
+        level: Number(form.get('level')),
+        priority: Number(form.get('priority')),
+        triggerType: Number(form.get('triggerType')),
+        thresholdDays: Number(form.get('thresholdDays')),
+        repeatEveryDays: Number(form.get('repeatEveryDays')) || null,
+        maximumOccurrences: Number(form.get('maximumOccurrences')) || null,
+        recipientStrategy: Number(form.get('recipientStrategy')),
+        recipientRoleCode: String(form.get('recipientRoleCode') ?? '') || null,
+        specificRecipientUserId: null,
+        titleTemplateAr: String(form.get('titleTemplateAr') ?? '').trim(),
+        messageTemplateAr: String(form.get('messageTemplateAr') ?? '').trim(),
+      })
+      event.currentTarget.reset()
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'تعذر إضافة القاعدة.')
+    }
   }
 
   return (

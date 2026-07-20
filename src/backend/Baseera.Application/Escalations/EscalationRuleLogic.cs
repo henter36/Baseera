@@ -5,8 +5,15 @@ using Baseera.Domain.Escalations;
 
 public static class EscalationRuleLogic
 {
-    public static bool IsDueSoon(DateTimeOffset dueAtUtc, DateTimeOffset nowUtc, int thresholdDays) =>
-        dueAtUtc >= nowUtc && dueAtUtc <= nowUtc.AddDays(thresholdDays);
+    public static bool IsDueSoon(DateTimeOffset dueAtUtc, DateTimeOffset nowUtc, int thresholdDays)
+    {
+        if (thresholdDays == 0)
+        {
+            return TimeZones.ToSaudi(dueAtUtc).Date == TimeZones.ToSaudi(nowUtc).Date;
+        }
+
+        return dueAtUtc >= nowUtc && dueAtUtc <= nowUtc.AddDays(thresholdDays);
+    }
 
     public static bool IsOverdue(DateTimeOffset dueAtUtc, DateTimeOffset nowUtc)
     {

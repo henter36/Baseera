@@ -214,7 +214,7 @@ public static class ApiEndpoints
 
         var escalations = api.MapGroup("/escalations");
         escalations.MapPost("/run", async (IEscalationProcessor processor, CancellationToken ct) =>
-            Results.Ok(await processor.RunAsync("manual-api", ct))).RequireAuthorization(AuthPolicies.EscalationsRun);
+            Results.Ok(await processor.RunAsync("manual-api", cancellationToken: ct))).RequireAuthorization(AuthPolicies.EscalationsRun);
 
         escalations.MapGet("/occurrences", async ([AsParameters] EscalationOccurrenceQueryParams query, IEscalationOccurrenceService service, CancellationToken ct) =>
             Results.Ok(await service.ListAsync(query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.EscalationsViewOccurrences);

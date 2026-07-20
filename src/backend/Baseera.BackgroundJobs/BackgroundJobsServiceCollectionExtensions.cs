@@ -47,7 +47,14 @@ public sealed class EscalationProcessingJob(
             {
                 using var scope = scopeFactory.CreateScope();
                 var processor = scope.ServiceProvider.GetRequiredService<IEscalationProcessor>();
-                var result = await processor.RunAsync(Environment.MachineName, stoppingToken);
+                var result = await processor.RunAsync(
+                    Environment.MachineName,
+                    new EscalationRunOptions(
+                        settings.BatchSize,
+                        settings.LeaseSeconds,
+                        settings.MaximumAttempts,
+                        settings.RetryBaseSeconds),
+                    stoppingToken);
                 logger.LogInformation(
                     "Escalation processing completed. Policies={Policies} Candidates={Candidates} Occurrences={Occurrences} Notifications={Notifications} Suppressed={Suppressed} Failed={Failed}",
                     result.PoliciesEvaluated,

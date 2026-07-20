@@ -18,6 +18,17 @@ public sealed class EscalationRuleLogicTests
     }
 
     [Fact]
+    public void DueSoon_zero_threshold_matches_the_current_riyadh_day()
+    {
+        var now = new DateTimeOffset(2026, 7, 20, 10, 0, 0, TimeSpan.Zero);
+        var earlierSameSaudiDay = new DateTimeOffset(2026, 7, 20, 1, 0, 0, TimeSpan.Zero);
+        var nextSaudiDay = new DateTimeOffset(2026, 7, 20, 21, 0, 0, TimeSpan.Zero);
+
+        Assert.True(EscalationRuleLogic.IsDueSoon(earlierSameSaudiDay, now, 0));
+        Assert.False(EscalationRuleLogic.IsDueSoon(nextSaudiDay, now, 0));
+    }
+
+    [Fact]
     public void Due_today_in_riyadh_is_not_overdue()
     {
         var now = new DateTimeOffset(2026, 7, 20, 10, 0, 0, TimeSpan.Zero);
@@ -83,6 +94,18 @@ public sealed class EscalationValidatorTests
             "رسالة"));
 
         result.ShouldHaveValidationErrorFor(x => x.RecipientRoleCode);
+    }
+}
+
+public sealed class EscalationPagingTests
+{
+    [Fact]
+    public void Skip_calculation_clamps_large_pages_without_overflow()
+    {
+        Assert.Equal(int.MaxValue, new EscalationPolicyQuery { Page = int.MaxValue, PageSize = 200 }.Skip);
+        Assert.Equal(int.MaxValue, new EscalationOccurrenceQuery { Page = int.MaxValue, PageSize = 200 }.Skip);
+        Assert.Equal(int.MaxValue, new NotificationQuery { Page = int.MaxValue, PageSize = 200 }.Skip);
+        Assert.Equal(0, new NotificationQuery { Page = int.MinValue, PageSize = 200 }.Skip);
     }
 }
 

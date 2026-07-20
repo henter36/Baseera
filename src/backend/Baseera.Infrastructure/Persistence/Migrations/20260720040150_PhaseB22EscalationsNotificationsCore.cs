@@ -259,140 +259,32 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         onDelete: ReferentialAction.Restrict);
                 });
 
-            migrationBuilder.CreateIndex(
-                name: "IX_BackgroundJobLeases_LeaseExpiresAtUtc",
-                table: "BackgroundJobLeases",
-                column: "LeaseExpiresAtUtc");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationOccurrences_OccurrenceKey",
-                table: "EscalationOccurrences",
-                column: "OccurrenceKey",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationOccurrences_PolicyId",
-                table: "EscalationOccurrences",
-                column: "PolicyId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationOccurrences_RuleId",
-                table: "EscalationOccurrences",
-                column: "RuleId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationOccurrences_Status",
-                table: "EscalationOccurrences",
-                column: "Status");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationOccurrences_TargetType_DueAtUtc",
-                table: "EscalationOccurrences",
-                columns: new[] { "TargetType", "DueAtUtc" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationOccurrences_TargetType_TargetId",
-                table: "EscalationOccurrences",
-                columns: new[] { "TargetType", "TargetId" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_ActivatedByUserId",
-                table: "EscalationPolicies",
-                column: "ActivatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_Code",
-                table: "EscalationPolicies",
-                column: "Code",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_CreatedByUserId",
-                table: "EscalationPolicies",
-                column: "CreatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_DeactivatedByUserId",
-                table: "EscalationPolicies",
-                column: "DeactivatedByUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_FacilityId",
-                table: "EscalationPolicies",
-                column: "FacilityId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_FacilityUnitId",
-                table: "EscalationPolicies",
-                column: "FacilityUnitId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_IsDeleted",
-                table: "EscalationPolicies",
-                column: "IsDeleted");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_IsEnabled_TargetType_ScopeType",
-                table: "EscalationPolicies",
-                columns: new[] { "IsEnabled", "TargetType", "ScopeType" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationPolicies_RegionId",
-                table: "EscalationPolicies",
-                column: "RegionId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationRules_EscalationPolicyId_Level",
-                table: "EscalationRules",
-                columns: new[] { "EscalationPolicyId", "Level" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationRules_IsDeleted",
-                table: "EscalationRules",
-                column: "IsDeleted");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationRules_IsEnabled_TriggerType_ThresholdDays",
-                table: "EscalationRules",
-                columns: new[] { "IsEnabled", "TriggerType", "ThresholdDays" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_EscalationRules_SpecificRecipientUserId",
-                table: "EscalationRules",
-                column: "SpecificRecipientUserId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_NotificationDeliveryAttempts_NotificationId_Channel_AttemptNumber",
-                table: "NotificationDeliveryAttempts",
-                columns: new[] { "NotificationId", "Channel", "AttemptNumber" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_NotificationDeliveryAttempts_Status_NextRetryAtUtc",
-                table: "NotificationDeliveryAttempts",
-                columns: new[] { "Status", "NextRetryAtUtc" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Notifications_DeduplicationKey",
-                table: "Notifications",
-                column: "DeduplicationKey",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Notifications_EscalationOccurrenceId",
-                table: "Notifications",
-                column: "EscalationOccurrenceId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Notifications_RecipientUserId_Status_CreatedAtUtc",
-                table: "Notifications",
-                columns: new[] { "RecipientUserId", "Status", "CreatedAtUtc" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Notifications_TargetType_TargetId",
-                table: "Notifications",
-                columns: new[] { "TargetType", "TargetId" });
+            CreateIndex(migrationBuilder, "IX_BackgroundJobLeases_LeaseExpiresAtUtc", "BackgroundJobLeases", "LeaseExpiresAtUtc");
+            CreateIndex(migrationBuilder, "IX_EscalationOccurrences_OccurrenceKey", "EscalationOccurrences", "OccurrenceKey", unique: true);
+            CreateIndex(migrationBuilder, "IX_EscalationOccurrences_PolicyId", "EscalationOccurrences", "PolicyId");
+            CreateIndex(migrationBuilder, "IX_EscalationOccurrences_RuleId", "EscalationOccurrences", "RuleId");
+            CreateIndex(migrationBuilder, "IX_EscalationOccurrences_Status", "EscalationOccurrences", "Status");
+            CreateIndex(migrationBuilder, "IX_EscalationOccurrences_TargetType_DueAtUtc", "EscalationOccurrences", ["TargetType", "DueAtUtc"]);
+            CreateIndex(migrationBuilder, "IX_EscalationOccurrences_TargetType_TargetId", "EscalationOccurrences", ["TargetType", "TargetId"]);
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_ActivatedByUserId", "EscalationPolicies", "ActivatedByUserId");
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_Code", "EscalationPolicies", "Code", unique: true);
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_CreatedByUserId", "EscalationPolicies", "CreatedByUserId");
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_DeactivatedByUserId", "EscalationPolicies", "DeactivatedByUserId");
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_FacilityId", "EscalationPolicies", "FacilityId");
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_FacilityUnitId", "EscalationPolicies", "FacilityUnitId");
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_IsDeleted", "EscalationPolicies", "IsDeleted");
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_IsEnabled_TargetType_ScopeType", "EscalationPolicies", ["IsEnabled", "TargetType", "ScopeType"]);
+            CreateIndex(migrationBuilder, "IX_EscalationPolicies_RegionId", "EscalationPolicies", "RegionId");
+            CreateIndex(migrationBuilder, "IX_EscalationRules_EscalationPolicyId_Level", "EscalationRules", ["EscalationPolicyId", "Level"], unique: true);
+            CreateIndex(migrationBuilder, "IX_EscalationRules_IsDeleted", "EscalationRules", "IsDeleted");
+            CreateIndex(migrationBuilder, "IX_EscalationRules_IsEnabled_TriggerType_ThresholdDays", "EscalationRules", ["IsEnabled", "TriggerType", "ThresholdDays"]);
+            CreateIndex(migrationBuilder, "IX_EscalationRules_SpecificRecipientUserId", "EscalationRules", "SpecificRecipientUserId");
+            CreateIndex(migrationBuilder, "IX_NotificationDeliveryAttempts_NotificationId_Channel_AttemptNumber", "NotificationDeliveryAttempts", ["NotificationId", "Channel", "AttemptNumber"], unique: true);
+            CreateIndex(migrationBuilder, "IX_NotificationDeliveryAttempts_Status_NextRetryAtUtc", "NotificationDeliveryAttempts", ["Status", "NextRetryAtUtc"]);
+            CreateIndex(migrationBuilder, "IX_Notifications_DeduplicationKey", "Notifications", "DeduplicationKey", unique: true);
+            CreateIndex(migrationBuilder, "IX_Notifications_EscalationOccurrenceId", "Notifications", "EscalationOccurrenceId");
+            CreateIndex(migrationBuilder, "IX_Notifications_RecipientUserId_Status_CreatedAtUtc", "Notifications", ["RecipientUserId", "Status", "CreatedAtUtc"]);
+            CreateIndex(migrationBuilder, "IX_Notifications_TargetType_TargetId", "Notifications", ["TargetType", "TargetId"]);
         }
 
         /// <inheritdoc />
@@ -416,5 +308,11 @@ namespace Baseera.Infrastructure.Persistence.Migrations
             migrationBuilder.DropTable(
                 name: "EscalationPolicies");
         }
+
+        private static void CreateIndex(MigrationBuilder migrationBuilder, string name, string table, string column, bool unique = false) =>
+            migrationBuilder.CreateIndex(name: name, table: table, column: column, unique: unique);
+
+        private static void CreateIndex(MigrationBuilder migrationBuilder, string name, string table, string[] columns, bool unique = false) =>
+            migrationBuilder.CreateIndex(name: name, table: table, columns: columns, unique: unique);
     }
 }

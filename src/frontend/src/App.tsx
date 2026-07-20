@@ -35,9 +35,11 @@ function Shell({ children }: { children: React.ReactNode }) {
         .catch(() => { if (active) setUnreadCount(0) })
     }
     load()
+    window.addEventListener('baseera:notifications-changed', load)
     const handle = window.setInterval(load, 60000)
     return () => {
       active = false
+      window.removeEventListener('baseera:notifications-changed', load)
       window.clearInterval(handle)
     }
   }, [hasPermission])

@@ -96,6 +96,9 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Escalations.BackgroundJobLease> BackgroundJobLeases => Enumerable.Empty<Domain.Escalations.BackgroundJobLease>().AsQueryable();
         public void Add<TEntity>(TEntity entity) where TEntity : class { }
         public void Update<TEntity>(TEntity entity) where TEntity : class { }
+        public void Detach<TEntity>(TEntity entity) where TEntity : class { }
+        public Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default) =>
+            operation(cancellationToken);
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);

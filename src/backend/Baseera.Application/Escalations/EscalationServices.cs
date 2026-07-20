@@ -34,8 +34,10 @@ public interface IEscalationRuleService
 
 public interface IEscalationProcessor
 {
-    Task<EscalationRunResult> RunAsync(string leaseOwner, CancellationToken cancellationToken = default);
+    Task<EscalationRunResult> RunAsync(string leaseOwner, EscalationRunOptions? options = null, CancellationToken cancellationToken = default);
 }
+
+public sealed record EscalationRunOptions(int BatchSize = 100, int LeaseSeconds = 60, int MaximumAttempts = 3, int RetryBaseSeconds = 60);
 
 public interface IBackgroundJobLeaseService
 {
@@ -364,15 +366,16 @@ public sealed class EscalationProcessor(
 {
     private const string JobName = "EscalationProcessing";
 
-    public async Task<EscalationRunResult> RunAsync(string leaseOwner, CancellationToken cancellationToken = default)
+    public async Task<EscalationRunResult> RunAsync(string leaseOwner, EscalationRunOptions? options = null, CancellationToken cancellationToken = default)
     {
+        options ??= new EscalationRunOptions();
         var now = timeProvider.GetUtcNow();
-        if (!await leases.TryAcquireAsync(JobName, leaseOwner, TimeSpan.FromSeconds(60), cancellationToken))
+        if (!await leases.TryAcquireAsync(JobName, leaseOwner, TimeSpan.FromSeconds(options.LeaseSeconds), cancellationToken))
         {
             return new EscalationRunResult(0, 0, 0, 0, 0, 0);
         }
 
-        await audit.WriteAsync(new AuditEntry { Action = "EscalationRunStarted", Module = "Escalations", EntityType = JobName, NewValues = new { leaseOwner } }, cancellationToken);
+        await audit.WriteAsync(new AuditEntry { Action = "EscalationRunStarted", Module = "Escalations", EntityType = JobName, NewValues = new { leaseOwner, options.BatchSize, options.MaximumAttempts, options.RetryBaseSeconds } }, cancellationToken);
         var policies = await db.EscalationPolicies.AsNoTracking()
             .Where(p => p.IsEnabled)
             .Include(p => p.Rules)
@@ -383,7 +386,7 @@ public sealed class EscalationProcessor(
         {
             foreach (var rule in policy.Rules.Where(r => r.IsEnabled).OrderBy(r => r.Level))
             {
-                var candidates = await LoadCandidatesAsync(policy, rule, now, cancellationToken);
+                var candidates = await LoadCandidatesAsync(policy, rule, now, options.BatchSize, cancellationToken);
                 result.CandidatesEvaluated += candidates.Count;
                 foreach (var candidate in candidates)
                 {
@@ -398,7 +401,7 @@ public sealed class EscalationProcessor(
         return final;
     }
 
-    private async Task<List<EscalationCandidate>> LoadCandidatesAsync(EscalationPolicy policy, EscalationRule rule, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<List<EscalationCandidate>> LoadCandidatesAsync(EscalationPolicy policy, EscalationRule rule, DateTimeOffset now, int batchSize, CancellationToken cancellationToken)
     {
         if (policy.TargetType == EscalationTargetType.OperationalNote)
         {
@@ -406,7 +409,7 @@ public sealed class EscalationProcessor(
                 .Where(n => n.DueAtUtc.HasValue && n.Status != NoteStatus.Closed && n.Status != NoteStatus.Cancelled);
             query = ApplyPolicyScope(query, policy);
             query = ApplyTrigger(query, rule, now);
-            var candidates = await query.Take(100).Select(n => new EscalationCandidate(
+            var candidates = await query.Take(Math.Clamp(batchSize, 1, 1000)).Select(n => new EscalationCandidate(
                 EscalationTargetType.OperationalNote,
                 n.Id,
                 n.ReferenceNumber,
@@ -434,10 +437,22 @@ public sealed class EscalationProcessor(
             ScopeType.FacilityUnit => caQuery.Where(x => x.Note.FacilityUnitId == policy.FacilityUnitId),
             _ => caQuery.Where(_ => false)
         };
-        caQuery = rule.TriggerType == EscalationTriggerType.DueSoon
-            ? caQuery.Where(x => x.Action.DueAtUtc >= now && x.Action.DueAtUtc <= now.AddDays(rule.ThresholdDays))
-            : caQuery.Where(x => x.Action.DueAtUtc < now);
-        var actionCandidates = await caQuery.Take(100).Select(x => new EscalationCandidate(
+        if (rule.TriggerType == EscalationTriggerType.Overdue)
+        {
+            caQuery = caQuery.Where(x => x.Action.DueAtUtc < now);
+        }
+        else if (rule.ThresholdDays > 0)
+        {
+            caQuery = caQuery.Where(x => x.Action.DueAtUtc >= now && x.Action.DueAtUtc <= now.AddDays(rule.ThresholdDays));
+        }
+        else
+        {
+            var startOfSaudiDay = StartOfSaudiDay(now);
+            var startOfNextSaudiDay = startOfSaudiDay.AddDays(1);
+            caQuery = caQuery.Where(x => x.Action.DueAtUtc >= startOfSaudiDay && x.Action.DueAtUtc < startOfNextSaudiDay);
+        }
+
+        var actionCandidates = await caQuery.Take(Math.Clamp(batchSize, 1, 1000)).Select(x => new EscalationCandidate(
             EscalationTargetType.CorrectiveAction,
             x.Action.Id,
             x.Action.ReferenceNumber,
@@ -543,7 +558,7 @@ public sealed class EscalationProcessor(
 
     private async Task<int> NextOccurrenceNumberOrZeroAsync(EscalationRule rule, EscalationCandidate candidate, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var prefix = $"{rule.Id:N}:{candidate.TargetType}:{candidate.TargetId:N}:{rule.Level}:{candidate.TargetCycleKey}:";
+        var prefix = $"{rule.Id:N}:{candidate.TargetType}:{candidate.TargetId:N}:{candidate.TargetCycleKey}:";
         var previous = await db.EscalationOccurrences
             .Where(o => o.OccurrenceKey.StartsWith(prefix))
             .OrderByDescending(o => o.OccurrenceNumber)
@@ -581,17 +596,21 @@ public sealed class EscalationProcessor(
         };
 
         query = UsersWithPermission(query, PermissionCodes.NotificationsViewOwn);
-        var users = await query.Select(u => u.Id).Distinct().ToListAsync(cancellationToken);
-        var scoped = new List<Guid>();
-        foreach (var userId in users)
+        var userIds = await query.Select(u => u.Id).Distinct().ToListAsync(cancellationToken);
+        if (userIds.Count == 0)
         {
-            if (await UserIntersectsTargetScopeAsync(userId, candidate, cancellationToken))
-            {
-                scoped.Add(userId);
-            }
+            return [];
         }
 
-        return scoped.Distinct().ToList();
+        var scopes = await db.UserScopes
+            .AsNoTracking()
+            .Where(scope => userIds.Contains(scope.UserId) && scope.IsActive)
+            .ToListAsync(cancellationToken);
+        var scopesByUser = scopes.ToLookup(scope => scope.UserId);
+
+        return userIds
+            .Where(userId => IntersectsTargetScope(candidate, scopesByUser[userId]))
+            .ToList();
     }
 
     private IQueryable<User> UsersInRole(IQueryable<User> query, string roleCode) =>
@@ -602,7 +621,15 @@ public sealed class EscalationProcessor(
 
     private async Task<bool> UserIntersectsTargetScopeAsync(Guid userId, EscalationCandidate target, CancellationToken cancellationToken)
     {
-        var scopes = await db.UserScopes.Where(s => s.UserId == userId && s.IsActive).ToListAsync(cancellationToken);
+        var scopes = await db.UserScopes
+            .AsNoTracking()
+            .Where(s => s.UserId == userId && s.IsActive)
+            .ToListAsync(cancellationToken);
+        return IntersectsTargetScope(target, scopes);
+    }
+
+    private static bool IntersectsTargetScope(EscalationCandidate target, IEnumerable<UserScope> scopes)
+    {
         if (scopes.Any(s => s.ScopeType == ScopeType.Global))
         {
             return true;
@@ -630,10 +657,22 @@ public sealed class EscalationProcessor(
             _ => query.Where(_ => false)
         };
 
-    private static IQueryable<OperationalNote> ApplyTrigger(IQueryable<OperationalNote> query, EscalationRule rule, DateTimeOffset now) =>
-        rule.TriggerType == EscalationTriggerType.DueSoon
-            ? query.Where(n => n.DueAtUtc >= now && n.DueAtUtc <= now.AddDays(rule.ThresholdDays))
-            : query.Where(n => n.DueAtUtc < now);
+    private static IQueryable<OperationalNote> ApplyTrigger(IQueryable<OperationalNote> query, EscalationRule rule, DateTimeOffset now)
+    {
+        if (rule.TriggerType == EscalationTriggerType.Overdue)
+        {
+            return query.Where(n => n.DueAtUtc < now);
+        }
+
+        if (rule.ThresholdDays > 0)
+        {
+            return query.Where(n => n.DueAtUtc >= now && n.DueAtUtc <= now.AddDays(rule.ThresholdDays));
+        }
+
+        var startOfSaudiDay = StartOfSaudiDay(now);
+        var startOfNextSaudiDay = startOfSaudiDay.AddDays(1);
+        return query.Where(n => n.DueAtUtc >= startOfSaudiDay && n.DueAtUtc < startOfNextSaudiDay);
+    }
 
     private static string BuildOccurrenceKey(Guid ruleId, EscalationCandidate candidate, int occurrenceNumber) =>
         EscalationRuleLogic.OccurrenceKey(ruleId, candidate.TargetType, candidate.TargetId, candidate.TargetCycleKey, occurrenceNumber);
@@ -642,6 +681,12 @@ public sealed class EscalationProcessor(
         rule.TriggerType == EscalationTriggerType.DueSoon
             ? EscalationRuleLogic.IsDueSoon(candidate.DueAtUtc, now, rule.ThresholdDays)
             : EscalationRuleLogic.IsOverdue(candidate.DueAtUtc, now);
+
+    private static DateTimeOffset StartOfSaudiDay(DateTimeOffset utcNow)
+    {
+        var date = TimeZones.ToSaudi(utcNow).Date;
+        return new DateTimeOffset(date, TimeZones.SaudiArabia.GetUtcOffset(date));
+    }
 
     private static string Render(string template, EscalationCandidate candidate) =>
         template.Replace("{reference}", candidate.ReferenceNumber, StringComparison.OrdinalIgnoreCase)
@@ -664,32 +709,98 @@ public sealed class BackgroundJobLeaseService(IBaseeraDbContext db, TimeProvider
     public async Task<bool> TryAcquireAsync(string jobName, string owner, TimeSpan duration, CancellationToken cancellationToken = default)
     {
         var now = timeProvider.GetUtcNow();
-        var lease = await db.BackgroundJobLeases.FirstOrDefaultAsync(l => l.JobName == jobName, cancellationToken);
-        if (lease is null)
+        var updated = await TryUpdateExistingLeaseAsync(jobName, owner, duration, now, cancellationToken);
+
+        if (updated == 1)
         {
-            db.Add(new BackgroundJobLease
-            {
-                JobName = jobName,
-                LeaseOwner = owner,
-                LeaseAcquiredAtUtc = now,
-                LeaseExpiresAtUtc = now.Add(duration),
-                HeartbeatAtUtc = now
-            });
-            await db.SaveChangesAsync(cancellationToken);
             return true;
         }
 
-        if (lease.LeaseExpiresAtUtc > now && lease.LeaseOwner != owner)
+        if (updated < 0)
         {
             return false;
         }
 
-        lease.LeaseOwner = owner;
-        lease.LeaseAcquiredAtUtc = now;
-        lease.LeaseExpiresAtUtc = now.Add(duration);
-        lease.HeartbeatAtUtc = now;
-        await db.SaveChangesAsync(cancellationToken);
-        return true;
+        var lease = new BackgroundJobLease
+        {
+            JobName = jobName,
+            LeaseOwner = owner,
+            LeaseAcquiredAtUtc = now,
+            LeaseExpiresAtUtc = now.Add(duration),
+            HeartbeatAtUtc = now
+        };
+        db.Add(lease);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.Detach(lease);
+            return false;
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            db.Detach(lease);
+            return false;
+        }
+    }
+
+    private async Task<int> TryUpdateExistingLeaseAsync(
+        string jobName,
+        string owner,
+        TimeSpan duration,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await db.BackgroundJobLeases
+                .Where(lease =>
+                    lease.JobName == jobName &&
+                    (lease.LeaseExpiresAtUtc <= now || lease.LeaseOwner == owner))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(lease => lease.LeaseOwner, owner)
+                    .SetProperty(lease => lease.LeaseAcquiredAtUtc, now)
+                    .SetProperty(lease => lease.LeaseExpiresAtUtc, now.Add(duration))
+                    .SetProperty(lease => lease.HeartbeatAtUtc, now),
+                    cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("ExecuteUpdate", StringComparison.Ordinal))
+        {
+            var lease = await db.BackgroundJobLeases.FirstOrDefaultAsync(l => l.JobName == jobName, cancellationToken);
+            if (lease is null)
+            {
+                return 0;
+            }
+
+            if (lease.LeaseExpiresAtUtc > now && lease.LeaseOwner != owner)
+            {
+                return -1;
+            }
+
+            lease.LeaseOwner = owner;
+            lease.LeaseAcquiredAtUtc = now;
+            lease.LeaseExpiresAtUtc = now.Add(duration);
+            lease.HeartbeatAtUtc = now;
+            await db.SaveChangesAsync(cancellationToken);
+            return 1;
+        }
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+    {
+        for (var current = exception.InnerException; current is not null; current = current.InnerException)
+        {
+            var number = current.GetType().GetProperty("Number")?.GetValue(current);
+            if (number is 2601 or 2627)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
@@ -781,16 +892,26 @@ public sealed class NotificationService(
         Ensure(PermissionCodes.NotificationsMarkRead);
         var userId = RequireUser();
         var now = timeProvider.GetUtcNow();
-        var unread = await db.Notifications.Where(n => n.RecipientUserId == userId && n.Status == NotificationStatus.Unread).ToListAsync(cancellationToken);
-        foreach (var item in unread)
-        {
-            item.Status = NotificationStatus.Read;
-            item.ReadAtUtc = now;
-        }
 
-        await audit.WriteAsync(new AuditEntry { Action = "NotificationReadAll", Module = "Notifications", EntityType = nameof(Notification), NewValues = new { Count = unread.Count } }, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        return unread.Count;
+        return await db.ExecuteInTransactionAsync(async ct =>
+        {
+            var count = await db.Notifications
+                .Where(notification =>
+                    notification.RecipientUserId == userId &&
+                    notification.Status == NotificationStatus.Unread)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(notification => notification.Status, NotificationStatus.Read)
+                    .SetProperty(notification => notification.ReadAtUtc, now),
+                    ct);
+
+            if (count > 0)
+            {
+                await audit.WriteAsync(new AuditEntry { Action = "NotificationReadAll", Module = "Notifications", EntityType = nameof(Notification), NewValues = new { Count = count } }, ct);
+                await db.SaveChangesAsync(ct);
+            }
+
+            return count;
+        }, cancellationToken);
     }
 
     public async Task<NotificationDto> ArchiveAsync(Guid id, RowVersionRequest request, CancellationToken cancellationToken = default)

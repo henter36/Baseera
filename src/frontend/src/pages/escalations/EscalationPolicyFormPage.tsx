@@ -22,10 +22,14 @@ export function EscalationPolicyFormPage({ mode }: { mode: 'create' | 'edit' }) 
     setSaving(true)
     setError('')
     const form = new FormData(event.currentTarget)
+    const textValue = (name: string) => {
+      const value = form.get(name)
+      return typeof value === 'string' ? value.trim() : ''
+    }
     const body = {
-      code: String(form.get('code') ?? '').trim(),
-      nameAr: String(form.get('nameAr') ?? '').trim(),
-      description: String(form.get('description') ?? '').trim() || null,
+      code: textValue('code'),
+      nameAr: textValue('nameAr'),
+      description: textValue('description') || null,
       targetType: Number(form.get('targetType')),
       scopeType: Number(form.get('scopeType')),
       regionId: null,
@@ -39,7 +43,15 @@ export function EscalationPolicyFormPage({ mode }: { mode: 'create' | 'edit' }) 
       }
       const saved = mode === 'create'
         ? await api.escalationPolicies.create(body)
-        : await api.escalationPolicies.update(id!, { ...body, rowVersion: policy!.rowVersion })
+        : await api.escalationPolicies.update(id!, {
+            nameAr: body.nameAr,
+            description: body.description,
+            scopeType: body.scopeType,
+            regionId: body.regionId,
+            facilityId: body.facilityId,
+            facilityUnitId: body.facilityUnitId,
+            rowVersion: policy!.rowVersion,
+          })
       navigate(`/settings/escalations/${saved.id}`)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'تعذر حفظ السياسة.')

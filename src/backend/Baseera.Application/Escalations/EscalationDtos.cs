@@ -124,7 +124,7 @@ public sealed class EscalationPolicyQuery
     public bool SortDesc { get; set; }
     public EscalationTargetType? TargetType { get; set; }
     public bool? IsEnabled { get; set; }
-    public int Skip => Math.Max(Page - 1, 0) * Math.Clamp(PageSize, 1, 200);
+    public int Skip => PagingMath.SafeSkip(Page, PageSize);
     public int Take => Math.Clamp(PageSize, 1, 200);
 }
 
@@ -137,7 +137,7 @@ public sealed class EscalationOccurrenceQuery
     public bool SortDesc { get; set; }
     public EscalationTargetType? TargetType { get; set; }
     public EscalationOccurrenceStatus? Status { get; set; }
-    public int Skip => Math.Max(Page - 1, 0) * Math.Clamp(PageSize, 1, 200);
+    public int Skip => PagingMath.SafeSkip(Page, PageSize);
     public int Take => Math.Clamp(PageSize, 1, 200);
 }
 
@@ -153,8 +153,14 @@ public sealed class NotificationQuery
     public int? Priority { get; set; }
     public DateTimeOffset? CreatedFrom { get; set; }
     public DateTimeOffset? CreatedTo { get; set; }
-    public int Skip => Math.Max(Page - 1, 0) * Math.Clamp(PageSize, 1, 200);
+    public int Skip => PagingMath.SafeSkip(Page, PageSize);
     public int Take => Math.Clamp(PageSize, 1, 200);
+}
+
+internal static class PagingMath
+{
+    public static int SafeSkip(int page, int pageSize) =>
+        (int)Math.Min(Math.Max((long)page - 1, 0) * Math.Clamp(pageSize, 1, 200), int.MaxValue);
 }
 
 public sealed class CreateEscalationPolicyRequestValidator : AbstractValidator<CreateEscalationPolicyRequest>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../../api/client'
+import { ApiError, api } from '../../api/client'
 import type { EscalationOccurrence } from '../../api/client'
 
 const occurrenceStatus = ['منشأة', 'أُنشئت الإشعارات', 'محجوبة', 'فاشلة']
@@ -7,17 +7,26 @@ const occurrenceStatus = ['منشأة', 'أُنشئت الإشعارات', 'مح
 export function EscalationOccurrencesPage() {
   const [items, setItems] = useState<EscalationOccurrence[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    api.escalations.occurrences({ pageSize: 50 }).then((result) => setItems(result.items)).finally(() => setLoading(false))
+    let active = true
+    api.escalations.occurrences({ pageSize: 50 })
+      .then((result) => { if (active) setItems(result.items) })
+      .catch((err) => { if (active) setError(err instanceof ApiError ? err.message : 'تعذر تحميل حوادث التصعيد.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => {
+      active = false
+    }
   }, [])
 
   return (
     <section className="panel" dir="rtl">
       <h1>حوادث التصعيد</h1>
       {loading && <div className="loading">جاري التحميل…</div>}
-      {!loading && items.length === 0 && <div className="empty">لا توجد حوادث.</div>}
-      {!loading && items.length > 0 && (
+      {error && <div className="error">{error}</div>}
+      {!loading && !error && items.length === 0 && <div className="empty">لا توجد حوادث.</div>}
+      {!loading && !error && items.length > 0 && (
         <table>
           <thead>
             <tr><th>الهدف</th><th>المستوى</th><th>النوع</th><th>الحالة</th><th>المستلمون</th><th>الاكتشاف</th></tr>

@@ -25,8 +25,14 @@ export function EscalationsSettingsPage() {
   useEffect(() => { void load() }, [])
 
   const runNow = async () => {
-    const result = await api.escalations.run()
-    setRunSummary(`تم التشغيل: ${result.occurrencesCreated} حادثة، ${result.notificationsCreated} إشعار.`)
+    try {
+      setError('')
+      const result = await api.escalations.run()
+      setRunSummary(`تم التشغيل: ${result.occurrencesCreated} حادثة، ${result.notificationsCreated} إشعار.`)
+      window.dispatchEvent(new Event('baseera:notifications-changed'))
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'تعذر تشغيل التصعيد الآن.')
+    }
   }
 
   return (

@@ -74,6 +74,22 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<NotificationDeliveryAttempt> Application.Abstractions.IBaseeraDbContext.NotificationDeliveryAttempts => NotificationDeliveryAttempts;
     IQueryable<BackgroundJobLease> Application.Abstractions.IBaseeraDbContext.BackgroundJobLeases => BackgroundJobLeases;
 
+    public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
+
+    public async Task<TResult> ExecuteInTransactionAsync<TResult>(
+        Func<CancellationToken, Task<TResult>> operation,
+        CancellationToken cancellationToken = default)
+    {
+        var strategy = Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            var result = await operation(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        });
+    }
+
     public new void Add<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Add(entity);
     public new void Update<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Update(entity);
 
