@@ -226,9 +226,17 @@ public sealed class NoteRoutingService(
             ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
         var now = timeProvider.GetUtcNow();
+        rule.IsActive = false;
+        rule.ActivatedAtUtc = null;
+        rule.ActivatedByUserId = null;
+        rule.DeactivatedAtUtc = now;
+        rule.DeactivatedByUserId = currentUser.UserId;
         rule.IsDeleted = true;
         rule.DeletedAtUtc = now;
         rule.DeletedBy = currentUser.ExternalSubject;
+        rule.UpdatedAtUtc = now;
+        rule.UpdatedBy = currentUser.ExternalSubject;
+        rule.UpdatedByUserId = currentUser.UserId;
         db.Update(rule);
         AppendRuleHistory(rule, NoteRoutingRuleChangeType.Archived, request.Reason, now);
         await audit.WriteAsync(Audit("NoteRoutingRuleArchived", nameof(NoteRoutingRule), rule.Id, new { rule.Code }, request.Reason), cancellationToken);
@@ -241,10 +249,18 @@ public sealed class NoteRoutingService(
         var rule = await db.NoteRoutingRulesIncludingDeleted.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
             ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
+        var now = timeProvider.GetUtcNow();
         rule.IsDeleted = false;
         rule.DeletedAtUtc = null;
         rule.DeletedBy = null;
-        var now = timeProvider.GetUtcNow();
+        rule.IsActive = false;
+        rule.ActivatedAtUtc = null;
+        rule.ActivatedByUserId = null;
+        rule.DeactivatedAtUtc = now;
+        rule.DeactivatedByUserId = currentUser.UserId;
+        rule.UpdatedAtUtc = now;
+        rule.UpdatedBy = currentUser.ExternalSubject;
+        rule.UpdatedByUserId = currentUser.UserId;
         db.Update(rule);
         AppendRuleHistory(rule, NoteRoutingRuleChangeType.Restored, request.Reason, now);
         await audit.WriteAsync(Audit("NoteRoutingRuleRestored", nameof(NoteRoutingRule), rule.Id, new { rule.Code }, request.Reason), cancellationToken);
@@ -305,33 +321,33 @@ public sealed class NoteRoutingService(
         };
         var resolution = await ResolveRuleAsync(effectiveNote, NoteRoutingTrigger.ManualRun, cancellationToken);
         var warnings = new List<string>();
-        if (resolution.Rule is null)
+        if (resolution.MatchedRule is null)
         {
             warnings.Add("لا توجد قاعدة مطابقة.");
         }
 
-        var expectedUser = resolution.Rule?.ProcessingTargetType == NoteRoutingProcessingTargetType.Role
-            ? await SelectEligibleUserAsync(effectiveNote, resolution.Rule.ProcessingRoleId!.Value, cancellationToken)
+        var expectedUser = resolution.MatchedRule?.ProcessingTargetType == NoteRoutingProcessingTargetType.Role
+            ? await SelectEligibleUserAsync(effectiveNote, resolution.MatchedRule.ProcessingRoleId!.Value, cancellationToken)
             : null;
-        if (resolution.Rule?.ProcessingTargetType == NoteRoutingProcessingTargetType.Role && expectedUser is null)
+        if (resolution.MatchedRule?.ProcessingTargetType == NoteRoutingProcessingTargetType.Role && expectedUser is null)
         {
             warnings.Add("لا يوجد مستخدم مؤهل للدور المحدد.");
         }
 
         var due = await ComputeDueAtAsync(
             effectiveNote,
-            resolution.Rule,
+            resolution.MatchedRule,
             timeProvider.GetUtcNow(),
             cancellationToken);
 
         return new NoteRoutingPreviewDto(
-            resolution.Rule is null ? null : ToRuleDto(resolution.Rule),
+            resolution.MatchedRule is null ? null : ToRuleDto(resolution.MatchedRule),
             resolution.Specificity,
             resolution.Reason,
-            resolution.Rule?.ProcessingDepartmentId,
+            resolution.MatchedRule?.ProcessingDepartmentId,
             expectedUser?.UserId,
             expectedUser is null ? 0 : 1,
-            resolution.Rule?.ReviewerRoleId,
+            resolution.MatchedRule?.ReviewerRoleId,
             due.DueAt,
             due.Source,
             warnings);
@@ -438,7 +454,7 @@ public sealed class NoteRoutingService(
             cancellationToken);
         var due = await ComputeDueAtAsync(
             note,
-            resolution.Rule,
+            resolution.MatchedRule,
             now,
             cancellationToken);
         var decision = NewDecision(
@@ -446,13 +462,13 @@ public sealed class NoteRoutingService(
             trigger,
             attemptNumber,
             decisionKey,
-            resolution.Rule,
+            resolution.MatchedRule,
             now,
             due.Source);
         decision.DueAtBeforeUtc = note.DueAtUtc;
         decision.DueAtAfterUtc = due.DueAt;
 
-        if (resolution.Rule is null)
+        if (resolution.MatchedRule is null)
         {
             decision.ResultStatus = NoteRoutingResultStatus.NoMatchingRule;
             decision.FailureCode = "NoMatchingRule";
@@ -476,11 +492,11 @@ public sealed class NoteRoutingService(
             note.DueAtUtc = due.DueAt;
         }
 
-        var assignment = await CreateAssignmentAsync(note, resolution.Rule, decision, now, cancellationToken);
+        var assignment = await CreateAssignmentAsync(note, resolution.MatchedRule, decision, now, cancellationToken);
         if (assignment is null)
         {
             db.Add(decision);
-            await audit.WriteAsync(Audit("NoteRoutingNoEligibleUser", nameof(OperationalNote), note.Id, new { resolution.Rule.Code }, reason), cancellationToken);
+            await audit.WriteAsync(Audit("NoteRoutingNoEligibleUser", nameof(OperationalNote), note.Id, new { resolution.MatchedRule.Code }, reason), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return await ToDecisionDtoAsync(decision.Id, cancellationToken);
         }
@@ -969,6 +985,6 @@ public sealed class NoteRoutingService(
             decision.FailureCode,
             decision.FailureMessageSafe);
 
-    private sealed record RuleResolution(NoteRoutingRule? Rule, string Specificity, string Reason);
+    private sealed record RuleResolution(NoteRoutingRule? MatchedRule, string Specificity, string Reason);
     private sealed record SelectedRoutingUser(Guid UserId, string DisplayNameAr, int ActiveAssignmentCount, DateTimeOffset? LastAssignedAtUtc);
 }

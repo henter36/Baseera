@@ -67,23 +67,62 @@ function normalizeRequest(form: NoteRoutingRuleRequest): NoteRoutingRuleRequest 
   }
 }
 
+function hasInvalidUuid(value: string | null | undefined): boolean {
+  return Boolean(value) && !UUID_REGEX.test(value as string)
+}
+
 function validateRequest(form: NoteRoutingRuleRequest): string | null {
-  if (!form.code.trim()) return 'رمز القاعدة مطلوب.'
-  if (!form.nameAr.trim()) return 'اسم القاعدة مطلوب.'
-  if (!form.noteTypeId) return 'نوع الملاحظة مطلوب.'
-  if (!form.reason.trim()) return 'سبب التعديل مطلوب.'
-  if (form.priority < 0) return 'الأولوية لا تكون سالبة.'
-  if (form.defaultDueDays != null && form.defaultDueDays < 0) return 'مدة الاستحقاق لا تكون سالبة.'
-  if (form.processingTargetType === 0 && !form.processingDepartmentId) return 'معرف الإدارة مطلوب لهدف الإدارة.'
-  if (form.processingTargetType === 1 && !form.processingRoleId) return 'معرف الدور مطلوب لهدف الدور.'
-  if (form.noteTypeId && !UUID_REGEX.test(form.noteTypeId)) return 'معرف نوع الملاحظة غير صالح.'
-  if (form.regionId && !UUID_REGEX.test(form.regionId)) return 'معرف المنطقة غير صالح.'
-  if (form.facilityId && !UUID_REGEX.test(form.facilityId)) return 'معرف الموقع غير صالح.'
-  if (form.facilityUnitId && !UUID_REGEX.test(form.facilityUnitId)) return 'معرف الوحدة غير صالح.'
-  if (form.processingDepartmentId && !UUID_REGEX.test(form.processingDepartmentId)) return 'معرف الإدارة غير صالح.'
-  if (form.processingRoleId && !UUID_REGEX.test(form.processingRoleId)) return 'معرف الدور غير صالح.'
-  if (form.reviewerRoleId && !UUID_REGEX.test(form.reviewerRoleId)) return 'معرف دور المراجعة غير صالح.'
-  return null
+  const validations: ReadonlyArray<readonly [boolean, string]> = [
+    [!form.code.trim(), 'رمز القاعدة مطلوب.'],
+    [!form.nameAr.trim(), 'اسم القاعدة مطلوب.'],
+    [!form.noteTypeId, 'نوع الملاحظة مطلوب.'],
+    [!form.reason.trim(), 'سبب التعديل مطلوب.'],
+    [form.priority < 0, 'الأولوية لا تكون سالبة.'],
+    [
+      form.defaultDueDays != null && form.defaultDueDays < 0,
+      'مدة الاستحقاق لا تكون سالبة.',
+    ],
+    [
+      form.processingTargetType === 0 &&
+        !form.processingDepartmentId,
+      'معرف الإدارة مطلوب لهدف الإدارة.',
+    ],
+    [
+      form.processingTargetType === 1 &&
+        !form.processingRoleId,
+      'معرف الدور مطلوب لهدف الدور.',
+    ],
+    [
+      hasInvalidUuid(form.noteTypeId),
+      'معرف نوع الملاحظة غير صالح.',
+    ],
+    [
+      hasInvalidUuid(form.regionId),
+      'معرف المنطقة غير صالح.',
+    ],
+    [
+      hasInvalidUuid(form.facilityId),
+      'معرف الموقع غير صالح.',
+    ],
+    [
+      hasInvalidUuid(form.facilityUnitId),
+      'معرف الوحدة غير صالح.',
+    ],
+    [
+      hasInvalidUuid(form.processingDepartmentId),
+      'معرف الإدارة غير صالح.',
+    ],
+    [
+      hasInvalidUuid(form.processingRoleId),
+      'معرف الدور غير صالح.',
+    ],
+    [
+      hasInvalidUuid(form.reviewerRoleId),
+      'معرف دور المراجعة غير صالح.',
+    ],
+  ]
+
+  return validations.find(([invalid]) => invalid)?.[1] ?? null
 }
 
 export function NoteRoutingSettingsPage() {
