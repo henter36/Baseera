@@ -14,6 +14,8 @@ import { CorrectiveActionsListPage } from './pages/corrective-actions/Corrective
 import { NoteCreatePage } from './pages/notes/NoteCreatePage'
 import { NoteDetailPage } from './pages/notes/NoteDetailPage'
 import { NoteEditPage } from './pages/notes/NoteEditPage'
+import { NoteRoutingEffectivenessPage } from './pages/notes/NoteRoutingEffectivenessPage'
+import { NoteRoutingSettingsPage } from './pages/notes/NoteRoutingSettingsPage'
 import { NoteTypesSettingsPage } from './pages/notes/NoteTypesSettingsPage'
 import { NotesListPage } from './pages/notes/NotesListPage'
 import { RegionsPage } from './pages/RegionsPage'
@@ -59,6 +61,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Escalations.View') && <NavLink to="/settings/escalations" className={({ isActive }) => isActive ? 'active' : undefined}>التصعيد</NavLink>}
           {hasPermission('Escalations.ViewOccurrences') && <NavLink to="/settings/escalations/occurrences" className={({ isActive }) => isActive ? 'active' : undefined}>حوادث التصعيد</NavLink>}
           {hasPermission('Notes.ManageTypes') && <NavLink to="/settings/note-types" className={({ isActive }) => isActive ? 'active' : undefined}>أنواع الملاحظات</NavLink>}
+          {hasPermission('Notes.ViewRouting') && <NavLink to="/settings/note-routing" className={({ isActive }) => isActive ? 'active' : undefined}>توجيه الملاحظات</NavLink>}
           {hasPermission('Users.View') && <NavLink to="/users" className={({ isActive }) => isActive ? 'active' : undefined}>المستخدمون</NavLink>}
           {hasPermission('Audit.View') && <NavLink to="/audit" className={({ isActive }) => isActive ? 'active' : undefined}>سجل التدقيق</NavLink>}
           {hasPermission('Attachments.Upload') && <NavLink to="/attachments" className={({ isActive }) => isActive ? 'active' : undefined}>المرفقات</NavLink>}
@@ -104,6 +107,8 @@ export default function App() {
       <Route path="/settings/escalations/:id" element={<Protected><EscalationPolicyDetailPage /></Protected>} />
       <Route path="/settings/escalations/:id/edit" element={<Protected><EscalationPolicyFormPage mode="edit" /></Protected>} />
       <Route path="/settings/note-types" element={<Protected><NoteTypesSettingsPage /></Protected>} />
+      <Route path="/settings/note-routing" element={<Protected><NoteRoutingSettingsPage /></Protected>} />
+      <Route path="/settings/note-routing/effectiveness" element={<Protected><NoteRoutingEffectivenessPage /></Protected>} />
       <Route path="/users" element={<Protected><UsersPage /></Protected>} />
       <Route path="/audit" element={<Protected><AuditPage /></Protected>} />
       <Route path="/attachments" element={<Protected><AttachmentsPage /></Protected>} />

@@ -27,6 +27,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<INoteTypeAccessService, NoteTypeAccessService>();
         services.AddScoped<INoteTypeManagementService, NoteTypeManagementService>();
         services.AddScoped<INoteEligibilityService, NoteEligibilityService>();
+        services.AddScoped<INoteRoutingService, NoteRoutingService>();
         services.AddScoped<INoteQueryService, NoteQueryService>();
         services.AddScoped<INoteCommandService, NoteCommandService>();
         services.AddScoped<INoteAssignmentService, NoteAssignmentService>();

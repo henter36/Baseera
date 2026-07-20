@@ -165,6 +165,7 @@ public sealed record NoteListQuery
     public string? SortBy { get; set; }
     public bool SortDesc { get; set; }
     public bool RequiresMyAction { get; set; }
+    public bool RequiresRouting { get; set; }
 }
 
 public sealed record NoteTypeDto(
@@ -319,3 +320,147 @@ public sealed record NoteIntakeRegionDto(Guid Id, string NameAr);
 public sealed record NoteIntakeFacilityDto(Guid Id, Guid RegionId, string NameAr);
 public sealed record EligibleUserDto(Guid Id, string DisplayNameAr, string UserName);
 public sealed record NoteTypeTabDto(Guid? NoteTypeId, string Code, string NameAr, string? DescriptionAr, bool IsActive, int Count);
+
+public sealed record NoteRoutingRuleDto(
+    Guid Id,
+    string Code,
+    string NameAr,
+    string? DescriptionAr,
+    Guid NoteTypeId,
+    string? NoteTypeNameAr,
+    ScopeType ScopeType,
+    Guid? RegionId,
+    Guid? FacilityId,
+    Guid? FacilityUnitId,
+    int Priority,
+    NoteRoutingProcessingTargetType ProcessingTargetType,
+    Guid? ProcessingDepartmentId,
+    string? ProcessingDepartmentNameAr,
+    Guid? ProcessingRoleId,
+    string? ProcessingRoleNameAr,
+    Guid? ReviewerRoleId,
+    string? ReviewerRoleNameAr,
+    int? DefaultDueDays,
+    bool AutoAssignOnSubmit,
+    bool AutoReassignOnReopen,
+    bool IsActive,
+    DateTimeOffset? ActivatedAtUtc,
+    DateTimeOffset? DeactivatedAtUtc,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc,
+    string RowVersion);
+
+public sealed record CreateNoteRoutingRuleRequest(
+    string Code,
+    string NameAr,
+    string? DescriptionAr,
+    Guid NoteTypeId,
+    ScopeType ScopeType,
+    Guid? RegionId,
+    Guid? FacilityId,
+    Guid? FacilityUnitId,
+    int Priority,
+    NoteRoutingProcessingTargetType ProcessingTargetType,
+    Guid? ProcessingDepartmentId,
+    Guid? ProcessingRoleId,
+    Guid? ReviewerRoleId,
+    int? DefaultDueDays,
+    bool AutoAssignOnSubmit,
+    bool AutoReassignOnReopen,
+    string Reason);
+
+public sealed record UpdateNoteRoutingRuleRequest(
+    string NameAr,
+    string? DescriptionAr,
+    ScopeType ScopeType,
+    Guid? RegionId,
+    Guid? FacilityId,
+    Guid? FacilityUnitId,
+    int Priority,
+    NoteRoutingProcessingTargetType ProcessingTargetType,
+    Guid? ProcessingDepartmentId,
+    Guid? ProcessingRoleId,
+    Guid? ReviewerRoleId,
+    int? DefaultDueDays,
+    bool AutoAssignOnSubmit,
+    bool AutoReassignOnReopen,
+    string Reason,
+    string RowVersion);
+
+public sealed record NoteRoutingRuleQuery
+{
+    public Guid? NoteTypeId { get; set; }
+    public ScopeType? ScopeType { get; set; }
+    public Guid? RegionId { get; set; }
+    public Guid? FacilityId { get; set; }
+    public Guid? FacilityUnitId { get; set; }
+    public bool? IsActive { get; set; }
+    public NoteRoutingProcessingTargetType? ProcessingTargetType { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+}
+
+public sealed record NoteRoutingDecisionDto(
+    Guid Id,
+    Guid OperationalNoteId,
+    NoteRoutingTrigger Trigger,
+    int AttemptNumber,
+    Guid? RoutingRuleId,
+    string? RoutingRuleCode,
+    NoteRoutingResultStatus ResultStatus,
+    Guid? ResolvedDepartmentId,
+    string? ResolvedDepartmentNameAr,
+    Guid? ResolvedUserId,
+    string? ResolvedUserDisplayName,
+    Guid? ResolvedProcessingRoleId,
+    string? ResolvedProcessingRoleNameAr,
+    Guid? ResolvedReviewerRoleId,
+    string? ResolvedReviewerRoleNameAr,
+    Guid? CreatedAssignmentId,
+    DateTimeOffset? DueAtBeforeUtc,
+    DateTimeOffset? DueAtAfterUtc,
+    string DueAtSource,
+    DateTimeOffset DecidedAtUtc,
+    string? FailureCode,
+    string? FailureMessageSafe);
+
+public sealed record RunNoteRoutingRequest(
+    string RowVersion,
+    string Reason,
+    bool ReplaceCurrentAssignment,
+    string IdempotencyKey);
+
+public sealed record PreviewNoteRoutingRequest(
+    Guid? NoteTypeId,
+    ScopeType? ScopeType,
+    Guid? RegionId,
+    Guid? FacilityId,
+    Guid? FacilityUnitId,
+    NoteSeverity? Severity);
+
+public sealed record NoteRoutingPreviewDto(
+    NoteRoutingRuleDto? WinningRule,
+    string Specificity,
+    string Reason,
+    Guid? ExpectedDepartmentId,
+    Guid? ExpectedUserId,
+    int EligibleUserCount,
+    Guid? ReviewerRoleId,
+    DateTimeOffset? ExpectedDueAtUtc,
+    string DueAtSource,
+    IReadOnlyList<string> Warnings);
+
+public sealed record NoteRoutingEffectivenessQuery(DateTimeOffset? FromUtc, DateTimeOffset? ToUtc);
+
+public sealed record NoteRoutingEffectivenessDto(
+    int TotalAttempts,
+    double AutoAssignmentSuccessRate,
+    int AssignedToDepartment,
+    int AssignedToUser,
+    int NoMatchingRule,
+    int NoEligibleUser,
+    int InvalidTarget,
+    int ManualOverride,
+    double? AverageOpenToAssignedMinutes,
+    double? AverageAssignedToInProgressMinutes,
+    int RequiresRoutingCount);

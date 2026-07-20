@@ -1,19 +1,18 @@
-# Phase B.2.3.2 Future Scope
+# Phase B.2.3.2 — Note Routing Scope
 
-Phase B.2.3.2 is not implemented in this PR.
+Phase B.2.3.2 adds managed note routing rules and automatic assignment for operational notes after Phase B.2.3.1 note types and effective access.
 
-Future scope:
+Included:
+- `NoteRoutingRule` management.
+- Submit-time routing for `Draft -> Open`.
+- Department and role-based processing targets.
+- Default reviewer role metadata.
+- Default due-date selection from user input, routing rule, then note type.
+- Append-only routing decisions, rule history, and note-type access change history.
+- Manual routing run and routing preview API.
+- Limited routing effectiveness view.
 
-- `NoteRoutingRule`.
-- Routing by note type, region, facility, and facility unit.
-- Default processing department.
-- Default processing role.
-- Default reviewer role.
-- Automatic assignment.
-- Routing priority rules.
-- Due durations by type and location.
-- Append-only history for grant changes.
-- Routing effectiveness reports.
+Excluded:
+- Dashboard, reports, export, email, SMS, push, AI, workflow designer, Phase B.3.1, and Phase C.
 
-No `NoteRoutingRules` table, automatic assignment, dashboard, reports, or workflow designer is created in Phase B.2.3.1.
-
+The implementation remains a modular monolith and uses SQL Server as the source of truth.

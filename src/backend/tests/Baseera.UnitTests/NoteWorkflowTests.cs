@@ -82,6 +82,11 @@ public sealed class NoteScopeShapeTests
         public IQueryable<RoleNoteTypeGrant> RoleNoteTypeGrants => Enumerable.Empty<RoleNoteTypeGrant>().AsQueryable();
         public IQueryable<UserNoteTypeOverride> UserNoteTypeOverrides => Enumerable.Empty<UserNoteTypeOverride>().AsQueryable();
         public IQueryable<UserNoteIntakeProfile> UserNoteIntakeProfiles => Enumerable.Empty<UserNoteIntakeProfile>().AsQueryable();
+        public IQueryable<NoteRoutingRule> NoteRoutingRules => Enumerable.Empty<NoteRoutingRule>().AsQueryable();
+        public IQueryable<NoteRoutingRule> NoteRoutingRulesIncludingDeleted => NoteRoutingRules;
+        public IQueryable<NoteRoutingDecision> NoteRoutingDecisions => Enumerable.Empty<NoteRoutingDecision>().AsQueryable();
+        public IQueryable<NoteRoutingRuleHistory> NoteRoutingRuleHistories => Enumerable.Empty<NoteRoutingRuleHistory>().AsQueryable();
+        public IQueryable<NoteTypeAccessChangeHistory> NoteTypeAccessChangeHistories => Enumerable.Empty<NoteTypeAccessChangeHistory>().AsQueryable();
         public IQueryable<OperationalNote> OperationalNotes => Enumerable.Empty<OperationalNote>().AsQueryable();
         public IQueryable<OperationalNote> OperationalNotesIncludingDeleted => OperationalNotes;
         public IQueryable<NoteAssignment> NoteAssignments => Enumerable.Empty<NoteAssignment>().AsQueryable();

@@ -273,6 +273,7 @@ public sealed class NoteQueryService(
         q = ApplyScopeFilters(q, query);
         q = ApplyDateFilters(q, query, now);
         q = ApplyAssignmentFilter(q, query);
+        q = ApplyRoutingFilter(q, query);
         return q;
     }
 
@@ -387,6 +388,29 @@ public sealed class NoteQueryService(
         }
 
         return q;
+    }
+
+    private static IQueryable<OperationalNote> ApplyRoutingFilter(IQueryable<OperationalNote> q, NoteListQuery query)
+    {
+        if (!query.RequiresRouting)
+        {
+            return q;
+        }
+
+        return q.Where(n =>
+            (n.Status == NoteStatus.Open || n.Status == NoteStatus.Reopened) &&
+            !n.Assignments.Any(a => a.IsCurrent) &&
+            (
+                !n.RoutingDecisions.Any() ||
+                n.RoutingDecisions
+                    .OrderByDescending(d => d.DecidedAtUtc)
+                    .Take(1)
+                    .Any(d =>
+                        d.ResultStatus == NoteRoutingResultStatus.NoMatchingRule ||
+                        d.ResultStatus == NoteRoutingResultStatus.NoEligibleUser ||
+                        d.ResultStatus == NoteRoutingResultStatus.InvalidTarget ||
+                        d.ResultStatus == NoteRoutingResultStatus.Failed)
+            ));
     }
 
     private static IQueryable<OperationalNote> ApplySort(IQueryable<OperationalNote> q, string? sortBy, bool sortDesc)

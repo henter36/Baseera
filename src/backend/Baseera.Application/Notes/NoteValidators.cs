@@ -186,3 +186,66 @@ public sealed class UpdateUserNoteIntakeProfileRequestValidator : AbstractValida
 
     private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
 }
+
+public sealed class CreateNoteRoutingRuleRequestValidator : AbstractValidator<CreateNoteRoutingRuleRequest>
+{
+    public CreateNoteRoutingRuleRequestValidator()
+    {
+        RuleFor(x => x.Code).Must(BeMeaningful).WithMessage("رمز قاعدة التوجيه مطلوب.").MaximumLength(80);
+        RuleFor(x => x.NameAr).Must(BeMeaningful).WithMessage("اسم قاعدة التوجيه مطلوب.").MaximumLength(200);
+        RuleFor(x => x.DescriptionAr).MaximumLength(1000);
+        RuleFor(x => x.NoteTypeId).NotEmpty();
+        RuleFor(x => x.ScopeType).IsInEnum();
+        RuleFor(x => x.Priority).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.ProcessingTargetType).IsInEnum();
+        RuleFor(x => x.DefaultDueDays).GreaterThanOrEqualTo(0).When(x => x.DefaultDueDays.HasValue);
+        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب التعديل مطلوب.").MaximumLength(1000);
+        RuleFor(x => x).Must(ValidTargetShape).WithMessage("هدف التوجيه يجب أن يكون إدارة فقط أو دورًا فقط.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+    private static bool ValidTargetShape(CreateNoteRoutingRuleRequest request) =>
+        request.ProcessingTargetType switch
+        {
+            Domain.Notes.NoteRoutingProcessingTargetType.Department => request.ProcessingDepartmentId.HasValue && !request.ProcessingRoleId.HasValue,
+            Domain.Notes.NoteRoutingProcessingTargetType.Role => request.ProcessingRoleId.HasValue && !request.ProcessingDepartmentId.HasValue,
+            _ => false
+        };
+}
+
+public sealed class UpdateNoteRoutingRuleRequestValidator : AbstractValidator<UpdateNoteRoutingRuleRequest>
+{
+    public UpdateNoteRoutingRuleRequestValidator()
+    {
+        RuleFor(x => x.NameAr).Must(BeMeaningful).WithMessage("اسم قاعدة التوجيه مطلوب.").MaximumLength(200);
+        RuleFor(x => x.DescriptionAr).MaximumLength(1000);
+        RuleFor(x => x.ScopeType).IsInEnum();
+        RuleFor(x => x.Priority).GreaterThanOrEqualTo(0);
+        RuleFor(x => x.ProcessingTargetType).IsInEnum();
+        RuleFor(x => x.DefaultDueDays).GreaterThanOrEqualTo(0).When(x => x.DefaultDueDays.HasValue);
+        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب التعديل مطلوب.").MaximumLength(1000);
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x).Must(ValidTargetShape).WithMessage("هدف التوجيه يجب أن يكون إدارة فقط أو دورًا فقط.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+    private static bool ValidTargetShape(UpdateNoteRoutingRuleRequest request) =>
+        request.ProcessingTargetType switch
+        {
+            Domain.Notes.NoteRoutingProcessingTargetType.Department => request.ProcessingDepartmentId.HasValue && !request.ProcessingRoleId.HasValue,
+            Domain.Notes.NoteRoutingProcessingTargetType.Role => request.ProcessingRoleId.HasValue && !request.ProcessingDepartmentId.HasValue,
+            _ => false
+        };
+}
+
+public sealed class RunNoteRoutingRequestValidator : AbstractValidator<RunNoteRoutingRequest>
+{
+    public RunNoteRoutingRequestValidator()
+    {
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب تشغيل التوجيه مطلوب.").MaximumLength(1000);
+        RuleFor(x => x.IdempotencyKey).Must(BeMeaningful).WithMessage("مفتاح منع التكرار مطلوب.").MaximumLength(120);
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}

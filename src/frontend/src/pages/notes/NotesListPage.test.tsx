@@ -164,6 +164,20 @@ describe('NotesListPage', () => {
     })
   })
 
+  it('sends the requires routing tab filter to the API', async () => {
+    listNotes.mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0 })
+    renderPage()
+    await waitFor(() => expect(listNotes).toHaveBeenCalled())
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: 'تتطلب توجيهًا' }))
+
+    await waitFor(() => {
+      const lastCall = listNotes.mock.calls.at(-1)?.[0]
+      expect(lastCall).toMatchObject({ requiresRouting: true })
+    })
+  })
+
   it('paginates using next/previous controls', async () => {
     listNotes.mockResolvedValue({ items: [sampleNote], page: 1, pageSize: 20, totalCount: 45 })
     renderPage()

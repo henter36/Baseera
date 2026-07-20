@@ -160,7 +160,7 @@ public sealed class NoteTypeAccessService(IBaseeraDbContext db, ICurrentUser cur
             {
                 var userGrants = rolesByUser[id].SelectMany(roleId => grantsByRole[roleId]);
                 overrideByUser.TryGetValue(id, out var overrideRow);
-                return BuildAccessDto(noteType, userGrants, overrideRow);
+                return (EffectiveNoteTypeAccessDto?)BuildAccessDto(noteType, userGrants, overrideRow);
             });
     }
 

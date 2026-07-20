@@ -28,6 +28,7 @@ public sealed class NoteListQueryParams
     public Guid? AssignedToUserId { get; set; }
     public bool? OverdueOnly { get; set; }
     public bool? RequiresMyAction { get; set; }
+    public bool? RequiresRouting { get; set; }
     public DateTimeOffset? DueFrom { get; set; }
     public DateTimeOffset? DueTo { get; set; }
     public DateTimeOffset? CreatedFrom { get; set; }
@@ -52,6 +53,7 @@ public sealed class NoteListQueryParams
         AssignedToUserId = AssignedToUserId,
         OverdueOnly = OverdueOnly ?? false,
         RequiresMyAction = RequiresMyAction ?? false,
+        RequiresRouting = RequiresRouting ?? false,
         DueFrom = DueFrom,
         DueTo = DueTo,
         CreatedFrom = CreatedFrom,

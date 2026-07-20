@@ -21,6 +21,7 @@ public sealed class NoteCommandService(
     INoteScopeService noteScope,
     IOrganizationalScopeService orgScope,
     INoteTypeAccessService typeAccess,
+    INoteRoutingService routing,
     IAuditService audit,
     INoteQueryService queries) : INoteCommandService
 {
@@ -180,34 +181,41 @@ public sealed class NoteCommandService(
 
     public async Task<NoteDetailDto> SubmitAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
-        NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
-        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
-        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
-        NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
-        NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Open);
+        var noteId = await db.ExecuteInTransactionAsync(
+            async ct =>
+            {
+                NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
+                var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: ct);
+                await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, ct);
+                NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
+                NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Open);
 
-        var userId = RequireUserId();
-        var from = note.Status;
-        note.Status = NoteStatus.Open;
-        note.SubmittedAtUtc = DateTimeOffset.UtcNow;
-        note.UpdatedAtUtc = note.SubmittedAtUtc;
-        note.UpdatedBy = currentUser.ExternalSubject;
-        db.Update(note);
+                var userId = RequireUserId();
+                var from = note.Status;
+                note.Status = NoteStatus.Open;
+                note.SubmittedAtUtc = DateTimeOffset.UtcNow;
+                note.UpdatedAtUtc = note.SubmittedAtUtc;
+                note.UpdatedBy = currentUser.ExternalSubject;
+                db.Update(note);
 
-        AppendHistory(note.Id, from, NoteStatus.Open, userId, request.Reason.Trim());
-        await audit.WriteAsync(new AuditEntry
-        {
-            Action = "NoteSubmitted",
-            Module = NoteAccessHelper.ModuleName,
-            EntityType = nameof(OperationalNote),
-            EntityId = note.Id.ToString(),
-            OldValues = new { Status = from },
-            NewValues = new { Status = NoteStatus.Open },
-            Reason = request.Reason.Trim()
-        }, cancellationToken);
+                AppendHistory(note.Id, from, NoteStatus.Open, userId, request.Reason.Trim());
+                await audit.WriteAsync(new AuditEntry
+                {
+                    Action = "NoteSubmitted",
+                    Module = NoteAccessHelper.ModuleName,
+                    EntityType = nameof(OperationalNote),
+                    EntityId = note.Id.ToString(),
+                    OldValues = new { Status = from },
+                    NewValues = new { Status = NoteStatus.Open },
+                    Reason = request.Reason.Trim()
+                }, ct);
 
-        await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
+                await routing.RouteOnSubmitAsync(note, note.SubmittedAtUtc.Value, request.Reason, ct);
+                return note.Id;
+            },
+            cancellationToken);
+
+        return (await queries.GetDetailAsync(noteId, cancellationToken))!;
     }
 
     public async Task ArchiveAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)

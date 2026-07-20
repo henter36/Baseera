@@ -168,6 +168,19 @@ public static class DatabaseInitializer
             PermissionCodes.NotesManageUserTypeOverrides,
             PermissionCodes.NotesManageIntakeProfiles
         ];
+        string[] routingViewer =
+        [
+            PermissionCodes.NotesViewRouting,
+            PermissionCodes.NotesViewRoutingDiagnostics
+        ];
+        string[] routingManager =
+        [
+            PermissionCodes.NotesViewRouting,
+            PermissionCodes.NotesManageRoutingRules,
+            PermissionCodes.NotesActivateRoutingRules,
+            PermissionCodes.NotesRunRouting,
+            PermissionCodes.NotesViewRoutingDiagnostics
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -197,6 +210,7 @@ public static class DatabaseInitializer
             PermissionCodes.NotesArchive,
             PermissionCodes.NotesRestore,
             caReviewer,
+            routingViewer,
             escalationViewer,
             ownNotifications);
 
@@ -211,6 +225,7 @@ public static class DatabaseInitializer
             PermissionCodes.NotesReopen,
             PermissionCodes.NotesCancel,
             noteTypeManagers,
+            routingManager,
             caDirector,
             escalationManager,
             ownNotifications);
@@ -232,6 +247,7 @@ public static class DatabaseInitializer
             PermissionCodes.NotesRestore,
             PermissionCodes.NotesManageUserTypeOverrides,
             PermissionCodes.NotesManageIntakeProfiles,
+            routingManager,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
             PermissionCodes.CorrectiveActionsRestore,
@@ -267,6 +283,7 @@ public static class DatabaseInitializer
             PermissionCodes.NotesRestore,
             PermissionCodes.NotesManageUserTypeOverrides,
             PermissionCodes.NotesManageIntakeProfiles,
+            routingManager,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
             PermissionCodes.CorrectiveActionsRestore,

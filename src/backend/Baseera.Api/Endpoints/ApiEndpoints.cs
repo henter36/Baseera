@@ -11,6 +11,7 @@ using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
 using Baseera.Domain.Attachments;
+using Baseera.Domain.Common;
 using Baseera.Domain.Notes;
 using FluentValidation;
 
@@ -141,6 +142,7 @@ public static class ApiEndpoints
 
         MapNotesEndpoints(api);
         MapNoteTypeEndpoints(api);
+        MapNoteRoutingEndpoints(api);
         MapCorrectiveActionEndpoints(api);
         MapEscalationEndpoints(api);
         MapNotificationEndpoints(api);
@@ -427,6 +429,100 @@ public static class ApiEndpoints
 
         actions.MapGet(EntityIdRoute + "/attachments", async (Guid id, IAttachmentAppService attachments, CancellationToken ct) =>
             Results.Ok(await attachments.ListForEntityAsync("CorrectiveAction", id, ct))).RequireAuthorization(AuthPolicies.CorrectiveActionsView);
+    }
+
+    private static void MapNoteRoutingEndpoints(RouteGroupBuilder api)
+    {
+        var rules = api.MapGroup("/note-routing-rules");
+        rules.MapGet("/", async (
+            Guid? noteTypeId,
+            ScopeType? scopeType,
+            Guid? regionId,
+            Guid? facilityId,
+            Guid? facilityUnitId,
+            bool? isActive,
+            NoteRoutingProcessingTargetType? processingTargetType,
+            int? page,
+            int? pageSize,
+            INoteRoutingService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListRulesAsync(new NoteRoutingRuleQuery
+            {
+                NoteTypeId = noteTypeId,
+                ScopeType = scopeType,
+                RegionId = regionId,
+                FacilityId = facilityId,
+                FacilityUnitId = facilityUnitId,
+                IsActive = isActive,
+                ProcessingTargetType = processingTargetType,
+                Page = page ?? 1,
+                PageSize = pageSize ?? 20
+            }, ct))).RequireAuthorization(AuthPolicies.NotesViewRouting);
+
+        rules.MapGet(EntityIdRoute, async (Guid id, INoteRoutingService service, CancellationToken ct) =>
+        {
+            var item = await service.GetRuleAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.NotesViewRouting);
+
+        rules.MapPost("/", async (CreateNoteRoutingRuleRequest request, IValidator<CreateNoteRoutingRuleRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateRuleAsync(request, ct);
+            return Results.Created($"/api/v1/note-routing-rules/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.NotesManageRoutingRules);
+
+        rules.MapPut(EntityIdRoute, async (Guid id, UpdateNoteRoutingRuleRequest request, IValidator<UpdateNoteRoutingRuleRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.UpdateRuleAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageRoutingRules);
+
+        rules.MapPost(EntityIdRoute + "/activate", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ActivateRuleAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesActivateRoutingRules);
+
+        rules.MapPost(EntityIdRoute + "/deactivate", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.DeactivateRuleAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesActivateRoutingRules);
+
+        rules.MapPost(EntityIdRoute + "/archive", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await service.ArchiveRuleAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.NotesManageRoutingRules);
+
+        rules.MapPost(EntityIdRoute + "/restore", async (Guid id, TransitionNoteRequest request, IValidator<TransitionNoteRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.RestoreRuleAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesManageRoutingRules);
+
+        rules.MapPost("/validate", async (CreateNoteRoutingRuleRequest request, IValidator<CreateNoteRoutingRuleRequest> validator, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(new { valid = true });
+        }).RequireAuthorization(AuthPolicies.NotesManageRoutingRules);
+
+        rules.MapPost("/preview", async (Guid noteId, PreviewNoteRoutingRequest request, INoteRoutingService service, CancellationToken ct) =>
+            Results.Ok(await service.PreviewNoteAsync(noteId, request, ct))).RequireAuthorization(AuthPolicies.NotesViewRouting);
+
+        api.MapPost("/notes/{id:guid}/routing/run", async (Guid id, RunNoteRoutingRequest request, IValidator<RunNoteRoutingRequest> validator, INoteRoutingService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.RunManualAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesRunRouting);
+
+        api.MapPost("/notes/{id:guid}/routing/preview", async (Guid id, PreviewNoteRoutingRequest request, INoteRoutingService service, CancellationToken ct) =>
+            Results.Ok(await service.PreviewNoteAsync(id, request, ct))).RequireAuthorization(AuthPolicies.NotesViewRouting);
+
+        api.MapGet("/note-routing/effectiveness", async (DateTimeOffset? fromUtc, DateTimeOffset? toUtc, INoteRoutingService service, CancellationToken ct) =>
+            Results.Ok(await service.GetEffectivenessAsync(new NoteRoutingEffectivenessQuery(fromUtc, toUtc), ct))).RequireAuthorization(AuthPolicies.NotesViewRoutingDiagnostics);
     }
 
     private static void MapNotesEndpoints(RouteGroupBuilder api)

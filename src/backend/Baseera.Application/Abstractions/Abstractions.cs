@@ -32,6 +32,11 @@ public interface IBaseeraDbContext
     IQueryable<RoleNoteTypeGrant> RoleNoteTypeGrants { get; }
     IQueryable<UserNoteTypeOverride> UserNoteTypeOverrides { get; }
     IQueryable<UserNoteIntakeProfile> UserNoteIntakeProfiles { get; }
+    IQueryable<NoteRoutingRule> NoteRoutingRules { get; }
+    IQueryable<NoteRoutingRule> NoteRoutingRulesIncludingDeleted { get; }
+    IQueryable<NoteRoutingDecision> NoteRoutingDecisions { get; }
+    IQueryable<NoteRoutingRuleHistory> NoteRoutingRuleHistories { get; }
+    IQueryable<NoteTypeAccessChangeHistory> NoteTypeAccessChangeHistories { get; }
     IQueryable<OperationalNote> OperationalNotes { get; }
     /// <summary>Includes soft-deleted notes for archive restore only.</summary>
     IQueryable<OperationalNote> OperationalNotesIncludingDeleted { get; }
