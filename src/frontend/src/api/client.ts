@@ -498,7 +498,9 @@ function appendScopeFilterParams(params: URLSearchParams, filters: NoteListFilte
   if (filters.assignedToUserId) params.set('assignedToUserId', filters.assignedToUserId)
 }
 
-function appendDateRangeParams(params: URLSearchParams, filters: NoteListFilters): void {
+type DateRangeFilters = Pick<NoteListFilters, 'dueFrom' | 'dueTo' | 'createdFrom' | 'createdTo'>
+
+function appendDateRangeParams(params: URLSearchParams, filters: DateRangeFilters): void {
   if (filters.dueFrom) params.set('dueFrom', filters.dueFrom)
   if (filters.dueTo) params.set('dueTo', filters.dueTo)
   if (filters.createdFrom) params.set('createdFrom', filters.createdFrom)
@@ -519,7 +521,7 @@ function buildCorrectiveActionQuery(filters: CorrectiveActionListFilters): strin
   appendCorrectiveActionPaging(params, filters)
   appendCorrectiveActionEnumFilters(params, filters)
   appendCorrectiveActionScopeFilters(params, filters)
-  appendCorrectiveActionDateFilters(params, filters)
+  appendDateRangeParams(params, filters)
   appendCorrectiveActionStateFilters(params, filters)
   return params.toString()
 }
@@ -545,13 +547,6 @@ function appendCorrectiveActionScopeFilters(params: URLSearchParams, filters: Co
   if (filters.regionId) params.set('regionId', filters.regionId)
   if (filters.facilityId) params.set('facilityId', filters.facilityId)
   if (filters.facilityUnitId) params.set('facilityUnitId', filters.facilityUnitId)
-}
-
-function appendCorrectiveActionDateFilters(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
-  if (filters.dueFrom) params.set('dueFrom', filters.dueFrom)
-  if (filters.dueTo) params.set('dueTo', filters.dueTo)
-  if (filters.createdFrom) params.set('createdFrom', filters.createdFrom)
-  if (filters.createdTo) params.set('createdTo', filters.createdTo)
 }
 
 function appendCorrectiveActionStateFilters(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
