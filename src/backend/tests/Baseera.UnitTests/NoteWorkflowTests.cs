@@ -86,6 +86,14 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.CorrectiveActions.CorrectiveAction> CorrectiveActionsIncludingDeleted => CorrectiveActions;
         public IQueryable<Domain.CorrectiveActions.CorrectiveActionAssignment> CorrectiveActionAssignments => Enumerable.Empty<Domain.CorrectiveActions.CorrectiveActionAssignment>().AsQueryable();
         public IQueryable<Domain.CorrectiveActions.CorrectiveActionStatusHistory> CorrectiveActionStatusHistories => Enumerable.Empty<Domain.CorrectiveActions.CorrectiveActionStatusHistory>().AsQueryable();
+        public IQueryable<Domain.Escalations.EscalationPolicy> EscalationPolicies => Enumerable.Empty<Domain.Escalations.EscalationPolicy>().AsQueryable();
+        public IQueryable<Domain.Escalations.EscalationPolicy> EscalationPoliciesIncludingDeleted => EscalationPolicies;
+        public IQueryable<Domain.Escalations.EscalationRule> EscalationRules => Enumerable.Empty<Domain.Escalations.EscalationRule>().AsQueryable();
+        public IQueryable<Domain.Escalations.EscalationRule> EscalationRulesIncludingDeleted => EscalationRules;
+        public IQueryable<Domain.Escalations.EscalationOccurrence> EscalationOccurrences => Enumerable.Empty<Domain.Escalations.EscalationOccurrence>().AsQueryable();
+        public IQueryable<Domain.Escalations.Notification> Notifications => Enumerable.Empty<Domain.Escalations.Notification>().AsQueryable();
+        public IQueryable<Domain.Escalations.NotificationDeliveryAttempt> NotificationDeliveryAttempts => Enumerable.Empty<Domain.Escalations.NotificationDeliveryAttempt>().AsQueryable();
+        public IQueryable<Domain.Escalations.BackgroundJobLease> BackgroundJobLeases => Enumerable.Empty<Domain.Escalations.BackgroundJobLease>().AsQueryable();
         public void Add<TEntity>(TEntity entity) where TEntity : class { }
         public void Update<TEntity>(TEntity entity) where TEntity : class { }
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);

@@ -93,6 +93,20 @@
 | CorrectiveActions.Archive | أرشفة حذف ناعم | ✓ | ✓ | | ✓ | | ✓ | | | |
 | CorrectiveActions.Restore | استعادة من الأرشفة | ✓ | ✓ | | ✓ | | ✓ | | | |
 
+## صلاحيات التصعيد والإشعارات (مفعّلة في B.2.2)
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Regional Coordinator | Facility Director | Facility Coordinator | Auditor | ReadOnlyUser |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:---------------------:|:-------------------:|:----------------------:|:-------:|:------------:|
+| Escalations.View | عرض سياسات التصعيد | ✓ | ✓ | ✓ | ✓ | | ✓ | | | |
+| Escalations.Manage | إنشاء وتعديل السياسات والقواعد | ✓ | | ✓ | | | | | | |
+| Escalations.Activate | تفعيل وتعطيل السياسات | ✓ | | ✓ | | | | | | |
+| Escalations.Run | تشغيل يدوي | ✓ | | ✓ | | | | | | |
+| Escalations.ViewOccurrences | عرض حوادث التصعيد | ✓ | ✓ | ✓ | ✓ | | ✓ | | | |
+| Escalations.RetryFailed | إعادة محاولة الفشل | ✓ | | ✓ | | | | | | |
+| Notifications.ViewOwn | عرض إشعارات المستخدم نفسه | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Notifications.MarkRead | تعليم إشعارات المستخدم نفسه كمقروءة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Notifications.ArchiveOwn | أرشفة إشعارات المستخدم نفسه | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
 ### فصل الواجبات على الإجراءات الحرجة
 
 للإجراء التصحيحي ذي أولوية `Critical`: أي مستخدم شارك في المعالجة الفعلية لا يعتمد الإنجاز النهائي، حتى إذا كان `SystemAdministrator`. المشاركة تُستنتج من `CorrectiveActionStatusHistory` عبر:

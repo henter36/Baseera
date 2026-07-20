@@ -1,0 +1,86 @@
+import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ApiError, api } from '../../api/client'
+import type { EscalationPolicy } from '../../api/client'
+
+export function EscalationPolicyFormPage({ mode }: { mode: 'create' | 'edit' }) {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const [policy, setPolicy] = useState<EscalationPolicy | null>(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (mode === 'edit' && id) {
+      api.escalationPolicies.get(id).then(setPolicy).catch(() => setError('تعذر تحميل السياسة.'))
+    }
+  }, [id, mode])
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    const form = new FormData(event.currentTarget)
+    const body = {
+      code: String(form.get('code') ?? '').trim(),
+      nameAr: String(form.get('nameAr') ?? '').trim(),
+      description: String(form.get('description') ?? '').trim() || null,
+      targetType: Number(form.get('targetType')),
+      scopeType: Number(form.get('scopeType')),
+      regionId: null,
+      facilityId: null,
+      facilityUnitId: null,
+    }
+    try {
+      if (!body.nameAr || (mode === 'create' && !body.code)) {
+        setError('الرمز والاسم مطلوبان.')
+        return
+      }
+      const saved = mode === 'create'
+        ? await api.escalationPolicies.create(body)
+        : await api.escalationPolicies.update(id!, { ...body, rowVersion: policy!.rowVersion })
+      navigate(`/settings/escalations/${saved.id}`)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'تعذر حفظ السياسة.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="panel" dir="rtl">
+      <h1>{mode === 'create' ? 'سياسة تصعيد جديدة' : 'تعديل سياسة التصعيد'}</h1>
+      {error && <div className="error">{error}</div>}
+      <form onSubmit={submit} className="form-grid">
+        <label>
+          الرمز
+          <input name="code" defaultValue={policy?.code ?? ''} disabled={mode === 'edit'} />
+        </label>
+        <label>
+          الاسم
+          <input name="nameAr" defaultValue={policy?.nameAr ?? ''} />
+        </label>
+        <label>
+          نوع الهدف
+          <select name="targetType" defaultValue={policy?.targetType ?? 0} disabled={mode === 'edit'}>
+            <option value={0}>ملاحظة تشغيلية</option>
+            <option value={1}>إجراء تصحيحي</option>
+          </select>
+        </label>
+        <label>
+          النطاق
+          <select name="scopeType" defaultValue={policy?.scopeType ?? 0}>
+            <option value={0}>وطني</option>
+            <option value={1}>المستوى الرئيسي</option>
+          </select>
+        </label>
+        <label className="wide">
+          الوصف
+          <textarea name="description" defaultValue={policy?.description ?? ''} />
+        </label>
+        <button disabled={saving}>{saving ? 'جاري الحفظ…' : 'حفظ'}</button>
+      </form>
+    </section>
+  )
+}

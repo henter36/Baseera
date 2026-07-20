@@ -416,6 +416,138 @@ export type UpdateCorrectiveActionRequest = CreateCorrectiveActionRequest & {
 
 export type CompleteCorrectiveActionRequest = { reason: string; completionSummary: string; rowVersion: string }
 
+export type RowVersionRequest = { rowVersion: string }
+
+export type EscalationPolicy = {
+  id: string
+  code: string
+  nameAr: string
+  description?: string | null
+  targetType: number
+  isEnabled: boolean
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+  ruleCount: number
+  rowVersion: string
+}
+
+export type EscalationRule = {
+  id: string
+  escalationPolicyId: string
+  level: number
+  priority: number
+  triggerType: number
+  thresholdDays: number
+  repeatEveryDays?: number | null
+  maximumOccurrences?: number | null
+  recipientStrategy: number
+  recipientRoleCode?: string | null
+  specificRecipientUserId?: string | null
+  titleTemplateAr: string
+  messageTemplateAr: string
+  isEnabled: boolean
+  rowVersion: string
+}
+
+export type CreateEscalationPolicyRequest = {
+  code: string
+  nameAr: string
+  description?: string | null
+  targetType: number
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+}
+
+export type UpdateEscalationPolicyRequest = Omit<CreateEscalationPolicyRequest, 'code' | 'targetType'> & {
+  rowVersion: string
+}
+
+export type CreateEscalationRuleRequest = {
+  level: number
+  priority: number
+  triggerType: number
+  thresholdDays: number
+  repeatEveryDays?: number | null
+  maximumOccurrences?: number | null
+  recipientStrategy: number
+  recipientRoleCode?: string | null
+  specificRecipientUserId?: string | null
+  titleTemplateAr: string
+  messageTemplateAr: string
+}
+
+export type UpdateEscalationRuleRequest = Omit<CreateEscalationRuleRequest, 'level'> & {
+  rowVersion: string
+}
+
+export type EscalationOccurrence = {
+  id: string
+  policyId: string
+  ruleId: string
+  targetType: number
+  targetId: string
+  targetReferenceNumber: string
+  escalationLevel: number
+  triggerType: number
+  occurrenceNumber: number
+  dueAtUtc: string
+  detectedAtUtc: string
+  recipientCount: number
+  status: number
+  suppressionReason?: string | null
+}
+
+export type EscalationRunResult = {
+  policiesEvaluated: number
+  candidatesEvaluated: number
+  occurrencesCreated: number
+  notificationsCreated: number
+  suppressed: number
+  failed: number
+}
+
+export type Notification = {
+  id: string
+  targetType: number
+  targetId: string
+  targetReferenceNumber: string
+  titleAr: string
+  messageAr: string
+  priority: number
+  status: number
+  createdAtUtc: string
+  readAtUtc?: string | null
+  archivedAtUtc?: string | null
+  rowVersion: string
+}
+
+export type EscalationPolicyFilters = {
+  page?: number
+  pageSize?: number
+  search?: string
+  targetType?: number
+  isEnabled?: boolean
+}
+
+export type NotificationFilters = {
+  page?: number
+  pageSize?: number
+  status?: number
+  targetType?: number
+  priority?: number
+}
+
+export type EscalationOccurrenceFilters = {
+  page?: number
+  pageSize?: number
+  targetType?: number
+  status?: number
+}
+
 export type Attachment = {
   id: string
   entityType: string
@@ -523,6 +655,16 @@ function buildCorrectiveActionQuery(filters: CorrectiveActionListFilters): strin
   appendCorrectiveActionScopeFilters(params, filters)
   appendDateRangeParams(params, filters)
   appendCorrectiveActionStateFilters(params, filters)
+  return params.toString()
+}
+
+function buildSimpleQuery(filters: Record<string, string | number | boolean | undefined>): string {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) params.set(key, String(value))
+  }
+  if (!params.has('page')) params.set('page', '1')
+  if (!params.has('pageSize')) params.set('pageSize', '20')
   return params.toString()
 }
 
@@ -688,5 +830,52 @@ export const api = {
     history: (id: string) => request<CorrectiveActionStatusHistoryEntry[]>(`/api/v1/corrective-actions/${id}/history`),
     assignments: (id: string) => request<CorrectiveActionAssignment[]>(`/api/v1/corrective-actions/${id}/assignments`),
     attachments: (id: string) => request<Attachment[]>(`/api/v1/corrective-actions/${id}/attachments`),
+  },
+
+  escalationPolicies: {
+    list: (filters: EscalationPolicyFilters = {}) =>
+      request<Paged<EscalationPolicy>>(`/api/v1/escalation-policies?${buildSimpleQuery(filters)}`),
+    get: (id: string) => request<EscalationPolicy>(`/api/v1/escalation-policies/${id}`),
+    create: (body: CreateEscalationPolicyRequest) =>
+      postJson<EscalationPolicy>('/api/v1/escalation-policies', body),
+    update: (id: string, body: UpdateEscalationPolicyRequest) =>
+      putJson<EscalationPolicy>(`/api/v1/escalation-policies/${id}`, body),
+    activate: (id: string, body: RowVersionRequest) =>
+      postJson<EscalationPolicy>(`/api/v1/escalation-policies/${id}/activate`, body),
+    deactivate: (id: string, body: RowVersionRequest) =>
+      postJson<EscalationPolicy>(`/api/v1/escalation-policies/${id}/deactivate`, body),
+    archive: (id: string, body: RowVersionRequest) =>
+      postJson<void>(`/api/v1/escalation-policies/${id}/archive`, body),
+    restore: (id: string, body: RowVersionRequest) =>
+      postJson<void>(`/api/v1/escalation-policies/${id}/restore`, body),
+    rules: (id: string) => request<EscalationRule[]>(`/api/v1/escalation-policies/${id}/rules`),
+    createRule: (id: string, body: CreateEscalationRuleRequest) =>
+      postJson<EscalationRule>(`/api/v1/escalation-policies/${id}/rules`, body),
+    updateRule: (id: string, body: UpdateEscalationRuleRequest) =>
+      putJson<EscalationRule>(`/api/v1/escalation-rules/${id}`, body),
+    enableRule: (id: string, body: RowVersionRequest) =>
+      postJson<EscalationRule>(`/api/v1/escalation-rules/${id}/enable`, body),
+    disableRule: (id: string, body: RowVersionRequest) =>
+      postJson<EscalationRule>(`/api/v1/escalation-rules/${id}/disable`, body),
+  },
+
+  escalations: {
+    run: () => postJson<EscalationRunResult>('/api/v1/escalations/run', {}),
+    occurrences: (filters: EscalationOccurrenceFilters = {}) =>
+      request<Paged<EscalationOccurrence>>(`/api/v1/escalations/occurrences?${buildSimpleQuery(filters)}`),
+    occurrence: (id: string) => request<EscalationOccurrence>(`/api/v1/escalations/occurrences/${id}`),
+    retry: (id: string) => postJson<void>(`/api/v1/escalations/occurrences/${id}/retry`, {}),
+  },
+
+  notifications: {
+    list: (filters: NotificationFilters = {}) =>
+      request<Paged<Notification>>(`/api/v1/notifications?${buildSimpleQuery(filters)}`),
+    unreadCount: () => request<{ count: number }>('/api/v1/notifications/unread-count'),
+    get: (id: string) => request<Notification>(`/api/v1/notifications/${id}`),
+    markRead: (id: string, body: RowVersionRequest) =>
+      postJson<Notification>(`/api/v1/notifications/${id}/read`, body),
+    markAllRead: () => postJson<{ count: number }>('/api/v1/notifications/read-all', {}),
+    archive: (id: string, body: RowVersionRequest) =>
+      postJson<Notification>(`/api/v1/notifications/${id}/archive`, body),
   },
 }

@@ -139,6 +139,26 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsSubmitForVerification,
             PermissionCodes.CorrectiveActionsCancel
         ];
+        string[] ownNotifications =
+        [
+            PermissionCodes.NotificationsViewOwn,
+            PermissionCodes.NotificationsMarkRead,
+            PermissionCodes.NotificationsArchiveOwn
+        ];
+        string[] escalationViewer =
+        [
+            PermissionCodes.EscalationsView,
+            PermissionCodes.EscalationsViewOccurrences
+        ];
+        string[] escalationManager =
+        [
+            PermissionCodes.EscalationsView,
+            PermissionCodes.EscalationsManage,
+            PermissionCodes.EscalationsActivate,
+            PermissionCodes.EscalationsRun,
+            PermissionCodes.EscalationsViewOccurrences,
+            PermissionCodes.EscalationsRetryFailed
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -148,10 +168,11 @@ public static class DatabaseInitializer
             PermissionCodes.AttachmentsDownload,
             PermissionCodes.AttachmentsDownloadSensitive,
             PermissionCodes.NotesView,
-            caViewOnly);
+            caViewOnly,
+            ownNotifications);
 
         var readonlyUser = roles.First(r => r.Code == RoleCodes.ReadOnlyUser);
-        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly);
+        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly, ownNotifications);
 
         var hq = roles.First(r => r.Code == RoleCodes.HeadquartersExecutive);
         Grant(hq,
@@ -166,7 +187,9 @@ public static class DatabaseInitializer
             PermissionCodes.NotesCancel,
             PermissionCodes.NotesArchive,
             PermissionCodes.NotesRestore,
-            caReviewer);
+            caReviewer,
+            escalationViewer,
+            ownNotifications);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -178,7 +201,9 @@ public static class DatabaseInitializer
             PermissionCodes.NotesReturnForRework,
             PermissionCodes.NotesReopen,
             PermissionCodes.NotesCancel,
-            caDirector);
+            caDirector,
+            escalationManager,
+            ownNotifications);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -197,7 +222,9 @@ public static class DatabaseInitializer
             PermissionCodes.NotesRestore,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
-            PermissionCodes.CorrectiveActionsRestore);
+            PermissionCodes.CorrectiveActionsRestore,
+            escalationViewer,
+            ownNotifications);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -208,7 +235,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesStartWork,
             PermissionCodes.NotesSubmitForVerification,
             PermissionCodes.NotesCancel,
-            caCoordinator);
+            caCoordinator,
+            ownNotifications);
 
         var facilityDirector = roles.First(r => r.Code == RoleCodes.FacilityDirector);
         Grant(facilityDirector,
@@ -227,7 +255,9 @@ public static class DatabaseInitializer
             PermissionCodes.NotesRestore,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
-            PermissionCodes.CorrectiveActionsRestore);
+            PermissionCodes.CorrectiveActionsRestore,
+            escalationViewer,
+            ownNotifications);
 
         var facilityCoordinator = roles.First(r => r.Code == RoleCodes.FacilityCoordinator);
         Grant(facilityCoordinator,
@@ -242,7 +272,8 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsUpdate,
             PermissionCodes.CorrectiveActionsStartWork,
             PermissionCodes.CorrectiveActionsSubmitForVerification,
-            PermissionCodes.CorrectiveActionsCancel);
+            PermissionCodes.CorrectiveActionsCancel,
+            ownNotifications);
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -348,6 +379,8 @@ public static class DatabaseInitializer
     private const string OrganizationModule = "Organization";
     private const string NotesModule = "Notes";
     private const string CorrectiveActionsModule = "CorrectiveActions";
+    private const string EscalationsModule = "Escalations";
+    private const string NotificationsModule = "Notifications";
 
     private static List<Permission> BuildPermissions()
     {
@@ -405,6 +438,15 @@ public static class DatabaseInitializer
             (PermissionCodes.CorrectiveActionsCancel, "إلغاء إجراء تصحيحي", CorrectiveActionsModule),
             (PermissionCodes.CorrectiveActionsArchive, "أرشفة إجراء تصحيحي", CorrectiveActionsModule),
             (PermissionCodes.CorrectiveActionsRestore, "استعادة إجراء تصحيحي", CorrectiveActionsModule),
+            (PermissionCodes.EscalationsView, "عرض سياسات التصعيد", EscalationsModule),
+            (PermissionCodes.EscalationsManage, "إدارة سياسات التصعيد", EscalationsModule),
+            (PermissionCodes.EscalationsActivate, "تفعيل وتعطيل سياسات التصعيد", EscalationsModule),
+            (PermissionCodes.EscalationsRun, "تشغيل التصعيد يدويًا", EscalationsModule),
+            (PermissionCodes.EscalationsViewOccurrences, "عرض حوادث التصعيد", EscalationsModule),
+            (PermissionCodes.EscalationsRetryFailed, "إعادة محاولة التصعيد الفاشل", EscalationsModule),
+            (PermissionCodes.NotificationsViewOwn, "عرض إشعاراتي", NotificationsModule),
+            (PermissionCodes.NotificationsMarkRead, "تعليم إشعاراتي كمقروءة", NotificationsModule),
+            (PermissionCodes.NotificationsArchiveOwn, "أرشفة إشعاراتي", NotificationsModule),
             (PermissionCodes.IncidentsApprove, "اعتماد واقعة", "Incidents"),
             (PermissionCodes.FormsDesign, "تصميم نموذج", "Forms"),
             (PermissionCodes.FormsPublish, "نشر نموذج", "Forms"),

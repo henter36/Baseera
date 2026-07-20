@@ -42,6 +42,15 @@ public static class AuthPolicies
     public const string CorrectiveActionsCancel = PermissionPrefix + PermissionCodes.CorrectiveActionsCancel;
     public const string CorrectiveActionsArchive = PermissionPrefix + PermissionCodes.CorrectiveActionsArchive;
     public const string CorrectiveActionsRestore = PermissionPrefix + PermissionCodes.CorrectiveActionsRestore;
+    public const string EscalationsView = PermissionPrefix + PermissionCodes.EscalationsView;
+    public const string EscalationsManage = PermissionPrefix + PermissionCodes.EscalationsManage;
+    public const string EscalationsActivate = PermissionPrefix + PermissionCodes.EscalationsActivate;
+    public const string EscalationsRun = PermissionPrefix + PermissionCodes.EscalationsRun;
+    public const string EscalationsViewOccurrences = PermissionPrefix + PermissionCodes.EscalationsViewOccurrences;
+    public const string EscalationsRetryFailed = PermissionPrefix + PermissionCodes.EscalationsRetryFailed;
+    public const string NotificationsViewOwn = PermissionPrefix + PermissionCodes.NotificationsViewOwn;
+    public const string NotificationsMarkRead = PermissionPrefix + PermissionCodes.NotificationsMarkRead;
+    public const string NotificationsArchiveOwn = PermissionPrefix + PermissionCodes.NotificationsArchiveOwn;
 }
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
@@ -108,6 +117,15 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.CorrectiveActionsCancel, PermissionCodes.CorrectiveActionsCancel);
             AddPerm(AuthPolicies.CorrectiveActionsArchive, PermissionCodes.CorrectiveActionsArchive);
             AddPerm(AuthPolicies.CorrectiveActionsRestore, PermissionCodes.CorrectiveActionsRestore);
+            AddPerm(AuthPolicies.EscalationsView, PermissionCodes.EscalationsView);
+            AddPerm(AuthPolicies.EscalationsManage, PermissionCodes.EscalationsManage);
+            AddPerm(AuthPolicies.EscalationsActivate, PermissionCodes.EscalationsActivate);
+            AddPerm(AuthPolicies.EscalationsRun, PermissionCodes.EscalationsRun);
+            AddPerm(AuthPolicies.EscalationsViewOccurrences, PermissionCodes.EscalationsViewOccurrences);
+            AddPerm(AuthPolicies.EscalationsRetryFailed, PermissionCodes.EscalationsRetryFailed);
+            AddPerm(AuthPolicies.NotificationsViewOwn, PermissionCodes.NotificationsViewOwn);
+            AddPerm(AuthPolicies.NotificationsMarkRead, PermissionCodes.NotificationsMarkRead);
+            AddPerm(AuthPolicies.NotificationsArchiveOwn, PermissionCodes.NotificationsArchiveOwn);
         });
         return services;
     }

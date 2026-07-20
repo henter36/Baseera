@@ -6,6 +6,7 @@ using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.Common;
 using Baseera.Application.CorrectiveActions;
+using Baseera.Application.Escalations;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
@@ -140,8 +141,120 @@ public static class ApiEndpoints
 
         MapNotesEndpoints(api);
         MapCorrectiveActionEndpoints(api);
+        MapEscalationEndpoints(api);
+        MapNotificationEndpoints(api);
 
         return api;
+    }
+
+    private static void MapEscalationEndpoints(RouteGroupBuilder api)
+    {
+        var policies = api.MapGroup("/escalation-policies");
+        policies.MapGet("/", async ([AsParameters] EscalationPolicyQueryParams query, IEscalationPolicyService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.EscalationsView);
+
+        policies.MapGet("/{id:guid}", async (Guid id, IEscalationPolicyService service, CancellationToken ct) =>
+        {
+            var item = await service.GetAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.EscalationsView);
+
+        policies.MapPost("/", async (CreateEscalationPolicyRequest request, IValidator<CreateEscalationPolicyRequest> validator, IEscalationPolicyService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateAsync(request, ct);
+            return Results.Created($"/api/v1/escalation-policies/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        policies.MapPut("/{id:guid}", async (Guid id, UpdateEscalationPolicyRequest request, IValidator<UpdateEscalationPolicyRequest> validator, IEscalationPolicyService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.UpdateAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        policies.MapPost("/{id:guid}/activate", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+            Results.Ok(await service.ActivateAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsActivate);
+
+        policies.MapPost("/{id:guid}/deactivate", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+            Results.Ok(await service.DeactivateAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsActivate);
+
+        policies.MapPost("/{id:guid}/archive", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+        {
+            await service.ArchiveAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        policies.MapPost("/{id:guid}/restore", async (Guid id, RowVersionRequest request, IEscalationPolicyService service, CancellationToken ct) =>
+        {
+            await service.RestoreAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        policies.MapGet("/{id:guid}/rules", async (Guid id, IEscalationRuleService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(id, ct))).RequireAuthorization(AuthPolicies.EscalationsView);
+
+        policies.MapPost("/{id:guid}/rules", async (Guid id, CreateEscalationRuleRequest request, IValidator<CreateEscalationRuleRequest> validator, IEscalationRuleService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Created($"/api/v1/escalation-policies/{id}/rules", await service.CreateAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        var rules = api.MapGroup("/escalation-rules");
+        rules.MapPut("/{id:guid}", async (Guid id, UpdateEscalationRuleRequest request, IValidator<UpdateEscalationRuleRequest> validator, IEscalationRuleService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.UpdateAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        rules.MapPost("/{id:guid}/enable", async (Guid id, RowVersionRequest request, IEscalationRuleService service, CancellationToken ct) =>
+            Results.Ok(await service.EnableAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        rules.MapPost("/{id:guid}/disable", async (Guid id, RowVersionRequest request, IEscalationRuleService service, CancellationToken ct) =>
+            Results.Ok(await service.DisableAsync(id, request, ct))).RequireAuthorization(AuthPolicies.EscalationsManage);
+
+        var escalations = api.MapGroup("/escalations");
+        escalations.MapPost("/run", async (IEscalationProcessor processor, CancellationToken ct) =>
+            Results.Ok(await processor.RunAsync("manual-api", ct))).RequireAuthorization(AuthPolicies.EscalationsRun);
+
+        escalations.MapGet("/occurrences", async ([AsParameters] EscalationOccurrenceQueryParams query, IEscalationOccurrenceService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.EscalationsViewOccurrences);
+
+        escalations.MapGet("/occurrences/{id:guid}", async (Guid id, IEscalationOccurrenceService service, CancellationToken ct) =>
+        {
+            var item = await service.GetAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.EscalationsViewOccurrences);
+
+        escalations.MapPost("/occurrences/{id:guid}/retry", async (Guid id, IEscalationOccurrenceService service, CancellationToken ct) =>
+        {
+            await service.RetryAsync(id, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.EscalationsRetryFailed);
+    }
+
+    private static void MapNotificationEndpoints(RouteGroupBuilder api)
+    {
+        var notifications = api.MapGroup("/notifications");
+        notifications.MapGet("/", async ([AsParameters] NotificationQueryParams query, INotificationService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.NotificationsViewOwn);
+
+        notifications.MapGet("/unread-count", async (INotificationService service, CancellationToken ct) =>
+            Results.Ok(new { count = await service.GetUnreadCountAsync(ct) })).RequireAuthorization(AuthPolicies.NotificationsViewOwn);
+
+        notifications.MapGet("/{id:guid}", async (Guid id, INotificationService service, CancellationToken ct) =>
+        {
+            var item = await service.GetAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.NotificationsViewOwn);
+
+        notifications.MapPost("/{id:guid}/read", async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
+            Results.Ok(await service.MarkReadAsync(id, request, ct))).RequireAuthorization(AuthPolicies.NotificationsMarkRead);
+
+        notifications.MapPost("/read-all", async (INotificationService service, CancellationToken ct) =>
+            Results.Ok(new { count = await service.MarkAllReadAsync(ct) })).RequireAuthorization(AuthPolicies.NotificationsMarkRead);
+
+        notifications.MapPost("/{id:guid}/archive", async (Guid id, RowVersionRequest request, INotificationService service, CancellationToken ct) =>
+            Results.Ok(await service.ArchiveAsync(id, request, ct))).RequireAuthorization(AuthPolicies.NotificationsArchiveOwn);
     }
 
     private static void MapCorrectiveActionEndpoints(RouteGroupBuilder api)

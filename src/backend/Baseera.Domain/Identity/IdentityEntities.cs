@@ -121,6 +121,15 @@ public static class PermissionCodes
     public const string CorrectiveActionsCancel = "CorrectiveActions.Cancel";
     public const string CorrectiveActionsArchive = "CorrectiveActions.Archive";
     public const string CorrectiveActionsRestore = "CorrectiveActions.Restore";
+    public const string EscalationsView = "Escalations.View";
+    public const string EscalationsManage = "Escalations.Manage";
+    public const string EscalationsActivate = "Escalations.Activate";
+    public const string EscalationsRun = "Escalations.Run";
+    public const string EscalationsViewOccurrences = "Escalations.ViewOccurrences";
+    public const string EscalationsRetryFailed = "Escalations.RetryFailed";
+    public const string NotificationsViewOwn = "Notifications.ViewOwn";
+    public const string NotificationsMarkRead = "Notifications.MarkRead";
+    public const string NotificationsArchiveOwn = "Notifications.ArchiveOwn";
     public const string IncidentsApprove = "Incidents.Approve";
     public const string FormsDesign = "Forms.Design";
     public const string FormsPublish = "Forms.Publish";
