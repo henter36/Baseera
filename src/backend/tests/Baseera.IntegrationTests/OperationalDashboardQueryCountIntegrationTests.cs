@@ -338,11 +338,44 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
 
         private void Track(DbCommand command)
         {
-            if (command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+            var executableSql = StripLeadingSqlComments(
+                command.CommandText);
+
+            if (!executableSql.StartsWith(
+                    "SELECT",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !executableSql.StartsWith(
+                    "WITH",
+                    StringComparison.OrdinalIgnoreCase))
             {
-                SelectCount++;
-                _commandTexts.Add(command.CommandText);
+                return;
             }
+
+            SelectCount++;
+            _commandTexts.Add(command.CommandText);
+        }
+
+        private static string StripLeadingSqlComments(
+            string commandText)
+        {
+            var remaining = commandText.AsSpan().TrimStart();
+
+            while (remaining.StartsWith(
+                       "--",
+                       StringComparison.Ordinal))
+            {
+                var lineEnd = remaining.IndexOf('\n');
+
+                if (lineEnd < 0)
+                {
+                    return string.Empty;
+                }
+
+                remaining = remaining[(lineEnd + 1)..]
+                    .TrimStart();
+            }
+
+            return remaining.ToString();
         }
     }
 
