@@ -161,69 +161,41 @@ public static class ApiEndpoints
             [AsParameters] OperationalDashboardQueryParams query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
-        {
-            try
-            {
-                return Results.Ok(await service.GetSummaryAsync(query.ToQuery(), ct));
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(new { detail = ex.Message });
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
-            }
-        });
+            Results.Ok(
+                await service.GetSummaryAsync(
+                    query.ToQuery(),
+                    ct)));
 
         dashboard.MapGet("/trends", async (
             [AsParameters] OperationalDashboardQueryParams query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
-        {
-            try
-            {
-                return Results.Ok(await service.GetTrendsAsync(query.ToQuery(), ct));
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(new { detail = ex.Message });
-            }
-        }).RequireAuthorization(AuthPolicies.DashboardViewOperational);
+            Results.Ok(
+                await service.GetTrendsAsync(
+                    query.ToQuery(),
+                    ct)))
+            .RequireAuthorization(
+                AuthPolicies.DashboardViewOperational);
 
         dashboard.MapGet("/breakdowns", async (
             [AsParameters] OperationalDashboardQueryParams query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
-        {
-            try
-            {
-                return Results.Ok(await service.GetBreakdownsAsync(query.ToQuery(), ct));
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(new { detail = ex.Message });
-            }
-        }).RequireAuthorization(AuthPolicies.DashboardViewOperational);
+            Results.Ok(
+                await service.GetBreakdownsAsync(
+                    query.ToQuery(),
+                    ct)))
+            .RequireAuthorization(
+                AuthPolicies.DashboardViewOperational);
 
         dashboard.MapGet("/priority-queues", async (
             [AsParameters] OperationalDashboardQueryParams query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
-        {
-            try
-            {
-                return Results.Ok(await service.GetPriorityQueuesAsync(query.ToQuery(), ct));
-            }
-            catch (ArgumentException ex)
-            {
-                return Results.BadRequest(new { detail = ex.Message });
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
-            }
-        });
+            Results.Ok(
+                await service.GetPriorityQueuesAsync(
+                    query.ToQuery(),
+                    ct)));
     }
 
     private static void MapNoteTypeEndpoints(RouteGroupBuilder api)
