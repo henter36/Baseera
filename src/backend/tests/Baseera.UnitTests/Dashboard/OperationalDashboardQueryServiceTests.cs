@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Security;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Notes;
+using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
@@ -749,6 +750,133 @@ public sealed class OperationalDashboardQueryServiceTests : IDisposable
         Assert.Equal(overdue.Id, item.Id);
         Assert.Equal(FixedNow.AddDays(-4), item.DueAtUtc);
     }
+
+    [Fact]
+    public async Task GetTrends_returns_non_zero_counts_for_seeded_daily_events_and_zero_for_empty_buckets()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var created = SeedNote(reporter.Id, reference: "OBS-00000001");
+        created.CreatedAtUtc = FixedNow.AddDays(-1);
+        var completed = SeedNote(reporter.Id, status: NoteStatus.Closed, reference: "OBS-00000002");
+        completed.ClosedAtUtc = FixedNow.AddDays(-1);
+        var overdue = SeedNote(
+            reporter.Id,
+            status: NoteStatus.Open,
+            dueAtUtc: FixedNow.AddDays(-1),
+            reference: "OBS-00000003");
+        overdue.DueAtUtc = FixedNow.AddDays(-1);
+        _db.SaveChanges();
+
+        var (service, _) = BuildService(PermissionCodes.DashboardViewOperational);
+        var trends = await service.GetTrendsAsync(new OperationalDashboardQuery
+        {
+            FromUtc = FixedNow.AddDays(-2),
+            ToUtc = FixedNow
+        });
+
+        Assert.Equal("daily", trends.Granularity);
+        Assert.Contains(trends.Points, point => point.NotesCreated > 0);
+        Assert.Contains(trends.Points, point => point.NotesCompleted > 0);
+        Assert.Contains(trends.Points, point => point.NotesBecameOverdue > 0);
+        Assert.Contains(trends.Points, point =>
+            point.NotesCreated == 0 &&
+            point.NotesCompleted == 0 &&
+            point.NotesBecameOverdue == 0);
+    }
+
+    [Fact]
+    public async Task GetTrends_weekly_granularity_aggregates_daily_counts_into_weekly_buckets()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        for (var i = 0; i < 3; i++)
+        {
+            var note = SeedNote(reporter.Id, reference: $"OBS-WEEK-{i:D8}");
+            note.CreatedAtUtc = FixedNow.AddDays(-10 + i);
+        }
+
+        _db.SaveChanges();
+
+        var (service, _) = BuildService(PermissionCodes.DashboardViewOperational);
+        var trends = await service.GetTrendsAsync(new OperationalDashboardQuery
+        {
+            PeriodDays = 90,
+            FromUtc = FixedNow.AddDays(-90),
+            ToUtc = FixedNow
+        });
+
+        Assert.Equal("weekly", trends.Granularity);
+        Assert.True(trends.Points.Sum(point => point.NotesCreated) >= 3);
+    }
+
+    [Fact]
+    public async Task GetBreakdowns_severity_includes_overdue_corrective_actions_by_note_severity()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var highNote = SeedNote(
+            reporter.Id,
+            reference: "OBS-00000001");
+        highNote.Severity = NoteSeverity.High;
+        var lowNote = SeedNote(
+            reporter.Id,
+            reference: "OBS-00000002");
+        lowNote.Severity = NoteSeverity.Low;
+        _db.CorrectiveActions.AddRange(
+            NewOverdueAction(reporter.Id, highNote.Id, "CA-00000001"),
+            NewOverdueAction(reporter.Id, lowNote.Id, "CA-00000002"));
+        _db.SaveChanges();
+
+        var (service, _) = BuildService(
+            PermissionCodes.DashboardViewOperational,
+            PermissionCodes.DashboardViewCorrectiveActions);
+        var breakdown = await service.GetBreakdownsAsync(new OperationalDashboardQuery
+        {
+            BreakdownBy = OperationalDashboardBreakdownDimension.Severity
+        });
+
+        var highRow = breakdown.Rows.Single(row => row.Key == ((int)NoteSeverity.High).ToString());
+        var lowRow = breakdown.Rows.Single(row => row.Key == ((int)NoteSeverity.Low).ToString());
+        Assert.Equal(1, highRow.CorrectiveActionsOverdue);
+        Assert.Equal(1, lowRow.CorrectiveActionsOverdue);
+    }
+
+    [Fact]
+    public async Task GetBreakdowns_status_includes_overdue_corrective_actions_by_note_status()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var openNote = SeedNote(reporter.Id, status: NoteStatus.Open, reference: "OBS-00000001");
+        var assignedNote = SeedNote(reporter.Id, status: NoteStatus.Assigned, reference: "OBS-00000002");
+        _db.CorrectiveActions.AddRange(
+            NewOverdueAction(reporter.Id, openNote.Id, "CA-00000001"),
+            NewOverdueAction(reporter.Id, assignedNote.Id, "CA-00000002"));
+        _db.SaveChanges();
+
+        var (service, _) = BuildService(
+            PermissionCodes.DashboardViewOperational,
+            PermissionCodes.DashboardViewCorrectiveActions);
+        var breakdown = await service.GetBreakdownsAsync(new OperationalDashboardQuery
+        {
+            BreakdownBy = OperationalDashboardBreakdownDimension.Status
+        });
+
+        var openRow = breakdown.Rows.Single(row => row.Key == ((int)NoteStatus.Open).ToString());
+        var assignedRow = breakdown.Rows.Single(row => row.Key == ((int)NoteStatus.Assigned).ToString());
+        Assert.Equal(1, openRow.CorrectiveActionsOverdue);
+        Assert.Equal(1, assignedRow.CorrectiveActionsOverdue);
+    }
+
+    private static CorrectiveAction NewOverdueAction(Guid createdByUserId, Guid noteId, string reference) =>
+        new()
+        {
+            ReferenceNumber = reference,
+            OperationalNoteId = noteId,
+            Title = reference,
+            Description = "اختبار",
+            Status = CorrectiveActionStatus.InProgress,
+            Priority = CorrectiveActionPriority.Medium,
+            Classification = ClassificationLevel.Internal,
+            DueAtUtc = FixedNow.AddDays(-2),
+            CreatedByUserId = createdByUserId
+        };
 
     private static DateTimeOffset InvokeStartOfSaudiDayUtc(DateTimeOffset utcInstant)
     {

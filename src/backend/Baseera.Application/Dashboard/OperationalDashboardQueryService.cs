@@ -4,10 +4,10 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Common;
 using Baseera.Application.Notes;
 using Baseera.Domain.CorrectiveActions;
-using Baseera.Domain.Escalations;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Microsoft.EntityFrameworkCore;
+using static Baseera.Application.Dashboard.OperationalDashboardAggregationHelpers;
 
 public sealed class OperationalDashboardQueryService(
     IBaseeraDbContext db,
@@ -15,9 +15,6 @@ public sealed class OperationalDashboardQueryService(
     OperationalDashboardFilterBuilder filters,
     TimeProvider timeProvider) : IOperationalDashboardQueryService
 {
-    private static bool IsOpenStatus(NoteStatus status) =>
-        status is not NoteStatus.Closed and not NoteStatus.Cancelled;
-
     public async Task<OperationalDashboardSummaryDto> GetSummaryAsync(
         OperationalDashboardQuery query,
         CancellationToken cancellationToken = default)
@@ -30,42 +27,55 @@ public sealed class OperationalDashboardQueryService(
         var canRisk = HasPermission(PermissionCodes.DashboardViewRisk);
         var canCa = HasPermission(PermissionCodes.DashboardViewCorrectiveActions);
         var canRouting = HasPermission(PermissionCodes.DashboardViewRouting);
+        var needsNoteAggregate = canOperational || canRisk || canRouting;
+
+        NoteSummaryAggregate? noteAggregate = null;
+        if (needsNoteAggregate)
+        {
+            noteAggregate = await AggregateNotesSummaryAsync(notes, now, cancellationToken);
+        }
+
+        RoutingFailureAggregate? routingFailures = null;
+        if (canRisk || canRouting)
+        {
+            routingFailures = await AggregateRoutingFailuresAsync(db, notes, fromUtc, toUtc, cancellationToken);
+        }
 
         OperationalDashboardWorkloadSummaryDto? workload = null;
-        if (canOperational)
+        if (canOperational && noteAggregate is not null)
         {
             workload = new OperationalDashboardWorkloadSummaryDto(
-                await CountOpenAsync(notes, cancellationToken),
-                await notes.CountAsync(note => note.Status == NoteStatus.Assigned, cancellationToken),
-                await notes.CountAsync(note => note.Status == NoteStatus.InProgress, cancellationToken),
-                await notes.CountAsync(note => note.Status == NoteStatus.PendingVerification, cancellationToken),
-                await notes.CountAsync(note => note.Status == NoteStatus.Reopened, cancellationToken),
-                await OperationalDashboardFilterBuilder.ApplyUnassignedOpenFilter(notes).CountAsync(cancellationToken),
-                await OperationalDashboardFilterBuilder.ApplyRequiresRoutingFilter(notes).CountAsync(cancellationToken));
+                noteAggregate.OpenTotal,
+                noteAggregate.Assigned,
+                noteAggregate.InProgress,
+                noteAggregate.PendingVerification,
+                noteAggregate.Reopened,
+                noteAggregate.Unassigned,
+                noteAggregate.RequiresRouting);
+        }
+
+        IQueryable<CorrectiveAction>? scopedActions = null;
+        if (canRisk || canCa)
+        {
+            scopedActions = await filters.BuildScopedCorrectiveActionsAsync(query, cancellationToken);
         }
 
         OperationalDashboardRiskSummaryDto? risk = null;
-        if (canRisk)
+        if (canRisk && noteAggregate is not null && routingFailures is not null && scopedActions is not null)
         {
-            var overdue = await CountOverdueNotesAsync(notes, now, cancellationToken);
-            var dueSoon = await CountDueSoonNotesAsync(notes, now, cancellationToken);
-            var critical = await notes.CountAsync(
-                note => (note.Severity == NoteSeverity.High || note.Severity == NoteSeverity.Critical) &&
-                        note.Status != NoteStatus.Closed &&
-                        note.Status != NoteStatus.Cancelled,
+            var activeEscalations = await CountActiveEscalationsAsync(
+                db,
+                notes,
+                scopedActions,
+                fromUtc,
+                toUtc,
                 cancellationToken);
-            var overdueUnassigned = await OperationalDashboardFilterBuilder.ApplyUnassignedOpenFilter(notes)
-                .CountAsync(note => note.DueAtUtc.HasValue &&
-                                    note.DueAtUtc < now &&
-                                    note.Status != NoteStatus.Closed &&
-                                    note.Status != NoteStatus.Cancelled, cancellationToken);
-            var activeEscalations = await CountActiveEscalationsAsync(notes, query, fromUtc, toUtc, cancellationToken);
-            var routingFailures = await GetRoutingFailureCountsAsync(notes, fromUtc, toUtc, cancellationToken);
+
             risk = new OperationalDashboardRiskSummaryDto(
-                overdue,
-                dueSoon,
-                critical,
-                overdueUnassigned,
+                noteAggregate.Overdue,
+                noteAggregate.DueSoon,
+                noteAggregate.CriticalOrHigh,
+                noteAggregate.OverdueUnassigned,
                 activeEscalations,
                 routingFailures.NoRule,
                 routingFailures.NoEligibleUser,
@@ -73,46 +83,24 @@ public sealed class OperationalDashboardQueryService(
         }
 
         OperationalDashboardCorrectiveActionsSummaryDto? correctiveActions = null;
-        if (canCa)
+        if (canCa && scopedActions is not null)
         {
-            var actions = await filters.BuildScopedCorrectiveActionsAsync(query, cancellationToken);
-            var activeActions = actions.Where(action =>
-                action.Status != CorrectiveActionStatus.Completed &&
-                action.Status != CorrectiveActionStatus.Cancelled);
-            var openNoteIds = notes.Where(note =>
-                note.Status != NoteStatus.Closed &&
-                note.Status != NoteStatus.Cancelled).Select(note => note.Id);
-            var notesWithStalled = await activeActions
-                .Where(action =>
-                    action.DueAtUtc.HasValue &&
-                    action.DueAtUtc < now &&
-                    action.Status != CorrectiveActionStatus.Completed &&
-                    action.Status != CorrectiveActionStatus.Cancelled &&
-                    openNoteIds.Contains(action.OperationalNoteId))
-                .Select(action => action.OperationalNoteId)
-                .Distinct()
-                .CountAsync(cancellationToken);
+            var actionAggregate = await AggregateCorrectiveActionsSummaryAsync(scopedActions, now, cancellationToken);
+            var notesWithStalled = await CountNotesWithStalledActionsAsync(notes, scopedActions, now, cancellationToken);
 
             correctiveActions = new OperationalDashboardCorrectiveActionsSummaryDto(
-                await activeActions.CountAsync(cancellationToken),
-                await activeActions.CountAsync(
-                    action => action.DueAtUtc.HasValue &&
-                              action.DueAtUtc < now &&
-                              action.Status != CorrectiveActionStatus.Completed &&
-                              action.Status != CorrectiveActionStatus.Cancelled,
-                    cancellationToken),
-                await activeActions.CountAsync(action => action.Status == CorrectiveActionStatus.PendingVerification, cancellationToken),
-                await activeActions.CountAsync(action => action.Status == CorrectiveActionStatus.Reopened, cancellationToken),
+                actionAggregate.Active,
+                actionAggregate.Overdue,
+                actionAggregate.PendingVerification,
+                actionAggregate.Reopened,
                 notesWithStalled);
         }
 
         OperationalDashboardRoutingSummaryDto? routing = null;
-        if (canRouting)
+        if (canRouting && noteAggregate is not null && routingFailures is not null)
         {
-            var requiresRouting = await OperationalDashboardFilterBuilder.ApplyRequiresRoutingFilter(notes).CountAsync(cancellationToken);
-            var routingFailures = await GetRoutingFailureCountsAsync(notes, fromUtc, toUtc, cancellationToken);
             routing = new OperationalDashboardRoutingSummaryDto(
-                requiresRouting,
+                noteAggregate.RequiresRouting,
                 routingFailures.NoRule,
                 routingFailures.NoEligibleUser,
                 routingFailures.InvalidTarget);
@@ -137,13 +125,69 @@ public sealed class OperationalDashboardQueryService(
         var (fromUtc, toUtc) = OperationalDashboardPeriodResolver.Resolve(query, now);
         var notes = await filters.BuildScopedNotesAsync(query, cancellationToken);
         var actions = await filters.BuildScopedCorrectiveActionsAsync(query, cancellationToken);
-        var noteIdList = await notes.Select(note => note.Id).ToListAsync(cancellationToken);
+        var scopedNoteIds = notes.Select(note => note.Id);
 
         var periodDays = query.PeriodDays ?? (int)Math.Ceiling((toUtc - fromUtc).TotalDays);
         var granularity = periodDays >= 60 ? "weekly" : "daily";
         var bucketStarts = BuildBucketStarts(fromUtc, toUtc, granularity);
-        var points = new List<OperationalDashboardTrendPointDto>();
 
+        var notesCreatedDaily = ToDailyCountMap(await notes
+            .Where(note => note.CreatedAtUtc >= fromUtc && note.CreatedAtUtc <= toUtc)
+            .GroupBy(note => note.CreatedAtUtc.AddHours(3).Date)
+            .Select(group => new DailyCountRow(group.Key, group.Count()))
+            .ToListAsync(cancellationToken));
+
+        var notesCompletedDaily = ToDailyCountMap(await notes
+            .Where(note =>
+                note.Status == NoteStatus.Closed &&
+                note.ClosedAtUtc.HasValue &&
+                note.ClosedAtUtc >= fromUtc &&
+                note.ClosedAtUtc <= toUtc)
+            .GroupBy(note => note.ClosedAtUtc!.Value.AddHours(3).Date)
+            .Select(group => new DailyCountRow(group.Key, group.Count()))
+            .ToListAsync(cancellationToken));
+
+        var notesBecameOverdueDaily = ToDailyCountMap(await notes
+            .Where(note =>
+                note.DueAtUtc.HasValue &&
+                note.DueAtUtc >= fromUtc &&
+                note.DueAtUtc <= toUtc &&
+                note.DueAtUtc < now &&
+                note.Status != NoteStatus.Closed &&
+                note.Status != NoteStatus.Cancelled)
+            .GroupBy(note => note.DueAtUtc!.Value.AddHours(3).Date)
+            .Select(group => new DailyCountRow(group.Key, group.Count()))
+            .ToListAsync(cancellationToken));
+
+        var caCompletedDaily = ToDailyCountMap(await actions
+            .Where(action =>
+                action.Status == CorrectiveActionStatus.Completed &&
+                action.CompletedAtUtc.HasValue &&
+                action.CompletedAtUtc >= fromUtc &&
+                action.CompletedAtUtc <= toUtc)
+            .GroupBy(action => action.CompletedAtUtc!.Value.AddHours(3).Date)
+            .Select(group => new DailyCountRow(group.Key, group.Count()))
+            .ToListAsync(cancellationToken));
+
+        var routingDaily = ToDailyRoutingMap(await db.NoteRoutingDecisions.AsNoTracking()
+            .Where(decision =>
+                scopedNoteIds.Contains(decision.OperationalNoteId) &&
+                decision.DecidedAtUtc >= fromUtc &&
+                decision.DecidedAtUtc <= toUtc)
+            .GroupBy(decision => decision.DecidedAtUtc.AddHours(3).Date)
+            .Select(group => new DailyRoutingRow(
+                group.Key,
+                group.Count(decision =>
+                    decision.ResultStatus == NoteRoutingResultStatus.AssignedToDepartment ||
+                    decision.ResultStatus == NoteRoutingResultStatus.AssignedToUser),
+                group.Count(decision =>
+                    decision.ResultStatus == NoteRoutingResultStatus.NoMatchingRule ||
+                    decision.ResultStatus == NoteRoutingResultStatus.NoEligibleUser ||
+                    decision.ResultStatus == NoteRoutingResultStatus.InvalidTarget ||
+                    decision.ResultStatus == NoteRoutingResultStatus.Failed)))
+            .ToListAsync(cancellationToken));
+
+        var points = new List<OperationalDashboardTrendPointDto>(bucketStarts.Count);
         foreach (var bucketStart in bucketStarts)
         {
             var bucketEnd = granularity == "weekly"
@@ -154,55 +198,17 @@ public sealed class OperationalDashboardQueryService(
                 bucketEnd = toUtc;
             }
 
-            var notesCreated = await notes.CountAsync(
-                note => note.CreatedAtUtc >= bucketStart && note.CreatedAtUtc <= bucketEnd,
-                cancellationToken);
-            var notesCompleted = await notes.CountAsync(
-                note => note.Status == NoteStatus.Closed &&
-                        note.ClosedAtUtc.HasValue &&
-                        note.ClosedAtUtc.Value >= bucketStart &&
-                        note.ClosedAtUtc.Value <= bucketEnd,
-                cancellationToken);
-            var notesBecameOverdue = await notes.CountAsync(
-                note => note.DueAtUtc.HasValue &&
-                        note.DueAtUtc.Value >= bucketStart &&
-                        note.DueAtUtc.Value <= bucketEnd &&
-                        note.DueAtUtc.Value < now &&
-                        note.Status != NoteStatus.Closed &&
-                        note.Status != NoteStatus.Cancelled,
-                cancellationToken);
-            var caCompleted = await actions.CountAsync(
-                action => action.Status == CorrectiveActionStatus.Completed &&
-                          action.CompletedAtUtc.HasValue &&
-                          action.CompletedAtUtc.Value >= bucketStart &&
-                          action.CompletedAtUtc.Value <= bucketEnd,
-                cancellationToken);
-
-            var routingQuery = db.NoteRoutingDecisions.AsNoTracking()
-                .Where(decision => noteIdList.Contains(decision.OperationalNoteId) &&
-                                   decision.DecidedAtUtc >= bucketStart &&
-                                   decision.DecidedAtUtc <= bucketEnd);
-            var routingSuccess = await routingQuery.CountAsync(
-                decision => decision.ResultStatus == NoteRoutingResultStatus.AssignedToDepartment ||
-                            decision.ResultStatus == NoteRoutingResultStatus.AssignedToUser,
-                cancellationToken);
-            var routingFailure = await routingQuery.CountAsync(
-                decision => decision.ResultStatus == NoteRoutingResultStatus.NoMatchingRule ||
-                            decision.ResultStatus == NoteRoutingResultStatus.NoEligibleUser ||
-                            decision.ResultStatus == NoteRoutingResultStatus.InvalidTarget ||
-                            decision.ResultStatus == NoteRoutingResultStatus.Failed,
-                cancellationToken);
-
+            var routing = SumDailyRoutingForBucket(routingDaily, bucketStart, bucketEnd, granularity);
             points.Add(new OperationalDashboardTrendPointDto(
                 bucketStart,
                 bucketEnd,
                 FormatBucketLabel(bucketStart, granularity),
-                notesCreated,
-                notesCompleted,
-                notesBecameOverdue,
-                caCompleted,
-                routingSuccess,
-                routingFailure));
+                SumDailyCountsForBucket(notesCreatedDaily, bucketStart, bucketEnd, granularity),
+                SumDailyCountsForBucket(notesCompletedDaily, bucketStart, bucketEnd, granularity),
+                SumDailyCountsForBucket(notesBecameOverdueDaily, bucketStart, bucketEnd, granularity),
+                SumDailyCountsForBucket(caCompletedDaily, bucketStart, bucketEnd, granularity),
+                routing.Success,
+                routing.Failure));
         }
 
         return new OperationalDashboardTrendsDto(points, fromUtc, toUtc, granularity);
@@ -225,11 +231,16 @@ public sealed class OperationalDashboardQueryService(
 
         var rows = query.BreakdownBy.Value switch
         {
-            OperationalDashboardBreakdownDimension.Region => await BuildRegionBreakdownAsync(notes, actions, now, fromUtc, toUtc, cancellationToken),
-            OperationalDashboardBreakdownDimension.Facility => await BuildFacilityBreakdownAsync(notes, actions, now, fromUtc, toUtc, cancellationToken),
-            OperationalDashboardBreakdownDimension.NoteType => await BuildNoteTypeBreakdownAsync(notes, actions, now, fromUtc, toUtc, cancellationToken),
-            OperationalDashboardBreakdownDimension.Severity => await BuildSeverityBreakdownAsync(notes, actions, now, fromUtc, toUtc, cancellationToken),
-            OperationalDashboardBreakdownDimension.Status => await BuildStatusBreakdownAsync(notes, actions, now, fromUtc, toUtc, cancellationToken),
+            OperationalDashboardBreakdownDimension.Region => await BuildRegionBreakdownAsync(
+                notes, actions, now, fromUtc, toUtc, cancellationToken),
+            OperationalDashboardBreakdownDimension.Facility => await BuildFacilityBreakdownAsync(
+                notes, actions, now, fromUtc, toUtc, cancellationToken),
+            OperationalDashboardBreakdownDimension.NoteType => await BuildNoteTypeBreakdownAsync(
+                notes, actions, now, fromUtc, toUtc, cancellationToken),
+            OperationalDashboardBreakdownDimension.Severity => await BuildSeverityBreakdownAsync(
+                notes, actions, now, fromUtc, toUtc, cancellationToken),
+            OperationalDashboardBreakdownDimension.Status => await BuildStatusBreakdownAsync(
+                notes, actions, now, fromUtc, toUtc, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(query.BreakdownBy))
         };
 
@@ -296,89 +307,6 @@ public sealed class OperationalDashboardQueryService(
             limit);
     }
 
-    private async Task<int> CountOpenAsync(IQueryable<OperationalNote> notes, CancellationToken cancellationToken) =>
-        await notes.CountAsync(
-            note => note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled,
-            cancellationToken);
-
-    private static async Task<int> CountOverdueNotesAsync(
-        IQueryable<OperationalNote> notes,
-        DateTimeOffset now,
-        CancellationToken cancellationToken) =>
-        await notes.CountAsync(
-            note => note.DueAtUtc.HasValue &&
-                    note.DueAtUtc < now &&
-                    note.Status != NoteStatus.Closed &&
-                    note.Status != NoteStatus.Cancelled,
-            cancellationToken);
-
-    private static async Task<int> CountDueSoonNotesAsync(
-        IQueryable<OperationalNote> notes,
-        DateTimeOffset now,
-        CancellationToken cancellationToken) =>
-        await notes.CountAsync(
-            note => note.DueAtUtc.HasValue &&
-                    note.DueAtUtc >= now &&
-                    note.DueAtUtc <= now.AddDays(OperationalDashboardKpiDefinitions.DefaultDueSoonDays) &&
-                    note.Status != NoteStatus.Closed &&
-                    note.Status != NoteStatus.Cancelled,
-            cancellationToken);
-
-    private async Task<int> CountActiveEscalationsAsync(
-        IQueryable<OperationalNote> notes,
-        OperationalDashboardQuery query,
-        DateTimeOffset fromUtc,
-        DateTimeOffset toUtc,
-        CancellationToken cancellationToken)
-    {
-        var noteIdList = await notes.Select(note => note.Id).ToListAsync(cancellationToken);
-        if (noteIdList.Count == 0)
-        {
-            return 0;
-        }
-
-        var actions = await filters.BuildScopedCorrectiveActionsAsync(query, cancellationToken);
-        var actionIds = await actions.Select(action => action.Id).ToListAsync(cancellationToken);
-
-        return await db.EscalationOccurrences.AsNoTracking()
-            .CountAsync(
-                occurrence => occurrence.Status == EscalationOccurrenceStatus.NotificationsCreated &&
-                              occurrence.DetectedAtUtc >= fromUtc &&
-                              occurrence.DetectedAtUtc <= toUtc &&
-                              (
-                                  (occurrence.TargetType == EscalationTargetType.OperationalNote &&
-                                   noteIdList.Contains(occurrence.TargetId)) ||
-                                  (occurrence.TargetType == EscalationTargetType.CorrectiveAction &&
-                                   actionIds.Contains(occurrence.TargetId))),
-                cancellationToken);
-    }
-
-    private async Task<(int NoRule, int NoEligibleUser, int InvalidTarget)> GetRoutingFailureCountsAsync(
-        IQueryable<OperationalNote> notes,
-        DateTimeOffset fromUtc,
-        DateTimeOffset toUtc,
-        CancellationToken cancellationToken)
-    {
-        var noteIdList = await notes.Select(note => note.Id).ToListAsync(cancellationToken);
-        if (noteIdList.Count == 0)
-        {
-            return (0, 0, 0);
-        }
-
-        var decisions = db.NoteRoutingDecisions.AsNoTracking()
-            .Where(decision => noteIdList.Contains(decision.OperationalNoteId) &&
-                               decision.DecidedAtUtc >= fromUtc &&
-                               decision.DecidedAtUtc <= toUtc);
-
-        var noRule = await decisions.CountAsync(decision => decision.ResultStatus == NoteRoutingResultStatus.NoMatchingRule, cancellationToken);
-        var noEligible = await decisions.CountAsync(decision => decision.ResultStatus == NoteRoutingResultStatus.NoEligibleUser, cancellationToken);
-        var invalidTarget = await decisions.CountAsync(
-            decision => decision.ResultStatus == NoteRoutingResultStatus.InvalidTarget ||
-                        decision.ResultStatus == NoteRoutingResultStatus.Failed,
-            cancellationToken);
-        return (noRule, noEligible, invalidTarget);
-    }
-
     private async Task<IReadOnlyList<OperationalDashboardBreakdownRowDto>> BuildRegionBreakdownAsync(
         IQueryable<OperationalNote> notes,
         IQueryable<CorrectiveAction> actions,
@@ -387,65 +315,43 @@ public sealed class OperationalDashboardQueryService(
         DateTimeOffset toUtc,
         CancellationToken cancellationToken)
     {
-        var grouped = await notes
-            .GroupBy(note => new { note.RegionId })
-            .Select(group => new
-            {
-                group.Key.RegionId,
-                OpenBurden = group.Count(note => note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Overdue = group.Count(note => note.DueAtUtc.HasValue && note.DueAtUtc < now &&
-                                              note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Critical = group.Count(note => (note.Severity == NoteSeverity.High || note.Severity == NoteSeverity.Critical) &&
-                                               note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Unassigned = group.Count(note => note.Status != NoteStatus.Closed &&
-                                                 note.Status != NoteStatus.Cancelled &&
-                                                 !note.Assignments.Any(assignment => assignment.IsCurrent)),
-                ClosedTotal = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                  note.ClosedAtUtc.HasValue &&
-                                                  note.ClosedAtUtc >= fromUtc &&
-                                                  note.ClosedAtUtc <= toUtc),
-                ClosedWithinDue = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                      note.ClosedAtUtc.HasValue &&
-                                                      note.ClosedAtUtc >= fromUtc &&
-                                                      note.ClosedAtUtc <= toUtc &&
-                                                      note.DueAtUtc.HasValue &&
-                                                      note.ClosedAtUtc <= note.DueAtUtc)
-            })
-            .ToListAsync(cancellationToken);
+        var grouped = await LoadNoteBreakdownAggregatesAsync(
+            notes,
+            note => note.RegionId ?? Guid.Empty,
+            now,
+            fromUtc,
+            toUtc,
+            cancellationToken);
 
-        var regionIds = grouped.Where(row => row.RegionId.HasValue).Select(row => row.RegionId!.Value).ToList();
-        var regions = await db.Regions.AsNoTracking()
-            .Where(region => regionIds.Contains(region.Id))
-            .ToDictionaryAsync(region => region.Id, region => region.NameAr, cancellationToken);
+        var regionIds = grouped.Where(row => row.Key != Guid.Empty).Select(row => row.Key).ToList();
+        var regions = regionIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Regions.AsNoTracking()
+                .Where(region => regionIds.Contains(region.Id))
+                .ToDictionaryAsync(region => region.Id, region => region.NameAr, cancellationToken);
 
-        var caOverdueByRegion = await actions
-            .Where(action => action.DueAtUtc.HasValue &&
-                             action.DueAtUtc < now &&
-                             action.Status != CorrectiveActionStatus.Completed &&
-                             action.Status != CorrectiveActionStatus.Cancelled)
-            .Join(notes, action => action.OperationalNoteId, note => note.Id, (action, note) => note.RegionId)
-            .GroupBy(regionId => regionId)
-            .Select(group => new { RegionId = group.Key, Count = group.Count() })
-            .ToDictionaryAsync(row => row.RegionId, row => row.Count, cancellationToken);
+        var caOverdueByRegion = await LoadCorrectiveActionsOverdueByNoteKeyAsync(
+            actions,
+            notes,
+            now,
+            note => note.RegionId ?? Guid.Empty,
+            cancellationToken);
 
         return grouped
-            .OrderByDescending(row => row.Overdue)
+            .OrderByDescending(row => row.Aggregate.Overdue)
             .Select(row =>
             {
-                var label = row.RegionId.HasValue && regions.TryGetValue(row.RegionId.Value, out var name)
+                Guid? regionId = row.Key == Guid.Empty ? null : row.Key;
+                var label = regionId.HasValue && regions.TryGetValue(regionId.Value, out var name)
                     ? name
                     : "بدون منطقة";
-                caOverdueByRegion.TryGetValue(row.RegionId, out var caOverdue);
-                return new OperationalDashboardBreakdownRowDto(
-                    row.RegionId?.ToString() ?? "none",
+                caOverdueByRegion.TryGetValue(row.Key, out var caOverdue);
+                return ToBreakdownRow(
+                    regionId?.ToString() ?? "none",
                     label,
-                    row.RegionId,
-                    row.OpenBurden,
-                    row.Overdue,
-                    row.Critical,
-                    row.Unassigned,
-                    caOverdue,
-                    row.ClosedTotal == 0 ? null : Math.Round((decimal)row.ClosedWithinDue / row.ClosedTotal, 4));
+                    regionId,
+                    row.Aggregate,
+                    caOverdue);
             })
             .ToList();
     }
@@ -458,66 +364,40 @@ public sealed class OperationalDashboardQueryService(
         DateTimeOffset toUtc,
         CancellationToken cancellationToken)
     {
-        var grouped = await notes
-            .Where(note => note.FacilityId.HasValue)
-            .GroupBy(note => new { note.FacilityId })
-            .Select(group => new
-            {
-                group.Key.FacilityId,
-                OpenBurden = group.Count(note => note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Overdue = group.Count(note => note.DueAtUtc.HasValue && note.DueAtUtc < now &&
-                                              note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Critical = group.Count(note => (note.Severity == NoteSeverity.High || note.Severity == NoteSeverity.Critical) &&
-                                               note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Unassigned = group.Count(note => note.Status != NoteStatus.Closed &&
-                                                 note.Status != NoteStatus.Cancelled &&
-                                                 !note.Assignments.Any(assignment => assignment.IsCurrent)),
-                ClosedTotal = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                  note.ClosedAtUtc.HasValue &&
-                                                  note.ClosedAtUtc >= fromUtc &&
-                                                  note.ClosedAtUtc <= toUtc),
-                ClosedWithinDue = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                      note.ClosedAtUtc.HasValue &&
-                                                      note.ClosedAtUtc >= fromUtc &&
-                                                      note.ClosedAtUtc <= toUtc &&
-                                                      note.DueAtUtc.HasValue &&
-                                                      note.ClosedAtUtc <= note.DueAtUtc)
-            })
-            .ToListAsync(cancellationToken);
+        var grouped = await LoadNoteBreakdownAggregatesAsync(
+            notes.Where(note => note.FacilityId.HasValue),
+            note => note.FacilityId!.Value,
+            now,
+            fromUtc,
+            toUtc,
+            cancellationToken);
 
-        var facilityIds = grouped.Where(row => row.FacilityId.HasValue).Select(row => row.FacilityId!.Value).ToList();
-        var facilities = await db.Facilities.AsNoTracking()
-            .Where(facility => facilityIds.Contains(facility.Id))
-            .ToDictionaryAsync(facility => facility.Id, facility => facility.NameAr, cancellationToken);
+        var facilityIds = grouped.Select(row => row.Key).ToList();
+        var facilities = facilityIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Facilities.AsNoTracking()
+                .Where(facility => facilityIds.Contains(facility.Id))
+                .ToDictionaryAsync(facility => facility.Id, facility => facility.NameAr, cancellationToken);
 
-        var caOverdueByFacility = await actions
-            .Where(action => action.DueAtUtc.HasValue &&
-                             action.DueAtUtc < now &&
-                             action.Status != CorrectiveActionStatus.Completed &&
-                             action.Status != CorrectiveActionStatus.Cancelled)
-            .Join(notes.Where(note => note.FacilityId.HasValue), action => action.OperationalNoteId, note => note.Id, (action, note) => note.FacilityId)
-            .GroupBy(facilityId => facilityId)
-            .Select(group => new { FacilityId = group.Key, Count = group.Count() })
-            .ToDictionaryAsync(row => row.FacilityId, row => row.Count, cancellationToken);
+        var caOverdueByFacility = await LoadCorrectiveActionsOverdueByNoteKeyAsync(
+            actions,
+            notes.Where(note => note.FacilityId.HasValue),
+            now,
+            note => note.FacilityId!.Value,
+            cancellationToken);
 
         return grouped
-            .OrderByDescending(row => row.Overdue)
+            .OrderByDescending(row => row.Aggregate.Overdue)
             .Select(row =>
             {
-                var label = row.FacilityId.HasValue && facilities.TryGetValue(row.FacilityId.Value, out var name)
-                    ? name
-                    : "بدون موقع";
-                caOverdueByFacility.TryGetValue(row.FacilityId, out var caOverdue);
-                return new OperationalDashboardBreakdownRowDto(
-                    row.FacilityId?.ToString() ?? "none",
-                    label,
-                    row.FacilityId,
-                    row.OpenBurden,
-                    row.Overdue,
-                    row.Critical,
-                    row.Unassigned,
-                    caOverdue,
-                    row.ClosedTotal == 0 ? null : Math.Round((decimal)row.ClosedWithinDue / row.ClosedTotal, 4));
+                facilities.TryGetValue(row.Key, out var label);
+                caOverdueByFacility.TryGetValue(row.Key, out var caOverdue);
+                return ToBreakdownRow(
+                    row.Key.ToString(),
+                    label ?? "بدون موقع",
+                    row.Key,
+                    row.Aggregate,
+                    caOverdue);
             })
             .ToList();
     }
@@ -530,63 +410,40 @@ public sealed class OperationalDashboardQueryService(
         DateTimeOffset toUtc,
         CancellationToken cancellationToken)
     {
-        var grouped = await notes
-            .GroupBy(note => new { note.NoteTypeId })
-            .Select(group => new
-            {
-                group.Key.NoteTypeId,
-                OpenBurden = group.Count(note => note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Overdue = group.Count(note => note.DueAtUtc.HasValue && note.DueAtUtc < now &&
-                                              note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Critical = group.Count(note => (note.Severity == NoteSeverity.High || note.Severity == NoteSeverity.Critical) &&
-                                               note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Unassigned = group.Count(note => note.Status != NoteStatus.Closed &&
-                                                 note.Status != NoteStatus.Cancelled &&
-                                                 !note.Assignments.Any(assignment => assignment.IsCurrent)),
-                ClosedTotal = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                  note.ClosedAtUtc.HasValue &&
-                                                  note.ClosedAtUtc >= fromUtc &&
-                                                  note.ClosedAtUtc <= toUtc),
-                ClosedWithinDue = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                      note.ClosedAtUtc.HasValue &&
-                                                      note.ClosedAtUtc >= fromUtc &&
-                                                      note.ClosedAtUtc <= toUtc &&
-                                                      note.DueAtUtc.HasValue &&
-                                                      note.ClosedAtUtc <= note.DueAtUtc)
-            })
-            .ToListAsync(cancellationToken);
+        var grouped = await LoadNoteBreakdownAggregatesAsync(
+            notes,
+            note => note.NoteTypeId,
+            now,
+            fromUtc,
+            toUtc,
+            cancellationToken);
 
-        var typeIds = grouped.Select(row => row.NoteTypeId).ToList();
-        var types = await db.NoteTypes.AsNoTracking()
-            .Where(type => typeIds.Contains(type.Id))
-            .ToDictionaryAsync(type => type.Id, type => type.NameAr, cancellationToken);
+        var typeIds = grouped.Select(row => row.Key).ToList();
+        var types = typeIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.NoteTypes.AsNoTracking()
+                .Where(type => typeIds.Contains(type.Id))
+                .ToDictionaryAsync(type => type.Id, type => type.NameAr, cancellationToken);
 
-        var caOverdueByType = await actions
-            .Where(action => action.DueAtUtc.HasValue &&
-                             action.DueAtUtc < now &&
-                             action.Status != CorrectiveActionStatus.Completed &&
-                             action.Status != CorrectiveActionStatus.Cancelled)
-            .Join(notes, action => action.OperationalNoteId, note => note.Id, (action, note) => note.NoteTypeId)
-            .GroupBy(typeId => typeId)
-            .Select(group => new { NoteTypeId = group.Key, Count = group.Count() })
-            .ToDictionaryAsync(row => row.NoteTypeId, row => row.Count, cancellationToken);
+        var caOverdueByType = await LoadCorrectiveActionsOverdueByNoteKeyAsync(
+            actions,
+            notes,
+            now,
+            note => note.NoteTypeId,
+            cancellationToken);
 
         return grouped
-            .OrderByDescending(row => row.Overdue)
+            .OrderByDescending(row => row.Aggregate.Overdue)
             .Select(row =>
             {
-                types.TryGetValue(row.NoteTypeId, out var label);
-                caOverdueByType.TryGetValue(row.NoteTypeId, out var caOverdue);
-                return new OperationalDashboardBreakdownRowDto(
-                    row.NoteTypeId.ToString(),
-                    label ?? row.NoteTypeId.ToString(),
-                    row.NoteTypeId,
-                    row.OpenBurden,
-                    row.Overdue,
-                    row.Critical,
-                    row.Unassigned,
-                    caOverdue,
-                    row.ClosedTotal == 0 ? null : Math.Round((decimal)row.ClosedWithinDue / row.ClosedTotal, 4));
+                types.TryGetValue(row.Key, out var label);
+                caOverdueByType.TryGetValue(row.Key, out var caOverdue);
+                return ToBreakdownRow(
+                    row.Key.ToString(),
+                    label ?? row.Key.ToString(),
+                    row.Key,
+                    row.Aggregate,
+                    caOverdue);
             })
             .ToList();
     }
@@ -599,44 +456,33 @@ public sealed class OperationalDashboardQueryService(
         DateTimeOffset toUtc,
         CancellationToken cancellationToken)
     {
-        var grouped = await notes
-            .GroupBy(note => note.Severity)
-            .Select(group => new
-            {
-                Severity = group.Key,
-                OpenBurden = group.Count(note => note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Overdue = group.Count(note => note.DueAtUtc.HasValue && note.DueAtUtc < now &&
-                                              note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Critical = group.Count(note => (note.Severity == NoteSeverity.High || note.Severity == NoteSeverity.Critical) &&
-                                               note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Unassigned = group.Count(note => note.Status != NoteStatus.Closed &&
-                                                 note.Status != NoteStatus.Cancelled &&
-                                                 !note.Assignments.Any(assignment => assignment.IsCurrent)),
-                ClosedTotal = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                  note.ClosedAtUtc.HasValue &&
-                                                  note.ClosedAtUtc >= fromUtc &&
-                                                  note.ClosedAtUtc <= toUtc),
-                ClosedWithinDue = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                      note.ClosedAtUtc.HasValue &&
-                                                      note.ClosedAtUtc >= fromUtc &&
-                                                      note.ClosedAtUtc <= toUtc &&
-                                                      note.DueAtUtc.HasValue &&
-                                                      note.ClosedAtUtc <= note.DueAtUtc)
-            })
-            .ToListAsync(cancellationToken);
+        var grouped = await LoadNoteBreakdownAggregatesAsync(
+            notes,
+            note => note.Severity,
+            now,
+            fromUtc,
+            toUtc,
+            cancellationToken);
+
+        var caOverdueBySeverity = await LoadCorrectiveActionsOverdueByNoteKeyAsync(
+            actions,
+            notes,
+            now,
+            note => note.Severity,
+            cancellationToken);
 
         return grouped
-            .OrderByDescending(row => row.Overdue)
-            .Select(row => new OperationalDashboardBreakdownRowDto(
-                ((int)row.Severity).ToString(),
-                NoteDisplay.SeverityAr(row.Severity),
-                null,
-                row.OpenBurden,
-                row.Overdue,
-                row.Critical,
-                row.Unassigned,
-                0,
-                row.ClosedTotal == 0 ? null : Math.Round((decimal)row.ClosedWithinDue / row.ClosedTotal, 4)))
+            .OrderByDescending(row => row.Aggregate.Overdue)
+            .Select(row =>
+            {
+                caOverdueBySeverity.TryGetValue(row.Key, out var caOverdue);
+                return ToBreakdownRow(
+                    ((int)row.Key).ToString(),
+                    NoteDisplay.SeverityAr(row.Key),
+                    null,
+                    row.Aggregate,
+                    caOverdue);
+            })
             .ToList();
     }
 
@@ -648,45 +494,49 @@ public sealed class OperationalDashboardQueryService(
         DateTimeOffset toUtc,
         CancellationToken cancellationToken)
     {
-        var grouped = await notes
-            .GroupBy(note => note.Status)
-            .Select(group => new
-            {
-                Status = group.Key,
-                OpenBurden = group.Count(note => note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Overdue = group.Count(note => note.DueAtUtc.HasValue && note.DueAtUtc < now &&
-                                              note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Critical = group.Count(note => (note.Severity == NoteSeverity.High || note.Severity == NoteSeverity.Critical) &&
-                                               note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled),
-                Unassigned = group.Count(note => note.Status != NoteStatus.Closed &&
-                                                 note.Status != NoteStatus.Cancelled &&
-                                                 !note.Assignments.Any(assignment => assignment.IsCurrent)),
-                ClosedTotal = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                  note.ClosedAtUtc.HasValue &&
-                                                  note.ClosedAtUtc >= fromUtc &&
-                                                  note.ClosedAtUtc <= toUtc),
-                ClosedWithinDue = group.Count(note => note.Status == NoteStatus.Closed &&
-                                                      note.ClosedAtUtc.HasValue &&
-                                                      note.ClosedAtUtc >= fromUtc &&
-                                                      note.ClosedAtUtc <= toUtc &&
-                                                      note.DueAtUtc.HasValue &&
-                                                      note.ClosedAtUtc <= note.DueAtUtc)
-            })
-            .ToListAsync(cancellationToken);
+        var grouped = await LoadNoteBreakdownAggregatesAsync(
+            notes,
+            note => note.Status,
+            now,
+            fromUtc,
+            toUtc,
+            cancellationToken);
+
+        var caOverdueByStatus = await LoadCorrectiveActionsOverdueByNoteKeyAsync(
+            actions,
+            notes,
+            now,
+            note => note.Status,
+            cancellationToken);
 
         return grouped
-            .OrderBy(row => row.Status)
-            .Select(row => new OperationalDashboardBreakdownRowDto(
-                ((int)row.Status).ToString(),
-                NoteDisplay.StatusAr(row.Status),
-                null,
-                row.OpenBurden,
-                row.Overdue,
-                row.Critical,
-                row.Unassigned,
-                0,
-                row.ClosedTotal == 0 ? null : Math.Round((decimal)row.ClosedWithinDue / row.ClosedTotal, 4)))
+            .OrderBy(row => row.Key)
+            .Select(row =>
+            {
+                caOverdueByStatus.TryGetValue(row.Key, out var caOverdue);
+                return ToBreakdownRow(
+                    ((int)row.Key).ToString(),
+                    NoteDisplay.StatusAr(row.Key),
+                    null,
+                    row.Aggregate,
+                    caOverdue);
+            })
             .ToList();
+    }
+
+    private async Task<Dictionary<TKey, int>> LoadCorrectiveActionsOverdueByNoteKeyAsync<TKey>(
+        IQueryable<CorrectiveAction> actions,
+        IQueryable<OperationalNote> notes,
+        DateTimeOffset now,
+        System.Linq.Expressions.Expression<Func<OperationalNote, TKey>> keySelector,
+        CancellationToken cancellationToken)
+        where TKey : notnull
+    {
+        return await FilterOverdueActions(actions, now)
+            .Join(notes, action => action.OperationalNoteId, note => note.Id, (_, note) => note)
+            .GroupBy(keySelector)
+            .Select(group => new { Key = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.Key, row => row.Count, cancellationToken);
     }
 
     private async Task<IReadOnlyList<OperationalDashboardOverdueNoteQueueItemDto>> BuildMostOverdueNotesAsync(
@@ -774,20 +624,22 @@ public sealed class OperationalDashboardQueryService(
 
         var facilityIds = grouped.Where(row => row.FacilityId.HasValue).Select(row => row.FacilityId!.Value).ToList();
         var regionIds = grouped.Where(row => row.RegionId.HasValue).Select(row => row.RegionId!.Value).ToList();
-        var facilities = await db.Facilities.AsNoTracking()
-            .Where(facility => facilityIds.Contains(facility.Id))
-            .ToDictionaryAsync(facility => facility.Id, facility => facility.NameAr, cancellationToken);
-        var regions = await db.Regions.AsNoTracking()
-            .Where(region => regionIds.Contains(region.Id))
-            .ToDictionaryAsync(region => region.Id, region => region.NameAr, cancellationToken);
+        var facilities = facilityIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Facilities.AsNoTracking()
+                .Where(facility => facilityIds.Contains(facility.Id))
+                .ToDictionaryAsync(facility => facility.Id, facility => facility.NameAr, cancellationToken);
+        var regions = regionIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Regions.AsNoTracking()
+                .Where(region => regionIds.Contains(region.Id))
+                .ToDictionaryAsync(region => region.Id, region => region.NameAr, cancellationToken);
 
         return grouped
             .Where(row => row.FacilityId.HasValue)
             .Select(row => new OperationalDashboardOverdueLocationQueueItemDto(
                 row.FacilityId!.Value,
-                facilities.TryGetValue(
-                    row.FacilityId.Value,
-                    out var facilityName)
+                facilities.TryGetValue(row.FacilityId.Value, out var facilityName)
                     ? facilityName
                     : row.FacilityId.Value.ToString(),
                 row.RegionId,
@@ -802,11 +654,7 @@ public sealed class OperationalDashboardQueryService(
         int limit,
         CancellationToken cancellationToken)
     {
-        var rows = await actions
-            .Where(action => action.DueAtUtc.HasValue &&
-                             action.DueAtUtc < now &&
-                             action.Status != CorrectiveActionStatus.Completed &&
-                             action.Status != CorrectiveActionStatus.Cancelled)
+        var rows = await FilterOverdueActions(actions, now)
             .OrderBy(action => action.DueAtUtc)
             .Take(limit)
             .Select(action => new
@@ -838,14 +686,9 @@ public sealed class OperationalDashboardQueryService(
         int limit,
         CancellationToken cancellationToken)
     {
-        var noteIdList = await notes.Select(note => note.Id).ToListAsync(cancellationToken);
-        if (noteIdList.Count == 0)
-        {
-            return [];
-        }
-
+        var scopedNoteIds = notes.Select(note => note.Id);
         var decisions = await db.NoteRoutingDecisions.AsNoTracking()
-            .Where(decision => noteIdList.Contains(decision.OperationalNoteId) &&
+            .Where(decision => scopedNoteIds.Contains(decision.OperationalNoteId) &&
                                (decision.ResultStatus == NoteRoutingResultStatus.NoMatchingRule ||
                                 decision.ResultStatus == NoteRoutingResultStatus.NoEligibleUser ||
                                 decision.ResultStatus == NoteRoutingResultStatus.InvalidTarget ||
