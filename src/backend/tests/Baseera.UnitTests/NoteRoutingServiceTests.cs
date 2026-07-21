@@ -144,7 +144,7 @@ public sealed class NoteRoutingServiceTests : IDisposable
         var audit = new AuditService(_db, current, orgScope);
         var routing = new NoteRoutingService(_db, current, noteScope, typeAccess, audit, TimeProvider.System);
         var queries = new NoteQueryService(_db, current, noteScope, typeAccess, audit);
-        return (new NoteCommandService(_db, current, noteScope, orgScope, typeAccess, routing, audit, queries), actor.Id, reporter.Id);
+        return (new NoteCommandService(_db, current, noteScope, typeAccess, routing, audit, queries), actor.Id, reporter.Id);
     }
 
     private OperationalNote SeedNote(Guid reporterId)

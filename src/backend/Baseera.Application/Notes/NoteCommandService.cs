@@ -19,7 +19,6 @@ public sealed class NoteCommandService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     INoteScopeService noteScope,
-    IOrganizationalScopeService orgScope,
     INoteTypeAccessService typeAccess,
     INoteRoutingService routing,
     IAuditService audit,
@@ -31,7 +30,7 @@ public sealed class NoteCommandService(
         var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
 
         await EnsureCanCreateTypeAsync(request.NoteTypeId, cancellationToken);
-        var intake = await ResolveIntakeAsync(userId, request.RegionId, request.FacilityId, cancellationToken);
+        var intake = await noteScope.ResolveIntakeAsync(userId, request.RegionId, request.FacilityId, cancellationToken);
 
         noteScope.ValidateScopeShape(ScopeType.Facility, intake.RegionId, intake.FacilityId, null);
         await noteScope.EnsureOrgEntitiesActiveAsync(
@@ -301,39 +300,5 @@ public sealed class NoteCommandService(
         }
 
         await typeAccess.EnsureCanAsync(noteTypeId, NoteTypeCapability.Create, cancellationToken);
-    }
-
-    private async Task<(Guid RegionId, Guid FacilityId)> ResolveIntakeAsync(Guid userId, Guid? requestedRegionId, Guid? requestedFacilityId, CancellationToken cancellationToken)
-    {
-        if (!requestedRegionId.HasValue || !requestedFacilityId.HasValue)
-        {
-            throw new InvalidOperationException("يجب اختيار المنطقة ثم الموقع.");
-        }
-
-        var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == requestedFacilityId.Value && f.IsActive, cancellationToken)
-            ?? throw new KeyNotFoundException("الموقع غير موجود.");
-        if (facility.RegionId != requestedRegionId.Value)
-        {
-            throw new InvalidOperationException("الموقع لا يتبع المنطقة المحددة.");
-        }
-
-        var probe = new OperationalNote { ScopeType = ScopeType.Facility, RegionId = facility.RegionId, FacilityId = facility.Id };
-        if (!orgScope.CanAccess(probe))
-        {
-            throw new UnauthorizedAccessException("الموقع خارج نطاق المستخدم.");
-        }
-
-        var profile = await db.UserNoteIntakeProfiles.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, cancellationToken);
-        if (profile?.LockType == NoteIntakeLockType.Region && profile.RegionId != facility.RegionId)
-        {
-            throw new InvalidOperationException("المنطقة المحددة لا تطابق منطقة الإدخال المثبتة.");
-        }
-
-        if (profile?.LockType == NoteIntakeLockType.Facility && profile.FacilityId != facility.Id)
-        {
-            throw new InvalidOperationException("الموقع المحدد لا يطابق موقع الإدخال المثبت.");
-        }
-
-        return (facility.RegionId, facility.Id);
     }
 }

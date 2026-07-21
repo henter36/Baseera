@@ -44,7 +44,7 @@ public sealed class NoteRoutingService(
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesViewRouting);
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
-        var source = db.NoteRoutingRules.AsNoTracking();
+        var source = noteScope.FilterRoutingRulesQueryable(db.NoteRoutingRules.AsNoTracking());
 
         if (query.NoteTypeId.HasValue)
         {
@@ -110,7 +110,12 @@ public sealed class NoteRoutingService(
             .Include(item => item.ProcessingRole)
             .Include(item => item.ReviewerRole)
             .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
-        return rule is null ? null : ToRuleDto(rule);
+        if (rule is null || !noteScope.CanAccessRoutingRule(rule))
+        {
+            return null;
+        }
+
+        return ToRuleDto(rule);
     }
 
     public async Task<NoteRoutingRuleDto> CreateRuleAsync(
@@ -118,18 +123,8 @@ public sealed class NoteRoutingService(
         CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesManageRoutingRules);
-        await ValidateRuleShapeAsync(
-            request.NoteTypeId,
-            request.ScopeType,
-            request.RegionId,
-            request.FacilityId,
-            request.FacilityUnitId,
-            request.ProcessingTargetType,
-            request.ProcessingDepartmentId,
-            request.ProcessingRoleId,
-            request.ReviewerRoleId,
-            cancellationToken);
-        await EnsureNoAmbiguousActiveRuleAsync(null, request, cancellationToken);
+        await ValidateRuleShapeAsync(ToRuleShape(request), cancellationToken);
+        await EnsureNoAmbiguousActiveRuleAsync(null, ToRuleIdentity(request), cancellationToken);
 
         var now = timeProvider.GetUtcNow();
         var rule = new NoteRoutingRule
@@ -167,26 +162,15 @@ public sealed class NoteRoutingService(
         CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesManageRoutingRules);
-        var rule = await db.NoteRoutingRules.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
+        var rule = await LoadRuleInScopeOrNotFoundAsync(id, cancellationToken: cancellationToken);
         if (rule.IsActive)
         {
             throw new InvalidOperationException("يجب تعطيل قاعدة التوجيه قبل تعديل حقولها الجوهرية.");
         }
 
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
-        await ValidateRuleShapeAsync(
-            rule.NoteTypeId,
-            request.ScopeType,
-            request.RegionId,
-            request.FacilityId,
-            request.FacilityUnitId,
-            request.ProcessingTargetType,
-            request.ProcessingDepartmentId,
-            request.ProcessingRoleId,
-            request.ReviewerRoleId,
-            cancellationToken);
-        await EnsureNoAmbiguousActiveRuleAsync(rule.Id, request, rule.NoteTypeId, cancellationToken);
+        await ValidateRuleShapeAsync(ToRuleShape(request, rule.NoteTypeId), cancellationToken);
+        await EnsureNoAmbiguousActiveRuleAsync(rule.Id, ToRuleIdentity(request, rule.NoteTypeId), cancellationToken);
 
         var now = timeProvider.GetUtcNow();
         rule.NameAr = request.NameAr.Trim();
@@ -222,8 +206,7 @@ public sealed class NoteRoutingService(
     public async Task ArchiveRuleAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesManageRoutingRules);
-        var rule = await db.NoteRoutingRules.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
+        var rule = await LoadRuleInScopeOrNotFoundAsync(id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
         var now = timeProvider.GetUtcNow();
         rule.IsActive = false;
@@ -246,8 +229,7 @@ public sealed class NoteRoutingService(
     public async Task<NoteRoutingRuleDto> RestoreRuleAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesManageRoutingRules);
-        var rule = await db.NoteRoutingRulesIncludingDeleted.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
+        var rule = await LoadRuleInScopeOrNotFoundAsync(id, includeDeleted: true, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
         var now = timeProvider.GetUtcNow();
         rule.IsDeleted = false;
@@ -395,13 +377,12 @@ public sealed class NoteRoutingService(
         CancellationToken cancellationToken)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesActivateRoutingRules);
-        var rule = await db.NoteRoutingRules.FirstOrDefaultAsync(item => item.Id == id, cancellationToken)
-            ?? throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
+        var rule = await LoadRuleInScopeOrNotFoundAsync(id, cancellationToken: cancellationToken);
         NoteAccessHelper.EnsureRowVersion(rule.RowVersion, request.RowVersion);
         if (active)
         {
-            await ValidateRuleShapeAsync(rule.NoteTypeId, rule.ScopeType, rule.RegionId, rule.FacilityId, rule.FacilityUnitId, rule.ProcessingTargetType, rule.ProcessingDepartmentId, rule.ProcessingRoleId, rule.ReviewerRoleId, cancellationToken);
-            await EnsureNoAmbiguousActiveRuleAsync(rule.Id, rule, cancellationToken);
+            await ValidateRuleShapeAsync(ToRuleShape(rule), cancellationToken);
+            await EnsureNoAmbiguousActiveRuleAsync(rule.Id, ToRuleIdentity(rule), cancellationToken);
         }
 
         var now = timeProvider.GetUtcNow();
@@ -593,6 +574,20 @@ public sealed class NoteRoutingService(
             .ToListAsync(cancellationToken);
         var scopesByUser = scopes.ToLookup(scope => scope.UserId);
         var accessByUser = await typeAccess.GetEffectiveAccessForUsersAsync(ids, note.NoteTypeId, cancellationToken);
+        HashSet<Guid>? sensitiveViewerIds = null;
+        if (NoteAccessHelper.RequiresSensitive(note.Classification))
+        {
+            sensitiveViewerIds = await db.UserRoles
+                .AsNoTracking()
+                .Where(userRole => ids.Contains(userRole.UserId))
+                .Where(userRole => db.RolePermissions.Any(permission =>
+                    permission.RoleId == userRole.RoleId &&
+                    permission.Permission.Code == PermissionCodes.NotesViewSensitive))
+                .Select(userRole => userRole.UserId)
+                .Distinct()
+                .ToHashSetAsync(cancellationToken);
+        }
+
         var workloads = await db.NoteAssignments
             .AsNoTracking()
             .Where(assignment => assignment.IsCurrent && assignment.AssignedToUserId.HasValue && ids.Contains(assignment.AssignedToUserId.Value))
@@ -611,7 +606,8 @@ public sealed class NoteRoutingService(
 
         return candidates
             .Where(user => accessByUser.TryGetValue(user.Id, out var access) && access?.View.Allowed == true && access.Process.Allowed)
-            .Where(user => IntersectsAny(scopesByUser[user.Id], note))
+            .Where(user => !NoteAccessHelper.RequiresSensitive(note.Classification) || sensitiveViewerIds!.Contains(user.Id))
+            .Where(user => NoteAssigneeScopeIntersection.IntersectsAnyUserScopeForRouting(scopesByUser[user.Id], note))
             .Select(user =>
             {
                 workloadByUser.TryGetValue(user.Id, out var workload);
@@ -674,90 +670,58 @@ public sealed class NoteRoutingService(
     };
 
     private async Task ValidateRuleShapeAsync(
-        Guid noteTypeId,
-        ScopeType scopeType,
-        Guid? regionId,
-        Guid? facilityId,
-        Guid? facilityUnitId,
-        NoteRoutingProcessingTargetType targetType,
-        Guid? departmentId,
-        Guid? roleId,
-        Guid? reviewerRoleId,
+        RoutingRuleShape shape,
         CancellationToken cancellationToken)
     {
-        if (!await db.NoteTypes.AnyAsync(type => type.Id == noteTypeId, cancellationToken))
+        if (!await db.NoteTypes.AnyAsync(type => type.Id == shape.NoteTypeId, cancellationToken))
         {
             throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
         }
 
-        noteScope.ValidateScopeShape(scopeType, regionId, facilityId, facilityUnitId);
-        await noteScope.EnsureOrgEntitiesActiveAsync(scopeType, regionId, facilityId, facilityUnitId, cancellationToken);
-        if (targetType == NoteRoutingProcessingTargetType.Department)
+        noteScope.ValidateScopeShape(shape.ScopeType, shape.RegionId, shape.FacilityId, shape.FacilityUnitId);
+        await noteScope.EnsureOrgEntitiesActiveAsync(shape.ScopeType, shape.RegionId, shape.FacilityId, shape.FacilityUnitId, cancellationToken);
+        if (shape.ProcessingTargetType == NoteRoutingProcessingTargetType.Department)
         {
-            if (!departmentId.HasValue || roleId.HasValue)
+            if (!shape.ProcessingDepartmentId.HasValue || shape.ProcessingRoleId.HasValue)
             {
                 throw new InvalidOperationException("هدف الإدارة يتطلب DepartmentId فقط.");
             }
 
-            if (!await db.Departments.AnyAsync(department => department.Id == departmentId.Value && department.IsActive, cancellationToken))
+            if (!await db.Departments.AnyAsync(department => department.Id == shape.ProcessingDepartmentId.Value && department.IsActive, cancellationToken))
             {
                 throw new KeyNotFoundException("الإدارة غير موجودة.");
             }
         }
-        else if (!roleId.HasValue || departmentId.HasValue)
+        else if (!shape.ProcessingRoleId.HasValue || shape.ProcessingDepartmentId.HasValue)
         {
             throw new InvalidOperationException("هدف الدور يتطلب ProcessingRoleId فقط.");
         }
 
-        if (roleId.HasValue && !await db.Roles.AnyAsync(role => role.Id == roleId.Value, cancellationToken))
+        if (shape.ProcessingRoleId.HasValue && !await db.Roles.AnyAsync(role => role.Id == shape.ProcessingRoleId.Value, cancellationToken))
         {
             throw new KeyNotFoundException("دور المعالجة غير موجود.");
         }
 
-        if (reviewerRoleId.HasValue && !await db.Roles.AnyAsync(role => role.Id == reviewerRoleId.Value, cancellationToken))
+        if (shape.ReviewerRoleId.HasValue && !await db.Roles.AnyAsync(role => role.Id == shape.ReviewerRoleId.Value, cancellationToken))
         {
             throw new KeyNotFoundException("دور المراجعة غير موجود.");
         }
     }
 
-    private Task EnsureNoAmbiguousActiveRuleAsync(
-        Guid? currentRuleId,
-        CreateNoteRoutingRuleRequest request,
-        CancellationToken cancellationToken) =>
-        EnsureNoAmbiguousActiveRuleAsync(currentRuleId, request.NoteTypeId, request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId, request.Priority, cancellationToken);
-
-    private Task EnsureNoAmbiguousActiveRuleAsync(
-        Guid? currentRuleId,
-        UpdateNoteRoutingRuleRequest request,
-        Guid noteTypeId,
-        CancellationToken cancellationToken) =>
-        EnsureNoAmbiguousActiveRuleAsync(currentRuleId, noteTypeId, request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId, request.Priority, cancellationToken);
-
-    private Task EnsureNoAmbiguousActiveRuleAsync(
-        Guid? currentRuleId,
-        NoteRoutingRule rule,
-        CancellationToken cancellationToken) =>
-        EnsureNoAmbiguousActiveRuleAsync(currentRuleId, rule.NoteTypeId, rule.ScopeType, rule.RegionId, rule.FacilityId, rule.FacilityUnitId, rule.Priority, cancellationToken);
-
     private async Task EnsureNoAmbiguousActiveRuleAsync(
         Guid? currentRuleId,
-        Guid noteTypeId,
-        ScopeType scopeType,
-        Guid? regionId,
-        Guid? facilityId,
-        Guid? facilityUnitId,
-        int priority,
+        RoutingRuleIdentity identity,
         CancellationToken cancellationToken)
     {
         var exists = await db.NoteRoutingRules.AnyAsync(rule =>
             rule.IsActive &&
             (!currentRuleId.HasValue || rule.Id != currentRuleId.Value) &&
-            rule.NoteTypeId == noteTypeId &&
-            rule.ScopeType == scopeType &&
-            rule.RegionId == regionId &&
-            rule.FacilityId == facilityId &&
-            rule.FacilityUnitId == facilityUnitId &&
-            rule.Priority == priority,
+            rule.NoteTypeId == identity.NoteTypeId &&
+            rule.ScopeType == identity.ScopeType &&
+            rule.RegionId == identity.RegionId &&
+            rule.FacilityId == identity.FacilityId &&
+            rule.FacilityUnitId == identity.FacilityUnitId &&
+            rule.Priority == identity.Priority,
             cancellationToken);
         if (exists)
         {
@@ -765,17 +729,83 @@ public sealed class NoteRoutingService(
         }
     }
 
-    private static bool IntersectsAny(IEnumerable<UserScope> scopes, OperationalNote note) =>
-        scopes.Any(scope => scope.ScopeType switch
+    private async Task<NoteRoutingRule> LoadRuleInScopeOrNotFoundAsync(
+        Guid id,
+        bool includeDeleted = false,
+        CancellationToken cancellationToken = default)
+    {
+        var query = includeDeleted ? db.NoteRoutingRulesIncludingDeleted : db.NoteRoutingRules;
+        var rule = await query.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (rule is null || !noteScope.CanAccessRoutingRule(rule))
         {
-            ScopeType.Global => true,
-            ScopeType.Headquarters => note.ScopeType == ScopeType.Headquarters,
-            ScopeType.Region => note.RegionId == scope.RegionId,
-            ScopeType.Facility => note.FacilityId == scope.FacilityId,
-            ScopeType.FacilityUnit => note.FacilityUnitId == scope.FacilityUnitId ||
-                                      (!note.FacilityUnitId.HasValue && note.FacilityId == scope.FacilityId),
-            _ => false
-        });
+            throw new KeyNotFoundException(RoutingRuleNotFoundMessage);
+        }
+
+        return rule;
+    }
+
+    private static RoutingRuleShape ToRuleShape(CreateNoteRoutingRuleRequest request) =>
+        new(
+            request.NoteTypeId,
+            request.ScopeType,
+            request.RegionId,
+            request.FacilityId,
+            request.FacilityUnitId,
+            request.ProcessingTargetType,
+            request.ProcessingDepartmentId,
+            request.ProcessingRoleId,
+            request.ReviewerRoleId);
+
+    private static RoutingRuleShape ToRuleShape(UpdateNoteRoutingRuleRequest request, Guid noteTypeId) =>
+        new(
+            noteTypeId,
+            request.ScopeType,
+            request.RegionId,
+            request.FacilityId,
+            request.FacilityUnitId,
+            request.ProcessingTargetType,
+            request.ProcessingDepartmentId,
+            request.ProcessingRoleId,
+            request.ReviewerRoleId);
+
+    private static RoutingRuleShape ToRuleShape(NoteRoutingRule rule) =>
+        new(
+            rule.NoteTypeId,
+            rule.ScopeType,
+            rule.RegionId,
+            rule.FacilityId,
+            rule.FacilityUnitId,
+            rule.ProcessingTargetType,
+            rule.ProcessingDepartmentId,
+            rule.ProcessingRoleId,
+            rule.ReviewerRoleId);
+
+    private static RoutingRuleIdentity ToRuleIdentity(CreateNoteRoutingRuleRequest request) =>
+        new(
+            request.NoteTypeId,
+            request.ScopeType,
+            request.RegionId,
+            request.FacilityId,
+            request.FacilityUnitId,
+            request.Priority);
+
+    private static RoutingRuleIdentity ToRuleIdentity(UpdateNoteRoutingRuleRequest request, Guid noteTypeId) =>
+        new(
+            noteTypeId,
+            request.ScopeType,
+            request.RegionId,
+            request.FacilityId,
+            request.FacilityUnitId,
+            request.Priority);
+
+    private static RoutingRuleIdentity ToRuleIdentity(NoteRoutingRule rule) =>
+        new(
+            rule.NoteTypeId,
+            rule.ScopeType,
+            rule.RegionId,
+            rule.FacilityId,
+            rule.FacilityUnitId,
+            rule.Priority);
 
     private async Task<bool> HasCurrentAssignmentAsync(Guid noteId, CancellationToken cancellationToken) =>
         await db.NoteAssignments.AnyAsync(assignment => assignment.OperationalNoteId == noteId && assignment.IsCurrent, cancellationToken);
@@ -987,4 +1017,21 @@ public sealed class NoteRoutingService(
 
     private sealed record RuleResolution(NoteRoutingRule? MatchedRule, string Specificity, string Reason);
     private sealed record SelectedRoutingUser(Guid UserId, string DisplayNameAr, int ActiveAssignmentCount, DateTimeOffset? LastAssignedAtUtc);
+    private sealed record RoutingRuleShape(
+        Guid NoteTypeId,
+        ScopeType ScopeType,
+        Guid? RegionId,
+        Guid? FacilityId,
+        Guid? FacilityUnitId,
+        NoteRoutingProcessingTargetType ProcessingTargetType,
+        Guid? ProcessingDepartmentId,
+        Guid? ProcessingRoleId,
+        Guid? ReviewerRoleId);
+    private sealed record RoutingRuleIdentity(
+        Guid NoteTypeId,
+        ScopeType ScopeType,
+        Guid? RegionId,
+        Guid? FacilityId,
+        Guid? FacilityUnitId,
+        int Priority);
 }

@@ -234,7 +234,7 @@ public sealed class UserNoteIntakeProfile : EntityBase
     public User? UpdatedByUser { get; set; }
 }
 
-public sealed class NoteRoutingRule : SoftDeletableEntity
+public sealed class NoteRoutingRule : SoftDeletableEntity, IScopedEntity
 {
     public string Code { get; set; } = string.Empty;
     public string NameAr { get; set; } = string.Empty;
