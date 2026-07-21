@@ -124,11 +124,13 @@ public sealed class OperationalDashboardQueryService(
         var now = timeProvider.GetUtcNow();
         var (fromUtc, toUtc) = OperationalDashboardPeriodResolver.Resolve(query, now);
         var notes = await filters.BuildScopedNotesAsync(query, cancellationToken);
-        var actions = await filters.BuildScopedCorrectiveActionsAsync(query, cancellationToken);
+        var actions = filters.BuildScopedCorrectiveActionsFromNotes(notes);
         var scopedNoteIds = notes.Select(note => note.Id);
 
         var periodDays = query.PeriodDays ?? (int)Math.Ceiling((toUtc - fromUtc).TotalDays);
-        var granularity = periodDays >= 60 ? "weekly" : "daily";
+        var granularity = periodDays >= 60
+            ? OperationalDashboardKpiDefinitions.WeeklyGranularity
+            : OperationalDashboardKpiDefinitions.DailyGranularity;
         var bucketStarts = BuildBucketStarts(fromUtc, toUtc, granularity);
 
         var notesCreatedDaily = ToDailyCountMap(await notes
@@ -190,7 +192,7 @@ public sealed class OperationalDashboardQueryService(
         var points = new List<OperationalDashboardTrendPointDto>(bucketStarts.Count);
         foreach (var bucketStart in bucketStarts)
         {
-            var bucketEnd = granularity == "weekly"
+            var bucketEnd = granularity == OperationalDashboardKpiDefinitions.WeeklyGranularity
                 ? bucketStart.AddDays(7).AddTicks(-1)
                 : OperationalDashboardPeriodResolver.EndOfSaudiDayUtc(bucketStart);
             if (bucketEnd > toUtc)
@@ -241,7 +243,10 @@ public sealed class OperationalDashboardQueryService(
                 notes, actions, now, fromUtc, toUtc, cancellationToken),
             OperationalDashboardBreakdownDimension.Status => await BuildStatusBreakdownAsync(
                 notes, actions, now, fromUtc, toUtc, cancellationToken),
-            _ => throw new ArgumentOutOfRangeException(nameof(query.BreakdownBy))
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(query),
+                query.BreakdownBy,
+                "قيمة breakdownBy غير مدعومة.")
         };
 
         return new OperationalDashboardBreakdownsDto(query.BreakdownBy.Value, rows);
@@ -257,45 +262,50 @@ public sealed class OperationalDashboardQueryService(
         var notes = await filters.BuildScopedNotesAsync(query, cancellationToken);
         var limit = OperationalDashboardKpiDefinitions.TopLimit;
 
+        var canViewOperationalQueues =
+            HasPermission(PermissionCodes.DashboardViewOperational) ||
+            HasPermission(PermissionCodes.DashboardViewRisk);
+        var canViewCorrectiveActionQueues =
+            HasPermission(PermissionCodes.DashboardViewCorrectiveActions);
+        var canViewRoutingQueues =
+            HasPermission(PermissionCodes.DashboardViewRouting) ||
+            HasPermission(PermissionCodes.DashboardViewRisk);
+
         IReadOnlyList<OperationalDashboardOverdueNoteQueueItemDto>? mostOverdueNotes = null;
         IReadOnlyList<OperationalDashboardOverdueNoteQueueItemDto>? criticalUnassignedNotes = null;
         IReadOnlyList<OperationalDashboardOverdueLocationQueueItemDto>? topOverdueLocations = null;
         IReadOnlyList<OperationalDashboardOverdueCorrectiveActionQueueItemDto>? mostOverdueCorrectiveActions = null;
         IReadOnlyList<OperationalDashboardRoutingFailureQueueItemDto>? recentRoutingFailures = null;
 
-        if (HasPermission(PermissionCodes.DashboardViewOperational) || HasPermission(PermissionCodes.DashboardViewRisk))
+        if (canViewOperationalQueues)
         {
-            if (!query.Queue.HasValue || query.Queue == OperationalDashboardPriorityQueue.MostOverdueNotes)
+            if (ShouldLoadQueue(query.Queue, OperationalDashboardPriorityQueue.MostOverdueNotes))
             {
                 mostOverdueNotes = await BuildMostOverdueNotesAsync(notes, now, limit, cancellationToken);
             }
 
-            if (!query.Queue.HasValue || query.Queue == OperationalDashboardPriorityQueue.CriticalUnassignedNotes)
+            if (ShouldLoadQueue(query.Queue, OperationalDashboardPriorityQueue.CriticalUnassignedNotes))
             {
                 criticalUnassignedNotes = await BuildCriticalUnassignedNotesAsync(notes, now, limit, cancellationToken);
             }
 
-            if (!query.Queue.HasValue || query.Queue == OperationalDashboardPriorityQueue.TopOverdueLocations)
+            if (ShouldLoadQueue(query.Queue, OperationalDashboardPriorityQueue.TopOverdueLocations))
             {
                 topOverdueLocations = await BuildTopOverdueLocationsAsync(notes, now, limit, cancellationToken);
             }
         }
 
-        if (HasPermission(PermissionCodes.DashboardViewCorrectiveActions))
+        if (canViewCorrectiveActionQueues &&
+            ShouldLoadQueue(query.Queue, OperationalDashboardPriorityQueue.MostOverdueCorrectiveActions))
         {
-            if (!query.Queue.HasValue || query.Queue == OperationalDashboardPriorityQueue.MostOverdueCorrectiveActions)
-            {
-                var actions = await filters.BuildScopedCorrectiveActionsAsync(query, cancellationToken);
-                mostOverdueCorrectiveActions = await BuildMostOverdueCorrectiveActionsAsync(actions, now, limit, cancellationToken);
-            }
+            var actions = await filters.BuildScopedCorrectiveActionsAsync(query, cancellationToken);
+            mostOverdueCorrectiveActions = await BuildMostOverdueCorrectiveActionsAsync(actions, now, limit, cancellationToken);
         }
 
-        if (HasPermission(PermissionCodes.DashboardViewRouting) || HasPermission(PermissionCodes.DashboardViewRisk))
+        if (canViewRoutingQueues &&
+            ShouldLoadQueue(query.Queue, OperationalDashboardPriorityQueue.RecentRoutingFailures))
         {
-            if (!query.Queue.HasValue || query.Queue == OperationalDashboardPriorityQueue.RecentRoutingFailures)
-            {
-                recentRoutingFailures = await BuildRecentRoutingFailuresAsync(notes, limit, cancellationToken);
-            }
+            recentRoutingFailures = await BuildRecentRoutingFailuresAsync(notes, limit, cancellationToken);
         }
 
         return new OperationalDashboardPriorityQueuesDto(
@@ -720,7 +730,7 @@ public sealed class OperationalDashboardQueryService(
     {
         var starts = new List<DateTimeOffset>();
         var cursor = OperationalDashboardPeriodResolver.StartOfSaudiDayUtc(fromUtc);
-        var stepDays = granularity == "weekly" ? 7 : 1;
+        var stepDays = granularity == OperationalDashboardKpiDefinitions.WeeklyGranularity ? 7 : 1;
         while (cursor <= toUtc)
         {
             starts.Add(cursor);
@@ -733,10 +743,15 @@ public sealed class OperationalDashboardQueryService(
     private static string FormatBucketLabel(DateTimeOffset bucketStartUtc, string granularity)
     {
         var local = TimeZoneInfo.ConvertTime(bucketStartUtc, TimeZones.SaudiArabia);
-        return granularity == "weekly"
+        return granularity == OperationalDashboardKpiDefinitions.WeeklyGranularity
             ? local.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
             : local.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture);
     }
+
+    private static bool ShouldLoadQueue(
+        OperationalDashboardPriorityQueue? requested,
+        OperationalDashboardPriorityQueue candidate) =>
+        !requested.HasValue || requested.Value == candidate;
 
     private void EnsurePermission(string permissionCode)
     {

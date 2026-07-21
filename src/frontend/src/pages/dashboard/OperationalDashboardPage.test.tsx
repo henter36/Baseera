@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
-import { OperationalDashboardPage } from './OperationalDashboardPage'
+import { dashboardErrorMessage, metricCardClassName, OperationalDashboardPage } from './OperationalDashboardPage'
 
 const {
   summary,
@@ -158,5 +158,27 @@ describe('OperationalDashboardPage', () => {
   it('shows empty priority queue message', async () => {
     renderPage()
     expect(await screen.findByText('لا توجد عناصر في قوائم الأولوية للفلاتر الحالية.')).toBeInTheDocument()
+  })
+
+  it('builds metric card class names with and without tone', () => {
+    expect(metricCardClassName()).toBe('metric-card')
+    expect(metricCardClassName('danger')).toBe('metric-card metric-card--danger')
+  })
+
+  it('maps dashboard errors to readable messages', () => {
+    expect(dashboardErrorMessage(new ApiError(500, 'خطأ'))).toBe('خطأ')
+    expect(dashboardErrorMessage(new Error('boom'))).toBe('تعذر تحميل لوحة المتابعة.')
+    expect(dashboardErrorMessage(null)).toBeNull()
+  })
+
+  it('associates filter labels with select controls', async () => {
+    renderPage()
+    await screen.findByText('12')
+
+    for (const label of ['الفترة', 'المنطقة', 'الموقع', 'نوع الملاحظة', 'الخطورة', 'الحالة', 'التقسيم']) {
+      const select = screen.getByLabelText(label)
+      expect(select.tagName).toBe('SELECT')
+      expect(select.closest('label')?.querySelector('span')?.textContent).toBe(label)
+    }
   })
 })

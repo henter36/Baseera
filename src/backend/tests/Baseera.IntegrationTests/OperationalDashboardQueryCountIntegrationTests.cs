@@ -53,9 +53,7 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
         response.EnsureSuccessStatusCode();
 
         Assert.InRange(counter.SelectCount, 1, SummaryQueryMax);
-        Assert.DoesNotContain(
-            counter.CommandTexts,
-            text => CountOccurrences(text, "NoteRoutingDecisions") > 1);
+        Assert.Equal(1, CountRoutingFailureAggregateQueries(counter.CommandTexts));
     }
 
     [IntegrationConnectionFact]
@@ -125,8 +123,11 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
         Assert.Contains(status!.Rows, row => row.CorrectiveActionsOverdue > 0);
     }
 
-    private static int CountOccurrences(string text, string value) =>
-        text.Split(value, StringSplitOptions.None).Length - 1;
+    private static int CountRoutingFailureAggregateQueries(IEnumerable<string> commandTexts) =>
+        commandTexts.Count(text =>
+            text.Contains("NoteRoutingDecisions", StringComparison.OrdinalIgnoreCase) &&
+            text.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase) &&
+            text.Contains("DecidedAtUtc", StringComparison.OrdinalIgnoreCase));
 
     private static async Task SeedDashboardAdminAsync(BaseeraApiFactory factory, string subject)
     {
@@ -139,28 +140,33 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
         int count,
         int startIndex = 0)
     {
-        var admin = factory.CreateAuthenticatedClient(adminSubject);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var reporter = await db.Users.FirstAsync(u => u.ExternalSubject == adminSubject);
         for (var i = 0; i < count; i++)
         {
-            var response = await admin.PostAsJsonAsync("/api/v1/notes", new
+            db.OperationalNotes.Add(new OperationalNote
             {
-                title = $"متأخرة {startIndex + i}",
-                description = "وصف",
-                noteTypeId = SeedIds.NoteTypeOperational,
-                severity = NoteSeverity.Medium,
-                sourceType = NoteSourceType.Manual,
-                classification = ClassificationLevel.Internal,
-                scopeType = ScopeType.Facility,
-                regionId = SeedIds.RegionA,
-                facilityId = SeedIds.FacilityA1,
-                dueAtUtc = DateTimeOffset.UtcNow.AddDays(-(i + 1))
+                ReferenceNumber = $"OBS-OVD-{startIndex + i:D4}",
+                Title = $"متأخرة {startIndex + i}",
+                Description = "وصف",
+                NoteTypeId = SeedIds.NoteTypeOperational,
+                Severity = NoteSeverity.Medium,
+                Status = NoteStatus.Open,
+                SourceType = NoteSourceType.Manual,
+                Classification = ClassificationLevel.Internal,
+                ScopeType = ScopeType.Facility,
+                RegionId = SeedIds.RegionA,
+                FacilityId = SeedIds.FacilityA1,
+                ReportedByUserId = reporter.Id,
+                ReportedAtUtc = DateTimeOffset.UtcNow.AddDays(-(i + 3)),
+                SubmittedAtUtc = DateTimeOffset.UtcNow.AddDays(-(i + 2)),
+                CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-(i + 3)),
+                DueAtUtc = DateTimeOffset.UtcNow.AddDays(-(i + 1))
             });
-            response.EnsureSuccessStatusCode();
-            var note = await response.Content.ReadFromJsonAsync<NoteDetail>();
-            Assert.NotNull(note);
-            var submit = await admin.PostAsJsonAsync($"/api/v1/notes/{note!.Id}/submit", new { reason = "تقديم", rowVersion = note.RowVersion });
-            submit.EnsureSuccessStatusCode();
         }
+
+        await db.SaveChangesAsync();
     }
 
     private static async Task SeedTrendSampleDataAsync(BaseeraApiFactory factory)

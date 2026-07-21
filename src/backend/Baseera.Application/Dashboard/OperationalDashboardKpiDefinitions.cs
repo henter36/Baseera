@@ -7,6 +7,9 @@ using Baseera.Domain.Notes;
 
 internal static class OperationalDashboardKpiDefinitions
 {
+    public const string DailyGranularity = "daily";
+    public const string WeeklyGranularity = "weekly";
+
     public const int TopLimit = 10;
     public const int MaxTrendDays = 90;
     public const int DefaultDueSoonDays = 7;

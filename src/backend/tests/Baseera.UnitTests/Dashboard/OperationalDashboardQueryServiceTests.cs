@@ -864,6 +864,102 @@ public sealed class OperationalDashboardQueryServiceTests : IDisposable
         Assert.Equal(1, assignedRow.CorrectiveActionsOverdue);
     }
 
+    [Theory]
+    [InlineData(null, OperationalDashboardPriorityQueue.MostOverdueNotes, true)]
+    [InlineData(OperationalDashboardPriorityQueue.MostOverdueNotes, OperationalDashboardPriorityQueue.MostOverdueNotes, true)]
+    [InlineData(OperationalDashboardPriorityQueue.MostOverdueNotes, OperationalDashboardPriorityQueue.RecentRoutingFailures, false)]
+    public void ShouldLoadQueue_honors_requested_queue(
+        OperationalDashboardPriorityQueue? requested,
+        OperationalDashboardPriorityQueue candidate,
+        bool expected) =>
+        Assert.Equal(expected, InvokeShouldLoadQueue(requested, candidate));
+
+    [Fact]
+    public async Task GetPriorityQueues_loads_only_requested_queue()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        SeedNote(reporter.Id, dueAtUtc: FixedNow.AddDays(-2), reference: "OBS-00000001");
+        SeedRoutingDecision(
+            SeedNote(reporter.Id, reference: "OBS-00000002"),
+            NoteRoutingResultStatus.NoMatchingRule);
+
+        var (service, _) = BuildService(
+            PermissionCodes.DashboardViewOperational,
+            PermissionCodes.DashboardViewRisk,
+            PermissionCodes.DashboardViewRouting,
+            PermissionCodes.DashboardViewCorrectiveActions);
+        var queues = await service.GetPriorityQueuesAsync(new OperationalDashboardQuery
+        {
+            Queue = OperationalDashboardPriorityQueue.MostOverdueNotes
+        });
+
+        Assert.NotNull(queues.MostOverdueNotes);
+        Assert.Null(queues.CriticalUnassignedNotes);
+        Assert.Null(queues.TopOverdueLocations);
+        Assert.Null(queues.MostOverdueCorrectiveActions);
+        Assert.Null(queues.RecentRoutingFailures);
+    }
+
+    [Fact]
+    public async Task GetPriorityQueues_skips_corrective_actions_when_requesting_another_queue()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var note = SeedNote(reporter.Id, reference: "OBS-00000001");
+        _db.CorrectiveActions.Add(NewOverdueAction(reporter.Id, note.Id, "CA-00000001"));
+        _db.SaveChanges();
+
+        var (service, _) = BuildService(
+            PermissionCodes.DashboardViewOperational,
+            PermissionCodes.DashboardViewCorrectiveActions);
+        var queues = await service.GetPriorityQueuesAsync(new OperationalDashboardQuery
+        {
+            Queue = OperationalDashboardPriorityQueue.MostOverdueNotes
+        });
+
+        Assert.NotNull(queues.MostOverdueNotes);
+        Assert.Null(queues.MostOverdueCorrectiveActions);
+    }
+
+    [Fact]
+    public async Task GetPriorityQueues_risk_permission_loads_operational_queues_only()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var note = SeedNote(reporter.Id, dueAtUtc: FixedNow.AddDays(-2), reference: "OBS-00000001");
+        _db.CorrectiveActions.Add(NewOverdueAction(reporter.Id, note.Id, "CA-00000001"));
+        _db.SaveChanges();
+
+        var (service, _) = BuildService(PermissionCodes.DashboardViewRisk);
+        var queues = await service.GetPriorityQueuesAsync(new OperationalDashboardQuery());
+
+        Assert.NotNull(queues.MostOverdueNotes);
+        Assert.NotNull(queues.RecentRoutingFailures);
+        Assert.Null(queues.MostOverdueCorrectiveActions);
+    }
+
+    [Fact]
+    public async Task GetBreakdowns_unsupported_dimension_throws_with_query_parameter_name()
+    {
+        var (service, _) = BuildService(PermissionCodes.DashboardViewOperational);
+        var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            service.GetBreakdownsAsync(new OperationalDashboardQuery
+            {
+                BreakdownBy = (OperationalDashboardBreakdownDimension)99
+            }));
+
+        Assert.Equal("query", exception.ParamName);
+    }
+
+    private static bool InvokeShouldLoadQueue(
+        OperationalDashboardPriorityQueue? requested,
+        OperationalDashboardPriorityQueue candidate)
+    {
+        var method = typeof(OperationalDashboardQueryService).GetMethod(
+            "ShouldLoadQueue",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("ShouldLoadQueue not found.");
+        return (bool)method.Invoke(null, [requested, candidate])!;
+    }
+
     private static CorrectiveAction NewOverdueAction(Guid createdByUserId, Guid noteId, string reference) =>
         new()
         {

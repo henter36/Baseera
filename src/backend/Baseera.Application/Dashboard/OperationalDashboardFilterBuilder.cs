@@ -53,6 +53,19 @@ public sealed class OperationalDashboardFilterBuilder(
         return actions;
     }
 
+    public IQueryable<CorrectiveAction> BuildScopedCorrectiveActionsFromNotes(IQueryable<OperationalNote> notes)
+    {
+        var noteIds = notes.Select(note => note.Id);
+        var actions = db.CorrectiveActions.AsNoTracking().Where(action => noteIds.Contains(action.OperationalNoteId));
+
+        if (!currentUser.HasPermission(PermissionCodes.CorrectiveActionsViewSensitive))
+        {
+            actions = actions.Where(action => action.Classification < ClassificationLevel.Confidential);
+        }
+
+        return actions;
+    }
+
     public static IQueryable<OperationalNote> ApplyDashboardFilters(
         IQueryable<OperationalNote> notes,
         OperationalDashboardQuery query)

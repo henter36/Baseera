@@ -299,7 +299,7 @@ internal static class OperationalDashboardAggregationHelpers
         DateTimeOffset bucketEndUtc,
         string granularity)
     {
-        if (granularity == "daily")
+        if (granularity == OperationalDashboardKpiDefinitions.DailyGranularity)
         {
             return dailyCounts.GetValueOrDefault(SaudiCalendarDay(bucketStartUtc));
         }
@@ -321,7 +321,7 @@ internal static class OperationalDashboardAggregationHelpers
         DateTimeOffset bucketEndUtc,
         string granularity)
     {
-        if (granularity == "daily")
+        if (granularity == OperationalDashboardKpiDefinitions.DailyGranularity)
         {
             if (dailyRouting.TryGetValue(SaudiCalendarDay(bucketStartUtc), out var row))
             {

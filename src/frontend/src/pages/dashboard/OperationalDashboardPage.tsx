@@ -16,6 +16,23 @@ const PERIOD_OPTIONS = [
   { value: 90, label: '90 يومًا' },
 ]
 
+export function metricCardClassName(tone?: string): string {
+  const toneClass = tone ? `metric-card--${tone}` : ''
+  return ['metric-card', toneClass].filter(Boolean).join(' ')
+}
+
+export function dashboardErrorMessage(error: unknown): string | null {
+  if (error instanceof ApiError) {
+    return error.message
+  }
+
+  if (error) {
+    return 'تعذر تحميل لوحة المتابعة.'
+  }
+
+  return null
+}
+
 function MetricCard({
   label,
   value,
@@ -28,7 +45,7 @@ function MetricCard({
   tone?: string
 }) {
   const content = (
-    <div className={`metric-card${tone ? ` metric-card--${tone}` : ''}`}>
+    <div className={metricCardClassName(tone)}>
       <strong aria-label={`${label}: ${value}`}>{value}</strong>
       <span>{label}</span>
     </div>
@@ -99,7 +116,7 @@ export function OperationalDashboardPage() {
 
   const loading = summaryQuery.isLoading || trendsQuery.isLoading || breakdownsQuery.isLoading || queuesQuery.isLoading
   const error = [summaryQuery, trendsQuery, breakdownsQuery, queuesQuery].find((q) => q.isError)?.error
-  const errorMessage = error instanceof ApiError ? error.message : error ? 'تعذر تحميل لوحة المتابعة.' : null
+  const errorMessage = dashboardErrorMessage(error)
   const summary = summaryQuery.data
   const trends = trendsQuery.data
   const breakdowns = breakdownsQuery.data
@@ -120,7 +137,7 @@ export function OperationalDashboardPage() {
       <section className="panel-section filters" aria-label="فلاتر اللوحة">
         <div className="toolbar">
           <label>
-            الفترة
+            <span>الفترة</span>
             <select value={periodDays} onChange={(e) => setPeriodDays(Number(e.target.value))} aria-label="الفترة">
               {PERIOD_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -128,7 +145,7 @@ export function OperationalDashboardPage() {
             </select>
           </label>
           <label>
-            المنطقة
+            <span>المنطقة</span>
             <select value={regionId} onChange={(e) => { setRegionId(e.target.value); setFacilityId('') }} aria-label="المنطقة">
               <option value="">الكل</option>
               {(regionsQuery.data?.items ?? []).map((region) => (
@@ -137,7 +154,7 @@ export function OperationalDashboardPage() {
             </select>
           </label>
           <label>
-            الموقع
+            <span>الموقع</span>
             <select value={facilityId} onChange={(e) => setFacilityId(e.target.value)} aria-label="الموقع">
               <option value="">الكل</option>
               {(facilitiesQuery.data?.items ?? []).map((facility) => (
@@ -146,7 +163,7 @@ export function OperationalDashboardPage() {
             </select>
           </label>
           <label>
-            نوع الملاحظة
+            <span>نوع الملاحظة</span>
             <select value={noteTypeId} onChange={(e) => setNoteTypeId(e.target.value)} aria-label="نوع الملاحظة">
               <option value="">الكل</option>
               {(noteTypesQuery.data ?? []).map((type) => (
@@ -155,7 +172,7 @@ export function OperationalDashboardPage() {
             </select>
           </label>
           <label>
-            الخطورة
+            <span>الخطورة</span>
             <select value={severity} onChange={(e) => setSeverity(e.target.value)} aria-label="الخطورة">
               <option value="">الكل</option>
               <option value="3">حرجة</option>
@@ -165,7 +182,7 @@ export function OperationalDashboardPage() {
             </select>
           </label>
           <label>
-            الحالة
+            <span>الحالة</span>
             <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="الحالة">
               <option value="">الكل</option>
               <option value="1">مفتوحة</option>
@@ -176,7 +193,7 @@ export function OperationalDashboardPage() {
             </select>
           </label>
           <label>
-            التقسيم
+            <span>التقسيم</span>
             <select value={breakdownBy} onChange={(e) => setBreakdownBy(e.target.value)} aria-label="التقسيم">
               <option value="0">حسب المنطقة</option>
               <option value="1">حسب الموقع</option>

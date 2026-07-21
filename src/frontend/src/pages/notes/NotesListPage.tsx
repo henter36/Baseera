@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type NoteListFilters } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
+import { buildNotesListSearchParams } from './notesListSearchParams'
 import {
   ClassificationLevelLabelsAr,
   NoteSeverityLabelsAr,
@@ -95,26 +96,8 @@ export function NotesListPage() {
   )
 
   useEffect(() => {
-    const params = new URLSearchParams()
-    if (search) params.set('search', search)
-    if (status !== '') params.set('status', status)
-    if (severity !== '') params.set('severity', severity)
-    if (noteTypeId) params.set('noteTypeId', noteTypeId)
-    if (classification !== '') params.set('classification', classification)
-    if (regionId) params.set('regionId', regionId)
-    if (facilityId) params.set('facilityId', facilityId)
-    if (facilityUnitId) params.set('facilityUnitId', facilityUnitId)
-    if (ownerDepartmentId) params.set('ownerDepartmentId', ownerDepartmentId)
-    if (overdueOnly) params.set('overdueOnly', 'true')
-    if (dueSoonDays !== '') params.set('dueSoonDays', dueSoonDays)
-    if (unassignedOnly) params.set('unassignedOnly', 'true')
-    if (requiresMyAction) params.set('requiresMyAction', 'true')
-    if (requiresRouting) params.set('requiresRouting', 'true')
-    if (page > 1) params.set('page', String(page))
-    if (sortBy !== 'createdAtUtc') params.set('sortBy', sortBy)
-    if (!sortDesc) params.set('sortDesc', 'false')
-    setSearchParams(params, { replace: true })
-  }, [search, status, severity, noteTypeId, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, dueSoonDays, unassignedOnly, requiresMyAction, requiresRouting, page, sortBy, sortDesc, setSearchParams])
+    setSearchParams(buildNotesListSearchParams(filters), { replace: true })
+  }, [filters, setSearchParams])
 
   const query = useQuery({
     queryKey: ['notes', filters],
