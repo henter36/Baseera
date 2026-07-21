@@ -123,11 +123,12 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
         Assert.Contains(status!.Rows, row => row.CorrectiveActionsOverdue > 0);
     }
 
-    private static int CountRoutingFailureAggregateQueries(IEnumerable<string> commandTexts) =>
+    private static int CountRoutingFailureAggregateQueries(
+        IEnumerable<string> commandTexts) =>
         commandTexts.Count(text =>
-            text.Contains("NoteRoutingDecisions", StringComparison.OrdinalIgnoreCase) &&
-            text.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase) &&
-            text.Contains("DecidedAtUtc", StringComparison.OrdinalIgnoreCase));
+            text.Contains(
+                "Dashboard.RoutingFailureAggregate",
+                StringComparison.Ordinal));
 
     private static async Task SeedDashboardAdminAsync(BaseeraApiFactory factory, string subject)
     {

@@ -176,6 +176,7 @@ internal static class OperationalDashboardAggregationHelpers
     {
         var scopedNoteIds = notes.Select(note => note.Id);
         var row = await db.NoteRoutingDecisions.AsNoTracking()
+            .TagWith("Dashboard.RoutingFailureAggregate")
             .Where(decision =>
                 scopedNoteIds.Contains(decision.OperationalNoteId) &&
                 decision.DecidedAtUtc >= fromUtc &&
