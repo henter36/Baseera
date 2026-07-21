@@ -12,6 +12,13 @@ describe('dashboardDrillDown', () => {
     })).toBe('/notes?regionId=region-1&facilityId=fac-1&overdueOnly=true&sortBy=dueAtUtc&sortDesc=true')
   })
 
+  it('preserves explicit ascending sort', () => {
+    expect(buildNotesDrillDown({
+      sortBy: 'dueAtUtc',
+      sortDesc: false,
+    })).toBe('/notes?sortBy=dueAtUtc&sortDesc=false')
+  })
+
   it('builds corrective actions drill-down', () => {
     expect(buildCorrectiveActionsDrillDown({ overdueOnly: true })).toBe('/corrective-actions?overdueOnly=true')
   })

@@ -20,7 +20,9 @@ export function buildNotesDrillDown(filters: DashboardOperationsFilters & {
   if (filters.unassignedOnly) params.set('unassignedOnly', 'true')
   if (filters.requiresRouting) params.set('requiresRouting', 'true')
   if (filters.sortBy) params.set('sortBy', filters.sortBy)
-  if (filters.sortDesc) params.set('sortDesc', 'true')
+  if (filters.sortDesc !== undefined) {
+    params.set('sortDesc', String(filters.sortDesc))
+  }
   const query = params.toString()
   return query ? `/notes?${query}` : '/notes'
 }

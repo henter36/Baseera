@@ -324,7 +324,7 @@ code {
 
 .metric-card {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 0.75rem;
   padding: 1rem;
   display: grid;

@@ -158,43 +158,43 @@ public static class ApiEndpoints
         var dashboard = api.MapGroup("/dashboard/operations");
 
         dashboard.MapGet("/summary", async (
-            [AsParameters] OperationalDashboardQueryParams query,
+            [AsParameters] OperationalDashboardQuery query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
             Results.Ok(
                 await service.GetSummaryAsync(
-                    query.ToQuery(),
+                    query,
                     ct)));
 
         dashboard.MapGet("/trends", async (
-            [AsParameters] OperationalDashboardQueryParams query,
+            [AsParameters] OperationalDashboardQuery query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
             Results.Ok(
                 await service.GetTrendsAsync(
-                    query.ToQuery(),
+                    query,
                     ct)))
             .RequireAuthorization(
                 AuthPolicies.DashboardViewOperational);
 
         dashboard.MapGet("/breakdowns", async (
-            [AsParameters] OperationalDashboardQueryParams query,
+            [AsParameters] OperationalDashboardQuery query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
             Results.Ok(
                 await service.GetBreakdownsAsync(
-                    query.ToQuery(),
+                    query,
                     ct)))
             .RequireAuthorization(
                 AuthPolicies.DashboardViewOperational);
 
         dashboard.MapGet("/priority-queues", async (
-            [AsParameters] OperationalDashboardQueryParams query,
+            [AsParameters] OperationalDashboardQuery query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
             Results.Ok(
                 await service.GetPriorityQueuesAsync(
-                    query.ToQuery(),
+                    query,
                     ct)));
     }
 

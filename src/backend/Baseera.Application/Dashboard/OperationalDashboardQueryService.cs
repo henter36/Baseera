@@ -785,7 +785,11 @@ public sealed class OperationalDashboardQueryService(
             .Where(row => row.FacilityId.HasValue)
             .Select(row => new OperationalDashboardOverdueLocationQueueItemDto(
                 row.FacilityId!.Value,
-                facilities[row.FacilityId.Value],
+                facilities.TryGetValue(
+                    row.FacilityId.Value,
+                    out var facilityName)
+                    ? facilityName
+                    : row.FacilityId.Value.ToString(),
                 row.RegionId,
                 row.RegionId.HasValue && regions.TryGetValue(row.RegionId.Value, out var regionName) ? regionName : null,
                 row.OverdueCount))
