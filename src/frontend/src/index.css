@@ -310,3 +310,80 @@ code {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { padding-bottom: 0.5rem; }
 }
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.metric-card-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.metric-card strong {
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
+.metric-card span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.metric-card--danger strong { color: var(--danger); }
+.metric-card--warn strong { color: #9a6700; }
+
+.filters .toolbar label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 0.5rem;
+  align-items: end;
+  min-height: 140px;
+}
+
+.trend-item {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+}
+
+.trend-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 100px;
+  width: 100%;
+}
+
+.trend-bar {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--brand);
+}
+
+.trend-bar--created { background: #2563eb; }
+.trend-bar--completed { background: #15803d; }
+.trend-bar--failure { background: var(--danger); }

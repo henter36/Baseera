@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type CorrectiveActionListFilters } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
@@ -35,22 +35,22 @@ function sortIndicator(columnKey: string, sortBy: string, sortDesc: boolean): st
 
 export function CorrectiveActionsListPage() {
   const canView = usePermission('CorrectiveActions.View')
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const noteId = searchParams.get('noteId') ?? ''
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('')
-  const [priority, setPriority] = useState('')
-  const [classification, setClassification] = useState('')
-  const [regionId, setRegionId] = useState('')
-  const [facilityId, setFacilityId] = useState('')
-  const [facilityUnitId, setFacilityUnitId] = useState('')
-  const [ownerDepartmentId, setOwnerDepartmentId] = useState('')
-  const [assignedToUserId, setAssignedToUserId] = useState('')
-  const [overdueOnly, setOverdueOnly] = useState(false)
-  const [dueSoonDays, setDueSoonDays] = useState('')
-  const [page, setPage] = useState(1)
-  const [sortBy, setSortBy] = useState('createdAtUtc')
-  const [sortDesc, setSortDesc] = useState(true)
+  const [search, setSearch] = useState(searchParams.get('search') ?? '')
+  const [status, setStatus] = useState(searchParams.get('status') ?? '')
+  const [priority, setPriority] = useState(searchParams.get('priority') ?? '')
+  const [classification, setClassification] = useState(searchParams.get('classification') ?? '')
+  const [regionId, setRegionId] = useState(searchParams.get('regionId') ?? '')
+  const [facilityId, setFacilityId] = useState(searchParams.get('facilityId') ?? '')
+  const [facilityUnitId, setFacilityUnitId] = useState(searchParams.get('facilityUnitId') ?? '')
+  const [ownerDepartmentId, setOwnerDepartmentId] = useState(searchParams.get('ownerDepartmentId') ?? '')
+  const [assignedToUserId, setAssignedToUserId] = useState(searchParams.get('assignedToUserId') ?? '')
+  const [overdueOnly, setOverdueOnly] = useState(searchParams.get('overdueOnly') === 'true')
+  const [dueSoonDays, setDueSoonDays] = useState(searchParams.get('dueSoonDays') ?? '')
+  const [page, setPage] = useState(Number(searchParams.get('page') ?? '1') || 1)
+  const [sortBy, setSortBy] = useState(searchParams.get('sortBy') ?? 'createdAtUtc')
+  const [sortDesc, setSortDesc] = useState(searchParams.get('sortDesc') !== 'false')
 
   const regionsQuery = useQuery({ queryKey: ['ca-filter-regions'], queryFn: () => api.regions(), enabled: canView })
   const facilitiesQuery = useQuery({
@@ -80,6 +80,26 @@ export function CorrectiveActionsListPage() {
     }),
     [assignedToUserId, classification, dueSoonDays, facilityId, facilityUnitId, noteId, ownerDepartmentId, overdueOnly, page, priority, regionId, search, sortBy, sortDesc, status],
   )
+
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (search) params.set('search', search)
+    if (status !== '') params.set('status', status)
+    if (priority !== '') params.set('priority', priority)
+    if (classification !== '') params.set('classification', classification)
+    if (regionId) params.set('regionId', regionId)
+    if (facilityId) params.set('facilityId', facilityId)
+    if (facilityUnitId) params.set('facilityUnitId', facilityUnitId)
+    if (ownerDepartmentId) params.set('ownerDepartmentId', ownerDepartmentId)
+    if (assignedToUserId) params.set('assignedToUserId', assignedToUserId)
+    if (noteId) params.set('noteId', noteId)
+    if (overdueOnly) params.set('overdueOnly', 'true')
+    if (dueSoonDays !== '') params.set('dueSoonDays', dueSoonDays)
+    if (page > 1) params.set('page', String(page))
+    if (sortBy !== 'createdAtUtc') params.set('sortBy', sortBy)
+    if (!sortDesc) params.set('sortDesc', 'false')
+    setSearchParams(params, { replace: true })
+  }, [assignedToUserId, classification, dueSoonDays, facilityId, facilityUnitId, noteId, overdueOnly, ownerDepartmentId, page, priority, regionId, search, setSearchParams, sortBy, sortDesc, status])
 
   const query = useQuery({
     queryKey: ['corrective-actions', filters],

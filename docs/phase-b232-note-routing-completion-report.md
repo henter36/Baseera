@@ -1,6 +1,8 @@
 # Phase B.2.3.2 — Completion Report
 
-Status: implementation slice completed locally with residual hardening items.
+Status: Phase B.2.3.2 Accepted and merged into main.
+
+Merge: PR #8 merged at `afb796b2bd85a1ae26b91b8f6e67b7646d024f06`.
 
 Implemented:
 - Routing domain entities.
@@ -30,4 +32,6 @@ Residual risks:
 - Gitleaks is not installed in the local environment; secret scanning remains a CI validation item.
 - SonarCloud, Qlty, and CodeRabbit results are external PR checks and were not available before opening the PR.
 
-No Dashboard, export, email, SMS, Phase B.3.1, or Phase C work was started.
+No Dashboard, export, email, SMS, or Phase C work was started in B.2.3.2.
+
+Decision: Phase B.2.3.2 Accepted and merged into main.

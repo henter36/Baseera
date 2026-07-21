@@ -24,6 +24,7 @@ import { EscalationOccurrencesPage } from './pages/escalations/EscalationOccurre
 import { EscalationPolicyDetailPage } from './pages/escalations/EscalationPolicyDetailPage'
 import { EscalationPolicyFormPage } from './pages/escalations/EscalationPolicyFormPage'
 import { EscalationsSettingsPage } from './pages/escalations/EscalationsSettingsPage'
+import { OperationalDashboardPage } from './pages/dashboard/OperationalDashboardPage'
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { me, logout, hasPermission } = useAuth()
@@ -56,6 +57,8 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Organization.View') && <NavLink to="/regions" className={({ isActive }) => isActive ? 'active' : undefined}>المناطق</NavLink>}
           {hasPermission('Organization.View') && <NavLink to="/facilities" className={({ isActive }) => isActive ? 'active' : undefined}>السجون</NavLink>}
           {hasPermission('Notes.View') && <NavLink to="/notes" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
+          {(hasPermission('Dashboard.ViewOperational') || hasPermission('Dashboard.ViewRisk') || hasPermission('Dashboard.ViewRouting') || hasPermission('Dashboard.ViewCorrectiveActions')) &&
+            <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : undefined}>لوحة المتابعة</NavLink>}
           {hasPermission('CorrectiveActions.View') && <NavLink to="/corrective-actions" className={({ isActive }) => isActive ? 'active' : undefined}>الإجراءات التصحيحية</NavLink>}
           {hasPermission('Notifications.ViewOwn') && <NavLink to="/notifications" className={({ isActive }) => isActive ? 'active' : undefined}>الإشعارات {unreadCount > 0 ? `(${unreadCount})` : ''}</NavLink>}
           {hasPermission('Escalations.View') && <NavLink to="/settings/escalations" className={({ isActive }) => isActive ? 'active' : undefined}>التصعيد</NavLink>}
@@ -93,6 +96,7 @@ export default function App() {
       <Route path="/regions" element={<Protected><RegionsPage /></Protected>} />
       <Route path="/facilities" element={<Protected><FacilitiesPage /></Protected>} />
       <Route path="/notes" element={<Protected><NotesListPage /></Protected>} />
+      <Route path="/dashboard" element={<Protected><OperationalDashboardPage /></Protected>} />
       <Route path="/notes/new" element={<Protected><NoteCreatePage /></Protected>} />
       <Route path="/notes/:id" element={<Protected><NoteDetailPage /></Protected>} />
       <Route path="/notes/:id/edit" element={<Protected><NoteEditPage /></Protected>} />

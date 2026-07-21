@@ -60,6 +60,10 @@ public static class AuthPolicies
     public const string NotificationsViewOwn = PermissionPrefix + PermissionCodes.NotificationsViewOwn;
     public const string NotificationsMarkRead = PermissionPrefix + PermissionCodes.NotificationsMarkRead;
     public const string NotificationsArchiveOwn = PermissionPrefix + PermissionCodes.NotificationsArchiveOwn;
+    public const string DashboardViewOperational = PermissionPrefix + PermissionCodes.DashboardViewOperational;
+    public const string DashboardViewRisk = PermissionPrefix + PermissionCodes.DashboardViewRisk;
+    public const string DashboardViewRouting = PermissionPrefix + PermissionCodes.DashboardViewRouting;
+    public const string DashboardViewCorrectiveActions = PermissionPrefix + PermissionCodes.DashboardViewCorrectiveActions;
 }
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
@@ -144,6 +148,10 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.NotificationsViewOwn, PermissionCodes.NotificationsViewOwn);
             AddPerm(AuthPolicies.NotificationsMarkRead, PermissionCodes.NotificationsMarkRead);
             AddPerm(AuthPolicies.NotificationsArchiveOwn, PermissionCodes.NotificationsArchiveOwn);
+            AddPerm(AuthPolicies.DashboardViewOperational, PermissionCodes.DashboardViewOperational);
+            AddPerm(AuthPolicies.DashboardViewRisk, PermissionCodes.DashboardViewRisk);
+            AddPerm(AuthPolicies.DashboardViewRouting, PermissionCodes.DashboardViewRouting);
+            AddPerm(AuthPolicies.DashboardViewCorrectiveActions, PermissionCodes.DashboardViewCorrectiveActions);
         });
         return services;
     }

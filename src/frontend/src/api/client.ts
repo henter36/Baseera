@@ -245,6 +245,8 @@ export type NoteListFilters = {
   ownerDepartmentId?: string
   assignedToUserId?: string
   overdueOnly?: boolean
+  dueSoonDays?: number
+  unassignedOnly?: boolean
   dueFrom?: string
   dueTo?: string
   createdFrom?: string
@@ -616,6 +618,155 @@ export type NoteRoutingEffectiveness = {
   requiresRoutingCount: number
 }
 
+export type DashboardOperationsFilters = {
+  periodDays?: number
+  fromUtc?: string
+  toUtc?: string
+  regionId?: string
+  facilityId?: string
+  facilityUnitId?: string
+  noteTypeId?: string
+  severity?: number
+  status?: number
+  breakdownBy?: number
+  queue?: number
+}
+
+export type DashboardWorkloadSummary = {
+  openTotal: number
+  assigned: number
+  inProgress: number
+  pendingVerification: number
+  reopened: number
+  unassigned: number
+  requiresRouting: number
+}
+
+export type DashboardRiskSummary = {
+  overdue: number
+  dueSoon: number
+  criticalOrHigh: number
+  overdueUnassigned: number
+  activeEscalations: number
+  routingFailureNoRule: number
+  routingFailureNoEligibleUser: number
+  routingFailureInvalidTarget: number
+}
+
+export type DashboardCorrectiveActionsSummary = {
+  active: number
+  overdue: number
+  pendingVerification: number
+  reopened: number
+  notesWithStalledActions: number
+}
+
+export type DashboardRoutingSummary = {
+  requiresRouting: number
+  failureNoRule: number
+  failureNoEligibleUser: number
+  failureInvalidTarget: number
+}
+
+export type DashboardOperationsSummary = {
+  workload?: DashboardWorkloadSummary | null
+  risk?: DashboardRiskSummary | null
+  correctiveActions?: DashboardCorrectiveActionsSummary | null
+  routing?: DashboardRoutingSummary | null
+  fromUtc: string
+  toUtc: string
+  dueSoonDays: number
+}
+
+export type DashboardTrendPoint = {
+  bucketStartUtc: string
+  bucketEndUtc: string
+  labelAr: string
+  notesCreated: number
+  notesCompleted: number
+  notesBecameOverdue: number
+  correctiveActionsCompleted: number
+  routingSuccess: number
+  routingFailure: number
+}
+
+export type DashboardOperationsTrends = {
+  points: DashboardTrendPoint[]
+  fromUtc: string
+  toUtc: string
+  granularity: string
+}
+
+export type DashboardBreakdownRow = {
+  key: string
+  labelAr: string
+  entityId?: string | null
+  openBurden: number
+  overdue: number
+  critical: number
+  unassigned: number
+  correctiveActionsOverdue: number
+  closureRateWithinDue?: number | null
+}
+
+export type DashboardOperationsBreakdowns = {
+  dimension: number
+  rows: DashboardBreakdownRow[]
+}
+
+export type DashboardOverdueNoteQueueItem = {
+  id: string
+  referenceNumber: string
+  title: string
+  severity: number
+  severityAr: string
+  status: number
+  statusAr: string
+  dueAtUtc?: string | null
+  overdueDays?: number | null
+  regionId?: string | null
+  facilityId?: string | null
+  facilityNameAr?: string | null
+}
+
+export type DashboardOverdueLocationQueueItem = {
+  facilityId: string
+  facilityNameAr: string
+  regionId?: string | null
+  regionNameAr?: string | null
+  overdueCount: number
+}
+
+export type DashboardOverdueCorrectiveActionQueueItem = {
+  id: string
+  referenceNumber: string
+  title: string
+  status: number
+  statusAr: string
+  dueAtUtc?: string | null
+  overdueDays?: number | null
+  operationalNoteId: string
+  noteReferenceNumber: string
+}
+
+export type DashboardRoutingFailureQueueItem = {
+  noteId: string
+  referenceNumber: string
+  title: string
+  failureCode: string
+  failureMessageSafe: string
+  decidedAtUtc: string
+}
+
+export type DashboardPriorityQueues = {
+  mostOverdueNotes?: DashboardOverdueNoteQueueItem[] | null
+  criticalUnassignedNotes?: DashboardOverdueNoteQueueItem[] | null
+  topOverdueLocations?: DashboardOverdueLocationQueueItem[] | null
+  mostOverdueCorrectiveActions?: DashboardOverdueCorrectiveActionQueueItem[] | null
+  recentRoutingFailures?: DashboardRoutingFailureQueueItem[] | null
+  limit: number
+}
+
 export type NoteRoutingRuleFilters = {
   page?: number
   pageSize?: number
@@ -735,6 +886,8 @@ function appendEnumFilterParams(params: URLSearchParams, filters: NoteListFilter
   if (filters.sourceType !== undefined) params.set('sourceType', String(filters.sourceType))
   if (filters.classification !== undefined) params.set('classification', String(filters.classification))
   if (filters.overdueOnly) params.set('overdueOnly', 'true')
+  if (filters.dueSoonDays !== undefined) params.set('dueSoonDays', String(filters.dueSoonDays))
+  if (filters.unassignedOnly) params.set('unassignedOnly', 'true')
   if (filters.requiresMyAction) params.set('requiresMyAction', 'true')
   if (filters.requiresRouting) params.set('requiresRouting', 'true')
 }
@@ -773,6 +926,22 @@ function buildCorrectiveActionQuery(filters: CorrectiveActionListFilters): strin
   appendDateRangeParams(params, filters)
   appendCorrectiveActionStateFilters(params, filters)
   return params.toString()
+}
+
+function buildDashboardQuery(filters: DashboardOperationsFilters): string {
+  return buildSimpleQuery({
+    periodDays: filters.periodDays,
+    fromUtc: filters.fromUtc,
+    toUtc: filters.toUtc,
+    regionId: filters.regionId,
+    facilityId: filters.facilityId,
+    facilityUnitId: filters.facilityUnitId,
+    noteTypeId: filters.noteTypeId,
+    severity: filters.severity,
+    status: filters.status,
+    breakdownBy: filters.breakdownBy,
+    queue: filters.queue,
+  })
 }
 
 function buildSimpleQuery(filters: Record<string, string | number | boolean | undefined>): string {
@@ -1026,5 +1195,18 @@ export const api = {
     markAllRead: () => postJson<{ count: number }>('/api/v1/notifications/read-all', {}),
     archive: (id: string, body: RowVersionRequest) =>
       postJson<Notification>(`/api/v1/notifications/${id}/archive`, body),
+  },
+
+  dashboard: {
+    operations: {
+      summary: (filters: DashboardOperationsFilters = {}) =>
+        request<DashboardOperationsSummary>(`/api/v1/dashboard/operations/summary?${buildDashboardQuery(filters)}`),
+      trends: (filters: DashboardOperationsFilters = {}) =>
+        request<DashboardOperationsTrends>(`/api/v1/dashboard/operations/trends?${buildDashboardQuery(filters)}`),
+      breakdowns: (filters: DashboardOperationsFilters = {}) =>
+        request<DashboardOperationsBreakdowns>(`/api/v1/dashboard/operations/breakdowns?${buildDashboardQuery(filters)}`),
+      priorityQueues: (filters: DashboardOperationsFilters = {}) =>
+        request<DashboardPriorityQueues>(`/api/v1/dashboard/operations/priority-queues?${buildDashboardQuery(filters)}`),
+    },
   },
 }

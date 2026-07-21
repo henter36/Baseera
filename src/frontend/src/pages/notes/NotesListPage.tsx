@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, ApiError, type NoteListFilters } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import {
@@ -37,22 +37,25 @@ export function NotesListPage() {
   const canView = usePermission('Notes.View')
   const canCreate = usePermission('Notes.Create')
   const canRestore = usePermission('Notes.Restore')
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('')
-  const [severity, setSeverity] = useState('')
-  const [noteTypeId, setNoteTypeId] = useState('')
-  const [requiresMyAction, setRequiresMyAction] = useState(false)
-  const [requiresRouting, setRequiresRouting] = useState(false)
-  const [classification, setClassification] = useState('')
-  const [regionId, setRegionId] = useState('')
-  const [facilityId, setFacilityId] = useState('')
-  const [facilityUnitId, setFacilityUnitId] = useState('')
-  const [ownerDepartmentId, setOwnerDepartmentId] = useState('')
-  const [overdueOnly, setOverdueOnly] = useState(false)
-  const [page, setPage] = useState(1)
-  const [sortBy, setSortBy] = useState('createdAtUtc')
-  const [sortDesc, setSortDesc] = useState(true)
+  const [search, setSearch] = useState(searchParams.get('search') ?? '')
+  const [status, setStatus] = useState(searchParams.get('status') ?? '')
+  const [severity, setSeverity] = useState(searchParams.get('severity') ?? '')
+  const [noteTypeId, setNoteTypeId] = useState(searchParams.get('noteTypeId') ?? '')
+  const [requiresMyAction, setRequiresMyAction] = useState(searchParams.get('requiresMyAction') === 'true')
+  const [requiresRouting, setRequiresRouting] = useState(searchParams.get('requiresRouting') === 'true')
+  const [classification, setClassification] = useState(searchParams.get('classification') ?? '')
+  const [regionId, setRegionId] = useState(searchParams.get('regionId') ?? '')
+  const [facilityId, setFacilityId] = useState(searchParams.get('facilityId') ?? '')
+  const [facilityUnitId, setFacilityUnitId] = useState(searchParams.get('facilityUnitId') ?? '')
+  const [ownerDepartmentId, setOwnerDepartmentId] = useState(searchParams.get('ownerDepartmentId') ?? '')
+  const [overdueOnly, setOverdueOnly] = useState(searchParams.get('overdueOnly') === 'true')
+  const dueSoonDays = searchParams.get('dueSoonDays') ?? ''
+  const unassignedOnly = searchParams.get('unassignedOnly') === 'true'
+  const [page, setPage] = useState(Number(searchParams.get('page') ?? '1') || 1)
+  const [sortBy, setSortBy] = useState(searchParams.get('sortBy') ?? 'createdAtUtc')
+  const [sortDesc, setSortDesc] = useState(searchParams.get('sortDesc') !== 'false')
 
   const [restoreId, setRestoreId] = useState('')
   const [restoreRowVersion, setRestoreRowVersion] = useState('')
@@ -83,11 +86,35 @@ export function NotesListPage() {
       facilityUnitId: facilityUnitId || undefined,
       ownerDepartmentId: ownerDepartmentId || undefined,
       overdueOnly: overdueOnly || undefined,
+      dueSoonDays: dueSoonDays === '' ? undefined : Number(dueSoonDays),
+      unassignedOnly: unassignedOnly || undefined,
       sortBy,
       sortDesc,
     }),
-    [page, search, status, severity, noteTypeId, requiresMyAction, requiresRouting, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, sortBy, sortDesc],
+    [page, search, status, severity, noteTypeId, requiresMyAction, requiresRouting, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, dueSoonDays, unassignedOnly, sortBy, sortDesc],
   )
+
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (search) params.set('search', search)
+    if (status !== '') params.set('status', status)
+    if (severity !== '') params.set('severity', severity)
+    if (noteTypeId) params.set('noteTypeId', noteTypeId)
+    if (classification !== '') params.set('classification', classification)
+    if (regionId) params.set('regionId', regionId)
+    if (facilityId) params.set('facilityId', facilityId)
+    if (facilityUnitId) params.set('facilityUnitId', facilityUnitId)
+    if (ownerDepartmentId) params.set('ownerDepartmentId', ownerDepartmentId)
+    if (overdueOnly) params.set('overdueOnly', 'true')
+    if (dueSoonDays !== '') params.set('dueSoonDays', dueSoonDays)
+    if (unassignedOnly) params.set('unassignedOnly', 'true')
+    if (requiresMyAction) params.set('requiresMyAction', 'true')
+    if (requiresRouting) params.set('requiresRouting', 'true')
+    if (page > 1) params.set('page', String(page))
+    if (sortBy !== 'createdAtUtc') params.set('sortBy', sortBy)
+    if (!sortDesc) params.set('sortDesc', 'false')
+    setSearchParams(params, { replace: true })
+  }, [search, status, severity, noteTypeId, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, dueSoonDays, unassignedOnly, requiresMyAction, requiresRouting, page, sortBy, sortDesc, setSearchParams])
 
   const query = useQuery({
     queryKey: ['notes', filters],

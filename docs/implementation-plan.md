@@ -8,7 +8,7 @@
 - كل تعديل جوهري يُسجَّل في AuditLog.
 - لا انتقال لمرحلة تالية قبل نجاح بناء واختبارات المرحلة الحالية.
 
-## المرحلة A — التأسيس (الحالية)
+## المرحلة A — التأسيس
 
 - توثيق الفجوة والخطة ومصفوفة الصلاحيات وقاموس الحالات.
 - طبقات Domain / Application / Infrastructure / Api / Reporting / BackgroundJobs.
@@ -57,7 +57,16 @@
 - أولوية الاستحقاق: التاريخ المدخل من المستخدم، ثم قاعدة التوجيه، ثم نوع الملاحظة، ثم دون تاريخ.
 - سجل Append-Only لتغييرات قواعد التوجيه ومنح أنواع الملاحظات.
 - مؤشرات تشغيلية محدودة لفاعلية التوجيه دون تصدير أو Dashboard عام.
-- لا يبدأ Dashboard قبل قبول B.2.3.2، ويجب لاحقًا أن يطبق Scope + Type Access + Routing visibility.
+- تم قبول B.2.3.2 ودمجها في `main`؛ Dashboard يبدأ في B.3.1.
+
+### Phase B.3.1 — Operational Decision Dashboard Core
+
+- أول لوحة متابعة تشغيلية حقيقية تحوّل الملاحظات والتكليفات والإجراءات التصحيحية والتصعيدات والتوجيه إلى مؤشرات وقوائم.
+- تطبيق Scope + Effective Note Type Access + Classification access + soft-delete على الخادم.
+- صلاحيات Dashboard مخصصة (`Dashboard.ViewOperational`, `ViewRisk`, `ViewRouting`, `ViewCorrectiveActions`).
+- Endpoints مجمّعة SQL-side مع drill-down إلى قوائم التفاصيل بنفس الفلاتر.
+- اتجاهات زمنية 7/30/90 يومًا بحدود يوم Riyadh.
+- لا Export أو Report Builder أو Email/SMS أو AI أو Phase C+.
 
 ## المرحلة C — منشئ النماذج
 

@@ -6,6 +6,7 @@ using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.Common;
 using Baseera.Application.CorrectiveActions;
+using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
@@ -147,8 +148,82 @@ public static class ApiEndpoints
         MapCorrectiveActionEndpoints(api);
         MapEscalationEndpoints(api);
         MapNotificationEndpoints(api);
+        MapOperationalDashboardEndpoints(api);
 
         return api;
+    }
+
+    private static void MapOperationalDashboardEndpoints(RouteGroupBuilder api)
+    {
+        var dashboard = api.MapGroup("/dashboard/operations");
+
+        dashboard.MapGet("/summary", async (
+            [AsParameters] OperationalDashboardQueryParams query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await service.GetSummaryAsync(query.ToQuery(), ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { detail = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
+        });
+
+        dashboard.MapGet("/trends", async (
+            [AsParameters] OperationalDashboardQueryParams query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await service.GetTrendsAsync(query.ToQuery(), ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { detail = ex.Message });
+            }
+        }).RequireAuthorization(AuthPolicies.DashboardViewOperational);
+
+        dashboard.MapGet("/breakdowns", async (
+            [AsParameters] OperationalDashboardQueryParams query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await service.GetBreakdownsAsync(query.ToQuery(), ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { detail = ex.Message });
+            }
+        }).RequireAuthorization(AuthPolicies.DashboardViewOperational);
+
+        dashboard.MapGet("/priority-queues", async (
+            [AsParameters] OperationalDashboardQueryParams query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await service.GetPriorityQueuesAsync(query.ToQuery(), ct));
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { detail = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new { detail = ex.Message }, statusCode: StatusCodes.Status403Forbidden);
+            }
+        });
     }
 
     private static void MapNoteTypeEndpoints(RouteGroupBuilder api)
