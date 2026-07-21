@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.CorrectiveActions;
+using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
@@ -44,6 +45,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IEscalationProcessor, EscalationProcessor>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IEscalationOccurrenceService, EscalationOccurrenceService>();
+        services.AddScoped<OperationalDashboardFilterBuilder>();
+        services.AddScoped<IOperationalDashboardQueryService, OperationalDashboardQueryService>();
         return services;
     }
 }

@@ -27,6 +27,8 @@ public sealed class NoteListQueryParams
     public Guid? OwnerDepartmentId { get; set; }
     public Guid? AssignedToUserId { get; set; }
     public bool? OverdueOnly { get; set; }
+    public int? DueSoonDays { get; set; }
+    public bool? UnassignedOnly { get; set; }
     public bool? RequiresMyAction { get; set; }
     public bool? RequiresRouting { get; set; }
     public DateTimeOffset? DueFrom { get; set; }
@@ -52,6 +54,8 @@ public sealed class NoteListQueryParams
         OwnerDepartmentId = OwnerDepartmentId,
         AssignedToUserId = AssignedToUserId,
         OverdueOnly = OverdueOnly ?? false,
+        DueSoonDays = DueSoonDays,
+        UnassignedOnly = UnassignedOnly ?? false,
         RequiresMyAction = RequiresMyAction ?? false,
         RequiresRouting = RequiresRouting ?? false,
         DueFrom = DueFrom,

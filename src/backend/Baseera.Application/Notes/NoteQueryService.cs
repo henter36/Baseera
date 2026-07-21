@@ -369,11 +369,30 @@ public sealed class NoteQueryService(
                 n.Status != NoteStatus.Cancelled);
         }
 
+        if (query.DueSoonDays.HasValue)
+        {
+            var days = Math.Max(query.DueSoonDays.Value, 0);
+            var upper = now.AddDays(days);
+            q = q.Where(n =>
+                n.DueAtUtc.HasValue &&
+                n.DueAtUtc >= now &&
+                n.DueAtUtc <= upper &&
+                n.Status != NoteStatus.Closed &&
+                n.Status != NoteStatus.Cancelled);
+        }
+
         return q;
     }
 
     private static IQueryable<OperationalNote> ApplyAssignmentFilter(IQueryable<OperationalNote> q, NoteListQuery query)
     {
+        if (query.UnassignedOnly)
+        {
+            q = q.Where(n =>
+                n.Status != NoteStatus.Closed &&
+                n.Status != NoteStatus.Cancelled &&
+                !n.Assignments.Any(a => a.IsCurrent));
+        }
         if (query.AssignedToUserId.HasValue)
         {
             var uid = query.AssignedToUserId.Value;

@@ -158,6 +158,8 @@ public sealed record NoteListQuery
     public Guid? OwnerDepartmentId { get; set; }
     public Guid? AssignedToUserId { get; set; }
     public bool OverdueOnly { get; set; }
+    public int? DueSoonDays { get; set; }
+    public bool UnassignedOnly { get; set; }
     public DateTimeOffset? DueFrom { get; set; }
     public DateTimeOffset? DueTo { get; set; }
     public DateTimeOffset? CreatedFrom { get; set; }

@@ -147,6 +147,10 @@ public static class PermissionCodes
     public const string ProjectsApprove = "Projects.Approve";
     public const string StrategyManage = "Strategy.Manage";
     public const string ReportsExportSensitive = "Reports.ExportSensitive";
+    public const string DashboardViewOperational = "Dashboard.ViewOperational";
+    public const string DashboardViewRisk = "Dashboard.ViewRisk";
+    public const string DashboardViewRouting = "Dashboard.ViewRouting";
+    public const string DashboardViewCorrectiveActions = "Dashboard.ViewCorrectiveActions";
 }
 
 public static class RoleCodes

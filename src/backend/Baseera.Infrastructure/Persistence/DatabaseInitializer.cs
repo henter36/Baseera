@@ -181,6 +181,20 @@ public static class DatabaseInitializer
             PermissionCodes.NotesRunRouting,
             PermissionCodes.NotesViewRoutingDiagnostics
         ];
+        string[] dashboardFull =
+        [
+            PermissionCodes.DashboardViewOperational,
+            PermissionCodes.DashboardViewRisk,
+            PermissionCodes.DashboardViewRouting,
+            PermissionCodes.DashboardViewCorrectiveActions
+        ];
+        string[] dashboardScoped =
+        [
+            PermissionCodes.DashboardViewOperational,
+            PermissionCodes.DashboardViewRisk,
+            PermissionCodes.DashboardViewCorrectiveActions
+        ];
+        string[] dashboardReadOnly = [PermissionCodes.DashboardViewOperational];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -191,10 +205,11 @@ public static class DatabaseInitializer
             PermissionCodes.AttachmentsDownloadSensitive,
             PermissionCodes.NotesView,
             caViewOnly,
-            ownNotifications);
+            ownNotifications,
+            dashboardReadOnly);
 
         var readonlyUser = roles.First(r => r.Code == RoleCodes.ReadOnlyUser);
-        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly, ownNotifications);
+        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly, ownNotifications, dashboardReadOnly);
 
         var hq = roles.First(r => r.Code == RoleCodes.HeadquartersExecutive);
         Grant(hq,
@@ -212,7 +227,8 @@ public static class DatabaseInitializer
             caReviewer,
             routingViewer,
             escalationViewer,
-            ownNotifications);
+            ownNotifications,
+            dashboardFull);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -228,7 +244,8 @@ public static class DatabaseInitializer
             routingManager,
             caDirector,
             escalationManager,
-            ownNotifications);
+            ownNotifications,
+            dashboardFull);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -252,7 +269,8 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsArchive,
             PermissionCodes.CorrectiveActionsRestore,
             escalationViewer,
-            ownNotifications);
+            ownNotifications,
+            dashboardScoped);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -288,7 +306,8 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsArchive,
             PermissionCodes.CorrectiveActionsRestore,
             escalationViewer,
-            ownNotifications);
+            ownNotifications,
+            dashboardScoped);
 
         var facilityCoordinator = roles.First(r => r.Code == RoleCodes.FacilityCoordinator);
         Grant(facilityCoordinator,
@@ -626,6 +645,7 @@ public static class DatabaseInitializer
     private const string CorrectiveActionsModule = "CorrectiveActions";
     private const string EscalationsModule = "Escalations";
     private const string NotificationsModule = "Notifications";
+    private const string DashboardModule = "Dashboard";
 
     private static List<Permission> BuildPermissions()
     {
@@ -708,7 +728,11 @@ public static class DatabaseInitializer
             (PermissionCodes.FormsReview, "مراجعة نموذج", "Forms"),
             (PermissionCodes.ProjectsApprove, "اعتماد مشروع", "Projects"),
             (PermissionCodes.StrategyManage, "إدارة الاستراتيجية", "Strategy"),
-            (PermissionCodes.ReportsExportSensitive, "تصدير تقارير حساسة", "Reports")
+            (PermissionCodes.ReportsExportSensitive, "تصدير تقارير حساسة", "Reports"),
+            (PermissionCodes.DashboardViewOperational, "عرض لوحة المتابعة التشغيلية", DashboardModule),
+            (PermissionCodes.DashboardViewRisk, "عرض مؤشرات المخاطر في لوحة المتابعة", DashboardModule),
+            (PermissionCodes.DashboardViewRouting, "عرض مؤشرات التوجيه في لوحة المتابعة", DashboardModule),
+            (PermissionCodes.DashboardViewCorrectiveActions, "عرض مؤشرات الإجراءات التصحيحية في لوحة المتابعة", DashboardModule)
         ];
 
         return items.Select(i => new Permission

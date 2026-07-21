@@ -6,6 +6,7 @@ using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.Common;
 using Baseera.Application.CorrectiveActions;
+using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
@@ -147,8 +148,54 @@ public static class ApiEndpoints
         MapCorrectiveActionEndpoints(api);
         MapEscalationEndpoints(api);
         MapNotificationEndpoints(api);
+        MapOperationalDashboardEndpoints(api);
 
         return api;
+    }
+
+    private static void MapOperationalDashboardEndpoints(RouteGroupBuilder api)
+    {
+        var dashboard = api.MapGroup("/dashboard/operations");
+
+        dashboard.MapGet("/summary", async (
+            [AsParameters] OperationalDashboardQuery query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(
+                await service.GetSummaryAsync(
+                    query,
+                    ct)));
+
+        dashboard.MapGet("/trends", async (
+            [AsParameters] OperationalDashboardQuery query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(
+                await service.GetTrendsAsync(
+                    query,
+                    ct)))
+            .RequireAuthorization(
+                AuthPolicies.DashboardViewOperational);
+
+        dashboard.MapGet("/breakdowns", async (
+            [AsParameters] OperationalDashboardQuery query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(
+                await service.GetBreakdownsAsync(
+                    query,
+                    ct)))
+            .RequireAuthorization(
+                AuthPolicies.DashboardViewOperational);
+
+        dashboard.MapGet("/priority-queues", async (
+            [AsParameters] OperationalDashboardQuery query,
+            IOperationalDashboardQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(
+                await service.GetPriorityQueuesAsync(
+                    query,
+                    ct)));
     }
 
     private static void MapNoteTypeEndpoints(RouteGroupBuilder api)

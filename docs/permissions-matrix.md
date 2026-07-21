@@ -128,6 +128,15 @@
 | Notes.RunRouting | تشغيل التوجيه يدويًا | ✓ | | ✓ | ضمن النطاق | ضمن السجن |
 | Notes.ViewRoutingDiagnostics | عرض تشخيصات ومؤشرات التوجيه | ✓ | ✓ | ✓ | ضمن النطاق | |
 
+## صلاحيات لوحة المتابعة (مفعّلة في B.3.1)
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Facility Director | Auditor | ReadOnly |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:-----------------:|:-------:|:--------:|
+| Dashboard.ViewOperational | عرض العبء والاتجاهات والتقسيمات | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Dashboard.ViewRisk | عرض مؤشرات المخاطر والتأخر | ✓ | ✓ | ✓ | ✓ | ✓ | | |
+| Dashboard.ViewRouting | عرض مؤشرات التوجيه في اللوحة | ✓ | ✓ | ✓ | | | | |
+| Dashboard.ViewCorrectiveActions | عرض مؤشرات الإجراءات التصحيحية | ✓ | ✓ | ✓ | ✓ | ✓ | | |
+
 Capabilities النوع:
 
 - CanView

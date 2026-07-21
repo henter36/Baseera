@@ -32,6 +32,14 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         {
             await WriteProblem(context, StatusCodes.Status404NotFound, "غير موجود", ex.Message);
         }
+        catch (ArgumentException ex)
+        {
+            await WriteProblem(
+                context,
+                StatusCodes.Status400BadRequest,
+                "طلب غير صالح",
+                ex.Message);
+        }
         catch (InvalidOperationException ex)
         {
             await WriteProblem(context, StatusCodes.Status409Conflict, "تعارض", ex.Message);
