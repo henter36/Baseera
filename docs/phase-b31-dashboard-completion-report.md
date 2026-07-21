@@ -7,7 +7,7 @@ Status: **Accepted** (all local gates green, 0 failed, 0 skipped integration/uni
 | Item | SHA / value |
 |------|-------------|
 | Base (`origin/main` at branch start) | `afb796b2bd85a1ae26b91b8f6e67b7646d024f06` |
-| Implementation commit | (see PR) |
+| Implementation commit | `6d86f8c312e7e90a666aa24da8bd8bb767f37e9b` |
 | Migrations | None — dashboard permissions upserted via `DatabaseInitializer` only |
 
 ## Gates (local)
