@@ -118,6 +118,16 @@
 | Notes.ManageUserTypeOverrides | إدارة منح/منع المستخدمين المباشرة | ✓ | ✓ | ضمن النطاق | ضمن السجن |
 | Notes.ManageIntakeProfiles | إدارة تثبيت إدخال الملاحظات | ✓ | ✓ | ضمن النطاق | ضمن السجن |
 
+## صلاحيات توجيه الملاحظات (مفعّلة في B.2.3.2)
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Facility Director |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:-----------------:|
+| Notes.ViewRouting | عرض قواعد ونتائج التوجيه | ✓ | ✓ | ✓ | ضمن النطاق | ضمن السجن |
+| Notes.ManageRoutingRules | إنشاء وتعديل قواعد التوجيه | ✓ | | ✓ | ضمن النطاق | ضمن السجن |
+| Notes.ActivateRoutingRules | تفعيل وتعطيل قواعد التوجيه | ✓ | | ✓ | ضمن النطاق | |
+| Notes.RunRouting | تشغيل التوجيه يدويًا | ✓ | | ✓ | ضمن النطاق | ضمن السجن |
+| Notes.ViewRoutingDiagnostics | عرض تشخيصات ومؤشرات التوجيه | ✓ | ✓ | ✓ | ضمن النطاق | |
+
 Capabilities النوع:
 
 - CanView

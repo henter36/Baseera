@@ -112,6 +112,11 @@ public static class PermissionCodes
     public const string NotesManageRoleTypeAccess = "Notes.ManageRoleTypeAccess";
     public const string NotesManageUserTypeOverrides = "Notes.ManageUserTypeOverrides";
     public const string NotesManageIntakeProfiles = "Notes.ManageIntakeProfiles";
+    public const string NotesViewRouting = "Notes.ViewRouting";
+    public const string NotesManageRoutingRules = "Notes.ManageRoutingRules";
+    public const string NotesActivateRoutingRules = "Notes.ActivateRoutingRules";
+    public const string NotesRunRouting = "Notes.RunRouting";
+    public const string NotesViewRoutingDiagnostics = "Notes.ViewRoutingDiagnostics";
     public const string CorrectiveActionsView = "CorrectiveActions.View";
     public const string CorrectiveActionsViewSensitive = "CorrectiveActions.ViewSensitive";
     public const string CorrectiveActionsCreate = "CorrectiveActions.Create";

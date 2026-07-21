@@ -49,11 +49,15 @@
 - التكليف والمراجعة يستخدمان قوائم مؤهلين مبنية على RBAC + Scope + Type Access + Classification.
 - لا يشمل Auto Routing أو Dashboard أو Reports.
 
-### Phase B.2.3.2 — Note Routing
+### Phase B.2.3.2 — Note Routing and Automatic Assignment
 
-- مؤجلة إلى PR لاحق.
-- لا يبدأ Dashboard قبل قبول B.2.3.1.
-- Dashboard لاحقًا يجب أن يطبق Effective Type Access.
+- قواعد توجيه للملاحظات حسب `NoteType` والنطاق الجغرافي.
+- التوجيه عند إرسال الملاحظة وفتحها، مع سجل قرارات Append-Only.
+- التكليف التلقائي إلى إدارة أو اختيار مستخدم مؤهل من دور محدد.
+- أولوية الاستحقاق: التاريخ المدخل من المستخدم، ثم قاعدة التوجيه، ثم نوع الملاحظة، ثم دون تاريخ.
+- سجل Append-Only لتغييرات قواعد التوجيه ومنح أنواع الملاحظات.
+- مؤشرات تشغيلية محدودة لفاعلية التوجيه دون تصدير أو Dashboard عام.
+- لا يبدأ Dashboard قبل قبول B.2.3.2، ويجب لاحقًا أن يطبق Scope + Type Access + Routing visibility.
 
 ## المرحلة C — منشئ النماذج
 

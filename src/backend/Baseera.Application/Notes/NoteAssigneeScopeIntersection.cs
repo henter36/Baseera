@@ -2,6 +2,7 @@ namespace Baseera.Application.Notes;
 
 using Baseera.Application.Abstractions;
 using Baseera.Domain.Common;
+using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Microsoft.EntityFrameworkCore;
 
@@ -150,4 +151,21 @@ public static class NoteAssigneeScopeIntersection
 
         return ids;
     }
+
+    public static bool IntersectsUserScopeForRouting(UserScope scope, OperationalNote note) =>
+        scope.ScopeType switch
+        {
+            ScopeType.Global => true,
+            ScopeType.Headquarters => note.ScopeType == ScopeType.Headquarters,
+            ScopeType.Region or ScopeType.MultipleRegions =>
+                note.RegionId == scope.RegionId,
+            ScopeType.Facility or ScopeType.MultipleFacilities =>
+                note.FacilityId == scope.FacilityId,
+            ScopeType.FacilityUnit =>
+                note.FacilityUnitId == scope.FacilityUnitId,
+            _ => false
+        };
+
+    public static bool IntersectsAnyUserScopeForRouting(IEnumerable<UserScope> scopes, OperationalNote note) =>
+        scopes.Any(scope => IntersectsUserScopeForRouting(scope, note));
 }

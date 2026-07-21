@@ -9,7 +9,8 @@
 | **Phase B.1** — نواة الملاحظات التشغيلية والتكليفات | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b1-completion-report.md`](docs/phase-b1-completion-report.md) |
 | **Phase B.2.1** — نواة الإجراءات التصحيحية | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b2-corrective-actions-completion-report.md`](docs/phase-b2-corrective-actions-completion-report.md) |
 | **Phase B.2.2** — نواة التصعيد والإشعارات الداخلية | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b22-escalations-notifications-completion-report.md`](docs/phase-b22-escalations-notifications-completion-report.md) |
-| **Phase B.2.3.1** — أنواع الملاحظات والصلاحيات الفعلية وتثبيت الإدخال | المرحلة الحالية |
+| **Phase B.2.3.1** — أنواع الملاحظات والصلاحيات الفعلية وتثبيت الإدخال | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b231-note-type-completion-report.md`](docs/phase-b231-note-type-completion-report.md) |
+| **Phase B.2.3.2** — توجيه الملاحظات والتكليف التلقائي | المرحلة الحالية — [`docs/phase-b232-note-routing-completion-report.md`](docs/phase-b232-note-routing-completion-report.md) |
 
 ## المتطلبات
 

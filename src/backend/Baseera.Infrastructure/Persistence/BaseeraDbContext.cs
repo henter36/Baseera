@@ -32,6 +32,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<RoleNoteTypeGrant> RoleNoteTypeGrants => Set<RoleNoteTypeGrant>();
     public DbSet<UserNoteTypeOverride> UserNoteTypeOverrides => Set<UserNoteTypeOverride>();
     public DbSet<UserNoteIntakeProfile> UserNoteIntakeProfiles => Set<UserNoteIntakeProfile>();
+    public DbSet<NoteRoutingRule> NoteRoutingRules => Set<NoteRoutingRule>();
+    public DbSet<NoteRoutingDecision> NoteRoutingDecisions => Set<NoteRoutingDecision>();
+    public DbSet<NoteRoutingRuleHistory> NoteRoutingRuleHistories => Set<NoteRoutingRuleHistory>();
+    public DbSet<NoteTypeAccessChangeHistory> NoteTypeAccessChangeHistories => Set<NoteTypeAccessChangeHistory>();
     public DbSet<OperationalNote> OperationalNotes => Set<OperationalNote>();
     public DbSet<NoteAssignment> NoteAssignments => Set<NoteAssignment>();
     public DbSet<NoteStatusHistory> NoteStatusHistories => Set<NoteStatusHistory>();
@@ -65,6 +69,11 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<RoleNoteTypeGrant> Application.Abstractions.IBaseeraDbContext.RoleNoteTypeGrants => RoleNoteTypeGrants;
     IQueryable<UserNoteTypeOverride> Application.Abstractions.IBaseeraDbContext.UserNoteTypeOverrides => UserNoteTypeOverrides;
     IQueryable<UserNoteIntakeProfile> Application.Abstractions.IBaseeraDbContext.UserNoteIntakeProfiles => UserNoteIntakeProfiles;
+    IQueryable<NoteRoutingRule> Application.Abstractions.IBaseeraDbContext.NoteRoutingRules => NoteRoutingRules;
+    IQueryable<NoteRoutingRule> Application.Abstractions.IBaseeraDbContext.NoteRoutingRulesIncludingDeleted => NoteRoutingRules.IgnoreQueryFilters();
+    IQueryable<NoteRoutingDecision> Application.Abstractions.IBaseeraDbContext.NoteRoutingDecisions => NoteRoutingDecisions;
+    IQueryable<NoteRoutingRuleHistory> Application.Abstractions.IBaseeraDbContext.NoteRoutingRuleHistories => NoteRoutingRuleHistories;
+    IQueryable<NoteTypeAccessChangeHistory> Application.Abstractions.IBaseeraDbContext.NoteTypeAccessChangeHistories => NoteTypeAccessChangeHistories;
     IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotes => OperationalNotes;
     IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotesIncludingDeleted => OperationalNotes.IgnoreQueryFilters();
     IQueryable<NoteAssignment> Application.Abstractions.IBaseeraDbContext.NoteAssignments => NoteAssignments;
@@ -151,6 +160,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<RoleNoteTypeGrant>().HasQueryFilter(g => !g.Role.IsDeleted);
         modelBuilder.Entity<UserNoteTypeOverride>().HasQueryFilter(o => !o.User.IsDeleted);
         modelBuilder.Entity<UserNoteIntakeProfile>().HasQueryFilter(p => !p.User.IsDeleted);
+        modelBuilder.Entity<NoteRoutingRule>().HasQueryFilter(r => !r.IsDeleted);
         modelBuilder.Entity<OperationalNote>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<CorrectiveAction>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<EscalationPolicy>().HasQueryFilter(e => !e.IsDeleted);
@@ -199,6 +209,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
+        NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
     }
 }
 
@@ -279,6 +290,39 @@ internal static class EscalationAppendOnlyGuard
     }
 }
 
+internal static class NoteRoutingAppendOnlyGuard
+{
+    public static void EnsureEntriesAreAppendOnly(DbContext context)
+    {
+        var invalidDecisions = context.ChangeTracker
+            .Entries<NoteRoutingDecision>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        var invalidRuleHistory = context.ChangeTracker
+            .Entries<NoteRoutingRuleHistory>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        var invalidAccessHistory = context.ChangeTracker
+            .Entries<NoteTypeAccessChangeHistory>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidDecisions.Any())
+        {
+            throw new InvalidOperationException("NoteRoutingDecision is append-only and cannot be modified or deleted.");
+        }
+
+        if (invalidRuleHistory.Any())
+        {
+            throw new InvalidOperationException("NoteRoutingRuleHistory is append-only and cannot be modified or deleted.");
+        }
+
+        if (invalidAccessHistory.Any())
+        {
+            throw new InvalidOperationException("NoteTypeAccessChangeHistory is append-only and cannot be modified or deleted.");
+        }
+    }
+}
+
 public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
 {
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
@@ -287,8 +331,9 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         {
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
-            CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+        CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChanges(eventData, result);
@@ -305,6 +350,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChangesAsync(eventData, result, cancellationToken);

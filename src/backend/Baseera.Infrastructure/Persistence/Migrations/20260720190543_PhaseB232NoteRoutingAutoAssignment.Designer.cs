@@ -4,6 +4,7 @@ using Baseera.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Baseera.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(BaseeraDbContext))]
-    partial class BaseeraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260720190543_PhaseB232NoteRoutingAutoAssignment")]
+    partial class PhaseB232NoteRoutingAutoAssignment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

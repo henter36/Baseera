@@ -43,6 +43,7 @@ export function NotesListPage() {
   const [severity, setSeverity] = useState('')
   const [noteTypeId, setNoteTypeId] = useState('')
   const [requiresMyAction, setRequiresMyAction] = useState(false)
+  const [requiresRouting, setRequiresRouting] = useState(false)
   const [classification, setClassification] = useState('')
   const [regionId, setRegionId] = useState('')
   const [facilityId, setFacilityId] = useState('')
@@ -75,6 +76,7 @@ export function NotesListPage() {
       severity: severity === '' ? undefined : Number(severity),
       noteTypeId: noteTypeId || undefined,
       requiresMyAction: requiresMyAction || undefined,
+      requiresRouting: requiresRouting || undefined,
       classification: classification === '' ? undefined : Number(classification),
       regionId: regionId || undefined,
       facilityId: facilityId || undefined,
@@ -84,7 +86,7 @@ export function NotesListPage() {
       sortBy,
       sortDesc,
     }),
-    [page, search, status, severity, noteTypeId, requiresMyAction, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, sortBy, sortDesc],
+    [page, search, status, severity, noteTypeId, requiresMyAction, requiresRouting, classification, regionId, facilityId, facilityUnitId, ownerDepartmentId, overdueOnly, sortBy, sortDesc],
   )
 
   const query = useQuery({
@@ -205,9 +207,9 @@ export function NotesListPage() {
             <button
               type="button"
               role="tab"
-              aria-selected={!noteTypeId && !requiresMyAction}
-              className={!noteTypeId && !requiresMyAction ? 'active' : undefined}
-              onClick={() => { setPage(1); setNoteTypeId(''); setRequiresMyAction(false) }}
+              aria-selected={!noteTypeId && !requiresMyAction && !requiresRouting}
+              className={!noteTypeId && !requiresMyAction && !requiresRouting ? 'active' : undefined}
+              onClick={() => { setPage(1); setNoteTypeId(''); setRequiresMyAction(false); setRequiresRouting(false) }}
             >
               الكل
             </button>
@@ -219,7 +221,7 @@ export function NotesListPage() {
               key={type.id}
               aria-selected={noteTypeId === type.id}
               className={noteTypeId === type.id ? 'active' : undefined}
-              onClick={() => { setPage(1); setNoteTypeId(type.id); setRequiresMyAction(false) }}
+              onClick={() => { setPage(1); setNoteTypeId(type.id); setRequiresMyAction(false); setRequiresRouting(false) }}
               title={type.descriptionAr || undefined}
             >
               {type.nameAr}{!type.isActive ? ' (غير فعال)' : ''}
@@ -230,9 +232,18 @@ export function NotesListPage() {
             role="tab"
             aria-selected={requiresMyAction}
             className={requiresMyAction ? 'active' : undefined}
-            onClick={() => { setPage(1); setRequiresMyAction(true); setNoteTypeId('') }}
+            onClick={() => { setPage(1); setRequiresMyAction(true); setRequiresRouting(false); setNoteTypeId('') }}
           >
             تتطلب إجراء مني
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={requiresRouting}
+            className={requiresRouting ? 'active' : undefined}
+            onClick={() => { setPage(1); setRequiresRouting(true); setRequiresMyAction(false); setNoteTypeId('') }}
+          >
+            تتطلب توجيهًا
           </button>
         </div>
       )}

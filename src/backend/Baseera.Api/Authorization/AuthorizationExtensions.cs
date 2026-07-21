@@ -33,6 +33,11 @@ public static class AuthPolicies
     public const string NotesManageRoleTypeAccess = PermissionPrefix + PermissionCodes.NotesManageRoleTypeAccess;
     public const string NotesManageUserTypeOverrides = PermissionPrefix + PermissionCodes.NotesManageUserTypeOverrides;
     public const string NotesManageIntakeProfiles = PermissionPrefix + PermissionCodes.NotesManageIntakeProfiles;
+    public const string NotesViewRouting = PermissionPrefix + PermissionCodes.NotesViewRouting;
+    public const string NotesManageRoutingRules = PermissionPrefix + PermissionCodes.NotesManageRoutingRules;
+    public const string NotesActivateRoutingRules = PermissionPrefix + PermissionCodes.NotesActivateRoutingRules;
+    public const string NotesRunRouting = PermissionPrefix + PermissionCodes.NotesRunRouting;
+    public const string NotesViewRoutingDiagnostics = PermissionPrefix + PermissionCodes.NotesViewRoutingDiagnostics;
     public const string CorrectiveActionsView = PermissionPrefix + PermissionCodes.CorrectiveActionsView;
     public const string CorrectiveActionsViewSensitive = PermissionPrefix + PermissionCodes.CorrectiveActionsViewSensitive;
     public const string CorrectiveActionsCreate = PermissionPrefix + PermissionCodes.CorrectiveActionsCreate;
@@ -112,6 +117,11 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.NotesManageRoleTypeAccess, PermissionCodes.NotesManageRoleTypeAccess);
             AddPerm(AuthPolicies.NotesManageUserTypeOverrides, PermissionCodes.NotesManageUserTypeOverrides);
             AddPerm(AuthPolicies.NotesManageIntakeProfiles, PermissionCodes.NotesManageIntakeProfiles);
+            AddPerm(AuthPolicies.NotesViewRouting, PermissionCodes.NotesViewRouting);
+            AddPerm(AuthPolicies.NotesManageRoutingRules, PermissionCodes.NotesManageRoutingRules);
+            AddPerm(AuthPolicies.NotesActivateRoutingRules, PermissionCodes.NotesActivateRoutingRules);
+            AddPerm(AuthPolicies.NotesRunRouting, PermissionCodes.NotesRunRouting);
+            AddPerm(AuthPolicies.NotesViewRoutingDiagnostics, PermissionCodes.NotesViewRoutingDiagnostics);
             AddPerm(AuthPolicies.CorrectiveActionsView, PermissionCodes.CorrectiveActionsView);
             AddPerm(AuthPolicies.CorrectiveActionsViewSensitive, PermissionCodes.CorrectiveActionsViewSensitive);
             AddPerm(AuthPolicies.CorrectiveActionsCreate, PermissionCodes.CorrectiveActionsCreate);

@@ -28,7 +28,8 @@ public sealed class NoteCommandServiceTests : IDisposable
         var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
         var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
-        return (new NoteCommandService(_db, current, scope, orgScope, typeAccess, audit, queries), actor.Id, reporter.Id);
+        var routing = new NoteRoutingService(_db, current, scope, typeAccess, audit, TimeProvider.System);
+        return (new NoteCommandService(_db, current, scope, typeAccess, routing, audit, queries), actor.Id, reporter.Id);
     }
 
     private static string RowVersionOf(OperationalNote note) => Convert.ToBase64String(note.RowVersion);

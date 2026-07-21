@@ -19,8 +19,8 @@ public sealed class NoteCommandService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     INoteScopeService noteScope,
-    IOrganizationalScopeService orgScope,
     INoteTypeAccessService typeAccess,
+    INoteRoutingService routing,
     IAuditService audit,
     INoteQueryService queries) : INoteCommandService
 {
@@ -30,7 +30,7 @@ public sealed class NoteCommandService(
         var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
 
         await EnsureCanCreateTypeAsync(request.NoteTypeId, cancellationToken);
-        var intake = await ResolveIntakeAsync(userId, request.RegionId, request.FacilityId, cancellationToken);
+        var intake = await noteScope.ResolveIntakeAsync(userId, request.RegionId, request.FacilityId, cancellationToken);
 
         noteScope.ValidateScopeShape(ScopeType.Facility, intake.RegionId, intake.FacilityId, null);
         await noteScope.EnsureOrgEntitiesActiveAsync(
@@ -180,34 +180,42 @@ public sealed class NoteCommandService(
 
     public async Task<NoteDetailDto> SubmitAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
     {
-        NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
-        var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: cancellationToken);
-        await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
-        NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
-        NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Open);
+        var noteId = await db.ExecuteInTransactionAsync(
+            async ct =>
+            {
+                NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesUpdate);
+                var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, id, cancellationToken: ct);
+                await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, ct);
+                NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
+                NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Open);
 
-        var userId = RequireUserId();
-        var from = note.Status;
-        note.Status = NoteStatus.Open;
-        note.SubmittedAtUtc = DateTimeOffset.UtcNow;
-        note.UpdatedAtUtc = note.SubmittedAtUtc;
-        note.UpdatedBy = currentUser.ExternalSubject;
-        db.Update(note);
+                var userId = RequireUserId();
+                var from = note.Status;
+                note.Status = NoteStatus.Open;
+                note.SubmittedAtUtc = DateTimeOffset.UtcNow;
+                note.UpdatedAtUtc = note.SubmittedAtUtc;
+                note.UpdatedBy = currentUser.ExternalSubject;
+                db.Update(note);
 
-        AppendHistory(note.Id, from, NoteStatus.Open, userId, request.Reason.Trim());
-        await audit.WriteAsync(new AuditEntry
-        {
-            Action = "NoteSubmitted",
-            Module = NoteAccessHelper.ModuleName,
-            EntityType = nameof(OperationalNote),
-            EntityId = note.Id.ToString(),
-            OldValues = new { Status = from },
-            NewValues = new { Status = NoteStatus.Open },
-            Reason = request.Reason.Trim()
-        }, cancellationToken);
+                AppendHistory(note.Id, from, NoteStatus.Open, userId, request.Reason.Trim());
+                await audit.WriteAsync(new AuditEntry
+                {
+                    Action = "NoteSubmitted",
+                    Module = NoteAccessHelper.ModuleName,
+                    EntityType = nameof(OperationalNote),
+                    EntityId = note.Id.ToString(),
+                    OldValues = new { Status = from },
+                    NewValues = new { Status = NoteStatus.Open },
+                    Reason = request.Reason.Trim()
+                }, ct);
 
-        await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
+                await routing.RouteOnSubmitAsync(note, note.SubmittedAtUtc.Value, request.Reason, ct);
+                await db.SaveChangesAsync(ct);
+                return note.Id;
+            },
+            cancellationToken);
+
+        return (await queries.GetDetailAsync(noteId, cancellationToken))!;
     }
 
     public async Task ArchiveAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default)
@@ -292,39 +300,5 @@ public sealed class NoteCommandService(
         }
 
         await typeAccess.EnsureCanAsync(noteTypeId, NoteTypeCapability.Create, cancellationToken);
-    }
-
-    private async Task<(Guid RegionId, Guid FacilityId)> ResolveIntakeAsync(Guid userId, Guid? requestedRegionId, Guid? requestedFacilityId, CancellationToken cancellationToken)
-    {
-        if (!requestedRegionId.HasValue || !requestedFacilityId.HasValue)
-        {
-            throw new InvalidOperationException("يجب اختيار المنطقة ثم الموقع.");
-        }
-
-        var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == requestedFacilityId.Value && f.IsActive, cancellationToken)
-            ?? throw new KeyNotFoundException("الموقع غير موجود.");
-        if (facility.RegionId != requestedRegionId.Value)
-        {
-            throw new InvalidOperationException("الموقع لا يتبع المنطقة المحددة.");
-        }
-
-        var probe = new OperationalNote { ScopeType = ScopeType.Facility, RegionId = facility.RegionId, FacilityId = facility.Id };
-        if (!orgScope.CanAccess(probe))
-        {
-            throw new UnauthorizedAccessException("الموقع خارج نطاق المستخدم.");
-        }
-
-        var profile = await db.UserNoteIntakeProfiles.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, cancellationToken);
-        if (profile?.LockType == NoteIntakeLockType.Region && profile.RegionId != facility.RegionId)
-        {
-            throw new InvalidOperationException("المنطقة المحددة لا تطابق منطقة الإدخال المثبتة.");
-        }
-
-        if (profile?.LockType == NoteIntakeLockType.Facility && profile.FacilityId != facility.Id)
-        {
-            throw new InvalidOperationException("الموقع المحدد لا يطابق موقع الإدخال المثبت.");
-        }
-
-        return (facility.RegionId, facility.Id);
     }
 }

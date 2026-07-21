@@ -86,6 +86,125 @@ internal sealed class UserNoteIntakeProfileConfiguration : IEntityTypeConfigurat
     }
 }
 
+internal sealed class NoteRoutingRuleConfiguration : IEntityTypeConfiguration<NoteRoutingRule>
+{
+    public void Configure(EntityTypeBuilder<NoteRoutingRule> builder)
+    {
+        builder.ToTable("NoteRoutingRules", t =>
+        {
+            t.HasCheckConstraint(
+                "CK_NoteRoutingRules_GlobalHq_NoIds",
+                "([ScopeType] NOT IN (0, 1)) OR ([RegionId] IS NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_NoteRoutingRules_Region_RequiresRegion",
+                "([ScopeType] <> 2) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_NoteRoutingRules_Facility_RequiresFacility",
+                "([ScopeType] <> 3) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NOT NULL AND [FacilityUnitId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_NoteRoutingRules_Unit_RequiresFacilityAndUnit",
+                "([ScopeType] <> 4) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NOT NULL AND [FacilityUnitId] IS NOT NULL)");
+            t.HasCheckConstraint(
+                "CK_NoteRoutingRules_DepartmentTarget",
+                "([ProcessingTargetType] <> 0) OR ([ProcessingDepartmentId] IS NOT NULL AND [ProcessingRoleId] IS NULL)");
+            t.HasCheckConstraint(
+                "CK_NoteRoutingRules_RoleTarget",
+                "([ProcessingTargetType] <> 1) OR ([ProcessingRoleId] IS NOT NULL AND [ProcessingDepartmentId] IS NULL)");
+            t.HasCheckConstraint("CK_NoteRoutingRules_DefaultDueDays_NonNegative", "[DefaultDueDays] IS NULL OR [DefaultDueDays] >= 0");
+            t.HasCheckConstraint("CK_NoteRoutingRules_Priority_NonNegative", "[Priority] >= 0");
+        });
+
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Code).HasMaxLength(80).IsRequired();
+        builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.DescriptionAr).HasMaxLength(1000);
+        builder.HasIndex(x => x.Code).IsUnique();
+        builder.HasIndex(x => new
+        {
+            x.NoteTypeId,
+            x.ScopeType,
+            x.RegionId,
+            x.FacilityId,
+            x.FacilityUnitId,
+            x.Priority
+        })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
+        builder.HasIndex(x => new { x.NoteTypeId, x.IsActive, x.IsDeleted });
+        builder.HasIndex(x => new { x.ScopeType, x.RegionId, x.FacilityId, x.FacilityUnitId });
+
+        builder.HasOne(x => x.NoteType).WithMany().HasForeignKey(x => x.NoteTypeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Region).WithMany().HasForeignKey(x => x.RegionId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.Facility).WithMany().HasForeignKey(x => x.FacilityId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.FacilityUnit).WithMany().HasForeignKey(x => x.FacilityUnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ProcessingDepartment).WithMany().HasForeignKey(x => x.ProcessingDepartmentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ProcessingRole).WithMany().HasForeignKey(x => x.ProcessingRoleId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ReviewerRole).WithMany().HasForeignKey(x => x.ReviewerRoleId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ActivatedByUser).WithMany().HasForeignKey(x => x.ActivatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.DeactivatedByUser).WithMany().HasForeignKey(x => x.DeactivatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class NoteRoutingDecisionConfiguration : IEntityTypeConfiguration<NoteRoutingDecision>
+{
+    public void Configure(EntityTypeBuilder<NoteRoutingDecision> builder)
+    {
+        builder.ToTable("NoteRoutingDecisions");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.DecisionKey).HasMaxLength(240).IsRequired();
+        builder.Property(x => x.DueAtSource).HasMaxLength(50).IsRequired();
+        builder.Property(x => x.CorrelationId).HasMaxLength(100);
+        builder.Property(x => x.FailureCode).HasMaxLength(100);
+        builder.Property(x => x.FailureMessageSafe).HasMaxLength(1000);
+        builder.Property(x => x.MetadataJson).HasMaxLength(4000);
+        builder.HasIndex(x => x.DecisionKey).IsUnique();
+        builder.HasIndex(x => new { x.OperationalNoteId, x.DecidedAtUtc });
+        builder.HasIndex(x => new { x.RoutingRuleId, x.ResultStatus });
+        builder.HasOne(x => x.OperationalNote).WithMany(n => n.RoutingDecisions).HasForeignKey(x => x.OperationalNoteId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.RoutingRule).WithMany(r => r.Decisions).HasForeignKey(x => x.RoutingRuleId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ResolvedDepartment).WithMany().HasForeignKey(x => x.ResolvedDepartmentId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ResolvedUser).WithMany().HasForeignKey(x => x.ResolvedUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ResolvedProcessingRole).WithMany().HasForeignKey(x => x.ResolvedProcessingRoleId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ResolvedReviewerRole).WithMany().HasForeignKey(x => x.ResolvedReviewerRoleId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.DecidedByUser).WithMany().HasForeignKey(x => x.DecidedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class NoteRoutingRuleHistoryConfiguration : IEntityTypeConfiguration<NoteRoutingRuleHistory>
+{
+    public void Configure(EntityTypeBuilder<NoteRoutingRuleHistory> builder)
+    {
+        builder.ToTable("NoteRoutingRuleHistories");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.SnapshotJson).HasMaxLength(4000).IsRequired();
+        builder.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+        builder.Property(x => x.CorrelationId).HasMaxLength(100);
+        builder.HasIndex(x => new { x.RoutingRuleId, x.ChangedAtUtc });
+        builder.HasOne(x => x.RoutingRule).WithMany(r => r.History).HasForeignKey(x => x.RoutingRuleId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ChangedByUser).WithMany().HasForeignKey(x => x.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class NoteTypeAccessChangeHistoryConfiguration : IEntityTypeConfiguration<NoteTypeAccessChangeHistory>
+{
+    public void Configure(EntityTypeBuilder<NoteTypeAccessChangeHistory> builder)
+    {
+        builder.ToTable("NoteTypeAccessChangeHistories");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.PreviousCapabilitiesJson).HasMaxLength(4000);
+        builder.Property(x => x.NewCapabilitiesJson).HasMaxLength(4000);
+        builder.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+        builder.Property(x => x.CorrelationId).HasMaxLength(100);
+        builder.HasIndex(x => new { x.PrincipalType, x.PrincipalId, x.ChangedAtUtc });
+        builder.HasIndex(x => new { x.NoteTypeId, x.ChangedAtUtc });
+        builder.HasOne(x => x.NoteType).WithMany().HasForeignKey(x => x.NoteTypeId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ChangedByUser).WithMany().HasForeignKey(x => x.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 internal sealed class OperationalNoteConfiguration : IEntityTypeConfiguration<OperationalNote>
 {
     public void Configure(EntityTypeBuilder<OperationalNote> builder)
@@ -168,6 +287,8 @@ internal sealed class NoteAssignmentConfiguration : IEntityTypeConfiguration<Not
         builder.HasOne(x => x.AssignedToDepartment).WithMany().HasForeignKey(x => x.AssignedToDepartmentId)
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.AssignedByUser).WithMany().HasForeignKey(x => x.AssignedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.RoutingDecision).WithMany().HasForeignKey(x => x.RoutingDecisionId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.ConfigureRowVersion();

@@ -252,6 +252,7 @@ export type NoteListFilters = {
   sortBy?: string
   sortDesc?: boolean
   requiresMyAction?: boolean
+  requiresRouting?: boolean
 }
 
 export type CreateNoteRequest = {
@@ -541,6 +542,89 @@ export type EscalationRunResult = {
   failed: number
 }
 
+export type NoteRoutingRule = {
+  id: string
+  code: string
+  nameAr: string
+  descriptionAr?: string | null
+  noteTypeId: string
+  noteTypeNameAr?: string | null
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+  priority: number
+  processingTargetType: number
+  processingDepartmentId?: string | null
+  processingDepartmentNameAr?: string | null
+  processingRoleId?: string | null
+  processingRoleNameAr?: string | null
+  reviewerRoleId?: string | null
+  reviewerRoleNameAr?: string | null
+  defaultDueDays?: number | null
+  autoAssignOnSubmit: boolean
+  autoReassignOnReopen: boolean
+  isActive: boolean
+  rowVersion: string
+}
+
+export type NoteRoutingRuleRequest = {
+  code: string
+  nameAr: string
+  descriptionAr?: string | null
+  noteTypeId: string
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+  priority: number
+  processingTargetType: number
+  processingDepartmentId?: string | null
+  processingRoleId?: string | null
+  reviewerRoleId?: string | null
+  defaultDueDays?: number | null
+  autoAssignOnSubmit: boolean
+  autoReassignOnReopen: boolean
+  reason: string
+}
+
+export type UpdateNoteRoutingRuleRequest = Omit<NoteRoutingRuleRequest, 'code'> & {
+  rowVersion: string
+}
+
+export type NoteRoutingPreview = {
+  winningRule?: NoteRoutingRule | null
+  reason: string
+  specificity: number
+  expectedTarget: string
+  eligibleUserCount: number
+  expectedUserId?: string | null
+  reviewerRoleId?: string | null
+  dueAtUtc?: string | null
+  warnings: string[]
+}
+
+export type NoteRoutingEffectiveness = {
+  totalAttempts: number
+  autoAssignmentSuccessRate: number
+  assignedToDepartment: number
+  assignedToUser: number
+  noMatchingRule: number
+  noEligibleUser: number
+  invalidTarget: number
+  manualOverride: number
+  requiresRoutingCount: number
+}
+
+export type NoteRoutingRuleFilters = {
+  page?: number
+  pageSize?: number
+  noteTypeId?: string
+  scopeType?: number
+  isActive?: boolean
+  processingTargetType?: number
+}
+
 export type Notification = {
   id: string
   targetType: number
@@ -652,6 +736,7 @@ function appendEnumFilterParams(params: URLSearchParams, filters: NoteListFilter
   if (filters.classification !== undefined) params.set('classification', String(filters.classification))
   if (filters.overdueOnly) params.set('overdueOnly', 'true')
   if (filters.requiresMyAction) params.set('requiresMyAction', 'true')
+  if (filters.requiresRouting) params.set('requiresRouting', 'true')
 }
 
 function appendScopeFilterParams(params: URLSearchParams, filters: NoteListFilters): void {
@@ -903,6 +988,32 @@ export const api = {
       request<Paged<EscalationOccurrence>>(`/api/v1/escalations/occurrences?${buildSimpleQuery(filters)}`),
     occurrence: (id: string) => request<EscalationOccurrence>(`/api/v1/escalations/occurrences/${id}`),
     retry: (id: string) => postJson<void>(`/api/v1/escalations/occurrences/${id}/retry`, {}),
+  },
+
+  noteRoutingRules: {
+    list: (filters: NoteRoutingRuleFilters = {}) =>
+      request<Paged<NoteRoutingRule>>(`/api/v1/note-routing-rules?${buildSimpleQuery(filters)}`),
+    get: (id: string) => request<NoteRoutingRule>(`/api/v1/note-routing-rules/${id}`),
+    create: (body: NoteRoutingRuleRequest) =>
+      postJson<NoteRoutingRule>('/api/v1/note-routing-rules', body),
+    update: (id: string, body: UpdateNoteRoutingRuleRequest) =>
+      putJson<NoteRoutingRule>(`/api/v1/note-routing-rules/${id}`, body),
+    activate: (id: string, body: TransitionNoteRequest) =>
+      postJson<NoteRoutingRule>(`/api/v1/note-routing-rules/${id}/activate`, body),
+    deactivate: (id: string, body: TransitionNoteRequest) =>
+      postJson<NoteRoutingRule>(`/api/v1/note-routing-rules/${id}/deactivate`, body),
+    archive: (id: string, body: TransitionNoteRequest) =>
+      postJson<void>(`/api/v1/note-routing-rules/${id}/archive`, body),
+    restore: (id: string, body: TransitionNoteRequest) =>
+      postJson<void>(`/api/v1/note-routing-rules/${id}/restore`, body),
+    effectiveness: () => request<NoteRoutingEffectiveness>('/api/v1/note-routing/effectiveness'),
+  },
+
+  noteRouting: {
+    run: (noteId: string, body: { rowVersion: string; reason: string; replaceCurrentAssignment?: boolean; idempotencyKey: string }) =>
+      postJson<NoteDetail>(`/api/v1/notes/${noteId}/routing/run`, body),
+    preview: (noteId: string) =>
+      postJson<NoteRoutingPreview>(`/api/v1/notes/${noteId}/routing/preview`, {}),
   },
 
   notifications: {

@@ -8,10 +8,14 @@ using Microsoft.EntityFrameworkCore;
 public interface INoteScopeService
 {
     bool CanAccess(OperationalNote note);
+    bool CanAccessRoutingRule(NoteRoutingRule rule);
     IQueryable<OperationalNote> FilterQueryable(IQueryable<OperationalNote> query);
     Task<IQueryable<OperationalNote>> FilterQueryableAsync(IQueryable<OperationalNote> query, CancellationToken cancellationToken = default);
+    IQueryable<NoteRoutingRule> FilterRoutingRulesQueryable(IQueryable<NoteRoutingRule> query);
+    Task<IQueryable<NoteRoutingRule>> FilterRoutingRulesQueryableAsync(IQueryable<NoteRoutingRule> query, CancellationToken cancellationToken = default);
     void ValidateScopeShape(ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId);
     Task EnsureOrgEntitiesActiveAsync(ScopeType scopeType, Guid? regionId, Guid? facilityId, Guid? facilityUnitId, CancellationToken cancellationToken = default);
+    Task<(Guid RegionId, Guid FacilityId)> ResolveIntakeAsync(Guid userId, Guid? requestedRegionId, Guid? requestedFacilityId, CancellationToken cancellationToken = default);
 }
 
 public sealed class NoteScopeService(
@@ -29,6 +33,8 @@ public sealed class NoteScopeService(
     ];
 
     public bool CanAccess(OperationalNote note) => orgScope.CanAccess(note);
+
+    public bool CanAccessRoutingRule(NoteRoutingRule rule) => orgScope.CanAccess(rule);
 
     public IQueryable<OperationalNote> FilterQueryable(IQueryable<OperationalNote> query)
     {
@@ -52,6 +58,72 @@ public sealed class NoteScopeService(
         return FilterWithScopeIds(query, await BuildAccessibleScopeIdsAsync(cancellationToken));
     }
 
+    public IQueryable<NoteRoutingRule> FilterRoutingRulesQueryable(IQueryable<NoteRoutingRule> query)
+    {
+        if (orgScope.HasNationalAccess)
+        {
+            return query;
+        }
+
+        return FilterRoutingRulesWithScopeIds(query, BuildAccessibleScopeIds());
+    }
+
+    public async Task<IQueryable<NoteRoutingRule>> FilterRoutingRulesQueryableAsync(
+        IQueryable<NoteRoutingRule> query,
+        CancellationToken cancellationToken = default)
+    {
+        if (orgScope.HasNationalAccess)
+        {
+            return query;
+        }
+
+        return FilterRoutingRulesWithScopeIds(query, await BuildAccessibleScopeIdsAsync(cancellationToken));
+    }
+
+    public async Task<(Guid RegionId, Guid FacilityId)> ResolveIntakeAsync(
+        Guid userId,
+        Guid? requestedRegionId,
+        Guid? requestedFacilityId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!requestedRegionId.HasValue || !requestedFacilityId.HasValue)
+        {
+            throw new InvalidOperationException("يجب اختيار المنطقة ثم الموقع.");
+        }
+
+        var facility = await db.Facilities
+            .FirstOrDefaultAsync(
+                facility =>
+                    facility.Id == requestedFacilityId.Value &&
+                    facility.IsActive &&
+                    !facility.IsDeleted,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("الموقع غير موجود.");
+        if (facility.RegionId != requestedRegionId.Value)
+        {
+            throw new InvalidOperationException("الموقع لا يتبع المنطقة المحددة.");
+        }
+
+        var probe = new OperationalNote { ScopeType = ScopeType.Facility, RegionId = facility.RegionId, FacilityId = facility.Id };
+        if (!orgScope.CanAccess(probe))
+        {
+            throw new UnauthorizedAccessException("الموقع خارج نطاق المستخدم.");
+        }
+
+        var profile = await db.UserNoteIntakeProfiles.FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, cancellationToken);
+        if (profile?.LockType == NoteIntakeLockType.Region && profile.RegionId != facility.RegionId)
+        {
+            throw new InvalidOperationException("المنطقة المحددة لا تطابق منطقة الإدخال المثبتة.");
+        }
+
+        if (profile?.LockType == NoteIntakeLockType.Facility && profile.FacilityId != facility.Id)
+        {
+            throw new InvalidOperationException("الموقع المحدد لا يطابق موقع الإدخال المثبت.");
+        }
+
+        return (facility.RegionId, facility.Id);
+    }
+
     private IQueryable<OperationalNote> FilterWithScopeIds(
         IQueryable<OperationalNote> query,
         (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) ids)
@@ -71,6 +143,43 @@ public sealed class NoteScopeService(
             (n.ScopeType == ScopeType.FacilityUnit && (
                 (n.FacilityUnitId.HasValue && unitIds.Contains(n.FacilityUnitId.Value)) ||
                 (n.FacilityId.HasValue && facilityIds.Contains(n.FacilityId.Value) && unitIds.Count == 0))));
+    }
+
+    private IQueryable<NoteRoutingRule> FilterRoutingRulesWithScopeIds(
+        IQueryable<NoteRoutingRule> query,
+        (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) ids)
+    {
+        if (!currentUser.IsAuthenticated || currentUser.Scopes.Count == 0)
+        {
+            return query.Where(_ => false);
+        }
+
+        var (regionIds, facilityIds, unitIds) = ids;
+        var hasHq = orgScope.HasHeadquartersAccess;
+        var hasDirectRegionScope = currentUser.Scopes.Any(scope =>
+            scope.ScopeType is ScopeType.Region or ScopeType.MultipleRegions);
+        var hasDirectFacilityScope = currentUser.Scopes.Any(scope =>
+            scope.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities);
+        var hasUnitScope = unitIds.Count > 0;
+        var allowFacilityUnitRulesUnderAccessibleFacilities = hasDirectRegionScope || hasDirectFacilityScope;
+
+        return query.Where(rule =>
+            (rule.ScopeType == ScopeType.Headquarters && hasHq) ||
+            (hasDirectRegionScope &&
+             rule.ScopeType == ScopeType.Region &&
+             rule.RegionId.HasValue &&
+             regionIds.Contains(rule.RegionId.Value)) ||
+            (rule.ScopeType == ScopeType.Facility &&
+             rule.FacilityId.HasValue &&
+             facilityIds.Contains(rule.FacilityId.Value) &&
+             (hasDirectRegionScope || hasDirectFacilityScope)) ||
+            (rule.ScopeType == ScopeType.FacilityUnit &&
+             rule.FacilityUnitId.HasValue &&
+             (unitIds.Contains(rule.FacilityUnitId.Value) ||
+              (!hasUnitScope &&
+               rule.FacilityId.HasValue &&
+               facilityIds.Contains(rule.FacilityId.Value) &&
+               allowFacilityUnitRulesUnderAccessibleFacilities))));
     }
 
     private (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) BuildAccessibleScopeIds()

@@ -132,32 +132,10 @@ public sealed class NoteTypeManagementService(
         {
             var now = DateTimeOffset.UtcNow;
             var existing = await db.RoleNoteTypeGrants.Where(g => g.RoleId == roleId).ToListAsync(ct);
-            foreach (var grant in existing)
-            {
-                grant.IsActive = false;
-                grant.UpdatedAtUtc = now;
-                grant.UpdatedBy = currentUser.ExternalSubject;
-                grant.UpdatedByUserId = currentUser.UserId;
-                db.Update(grant);
-            }
-
-            foreach (var item in request.Grants)
-            {
-                var grant = existing.FirstOrDefault(g => g.NoteTypeId == item.NoteTypeId) ?? new RoleNoteTypeGrant { RoleId = roleId, NoteTypeId = item.NoteTypeId, CreatedBy = currentUser.ExternalSubject, CreatedByUserId = currentUser.UserId };
-                ApplyGrant(item, grant);
-                grant.IsActive = true;
-                grant.UpdatedAtUtc = now;
-                grant.UpdatedBy = currentUser.ExternalSubject;
-                grant.UpdatedByUserId = currentUser.UserId;
-                if (existing.Contains(grant))
-                {
-                    db.Update(grant);
-                }
-                else
-                {
-                    db.Add(grant);
-                }
-            }
+            var existingByTypeId = existing.ToDictionary(item => item.NoteTypeId);
+            var requestedTypeIds = request.Grants.Select(grant => grant.NoteTypeId).ToHashSet();
+            DeactivateMissingRoleGrants(roleId, existingByTypeId, requestedTypeIds, request.Reason, now);
+            UpsertRequestedRoleGrants(roleId, request.Grants, existingByTypeId, request.Reason, now);
 
             await WriteAuditAsync("RoleNoteTypeGrantsUpdated", nameof(RoleNoteTypeGrant), roleId, new { Count = request.Grants.Count }, null, ct);
             await db.SaveChangesAsync(ct);
@@ -186,37 +164,10 @@ public sealed class NoteTypeManagementService(
         {
             var now = DateTimeOffset.UtcNow;
             var existing = await db.UserNoteTypeOverrides.Where(o => o.UserId == userId).ToListAsync(ct);
-            foreach (var overrideRow in existing)
-            {
-                overrideRow.IsActive = false;
-                overrideRow.UpdatedAtUtc = now;
-                overrideRow.UpdatedBy = currentUser.ExternalSubject;
-                overrideRow.UpdatedByUserId = currentUser.UserId;
-                db.Update(overrideRow);
-            }
-
-            foreach (var item in request.Overrides)
-            {
-                if (!HasAnyOverride(item))
-                {
-                    continue;
-                }
-
-                var overrideRow = existing.FirstOrDefault(o => o.NoteTypeId == item.NoteTypeId) ?? new UserNoteTypeOverride { UserId = userId, NoteTypeId = item.NoteTypeId, CreatedBy = currentUser.ExternalSubject, CreatedByUserId = currentUser.UserId };
-                ApplyOverride(item, overrideRow, request.Reason.Trim());
-                overrideRow.IsActive = true;
-                overrideRow.UpdatedAtUtc = now;
-                overrideRow.UpdatedBy = currentUser.ExternalSubject;
-                overrideRow.UpdatedByUserId = currentUser.UserId;
-                if (existing.Contains(overrideRow))
-                {
-                    db.Update(overrideRow);
-                }
-                else
-                {
-                    db.Add(overrideRow);
-                }
-            }
+            var existingByTypeId = existing.ToDictionary(item => item.NoteTypeId);
+            var requestedTypeIds = request.Overrides.Where(HasAnyOverride).Select(overrideRow => overrideRow.NoteTypeId).ToHashSet();
+            DeactivateRemovedUserOverrides(userId, existingByTypeId, requestedTypeIds, request.Reason, now);
+            UpsertRequestedUserOverrides(userId, request.Overrides, existingByTypeId, request.Reason, now);
 
             await WriteAuditAsync("UserNoteTypeOverridesUpdated", nameof(UserNoteTypeOverride), userId, new { Count = request.Overrides.Count }, null, ct);
             await db.SaveChangesAsync(ct);
@@ -543,6 +494,295 @@ public sealed class NoteTypeManagementService(
         item.CanProcessOverride.HasValue || item.CanSubmitForVerificationOverride.HasValue ||
         item.CanReviewOverride.HasValue || item.CanCancelOverride.HasValue || item.CanReopenOverride.HasValue ||
         item.CanArchiveOverride.HasValue || item.CanRestoreOverride.HasValue;
+
+    private void DeactivateMissingRoleGrants(
+        Guid roleId,
+        Dictionary<Guid, RoleNoteTypeGrant> existingByTypeId,
+        HashSet<Guid> requestedTypeIds,
+        string reason,
+        DateTimeOffset now)
+    {
+        foreach (var grant in existingByTypeId.Values)
+        {
+            if (!grant.IsActive || requestedTypeIds.Contains(grant.NoteTypeId))
+            {
+                continue;
+            }
+
+            var before = CapabilitySnapshot(grant);
+            grant.IsActive = false;
+            grant.UpdatedAtUtc = now;
+            grant.UpdatedBy = currentUser.ExternalSubject;
+            grant.UpdatedByUserId = currentUser.UserId;
+            db.Update(grant);
+            RecordRoleGrantChange(roleId, grant.NoteTypeId, NoteTypeAccessChangeType.Revoked, before, CapabilitySnapshot(grant), reason, now);
+        }
+    }
+
+    private void UpsertRequestedRoleGrants(
+        Guid roleId,
+        IReadOnlyList<ReplaceRoleNoteTypeGrantItem> grants,
+        Dictionary<Guid, RoleNoteTypeGrant> existingByTypeId,
+        string reason,
+        DateTimeOffset now)
+    {
+        foreach (var item in grants)
+        {
+            var isNew = !existingByTypeId.TryGetValue(item.NoteTypeId, out var grant);
+            if (isNew)
+            {
+                grant = new RoleNoteTypeGrant
+                {
+                    RoleId = roleId,
+                    NoteTypeId = item.NoteTypeId,
+                    CreatedBy = currentUser.ExternalSubject,
+                    CreatedByUserId = currentUser.UserId
+                };
+                existingByTypeId[item.NoteTypeId] = grant;
+            }
+
+            var activeGrant = grant!;
+            var before = isNew ? null : CapabilitySnapshot(activeGrant);
+            ApplyGrant(item, activeGrant);
+            activeGrant.IsActive = true;
+            activeGrant.UpdatedAtUtc = now;
+            activeGrant.UpdatedBy = currentUser.ExternalSubject;
+            activeGrant.UpdatedByUserId = currentUser.UserId;
+            var after = CapabilitySnapshot(activeGrant);
+            RecordRoleGrantChange(
+                roleId,
+                activeGrant.NoteTypeId,
+                before is null ? NoteTypeAccessChangeType.Granted : NoteTypeAccessChangeType.Updated,
+                before,
+                after,
+                reason,
+                now);
+
+            if (isNew)
+            {
+                db.Add(activeGrant);
+            }
+            else
+            {
+                db.Update(activeGrant);
+            }
+        }
+    }
+
+    private void RecordRoleGrantChange(
+        Guid roleId,
+        Guid noteTypeId,
+        NoteTypeAccessChangeType changeType,
+        string? before,
+        string after,
+        string reason,
+        DateTimeOffset now)
+    {
+        if (before == after)
+        {
+            return;
+        }
+
+        AddAccessHistory(new NoteTypeAccessHistoryChange(
+            NoteTypeAccessPrincipalType.Role,
+            roleId,
+            noteTypeId,
+            changeType,
+            before,
+            after,
+            reason,
+            now));
+    }
+
+    private void DeactivateRemovedUserOverrides(
+        Guid userId,
+        Dictionary<Guid, UserNoteTypeOverride> existingByTypeId,
+        HashSet<Guid> requestedTypeIds,
+        string reason,
+        DateTimeOffset now)
+    {
+        foreach (var overrideRow in existingByTypeId.Values)
+        {
+            if (!overrideRow.IsActive || requestedTypeIds.Contains(overrideRow.NoteTypeId))
+            {
+                continue;
+            }
+
+            var before = OverrideSnapshot(overrideRow);
+            overrideRow.IsActive = false;
+            overrideRow.UpdatedAtUtc = now;
+            overrideRow.UpdatedBy = currentUser.ExternalSubject;
+            overrideRow.UpdatedByUserId = currentUser.UserId;
+            db.Update(overrideRow);
+            RecordUserOverrideChange(
+                userId,
+                overrideRow.NoteTypeId,
+                NoteTypeAccessChangeType.OverrideRemoved,
+                before,
+                OverrideSnapshot(overrideRow),
+                reason,
+                now);
+        }
+    }
+
+    private void UpsertRequestedUserOverrides(
+        Guid userId,
+        IReadOnlyList<ReplaceUserNoteTypeOverrideItem> overrides,
+        Dictionary<Guid, UserNoteTypeOverride> existingByTypeId,
+        string reason,
+        DateTimeOffset now)
+    {
+        foreach (var item in overrides)
+        {
+            if (!HasAnyOverride(item))
+            {
+                continue;
+            }
+
+            var isNew = !existingByTypeId.TryGetValue(item.NoteTypeId, out var overrideRow);
+            if (isNew)
+            {
+                overrideRow = new UserNoteTypeOverride
+                {
+                    UserId = userId,
+                    NoteTypeId = item.NoteTypeId,
+                    CreatedBy = currentUser.ExternalSubject,
+                    CreatedByUserId = currentUser.UserId
+                };
+                existingByTypeId[item.NoteTypeId] = overrideRow;
+            }
+
+            var activeOverride = overrideRow!;
+            var before = isNew ? null : OverrideSnapshot(activeOverride);
+            ApplyOverride(item, activeOverride, reason.Trim());
+            activeOverride.IsActive = true;
+            activeOverride.UpdatedAtUtc = now;
+            activeOverride.UpdatedBy = currentUser.ExternalSubject;
+            activeOverride.UpdatedByUserId = currentUser.UserId;
+            RecordUserOverrideChange(
+                userId,
+                activeOverride.NoteTypeId,
+                ChangeTypeForOverride(item, before),
+                before,
+                OverrideSnapshot(activeOverride),
+                reason,
+                now);
+
+            if (isNew)
+            {
+                db.Add(activeOverride);
+            }
+            else
+            {
+                db.Update(activeOverride);
+            }
+        }
+    }
+
+    private void RecordUserOverrideChange(
+        Guid userId,
+        Guid noteTypeId,
+        NoteTypeAccessChangeType changeType,
+        string? before,
+        string after,
+        string reason,
+        DateTimeOffset now)
+    {
+        if (before == after)
+        {
+            return;
+        }
+
+        AddAccessHistory(new NoteTypeAccessHistoryChange(
+            NoteTypeAccessPrincipalType.User,
+            userId,
+            noteTypeId,
+            changeType,
+            before,
+            after,
+            reason,
+            now));
+    }
+
+    private void AddAccessHistory(NoteTypeAccessHistoryChange change) =>
+        db.Add(new NoteTypeAccessChangeHistory
+        {
+            PrincipalType = change.PrincipalType,
+            PrincipalId = change.PrincipalId,
+            NoteTypeId = change.NoteTypeId,
+            ChangeType = change.ChangeType,
+            PreviousCapabilitiesJson = change.PreviousCapabilitiesJson,
+            NewCapabilitiesJson = change.NewCapabilitiesJson,
+            ChangedAtUtc = change.ChangedAtUtc,
+            ChangedByUserId = currentUser.UserId,
+            Reason = change.Reason.Trim(),
+            CorrelationId = currentUser.CorrelationId
+        });
+
+    private sealed record NoteTypeAccessHistoryChange(
+        NoteTypeAccessPrincipalType PrincipalType,
+        Guid PrincipalId,
+        Guid NoteTypeId,
+        NoteTypeAccessChangeType ChangeType,
+        string? PreviousCapabilitiesJson,
+        string? NewCapabilitiesJson,
+        string Reason,
+        DateTimeOffset ChangedAtUtc);
+
+    private static string CapabilitySnapshot(RoleNoteTypeGrant grant) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            grant.IsActive,
+            grant.CanView,
+            grant.CanCreate,
+            grant.CanAssign,
+            grant.CanProcess,
+            grant.CanSubmitForVerification,
+            grant.CanReview,
+            grant.CanCancel,
+            grant.CanReopen,
+            grant.CanArchive,
+            grant.CanRestore
+        });
+
+    private static string OverrideSnapshot(UserNoteTypeOverride overrideRow) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            overrideRow.IsActive,
+            overrideRow.CanViewOverride,
+            overrideRow.CanCreateOverride,
+            overrideRow.CanAssignOverride,
+            overrideRow.CanProcessOverride,
+            overrideRow.CanSubmitForVerificationOverride,
+            overrideRow.CanReviewOverride,
+            overrideRow.CanCancelOverride,
+            overrideRow.CanReopenOverride,
+            overrideRow.CanArchiveOverride,
+            overrideRow.CanRestoreOverride
+        });
+
+    private static NoteTypeAccessChangeType ChangeTypeForOverride(
+        ReplaceUserNoteTypeOverrideItem item,
+        string? before)
+    {
+        if (item.CanViewOverride == false ||
+            item.CanCreateOverride == false ||
+            item.CanAssignOverride == false ||
+            item.CanProcessOverride == false ||
+            item.CanSubmitForVerificationOverride == false ||
+            item.CanReviewOverride == false ||
+            item.CanCancelOverride == false ||
+            item.CanReopenOverride == false ||
+            item.CanArchiveOverride == false ||
+            item.CanRestoreOverride == false)
+        {
+            return NoteTypeAccessChangeType.DirectDenyAdded;
+        }
+
+        return before is null
+            ? NoteTypeAccessChangeType.DirectAllowAdded
+            : NoteTypeAccessChangeType.Updated;
+    }
 
     private static void RequireReason(string reason)
     {
