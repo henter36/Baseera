@@ -44,7 +44,9 @@ public sealed class NoteRoutingService(
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesViewRouting);
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
-        var source = noteScope.FilterRoutingRulesQueryable(db.NoteRoutingRules.AsNoTracking());
+        var source = await noteScope.FilterRoutingRulesQueryableAsync(
+            db.NoteRoutingRules.AsNoTracking(),
+            cancellationToken);
 
         if (query.NoteTypeId.HasValue)
         {
@@ -678,8 +680,8 @@ public sealed class NoteRoutingService(
             throw new KeyNotFoundException("نوع الملاحظة غير موجود.");
         }
 
-        noteScope.ValidateScopeShape(shape.ScopeType, shape.RegionId, shape.FacilityId, shape.FacilityUnitId);
-        await noteScope.EnsureOrgEntitiesActiveAsync(shape.ScopeType, shape.RegionId, shape.FacilityId, shape.FacilityUnitId, cancellationToken);
+        noteScope.ValidateScopeShape(shape.RuleScopeType, shape.RegionId, shape.FacilityId, shape.FacilityUnitId);
+        await noteScope.EnsureOrgEntitiesActiveAsync(shape.RuleScopeType, shape.RegionId, shape.FacilityId, shape.FacilityUnitId, cancellationToken);
         if (shape.ProcessingTargetType == NoteRoutingProcessingTargetType.Department)
         {
             if (!shape.ProcessingDepartmentId.HasValue || shape.ProcessingRoleId.HasValue)
@@ -717,7 +719,7 @@ public sealed class NoteRoutingService(
             rule.IsActive &&
             (!currentRuleId.HasValue || rule.Id != currentRuleId.Value) &&
             rule.NoteTypeId == identity.NoteTypeId &&
-            rule.ScopeType == identity.ScopeType &&
+            rule.ScopeType == identity.RuleScopeType &&
             rule.RegionId == identity.RegionId &&
             rule.FacilityId == identity.FacilityId &&
             rule.FacilityUnitId == identity.FacilityUnitId &&
@@ -1019,7 +1021,7 @@ public sealed class NoteRoutingService(
     private sealed record SelectedRoutingUser(Guid UserId, string DisplayNameAr, int ActiveAssignmentCount, DateTimeOffset? LastAssignedAtUtc);
     private sealed record RoutingRuleShape(
         Guid NoteTypeId,
-        ScopeType ScopeType,
+        ScopeType RuleScopeType,
         Guid? RegionId,
         Guid? FacilityId,
         Guid? FacilityUnitId,
@@ -1029,7 +1031,7 @@ public sealed class NoteRoutingService(
         Guid? ReviewerRoleId);
     private sealed record RoutingRuleIdentity(
         Guid NoteTypeId,
-        ScopeType ScopeType,
+        ScopeType RuleScopeType,
         Guid? RegionId,
         Guid? FacilityId,
         Guid? FacilityUnitId,
