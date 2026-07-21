@@ -91,7 +91,13 @@ public sealed class NoteScopeService(
             throw new InvalidOperationException("يجب اختيار المنطقة ثم الموقع.");
         }
 
-        var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == requestedFacilityId.Value && f.IsActive, cancellationToken)
+        var facility = await db.Facilities
+            .FirstOrDefaultAsync(
+                facility =>
+                    facility.Id == requestedFacilityId.Value &&
+                    facility.IsActive &&
+                    !facility.IsDeleted,
+                cancellationToken)
             ?? throw new KeyNotFoundException("الموقع غير موجود.");
         if (facility.RegionId != requestedRegionId.Value)
         {

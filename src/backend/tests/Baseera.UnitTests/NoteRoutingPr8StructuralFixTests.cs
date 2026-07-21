@@ -76,6 +76,124 @@ public sealed class NoteRoutingPr8StructuralFixTests : IDisposable
             scopeService.ResolveIntakeAsync(user.Id, RegionA, FacilityA2));
     }
 
+    [Theory]
+    [InlineData(ScopeType.Region)]
+    [InlineData(ScopeType.MultipleRegions)]
+    public void Routing_intersection_supports_region_scopes(
+        ScopeType scopeType)
+    {
+        var scope = new UserScope
+        {
+            UserId = Guid.NewGuid(),
+            ScopeType = scopeType,
+            RegionId = RegionA,
+            IsActive = true
+        };
+
+        var matchingNote = new OperationalNote
+        {
+            ScopeType = ScopeType.Region,
+            RegionId = RegionA
+        };
+
+        var siblingNote = new OperationalNote
+        {
+            ScopeType = ScopeType.Region,
+            RegionId = RegionB
+        };
+
+        Assert.True(
+            NoteAssigneeScopeIntersection
+                .IntersectsUserScopeForRouting(
+                    scope,
+                    matchingNote));
+
+        Assert.False(
+            NoteAssigneeScopeIntersection
+                .IntersectsUserScopeForRouting(
+                    scope,
+                    siblingNote));
+    }
+
+    [Theory]
+    [InlineData(ScopeType.Facility)]
+    [InlineData(ScopeType.MultipleFacilities)]
+    public void Routing_intersection_supports_facility_scopes(
+        ScopeType scopeType)
+    {
+        var scope = new UserScope
+        {
+            UserId = Guid.NewGuid(),
+            ScopeType = scopeType,
+            RegionId = RegionA,
+            FacilityId = FacilityA,
+            IsActive = true
+        };
+
+        var matchingNote = new OperationalNote
+        {
+            ScopeType = ScopeType.Facility,
+            RegionId = RegionA,
+            FacilityId = FacilityA
+        };
+
+        var siblingNote = new OperationalNote
+        {
+            ScopeType = ScopeType.Facility,
+            RegionId = RegionB,
+            FacilityId = FacilityB
+        };
+
+        Assert.True(
+            NoteAssigneeScopeIntersection
+                .IntersectsUserScopeForRouting(
+                    scope,
+                    matchingNote));
+
+        Assert.False(
+            NoteAssigneeScopeIntersection
+                .IntersectsUserScopeForRouting(
+                    scope,
+                    siblingNote));
+    }
+
+    [Fact]
+    public async Task ResolveIntakeAsync_rejects_soft_deleted_facility()
+    {
+        SeedOrgGraph();
+
+        var user = NoteTestFixtures.AddUser(
+            _db,
+            "archived-facility-user");
+
+        AddScope(
+            user.Id,
+            ScopeType.Facility,
+            RegionA,
+            FacilityA);
+
+        var facility = _db.Facilities.Single(
+            item => item.Id == FacilityA);
+
+        facility.IsDeleted = true;
+        facility.DeletedAtUtc =
+            DateTimeOffset.UtcNow;
+
+        _db.SaveChanges();
+
+        var scopeService = BuildNoteScopeService(
+            user.Id,
+            ScopeType.Facility,
+            RegionA,
+            FacilityA);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => scopeService.ResolveIntakeAsync(
+                user.Id,
+                RegionA,
+                FacilityA));
+    }
+
     [Fact]
     public async Task CreateRule_rejects_invalid_processing_target_shape()
     {
@@ -276,35 +394,79 @@ public sealed class NoteRoutingPr8StructuralFixTests : IDisposable
     public async Task Facility_wide_note_is_not_auto_assigned_to_facility_unit_only_user()
     {
         SeedOrgGraph();
-        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
-        var actor = NoteTestFixtures.AddUser(_db, "actor");
-        var processingRole = new Role { Code = "UNIT-PROC", NameAr = "معالجة وحدة", IsSystem = true };
+
+        var reporter = NoteTestFixtures.AddUser(
+            _db,
+            "reporter");
+
+        var actor = NoteTestFixtures.AddUser(
+            _db,
+            "actor");
+
+        var processingRole = new Role
+        {
+            Code = "UNIT-PROC",
+            NameAr = "معالجة وحدة",
+            IsSystem = true
+        };
+
         _db.Roles.Add(processingRole);
-        AddRoutingWorker("unit-worker", processingRole.Id, ScopeType.FacilityUnit, RegionA, FacilityA, UnitA);
-        var department = SeedDepartment();
+
+        AddRoutingWorker(
+            "unit-worker",
+            processingRole.Id,
+            ScopeType.FacilityUnit,
+            RegionA,
+            FacilityA,
+            UnitA);
+
         _db.NoteRoutingRules.Add(new NoteRoutingRule
         {
             Code = "FAC-WIDE",
             NameAr = "توجيه موقع",
-            NoteTypeId = NoteTestFixtures.DefaultNoteTypeId,
+            NoteTypeId =
+                NoteTestFixtures.DefaultNoteTypeId,
             ScopeType = ScopeType.Facility,
             RegionId = RegionA,
             FacilityId = FacilityA,
             Priority = 1,
-            ProcessingTargetType = NoteRoutingProcessingTargetType.Department,
-            ProcessingDepartmentId = department.Id,
+            ProcessingTargetType =
+                NoteRoutingProcessingTargetType.Role,
+            ProcessingRoleId = processingRole.Id,
             AutoAssignOnSubmit = true,
             IsActive = true
         });
-        var note = NoteTestFixtures.NewNote(ScopeType.Facility, reporter.Id, RegionA, FacilityA, status: NoteStatus.Draft);
+
+        var note = NoteTestFixtures.NewNote(
+            ScopeType.Facility,
+            reporter.Id,
+            RegionA,
+            FacilityA,
+            status: NoteStatus.Draft);
+
         _db.OperationalNotes.Add(note);
         _db.SaveChanges();
 
-        var commands = BuildCommandService(actor.Id, ScopeType.Global);
-        await commands.SubmitAsync(note.Id, new TransitionNoteRequest("إرسال", Convert.ToBase64String(note.RowVersion)));
+        var commands = BuildCommandService(
+            actor.Id,
+            ScopeType.Global);
 
-        var assignment = Assert.Single(_db.NoteAssignments);
-        Assert.Equal(department.Id, assignment.AssignedToDepartmentId);
+        await commands.SubmitAsync(
+            note.Id,
+            new TransitionNoteRequest(
+                "إرسال",
+                Convert.ToBase64String(note.RowVersion)));
+
+        Assert.Empty(_db.NoteAssignments);
+
+        var decision = Assert.Single(
+            _db.NoteRoutingDecisions);
+
+        Assert.Equal(
+            NoteRoutingResultStatus.NoEligibleUser,
+            decision.ResultStatus);
+
+        Assert.Null(decision.ResolvedUserId);
     }
 
     [Fact]
@@ -313,11 +475,27 @@ public sealed class NoteRoutingPr8StructuralFixTests : IDisposable
         SeedOrgGraph();
         var reporter = NoteTestFixtures.AddUser(_db, "reporter");
         var actor = NoteTestFixtures.AddUser(_db, "actor");
-        var processingRole = new Role { Code = "BATCH-PROC", NameAr = "دفعة", IsSystem = true };
+        var processingRole = new Role
+        {
+            Code = "BATCH-PROC",
+            NameAr = "دفعة",
+            IsSystem = true
+        };
+
         _db.Roles.Add(processingRole);
+
+        var eligibleCandidateIds = new HashSet<Guid>();
+
         for (var i = 0; i < 5; i++)
         {
-            AddRoutingWorker($"worker-{i}", processingRole.Id, ScopeType.Facility, RegionA, FacilityA);
+            var candidate = AddRoutingWorker(
+                $"worker-{i}",
+                processingRole.Id,
+                ScopeType.Facility,
+                RegionA,
+                FacilityA);
+
+            eligibleCandidateIds.Add(candidate.Id);
         }
 
         _db.NoteRoutingRules.Add(new NoteRoutingRule
@@ -341,8 +519,15 @@ public sealed class NoteRoutingPr8StructuralFixTests : IDisposable
         var commands = BuildCommandService(actor.Id, ScopeType.Global);
         await commands.SubmitAsync(note.Id, new TransitionNoteRequest("إرسال", Convert.ToBase64String(note.RowVersion)));
 
-        var assignment = Assert.Single(_db.NoteAssignments);
-        Assert.NotNull(assignment.AssignedToUserId);
+        var assignment = Assert.Single(
+            _db.NoteAssignments);
+
+        Assert.True(
+            assignment.AssignedToUserId.HasValue);
+
+        Assert.Contains(
+            assignment.AssignedToUserId.Value,
+            eligibleCandidateIds);
     }
 
     private INoteScopeService BuildNoteScopeService(
@@ -476,8 +661,26 @@ public sealed class NoteRoutingPr8StructuralFixTests : IDisposable
 
     private Department SeedDepartment()
     {
-        var org = SeedOrganization();
-        var department = new Department { OrganizationId = org.Id, Code = "OPS", NameAr = "تشغيل", IsActive = true };
+        var organization = SeedOrganization();
+
+        var existing = _db.Departments.FirstOrDefault(
+            department =>
+                department.OrganizationId == organization.Id &&
+                department.Code == "OPS");
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var department = new Department
+        {
+            OrganizationId = organization.Id,
+            Code = "OPS",
+            NameAr = "تشغيل",
+            IsActive = true
+        };
+
         _db.Departments.Add(department);
         _db.SaveChanges();
         return department;
@@ -485,10 +688,24 @@ public sealed class NoteRoutingPr8StructuralFixTests : IDisposable
 
     private Organization SeedOrganization()
     {
-        var org = new Organization { Code = "HQ", NameAr = "الرئاسة", IsActive = true };
-        _db.Organizations.Add(org);
+        var existing = _db.Organizations.FirstOrDefault(
+            organization => organization.Code == "HQ");
+
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var organization = new Organization
+        {
+            Code = "HQ",
+            NameAr = "الرئاسة",
+            IsActive = true
+        };
+
+        _db.Organizations.Add(organization);
         _db.SaveChanges();
-        return org;
+        return organization;
     }
 
     private void SeedOrgGraph()

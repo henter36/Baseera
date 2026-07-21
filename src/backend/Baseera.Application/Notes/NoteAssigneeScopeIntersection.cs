@@ -157,9 +157,12 @@ public static class NoteAssigneeScopeIntersection
         {
             ScopeType.Global => true,
             ScopeType.Headquarters => note.ScopeType == ScopeType.Headquarters,
-            ScopeType.Region => note.RegionId == scope.RegionId,
-            ScopeType.Facility => note.FacilityId == scope.FacilityId,
-            ScopeType.FacilityUnit => note.FacilityUnitId == scope.FacilityUnitId,
+            ScopeType.Region or ScopeType.MultipleRegions =>
+                note.RegionId == scope.RegionId,
+            ScopeType.Facility or ScopeType.MultipleFacilities =>
+                note.FacilityId == scope.FacilityId,
+            ScopeType.FacilityUnit =>
+                note.FacilityUnitId == scope.FacilityUnitId,
             _ => false
         };
 

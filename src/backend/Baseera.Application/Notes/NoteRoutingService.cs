@@ -326,7 +326,7 @@ public sealed class NoteRoutingService(
 
         return new NoteRoutingPreviewDto(
             resolution.MatchedRule is null ? null : ToRuleDto(resolution.MatchedRule),
-            resolution.Specificity,
+            resolution.SpecificityLabel,
             resolution.Reason,
             resolution.MatchedRule?.ProcessingDepartmentId,
             expectedUser?.UserId,
@@ -1017,7 +1017,7 @@ public sealed class NoteRoutingService(
             decision.FailureCode,
             decision.FailureMessageSafe);
 
-    private sealed record RuleResolution(NoteRoutingRule? MatchedRule, string Specificity, string Reason);
+    private sealed record RuleResolution(NoteRoutingRule? MatchedRule, string SpecificityLabel, string Reason);
     private sealed record SelectedRoutingUser(Guid UserId, string DisplayNameAr, int ActiveAssignmentCount, DateTimeOffset? LastAssignedAtUtc);
     private sealed record RoutingRuleShape(
         Guid NoteTypeId,
