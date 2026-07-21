@@ -103,6 +103,12 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Escalations.Notification> Notifications => Enumerable.Empty<Domain.Escalations.Notification>().AsQueryable();
         public IQueryable<Domain.Escalations.NotificationDeliveryAttempt> NotificationDeliveryAttempts => Enumerable.Empty<Domain.Escalations.NotificationDeliveryAttempt>().AsQueryable();
         public IQueryable<Domain.Escalations.BackgroundJobLease> BackgroundJobLeases => Enumerable.Empty<Domain.Escalations.BackgroundJobLease>().AsQueryable();
+        public IQueryable<Domain.Forms.FormDefinition> FormDefinitions => Enumerable.Empty<Domain.Forms.FormDefinition>().AsQueryable();
+        public IQueryable<Domain.Forms.FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
+        public IQueryable<Domain.Forms.FormReviewDecision> FormReviewDecisions => Enumerable.Empty<Domain.Forms.FormReviewDecision>().AsQueryable();
+        public IQueryable<Domain.Forms.FormGovernancePolicy> FormGovernancePolicies => Enumerable.Empty<Domain.Forms.FormGovernancePolicy>().AsQueryable();
+        public IQueryable<Domain.Forms.FormAccessGrant> FormAccessGrants => Enumerable.Empty<Domain.Forms.FormAccessGrant>().AsQueryable();
+        public IQueryable<Domain.Forms.FormAccessGrant> FormAccessGrantsIncludingDeleted => FormAccessGrants;
         public void Add<TEntity>(TEntity entity) where TEntity : class { }
         public void Update<TEntity>(TEntity entity) where TEntity : class { }
         public void Detach<TEntity>(TEntity entity) where TEntity : class { }

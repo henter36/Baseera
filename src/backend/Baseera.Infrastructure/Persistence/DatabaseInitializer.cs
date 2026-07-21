@@ -1,6 +1,7 @@
 namespace Baseera.Infrastructure.Persistence;
 
 using Baseera.Domain.Common;
+using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
@@ -59,6 +60,7 @@ public static class DatabaseInitializer
 
         await EnsureRolePermissionsAsync(db, cancellationToken);
         await EnsureNoteTypesAndRoleGrantsAsync(db, cancellationToken);
+        await EnsureFormGovernancePolicyAsync(db, cancellationToken);
     }
 
     private static async Task EnsureRolePermissionsAsync(BaseeraDbContext db, CancellationToken cancellationToken)
@@ -309,6 +311,52 @@ public static class DatabaseInitializer
             ownNotifications,
             dashboardScoped);
 
+        string[] formsDesigner =
+        [
+            PermissionCodes.FormsView,
+            PermissionCodes.FormsCreate,
+            PermissionCodes.FormsUpdateDraft,
+            PermissionCodes.FormsSubmitForReview
+        ];
+        string[] formsReviewer =
+        [
+            PermissionCodes.FormsView,
+            PermissionCodes.FormsReview,
+            PermissionCodes.FormsRequestChanges,
+            PermissionCodes.FormsReject
+        ];
+        string[] formsApprover =
+        [
+            PermissionCodes.FormsView,
+            PermissionCodes.FormsApprove,
+            PermissionCodes.FormsReject
+        ];
+        string[] formsPublisher = [PermissionCodes.FormsView, PermissionCodes.FormsPublish];
+        string[] formsRegionalMonitor = [PermissionCodes.FormsView, PermissionCodes.FormsMonitorRegion];
+        string[] formsHqMonitor =
+        [
+            PermissionCodes.FormsView,
+            PermissionCodes.FormsMonitorHeadquarters
+        ];
+        string[] formsAnalyst = [PermissionCodes.FormsView, PermissionCodes.FormsAnalyze];
+        string[] formsAuditorView = [PermissionCodes.FormsView];
+
+        var formDesigner = roles.First(r => r.Code == RoleCodes.FormDesigner);
+        Grant(formDesigner, formsDesigner);
+        var formReviewer = roles.First(r => r.Code == RoleCodes.FormReviewer);
+        Grant(formReviewer, formsReviewer);
+        var formApprover = roles.First(r => r.Code == RoleCodes.FormApprover);
+        Grant(formApprover, formsApprover);
+        var formPublisher = roles.First(r => r.Code == RoleCodes.FormPublisher);
+        Grant(formPublisher, formsPublisher);
+        var formRegionalMonitor = roles.First(r => r.Code == RoleCodes.FormRegionalMonitor);
+        Grant(formRegionalMonitor, formsRegionalMonitor);
+        var formHqMonitor = roles.First(r => r.Code == RoleCodes.FormHeadquartersMonitor);
+        Grant(formHqMonitor, formsHqMonitor);
+        var formAnalyst = roles.First(r => r.Code == RoleCodes.FormAnalyst);
+        Grant(formAnalyst, formsAnalyst);
+        Grant(auditor, formsAuditorView);
+
         var facilityCoordinator = roles.First(r => r.Code == RoleCodes.FacilityCoordinator);
         Grant(facilityCoordinator,
             PermissionCodes.NotesView,
@@ -325,6 +373,32 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsCancel,
             ownNotifications);
 
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task EnsureFormGovernancePolicyAsync(BaseeraDbContext db, CancellationToken cancellationToken)
+    {
+        if (await db.FormGovernancePolicies.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        db.FormGovernancePolicies.Add(new FormGovernancePolicy
+        {
+            Id = SeedIds.FormGovernancePolicy,
+            RequireReviewBeforeApproval = true,
+            RequireSeparationOfDuties = true,
+            AllowDesignerToReviewOwnForm = false,
+            AllowReviewerToApproveOwnReview = false,
+            AllowApproverToPublish = true,
+            DefaultRetentionDays = 365,
+            SensitiveRetentionDays = 730,
+            MinimumRetentionDays = 30,
+            AuditSensitiveViews = true,
+            AuditExports = true,
+            RequireReasonForArchive = true,
+            CreatedBy = "seed"
+        });
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -722,10 +796,27 @@ public static class DatabaseInitializer
             (PermissionCodes.NotificationsMarkRead, "تعليم إشعاراتي كمقروءة", NotificationsModule),
             (PermissionCodes.NotificationsArchiveOwn, "أرشفة إشعاراتي", NotificationsModule),
             (PermissionCodes.IncidentsApprove, "اعتماد واقعة", "Incidents"),
-            (PermissionCodes.FormsDesign, "تصميم نموذج", "Forms"),
-            (PermissionCodes.FormsPublish, "نشر نموذج", "Forms"),
-            (PermissionCodes.FormsSubmit, "إرسال نموذج", "Forms"),
+            (PermissionCodes.FormsView, "عرض النماذج", "Forms"),
+            (PermissionCodes.FormsViewSensitive, "عرض النماذج الحساسة", "Forms"),
+            (PermissionCodes.FormsCreate, "إنشاء نموذج", "Forms"),
+            (PermissionCodes.FormsUpdateDraft, "تحديث مسودة نموذج", "Forms"),
+            (PermissionCodes.FormsSubmitForReview, "إرسال نموذج للمراجعة", "Forms"),
             (PermissionCodes.FormsReview, "مراجعة نموذج", "Forms"),
+            (PermissionCodes.FormsApprove, "اعتماد نموذج", "Forms"),
+            (PermissionCodes.FormsReject, "رفض نموذج", "Forms"),
+            (PermissionCodes.FormsRequestChanges, "طلب تعديلات على نموذج", "Forms"),
+            (PermissionCodes.FormsArchive, "أرشفة نموذج", "Forms"),
+            (PermissionCodes.FormsRestore, "استعادة نموذج", "Forms"),
+            (PermissionCodes.FormsManageAccess, "إدارة وصول النماذج", "Forms"),
+            (PermissionCodes.FormsManageGovernance, "إدارة حوكمة النماذج", "Forms"),
+            (PermissionCodes.FormsManageRetention, "إدارة احتفاظ النماذج", "Forms"),
+            (PermissionCodes.FormsPublish, "نشر نموذج", "Forms"),
+            (PermissionCodes.FormsRespond, "الرد على نموذج", "Forms"),
+            (PermissionCodes.FormsMonitorRegion, "مراقبة نماذج المنطقة", "Forms"),
+            (PermissionCodes.FormsMonitorHeadquarters, "مراقبة نماذج المقر", "Forms"),
+            (PermissionCodes.FormsApproveResponses, "اعتماد ردود النماذج", "Forms"),
+            (PermissionCodes.FormsAnalyze, "تحليل النماذج", "Forms"),
+            (PermissionCodes.FormsExport, "تصدير النماذج", "Forms"),
             (PermissionCodes.ProjectsApprove, "اعتماد مشروع", "Projects"),
             (PermissionCodes.StrategyManage, "إدارة الاستراتيجية", "Strategy"),
             (PermissionCodes.ReportsExportSensitive, "تصدير تقارير حساسة", "Reports"),
@@ -766,6 +857,12 @@ public static class DatabaseInitializer
             (RoleCodes.StrategyOfficer, "ضابط استراتيجية"),
             (RoleCodes.FormDesigner, "مصمم نماذج"),
             (RoleCodes.FormReviewer, "مراجع نماذج"),
+            (RoleCodes.FormPublisher, "ناشر نماذج"),
+            (RoleCodes.FormRespondent, "مستجيب نماذج"),
+            (RoleCodes.FormRegionalMonitor, "مراقب نماذج إقليمي"),
+            (RoleCodes.FormHeadquartersMonitor, "مراقب نماذج المقر"),
+            (RoleCodes.FormApprover, "معتمد نماذج"),
+            (RoleCodes.FormAnalyst, "محلل نماذج"),
             (RoleCodes.Auditor, "مدقق"),
             (RoleCodes.ReadOnlyUser, "مستخدم قراءة فقط")
         ];
@@ -794,4 +891,5 @@ public static class SeedIds
     public static readonly Guid NoteTypeHealthSafety = Guid.Parse("44444444-4444-4444-4444-444444444404");
     public static readonly Guid NoteTypeAdministrative = Guid.Parse("44444444-4444-4444-4444-444444444405");
     public static readonly Guid NoteTypeOther = Guid.Parse("44444444-4444-4444-4444-444444444406");
+    public static readonly Guid FormGovernancePolicy = Guid.Parse("55555555-5555-5555-5555-555555555501");
 }

@@ -24,6 +24,13 @@ import { EscalationOccurrencesPage } from './pages/escalations/EscalationOccurre
 import { EscalationPolicyDetailPage } from './pages/escalations/EscalationPolicyDetailPage'
 import { EscalationPolicyFormPage } from './pages/escalations/EscalationPolicyFormPage'
 import { EscalationsSettingsPage } from './pages/escalations/EscalationsSettingsPage'
+import { FormAccessPage } from './pages/forms/FormAccessPage'
+import { FormCreatePage } from './pages/forms/FormCreatePage'
+import { FormDetailPage } from './pages/forms/FormDetailPage'
+import { FormEditPage } from './pages/forms/FormEditPage'
+import { FormReviewPage } from './pages/forms/FormReviewPage'
+import { FormsGovernanceSettingsPage } from './pages/forms/FormsGovernanceSettingsPage'
+import { FormsListPage } from './pages/forms/FormsListPage'
 import { OperationalDashboardPage } from './pages/dashboard/OperationalDashboardPage'
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -57,6 +64,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Organization.View') && <NavLink to="/regions" className={({ isActive }) => isActive ? 'active' : undefined}>المناطق</NavLink>}
           {hasPermission('Organization.View') && <NavLink to="/facilities" className={({ isActive }) => isActive ? 'active' : undefined}>السجون</NavLink>}
           {hasPermission('Notes.View') && <NavLink to="/notes" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
+          {hasPermission('Forms.View') && <NavLink to="/forms" className={({ isActive }) => isActive ? 'active' : undefined}>النماذج</NavLink>}
           {(hasPermission('Dashboard.ViewOperational') || hasPermission('Dashboard.ViewRisk') || hasPermission('Dashboard.ViewRouting') || hasPermission('Dashboard.ViewCorrectiveActions')) &&
             <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : undefined}>لوحة المتابعة</NavLink>}
           {hasPermission('CorrectiveActions.View') && <NavLink to="/corrective-actions" className={({ isActive }) => isActive ? 'active' : undefined}>الإجراءات التصحيحية</NavLink>}
@@ -65,6 +73,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Escalations.ViewOccurrences') && <NavLink to="/settings/escalations/occurrences" className={({ isActive }) => isActive ? 'active' : undefined}>حوادث التصعيد</NavLink>}
           {hasPermission('Notes.ManageTypes') && <NavLink to="/settings/note-types" className={({ isActive }) => isActive ? 'active' : undefined}>أنواع الملاحظات</NavLink>}
           {hasPermission('Notes.ViewRouting') && <NavLink to="/settings/note-routing" className={({ isActive }) => isActive ? 'active' : undefined}>توجيه الملاحظات</NavLink>}
+          {hasPermission('Forms.ManageGovernance') && <NavLink to="/settings/forms-governance" className={({ isActive }) => isActive ? 'active' : undefined}>حوكمة النماذج</NavLink>}
           {hasPermission('Users.View') && <NavLink to="/users" className={({ isActive }) => isActive ? 'active' : undefined}>المستخدمون</NavLink>}
           {hasPermission('Audit.View') && <NavLink to="/audit" className={({ isActive }) => isActive ? 'active' : undefined}>سجل التدقيق</NavLink>}
           {hasPermission('Attachments.Upload') && <NavLink to="/attachments" className={({ isActive }) => isActive ? 'active' : undefined}>المرفقات</NavLink>}
@@ -100,6 +109,13 @@ export default function App() {
       <Route path="/notes/new" element={<Protected><NoteCreatePage /></Protected>} />
       <Route path="/notes/:id" element={<Protected><NoteDetailPage /></Protected>} />
       <Route path="/notes/:id/edit" element={<Protected><NoteEditPage /></Protected>} />
+      <Route path="/forms" element={<Protected><FormsListPage /></Protected>} />
+      <Route path="/forms/new" element={<Protected><FormCreatePage /></Protected>} />
+      <Route path="/forms/:id" element={<Protected><FormDetailPage /></Protected>} />
+      <Route path="/forms/:id/edit" element={<Protected><FormEditPage /></Protected>} />
+      <Route path="/forms/:id/review" element={<Protected><FormReviewPage /></Protected>} />
+      <Route path="/forms/:id/access" element={<Protected><FormAccessPage /></Protected>} />
+      <Route path="/settings/forms-governance" element={<Protected><FormsGovernanceSettingsPage /></Protected>} />
       <Route path="/notes/:noteId/corrective-actions/new" element={<Protected><CorrectiveActionCreatePage /></Protected>} />
       <Route path="/corrective-actions" element={<Protected><CorrectiveActionsListPage /></Protected>} />
       <Route path="/corrective-actions/:id" element={<Protected><CorrectiveActionDetailPage /></Protected>} />

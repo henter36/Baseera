@@ -31,6 +31,12 @@
 | StrategyOfficer | ضابط استراتيجية |
 | FormDesigner | مصمم نماذج |
 | FormReviewer | مراجع نماذج |
+| FormApprover | معتمد نماذج |
+| FormPublisher | ناشر نماذج (C.2+) |
+| FormRespondent | مستجيب نماذج (C.2+) |
+| FormRegionalMonitor | مراقب نماذج إقليمي |
+| FormHeadquartersMonitor | مراقب نماذج المقر |
+| FormAnalyst | محلل نماذج |
 | Auditor | مدقق |
 | ReadOnlyUser | مستخدم قراءة فقط |
 
@@ -186,9 +192,32 @@ Capabilities النوع:
 أي انتقال خارج هذه القائمة يُرفض بـ 409 Conflict. الأسباب (Reason) مطلوبة إلزاميًا لعمليات:
 cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-closure, reopen.
 
+## صلاحيات النماذج (مفعّلة في C.1)
+
+النطاق والتصنيف يتبعان نفس قواعد الملاحظات: خارج النطاق → `404`؛ داخل النطاق بدون صلاحية → `403`. المنح (Grants) على مستوى النموذج: Deny يلغي Allow.
+
+| الصلاحية | الوصف | SystemAdmin | FormDesigner | FormReviewer | FormApprover | Auditor |
+|----------|-------|:-----------:|:------------:|:------------:|:------------:|:-------:|
+| Forms.View | عرض النماذج ضمن النطاق | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Forms.ViewSensitive | عرض محتوى Confidential/Secret | ✓ | | | | |
+| Forms.Create | إنشاء مسودة | ✓ | ✓ | | | |
+| Forms.UpdateDraft | تحديث مسودة/تعديلات مطلوبة | ✓ | ✓ | | | |
+| Forms.SubmitForReview | إرسال للمراجعة | ✓ | ✓ | | | |
+| Forms.Review | مراجعة | ✓ | | ✓ | | |
+| Forms.RequestChanges | طلب تعديلات | ✓ | | ✓ | | |
+| Forms.Approve | اعتماد | ✓ | | | ✓ | |
+| Forms.Reject | رفض | ✓ | | ✓ | ✓ | |
+| Forms.Archive | أرشفة | ✓ | | | | |
+| Forms.Restore | استعادة | ✓ | | | | |
+| Forms.ManageAccess | إدارة منح الوصول | ✓ | | | | |
+| Forms.ManageGovernance | إدارة سياسة الحوكمة | ✓ | | | | |
+| Forms.ManageRetention | إدارة الاحتفاظ | ✓ | | | | |
+
+صلاحيات C.2+ (Seed فقط): `Forms.Publish`, `Forms.Respond`, `Forms.MonitorRegion`, `Forms.MonitorHeadquarters`, `Forms.ApproveResponses`, `Forms.Analyze`, `Forms.Export`.
+
 ## صلاحيات مسجّلة للوحدات اللاحقة (Seed فقط في A)
 
-`Vehicles.*`, `Armament.*`, `Incidents.*`, `Forms.*`, `Projects.*`, `Strategy.*`, `Reports.ExportSensitive`, `Plans.*`, `Workforce.*`, `Decisions.*`, `PrisonerFollowUp.*`
+`Vehicles.*`, `Armament.*`, `Incidents.*`, `Projects.*`, `Strategy.*`, `Reports.ExportSensitive`, `Plans.*`, `Workforce.*`, `Decisions.*`, `PrisonerFollowUp.*`
 
 ## قواعد فصل الواجبات (SoD)
 

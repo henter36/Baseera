@@ -72,6 +72,17 @@
 
 تصميم، إصدارات، نشر، دورات، تعبئة، مراجعة، متأخرات، إشعارات.
 
+### Phase C.1 — Forms Governance & Security Foundation (Issue #52, Epic #45)
+
+- نموذج `FormDefinition` مع دورة حياة حوكمة (مسودة → مراجعة → اعتماد/رفض → أرشفة/استعادة).
+- `FormReviewDecision` سجل قرارات Append-Only؛ `FormGovernancePolicy` singleton؛ `FormAccessGrant` مع Allow/Deny.
+- صلاحيات C.1 كاملة (`Forms.View` … `Forms.ManageGovernance`) وأدوار متخصصة (FormDesigner, FormReviewer, FormApprover, …).
+- Scope + Classification + Grants + SoD + Audit على الخادم؛ 404 للخارج عن النطاق.
+- API `/api/v1/forms` وواجهة RTL (7 صفحات).
+- لا يشمل مصمم الحقول، النشر، التعبئة، التصدير، أو Issue #46–#51.
+
+**التالي:** Phase C.2 — Form field schema & designer (Issue #46).
+
 ## المرحلة D — الموارد والتشغيل
 
 مركبات، قوى عاملة، خطط، أحداث ووقائع.

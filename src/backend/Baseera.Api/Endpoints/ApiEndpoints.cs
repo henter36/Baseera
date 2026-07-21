@@ -8,6 +8,7 @@ using Baseera.Application.Common;
 using Baseera.Application.CorrectiveActions;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
+using Baseera.Application.Forms;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
@@ -149,8 +150,165 @@ public static class ApiEndpoints
         MapEscalationEndpoints(api);
         MapNotificationEndpoints(api);
         MapOperationalDashboardEndpoints(api);
+        MapFormsEndpoints(api);
 
         return api;
+    }
+
+    private static void MapFormsEndpoints(RouteGroupBuilder api)
+    {
+        var forms = api.MapGroup("/forms");
+
+        forms.MapGet("/governance-policy", async (IFormGovernanceService service, CancellationToken ct) =>
+            Results.Ok(await service.GetPolicyAsync(ct)))
+            .RequireAuthorization(AuthPolicies.FormsManageGovernance);
+
+        forms.MapPut("/governance-policy", async (
+            UpdateFormGovernancePolicyRequest request,
+            IValidator<UpdateFormGovernancePolicyRequest> validator,
+            IFormGovernanceService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.UpdatePolicyAsync(request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsManageGovernance);
+
+        forms.MapGet("/", async ([AsParameters] FormListQueryParams query, IFormQueryService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(query.ToQuery(), ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapGet(EntityIdRoute, async (Guid id, IFormQueryService service, CancellationToken ct) =>
+        {
+            var item = await service.GetDetailAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapPost("/", async (
+            CreateFormRequest request,
+            IValidator<CreateFormRequest> validator,
+            IFormCommandService commands,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await commands.CreateDraftAsync(request, ct);
+            return Results.Created($"/api/v1/forms/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsCreate);
+
+        forms.MapPut(EntityIdRoute, async (
+            Guid id,
+            UpdateFormRequest request,
+            IValidator<UpdateFormRequest> validator,
+            IFormCommandService commands,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await commands.UpdateAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsUpdateDraft);
+
+        forms.MapPost("/{id:guid}/submit-review", async (
+            Guid id,
+            FormTransitionRequest request,
+            IValidator<FormTransitionRequest> validator,
+            IFormWorkflowService workflow,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.SubmitForReviewAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsSubmitForReview);
+
+        forms.MapPost("/{id:guid}/request-changes", async (
+            Guid id,
+            FormTransitionRequest request,
+            IValidator<FormTransitionRequest> validator,
+            IFormWorkflowService workflow,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.RequestChangesAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsRequestChanges);
+
+        forms.MapPost("/{id:guid}/approve", async (
+            Guid id,
+            FormTransitionRequest request,
+            IValidator<FormTransitionRequest> validator,
+            IFormWorkflowService workflow,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.ApproveAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsApprove);
+
+        forms.MapPost("/{id:guid}/reject", async (
+            Guid id,
+            FormTransitionRequest request,
+            IValidator<FormTransitionRequest> validator,
+            IFormWorkflowService workflow,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await workflow.RejectAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsReject);
+
+        forms.MapPost("/{id:guid}/archive", async (
+            Guid id,
+            FormTransitionRequest request,
+            IValidator<FormTransitionRequest> validator,
+            IFormCommandService commands,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await commands.ArchiveAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsArchive);
+
+        forms.MapPost("/{id:guid}/restore", async (
+            Guid id,
+            FormTransitionRequest request,
+            IValidator<FormTransitionRequest> validator,
+            IFormCommandService commands,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await commands.RestoreAsync(id, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsRestore);
+
+        forms.MapGet("/{id:guid}/review-decisions", async (Guid id, IFormQueryService service, CancellationToken ct) =>
+            Results.Ok(await service.GetReviewDecisionsAsync(id, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapGet("/{id:guid}/retention-status", async (Guid id, IFormQueryService service, CancellationToken ct) =>
+            Results.Ok(await service.GetRetentionStatusAsync(id, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapGet("/{id:guid}/access-grants", async (Guid id, IFormAccessGrantService service, CancellationToken ct) =>
+            Results.Ok(await service.ListGrantsAsync(id, ct)))
+            .RequireAuthorization(AuthPolicies.FormsManageAccess);
+
+        forms.MapPost("/{id:guid}/access-grants", async (
+            Guid id,
+            CreateFormAccessGrantRequest request,
+            IValidator<CreateFormAccessGrantRequest> validator,
+            IFormAccessGrantService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateGrantAsync(id, request, ct);
+            return Results.Created($"/api/v1/forms/{id}/access-grants/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsManageAccess);
+
+        forms.MapDelete("/{id:guid}/access-grants/{grantId:guid}", async (
+            Guid id,
+            Guid grantId,
+            FormTransitionRequest request,
+            IValidator<FormTransitionRequest> validator,
+            IFormAccessGrantService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            await service.RevokeGrantAsync(id, grantId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsManageAccess);
     }
 
     private static void MapOperationalDashboardEndpoints(RouteGroupBuilder api)
