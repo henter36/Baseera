@@ -58,6 +58,12 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<FormVersionReviewDecision> FormVersionReviewDecisions => Set<FormVersionReviewDecision>();
     public DbSet<FormTemplate> FormTemplates => Set<FormTemplate>();
     public DbSet<FormDefinitionVersionCounter> FormDefinitionVersionCounters => Set<FormDefinitionVersionCounter>();
+    public DbSet<FormCampaign> FormCampaigns => Set<FormCampaign>();
+    public DbSet<FormTargetRule> FormTargetRules => Set<FormTargetRule>();
+    public DbSet<FormCampaignExclusion> FormCampaignExclusions => Set<FormCampaignExclusion>();
+    public DbSet<FormCycle> FormCycles => Set<FormCycle>();
+    public DbSet<FormFacilityAssignment> FormFacilityAssignments => Set<FormFacilityAssignment>();
+    public DbSet<OrganizationBusinessCalendarDate> OrganizationBusinessCalendarDates => Set<OrganizationBusinessCalendarDate>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -113,6 +119,13 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<FormTemplate> Application.Abstractions.IBaseeraDbContext.FormTemplates => FormTemplates;
     IQueryable<FormTemplate> Application.Abstractions.IBaseeraDbContext.FormTemplatesIncludingDeleted => FormTemplates.IgnoreQueryFilters();
     IQueryable<FormDefinitionVersionCounter> Application.Abstractions.IBaseeraDbContext.FormDefinitionVersionCounters => FormDefinitionVersionCounters;
+    IQueryable<FormCampaign> Application.Abstractions.IBaseeraDbContext.FormCampaigns => FormCampaigns;
+    IQueryable<FormCampaign> Application.Abstractions.IBaseeraDbContext.FormCampaignsIncludingDeleted => FormCampaigns.IgnoreQueryFilters();
+    IQueryable<FormTargetRule> Application.Abstractions.IBaseeraDbContext.FormTargetRules => FormTargetRules;
+    IQueryable<FormCampaignExclusion> Application.Abstractions.IBaseeraDbContext.FormCampaignExclusions => FormCampaignExclusions;
+    IQueryable<FormCycle> Application.Abstractions.IBaseeraDbContext.FormCycles => FormCycles;
+    IQueryable<FormFacilityAssignment> Application.Abstractions.IBaseeraDbContext.FormFacilityAssignments => FormFacilityAssignments;
+    IQueryable<OrganizationBusinessCalendarDate> Application.Abstractions.IBaseeraDbContext.OrganizationBusinessCalendarDates => OrganizationBusinessCalendarDates;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -138,6 +151,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
 
     public new void Add<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Add(entity);
     public new void Update<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Update(entity);
+    public new void Remove<TEntity>(TEntity entity) where TEntity : class => Set<TEntity>().Remove(entity);
 
     public async Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default)
     {
@@ -228,6 +242,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<FormDefinition>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<FormAccessGrant>().HasQueryFilter(g => !g.IsDeleted);
         modelBuilder.Entity<FormTemplate>().HasQueryFilter(t => !t.IsDeleted);
+        modelBuilder.Entity<FormCampaign>().HasQueryFilter(c => !c.IsDeleted);
         modelBuilder.Entity<FormVersionReviewDecision>().HasQueryFilter(d => !d.FormVersion.FormDefinition.IsDeleted);
         modelBuilder.Entity<FormReviewDecision>().HasQueryFilter(d => !d.FormDefinition.IsDeleted);
         modelBuilder.Entity<Notification>().HasQueryFilter(n => !n.RecipientUser.IsDeleted);

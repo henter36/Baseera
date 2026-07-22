@@ -164,6 +164,11 @@ public static class PermissionCodes
     public const string FormsCloneVersion = "Forms.CloneVersion";
     public const string FormsViewVersionHistory = "Forms.ViewVersionHistory";
     public const string FormsManageTemplates = "Forms.ManageTemplates";
+    public const string FormsManageCampaigns = "Forms.ManageCampaigns";
+    public const string FormsPreviewTargets = "Forms.PreviewTargets";
+    public const string FormsPauseCampaign = "Forms.PauseCampaign";
+    public const string FormsCancelCampaign = "Forms.CancelCampaign";
+    public const string FormsViewCampaignAssignments = "Forms.ViewCampaignAssignments";
     public const string ProjectsApprove = "Projects.Approve";
     public const string StrategyManage = "Strategy.Manage";
     public const string ReportsExportSensitive = "Reports.ExportSensitive";

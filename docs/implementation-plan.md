@@ -90,7 +90,13 @@
 - Version history gated by `Forms.ViewVersionHistory` (+ View Deny → 404).
 - Does **not** include publish/responses (Issue #47 not started).
 
-**التالي:** Phase C.3 / Issue #47 — publish, targeting, responses.
+### Phase C.3 — Form Publishing, Targeting & Recurrence Scheduler (Issue #47, Epic #45)
+
+- FormCampaign + cycles + frozen FacilityAssignments; locked version + snapshot pinned.
+- Targeting/exclusions/preview via shared resolver; idempotent multi-instance scheduler.
+- Does **not** include FormResponse (#48) or reminders/notifications (#50).
+
+**التالي:** Phase C.4 / Issue #48 — form responses & fill workspace.
 
 ## المرحلة D — الموارد والتشغيل
 

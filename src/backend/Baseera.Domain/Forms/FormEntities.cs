@@ -35,7 +35,8 @@ public enum FormAccessCapability
     Restore = 5,
     ViewSensitive = 6,
     ManageAccess = 7,
-    ManageRetention = 8
+    ManageRetention = 8,
+    Publish = 9
 }
 
 public enum FormAccessGrantEffect
