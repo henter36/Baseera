@@ -191,33 +191,64 @@ export function createEmptySchema(): FormSchemaDocument {
   }
 }
 
+export const MAX_FIELD_KEY_LENGTH = 80
+
+const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/
+
+export function isValidFieldKey(key: string): boolean {
+  const trimmed = key.trim()
+  if (!trimmed || trimmed.length > MAX_FIELD_KEY_LENGTH) {
+    return false
+  }
+
+  return FIELD_KEY_PATTERN.test(trimmed)
+}
+
+export function reindexChoice(choice: NonNullable<FormFieldSchema['choice']>): NonNullable<FormFieldSchema['choice']> {
+  return {
+    ...choice,
+    options: choice.options.map((option, order) => ({ ...option, order })),
+  }
+}
+
+export function reindexRepeatingTable(
+  repeatingTable: NonNullable<FormFieldSchema['repeatingTable']>,
+): NonNullable<FormFieldSchema['repeatingTable']> {
+  return {
+    ...repeatingTable,
+    columns: repeatingTable.columns.map((column, order) => reindexField(column, order)),
+  }
+}
+
+export function reindexField(field: FormFieldSchema, order: number): FormFieldSchema {
+  return {
+    ...field,
+    order,
+    choice: field.choice ? reindexChoice(field.choice) : field.choice,
+    repeatingTable: field.repeatingTable ? reindexRepeatingTable(field.repeatingTable) : field.repeatingTable,
+  }
+}
+
+export function reindexSection(section: FormSectionSchema, order: number): FormSectionSchema {
+  return {
+    ...section,
+    order,
+    fields: section.fields.map((field, fieldOrder) => reindexField(field, fieldOrder)),
+  }
+}
+
+export function reindexPage(page: FormPageSchema, order: number): FormPageSchema {
+  return {
+    ...page,
+    order,
+    sections: page.sections.map((section, sectionOrder) => reindexSection(section, sectionOrder)),
+  }
+}
+
 export function reindexOrders(schema: FormSchemaDocument): FormSchemaDocument {
   return {
     ...schema,
-    pages: schema.pages.map((page, pi) => ({
-      ...page,
-      order: pi,
-      sections: page.sections.map((section, si) => ({
-        ...section,
-        order: si,
-        fields: section.fields.map((field, fi) => ({
-          ...field,
-          order: fi,
-          choice: field.choice
-            ? {
-                ...field.choice,
-                options: field.choice.options.map((option, oi) => ({ ...option, order: oi })),
-              }
-            : field.choice,
-          repeatingTable: field.repeatingTable
-            ? {
-                ...field.repeatingTable,
-                columns: field.repeatingTable.columns.map((column, ci) => ({ ...column, order: ci })),
-              }
-            : field.repeatingTable,
-        })),
-      })),
-    })),
+    pages: schema.pages.map((page, pageOrder) => reindexPage(page, pageOrder)),
   }
 }
 

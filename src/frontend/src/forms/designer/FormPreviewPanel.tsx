@@ -1,6 +1,107 @@
 import { useMemo, useState } from 'react'
-import { collectVisibleFields, evaluateCondition, evaluateFormula } from './previewLogic'
-import { FormFieldTypeLabelsAr, type FormSchemaDocument } from './schemaTypes'
+import { collectVisibleFields, evaluateCondition, evaluateFormula, toDisplayString } from './previewLogic'
+import { FormFieldTypes, FormFieldTypeLabelsAr, type FormFieldSchema, type FormPageSchema, type FormSchemaDocument, type FormSectionSchema } from './schemaTypes'
+
+function resolvePreviewInputType(fieldType: number): string {
+  switch (fieldType) {
+    case FormFieldTypes.Number:
+    case FormFieldTypes.Percentage:
+    case FormFieldTypes.CalculatedNumber:
+      return 'number'
+    case FormFieldTypes.Date:
+      return 'date'
+    case FormFieldTypes.Time:
+      return 'time'
+    case FormFieldTypes.DateTime:
+      return 'datetime-local'
+    default:
+      return 'text'
+  }
+}
+
+function PreviewField({
+  field,
+  values,
+  onValueChange,
+}: Readonly<{
+  field: FormFieldSchema
+  values: Record<string, unknown>
+  onValueChange: (key: string, value: string) => void
+}>) {
+  const required =
+    field.isRequired ||
+    (field.requiredCondition ? evaluateCondition(field.requiredCondition, values) : false)
+  const calculatedValue = field.isCalculated ? evaluateFormula(field.formula, values) : null
+  const inputType = resolvePreviewInputType(field.type)
+
+  return (
+    <label className="field">
+      {field.labelAr}
+      {required ? ' *' : ''}
+      <span className="muted"> — {FormFieldTypeLabelsAr[field.type]}</span>
+      {field.isCalculated ? (
+        <input readOnly value={toDisplayString(calculatedValue)} />
+      ) : (
+        <input
+          type={inputType}
+          value={toDisplayString(values[field.key] ?? field.defaultValue ?? '')}
+          onChange={(event) => onValueChange(field.key, event.target.value)}
+          placeholder={field.placeholder ?? undefined}
+        />
+      )}
+    </label>
+  )
+}
+
+function PreviewSection({
+  section,
+  values,
+  onValueChange,
+}: Readonly<{
+  section: FormSectionSchema
+  values: Record<string, unknown>
+  onValueChange: (key: string, value: string) => void
+}>) {
+  if (!evaluateCondition(section.visibilityCondition, values)) {
+    return null
+  }
+
+  const visibleFields = section.fields.filter((field) => evaluateCondition(field.visibilityCondition, values))
+  if (visibleFields.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="panel-section">
+      <h3 className="section-title">{section.titleAr}</h3>
+      {visibleFields.map((field) => (
+        <PreviewField key={field.id} field={field} values={values} onValueChange={onValueChange} />
+      ))}
+    </section>
+  )
+}
+
+function PreviewPage({
+  page,
+  values,
+  onValueChange,
+}: Readonly<{
+  page: FormPageSchema
+  values: Record<string, unknown>
+  onValueChange: (key: string, value: string) => void
+}>) {
+  if (!evaluateCondition(page.visibilityCondition, values)) {
+    return <div className="empty">الصفحة غير ظاهرة وفق الشروط.</div>
+  }
+
+  return (
+    <>
+      {page.sections.map((section) => (
+        <PreviewSection key={section.id} section={section} values={values} onValueChange={onValueChange} />
+      ))}
+    </>
+  )
+}
 
 export function FormPreviewPanel({
   schema,
@@ -20,6 +121,10 @@ export function FormPreviewPanel({
 
   const visibleFields = useMemo(() => collectVisibleFields(schema, values), [schema, values])
 
+  const handleValueChange = (key: string, value: string) => {
+    setValues((current) => ({ ...current, [key]: value }))
+  }
+
   return (
     <div className="preview-shell" dir="rtl">
       <div className="toolbar">
@@ -31,49 +136,13 @@ export function FormPreviewPanel({
       <p className="muted">المعاينة لا تحفظ ردودًا تشغيلية ولا ترسل بيانات.</p>
       <div className="preview-frame" style={{ maxWidth: width, marginInline: 'auto' }}>
         <div className="toolbar">
-          {schema.pages.map((p, i) => (
-            <button key={p.id} type="button" className={i === pageIndex ? undefined : 'secondary'} onClick={() => setPageIndex(i)}>
-              {p.titleAr}
+          {schema.pages.map((schemaPage, index) => (
+            <button key={schemaPage.id} type="button" className={index === pageIndex ? undefined : 'secondary'} onClick={() => setPageIndex(index)}>
+              {schemaPage.titleAr}
             </button>
           ))}
         </div>
-        {page && evaluateCondition(page.visibilityCondition, values) ? (
-          page.sections
-            .filter((s) => evaluateCondition(s.visibilityCondition, values))
-            .map((section) => (
-              <section key={section.id} className="panel-section">
-                <h3 className="section-title">{section.titleAr}</h3>
-                {section.fields
-                  .filter((f) => evaluateCondition(f.visibilityCondition, values))
-                  .map((field) => {
-                    const required =
-                      field.isRequired ||
-                      (field.requiredCondition ? evaluateCondition(field.requiredCondition, values) : false)
-                    const calculated = field.isCalculated
-                      ? evaluateFormula(field.formula, values)
-                      : null
-                    return (
-                      <label key={field.id} className="field">
-                        {field.labelAr}
-                        {required ? ' *' : ''}
-                        <span className="muted"> — {FormFieldTypeLabelsAr[field.type]}</span>
-                        {field.isCalculated ? (
-                          <input readOnly value={calculated == null ? '' : String(calculated)} />
-                        ) : (
-                          <input
-                            value={String(values[field.key] ?? field.defaultValue ?? '')}
-                            onChange={(e) => setValues((v) => ({ ...v, [field.key]: e.target.value }))}
-                            placeholder={field.placeholder ?? undefined}
-                          />
-                        )}
-                      </label>
-                    )
-                  })}
-              </section>
-            ))
-        ) : (
-          <div className="empty">الصفحة غير ظاهرة وفق الشروط.</div>
-        )}
+        {page ? <PreviewPage page={page} values={values} onValueChange={handleValueChange} /> : null}
         <div className="muted">الحقول الظاهرة: {visibleFields.length}</div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
@@ -62,6 +62,8 @@ export function FormDesignerPage() {
   const [issues, setIssues] = useState<Array<{ code: string; path: string; messageAr: string; severity: number }>>([])
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile' | null>(null)
   const [rowVersion, setRowVersion] = useState('')
+  const initializedVersionIdRef = useRef<string | null>(null)
+  const forceReseedRef = useRef(false)
 
   const versionQuery = useQuery({
     queryKey: ['form-version', formId, versionId],
@@ -88,16 +90,32 @@ export function FormDesignerPage() {
   const { applySchema, onDragEnd, moveFieldKeyboard, addField } = useDesignerSchema(history, setHistory, () => undefined)
 
   useEffect(() => {
-    if (!versionQuery.data) {
+    if (!versionQuery.data || !versionId) {
+      return
+    }
+
+    const isNewVersion = initializedVersionIdRef.current !== versionId
+    const shouldReseed = isNewVersion || forceReseedRef.current
+
+    if (!shouldReseed) {
+      setRowVersion(versionQuery.data.rowVersion)
       return
     }
 
     const nextSchema = parseSchema(versionQuery.data.draftSchemaJson)
     setHistory(createHistory(nextSchema))
     setSelectedPageId(nextSchema.pages[0]?.id ?? null)
+    setSelectedFieldId(null)
     setRowVersion(versionQuery.data.rowVersion)
     markSavedBaseline(JSON.stringify(nextSchema))
-  }, [versionQuery.data, markSavedBaseline])
+    initializedVersionIdRef.current = versionId
+    forceReseedRef.current = false
+  }, [versionQuery.data, versionId, markSavedBaseline])
+
+  const handleReload = () => {
+    forceReseedRef.current = true
+    void versionQuery.refetch()
+  }
 
   const validateMutation = useMutation({
     mutationFn: () =>
@@ -195,7 +213,7 @@ export function FormDesignerPage() {
         onValidate={() => validateMutation.mutate()}
         onTogglePreview={() => setPreviewMode(previewMode ? null : 'desktop')}
         onSubmit={() => submitMutation.mutate()}
-        onReload={() => void versionQuery.refetch()}
+        onReload={handleReload}
       />
 
       {previewMode ? (

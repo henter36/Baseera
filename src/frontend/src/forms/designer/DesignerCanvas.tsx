@@ -20,14 +20,21 @@ function SortableRow({
   id,
   children,
 }: Readonly<{ id: string; children: React.ReactNode }>) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition } = useSortable({ id })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
   }
   return (
-    <div ref={setNodeRef} style={style} className="designer-row" {...attributes}>
-      <button type="button" className="designer-handle" aria-label="سحب لإعادة الترتيب" {...listeners}>
+    <div ref={setNodeRef} style={style} className="designer-row">
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className="designer-handle"
+        aria-label="سحب لإعادة الترتيب"
+        {...attributes}
+        {...listeners}
+      >
         ⋮⋮
       </button>
       <div className="designer-row-body">{children}</div>

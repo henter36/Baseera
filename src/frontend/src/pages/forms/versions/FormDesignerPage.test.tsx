@@ -60,7 +60,7 @@ const baseVersion = {
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/forms/f1/versions/v1/edit']}>
         <Routes>
@@ -69,6 +69,7 @@ function renderPage() {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  return { client, ...view }
 }
 
 describe('FormDesignerPage', () => {
@@ -101,9 +102,10 @@ describe('FormDesignerPage', () => {
     await screen.findByText('مصمم النموذج — v1')
 
     await userEvent.click(screen.getByRole('button', { name: 'حقل نصي (نص قصير)' }))
-    const input = await screen.findByDisplayValue('حقل نصي')
+    const input = await screen.findByLabelText('التسمية العربية')
     await userEvent.clear(input)
     await userEvent.type(input, 'حقل معدّل')
+    fireEvent.blur(input)
 
     fireEvent.click(screen.getByRole('button', { name: 'إرسال للمراجعة' }))
 
@@ -114,5 +116,28 @@ describe('FormDesignerPage', () => {
       expect(submitVersionReview).toHaveBeenCalledWith('f1', 'v1', expect.objectContaining({ rowVersion: 'BBBB' }))
     })
     expect(autosaveSchema.mock.invocationCallOrder[0]).toBeLessThan(submitVersionReview.mock.invocationCallOrder[0])
+  })
+
+  it('preserves undo history when autosave refetches the same version', async () => {
+    getVersion.mockResolvedValue(baseVersion)
+    const { client } = renderPage()
+    await screen.findByText('مصمم النموذج — v1')
+
+    await userEvent.click(screen.getByRole('button', { name: 'حقل نصي (نص قصير)' }))
+    const input = await screen.findByLabelText('التسمية العربية')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'حقل معدّل')
+    fireEvent.blur(input)
+
+    expect(screen.getByDisplayValue('حقل معدّل')).toBeInTheDocument()
+
+    getVersion.mockResolvedValue({ ...baseVersion, rowVersion: 'CCCC' })
+    await client.invalidateQueries({ queryKey: ['form-version', 'f1', 'v1'] })
+    await waitFor(() => expect(getVersion).toHaveBeenCalledTimes(2))
+
+    expect(screen.getByDisplayValue('حقل معدّل')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'تراجع' }))
+    expect(screen.getByDisplayValue('حقل نصي')).toBeInTheDocument()
   })
 })

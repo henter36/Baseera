@@ -3,7 +3,20 @@ import { arrayMove } from '@dnd-kit/sortable'
 import type { DragEndEvent } from '@dnd-kit/core'
 import type { ApiError } from '../../api/client'
 import { pushHistory, type HistoryState } from './historyStore'
-import { reindexOrders, type FormFieldSchema, type FormPageSchema, type FormSchemaDocument, type FormSectionSchema } from './schemaTypes'
+import {
+  isValidFieldKey,
+  reindexOrders,
+  type FormConditionGroup,
+  type FormFieldSchema,
+  type FormFormulaNode,
+  type FormPageSchema,
+  type FormSchemaDocument,
+  type FormSectionSchema,
+} from './schemaTypes'
+
+export type RenameFieldKeyResult =
+  | { ok: true; schema: FormSchemaDocument }
+  | { ok: false; error: string }
 
 export function mapFieldInPage(
   schema: FormSchemaDocument,
@@ -35,6 +48,170 @@ export function updateFieldInSchema(
   return mapFieldInPage(schema, pageId, (fields) =>
     fields.map((field) => (field.id === fieldId ? { ...field, ...patch } : field)),
   )
+}
+
+function collectFieldKeys(schema: FormSchemaDocument, excludeFieldId: string): Set<string> {
+  const keys = new Set<string>()
+
+  const trackField = (field: FormFieldSchema) => {
+    if (field.id !== excludeFieldId) {
+      keys.add(field.key.toLowerCase())
+    }
+
+    if (field.repeatingTable) {
+      for (const column of field.repeatingTable.columns) {
+        trackField(column)
+      }
+    }
+  }
+
+  for (const page of schema.pages) {
+    for (const section of page.sections) {
+      for (const field of section.fields) {
+        trackField(field)
+      }
+    }
+  }
+
+  return keys
+}
+
+function findFieldKey(schema: FormSchemaDocument, fieldId: string): string | null {
+  for (const page of schema.pages) {
+    for (const section of page.sections) {
+      for (const field of section.fields) {
+        if (field.id === fieldId) {
+          return field.key
+        }
+
+        if (field.repeatingTable) {
+          for (const column of field.repeatingTable.columns) {
+            if (column.id === fieldId) {
+              return column.key
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function mapConditionGroup(
+  group: FormConditionGroup | null | undefined,
+  oldKey: string,
+  newKey: string,
+): FormConditionGroup | null | undefined {
+  if (!group) {
+    return group
+  }
+
+  const oldLower = oldKey.toLowerCase()
+  return {
+    ...group,
+    predicates: group.predicates.map((predicate) => ({
+      ...predicate,
+      fieldKey: predicate.fieldKey.toLowerCase() === oldLower ? newKey : predicate.fieldKey,
+    })),
+    groups: group.groups.map((nested) => mapConditionGroup(nested, oldKey, newKey)!),
+  }
+}
+
+function mapFormulaNode(
+  node: FormFormulaNode | null | undefined,
+  oldKey: string,
+  newKey: string,
+): FormFormulaNode | null | undefined {
+  if (!node) {
+    return node
+  }
+
+  const oldLower = oldKey.toLowerCase()
+  switch (node.kind) {
+    case 'fieldReference':
+      return {
+        ...node,
+        fieldKey: node.fieldKey.toLowerCase() === oldLower ? newKey : node.fieldKey,
+      }
+    case 'binary':
+      return {
+        ...node,
+        left: mapFormulaNode(node.left, oldKey, newKey)!,
+        right: mapFormulaNode(node.right, oldKey, newKey)!,
+      }
+    case 'function':
+      return {
+        ...node,
+        arguments: node.arguments.map((argument) => mapFormulaNode(argument, oldKey, newKey)!),
+      }
+    default:
+      return node
+  }
+}
+
+function mapFieldReferences(field: FormFieldSchema, fieldId: string, oldKey: string, newKey: string): FormFieldSchema {
+  const nextField: FormFieldSchema = {
+    ...field,
+    key: field.id === fieldId ? newKey : field.key,
+    visibilityCondition: mapConditionGroup(field.visibilityCondition, oldKey, newKey) ?? field.visibilityCondition,
+    requiredCondition: mapConditionGroup(field.requiredCondition, oldKey, newKey) ?? field.requiredCondition,
+    formula: mapFormulaNode(field.formula, oldKey, newKey) ?? field.formula,
+  }
+
+  if (field.repeatingTable) {
+    nextField.repeatingTable = {
+      ...field.repeatingTable,
+      columns: field.repeatingTable.columns.map((column) => mapFieldReferences(column, fieldId, oldKey, newKey)),
+    }
+  }
+
+  return nextField
+}
+
+export function renameFieldKeyInSchema(
+  schema: FormSchemaDocument,
+  fieldId: string,
+  newKey: string,
+): RenameFieldKeyResult {
+  const trimmed = newKey.trim()
+  if (!trimmed) {
+    return { ok: false, error: 'المفتاح مطلوب.' }
+  }
+
+  if (!isValidFieldKey(trimmed)) {
+    return { ok: false, error: 'صيغة المفتاح غير صالحة.' }
+  }
+
+  const oldKey = findFieldKey(schema, fieldId)
+  if (!oldKey) {
+    return { ok: false, error: 'الحقل غير موجود.' }
+  }
+
+  if (oldKey.toLowerCase() === trimmed.toLowerCase()) {
+    return { ok: true, schema }
+  }
+
+  const existingKeys = collectFieldKeys(schema, fieldId)
+  if (existingKeys.has(trimmed.toLowerCase())) {
+    return { ok: false, error: 'المفتاح مكرر.' }
+  }
+
+  return {
+    ok: true,
+    schema: {
+      ...schema,
+      pages: schema.pages.map((page) => ({
+        ...page,
+        visibilityCondition: mapConditionGroup(page.visibilityCondition, oldKey, trimmed) ?? page.visibilityCondition,
+        sections: page.sections.map((section) => ({
+          ...section,
+          visibilityCondition: mapConditionGroup(section.visibilityCondition, oldKey, trimmed) ?? section.visibilityCondition,
+          fields: section.fields.map((field) => mapFieldReferences(field, fieldId, oldKey, trimmed)),
+        })),
+      })),
+    },
+  }
 }
 
 export function useDesignerSchema(
