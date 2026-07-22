@@ -80,8 +80,11 @@ public class FormDefinition : SoftDeletableEntity, IScopedEntity
     public User? DeletedByUser { get; set; }
     public Guid? LastModifiedByUserId { get; set; }
     public User? LastModifiedByUser { get; set; }
+    public Guid? CurrentLockedVersionId { get; set; }
+    public FormVersion? CurrentLockedVersion { get; set; }
     public ICollection<FormReviewDecision> ReviewDecisions { get; set; } = new List<FormReviewDecision>();
     public ICollection<FormAccessGrant> AccessGrants { get; set; } = new List<FormAccessGrant>();
+    public ICollection<FormVersion> Versions { get; set; } = new List<FormVersion>();
 }
 
 public class FormReviewDecision

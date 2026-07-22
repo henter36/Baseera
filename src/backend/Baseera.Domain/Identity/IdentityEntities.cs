@@ -161,6 +161,9 @@ public static class PermissionCodes
     public const string FormsApproveResponses = "Forms.ApproveResponses";
     public const string FormsAnalyze = "Forms.Analyze";
     public const string FormsExport = "Forms.Export";
+    public const string FormsCloneVersion = "Forms.CloneVersion";
+    public const string FormsViewVersionHistory = "Forms.ViewVersionHistory";
+    public const string FormsManageTemplates = "Forms.ManageTemplates";
     public const string ProjectsApprove = "Projects.Approve";
     public const string StrategyManage = "Strategy.Manage";
     public const string ReportsExportSensitive = "Reports.ExportSensitive";

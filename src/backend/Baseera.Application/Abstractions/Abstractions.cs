@@ -63,6 +63,11 @@ public interface IBaseeraDbContext
     IQueryable<FormGovernancePolicy> FormGovernancePolicies { get; }
     IQueryable<FormAccessGrant> FormAccessGrants { get; }
     IQueryable<FormAccessGrant> FormAccessGrantsIncludingDeleted { get; }
+    IQueryable<FormVersion> FormVersions { get; }
+    IQueryable<FormSchemaSnapshot> FormSchemaSnapshots { get; }
+    IQueryable<FormVersionReviewDecision> FormVersionReviewDecisions { get; }
+    IQueryable<FormTemplate> FormTemplates { get; }
+    IQueryable<FormTemplate> FormTemplatesIncludingDeleted { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;

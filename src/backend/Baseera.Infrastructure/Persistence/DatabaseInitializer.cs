@@ -316,7 +316,10 @@ public static class DatabaseInitializer
             PermissionCodes.FormsView,
             PermissionCodes.FormsCreate,
             PermissionCodes.FormsUpdateDraft,
-            PermissionCodes.FormsSubmitForReview
+            PermissionCodes.FormsSubmitForReview,
+            PermissionCodes.FormsCloneVersion,
+            PermissionCodes.FormsViewVersionHistory,
+            PermissionCodes.FormsManageTemplates
         ];
         string[] formsReviewer =
         [
@@ -818,6 +821,9 @@ public static class DatabaseInitializer
             (PermissionCodes.FormsApproveResponses, "اعتماد ردود النماذج", FormsModule),
             (PermissionCodes.FormsAnalyze, "تحليل النماذج", FormsModule),
             (PermissionCodes.FormsExport, "تصدير النماذج", FormsModule),
+            (PermissionCodes.FormsCloneVersion, "استنساخ إصدار نموذج", FormsModule),
+            (PermissionCodes.FormsViewVersionHistory, "عرض سجل إصدارات النموذج", FormsModule),
+            (PermissionCodes.FormsManageTemplates, "إدارة قوالب النماذج", FormsModule),
             (PermissionCodes.ProjectsApprove, "اعتماد مشروع", "Projects"),
             (PermissionCodes.StrategyManage, "إدارة الاستراتيجية", "Strategy"),
             (PermissionCodes.ReportsExportSensitive, "تصدير تقارير حساسة", "Reports"),
