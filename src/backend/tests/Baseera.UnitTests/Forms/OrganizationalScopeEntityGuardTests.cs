@@ -15,11 +15,14 @@ public sealed class OrganizationalScopeEntityGuardTests : IDisposable
     [Fact]
     public async Task Region_with_active_region_succeeds()
     {
-        await OrganizationalScopeEntityGuard.EnsureActiveAsync(
-            _db,
-            SeedIds.RegionA,
-            null,
-            null);
+        var exception = await Record.ExceptionAsync(() =>
+            OrganizationalScopeEntityGuard.EnsureActiveAsync(
+                _db,
+                SeedIds.RegionA,
+                null,
+                null));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -78,11 +81,14 @@ public sealed class OrganizationalScopeEntityGuardTests : IDisposable
     [Fact]
     public async Task Facility_with_active_region_and_matching_facility_succeeds()
     {
-        await OrganizationalScopeEntityGuard.EnsureActiveAsync(
-            _db,
-            SeedIds.RegionA,
-            SeedIds.FacilityA1,
-            null);
+        var exception = await Record.ExceptionAsync(() =>
+            OrganizationalScopeEntityGuard.EnsureActiveAsync(
+                _db,
+                SeedIds.RegionA,
+                SeedIds.FacilityA1,
+                null));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -172,11 +178,14 @@ public sealed class OrganizationalScopeEntityGuardTests : IDisposable
     {
         var unitId = await SeedUnitAsync();
 
-        await OrganizationalScopeEntityGuard.EnsureActiveAsync(
-            _db,
-            SeedIds.RegionA,
-            SeedIds.FacilityA1,
-            unitId);
+        var exception = await Record.ExceptionAsync(() =>
+            OrganizationalScopeEntityGuard.EnsureActiveAsync(
+                _db,
+                SeedIds.RegionA,
+                SeedIds.FacilityA1,
+                unitId));
+
+        Assert.Null(exception);
     }
 
     private async Task<Guid> SeedUnitAsync()
