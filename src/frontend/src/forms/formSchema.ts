@@ -131,6 +131,21 @@ export const updateFormGovernancePolicySchema = z.object({
   auditSensitiveViews: z.boolean(),
   auditExports: z.boolean(),
   requireReasonForArchive: z.boolean(),
+}).superRefine((data, ctx) => {
+  if (data.minimumRetentionDays > data.defaultRetentionDays) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['minimumRetentionDays'],
+      message: 'الحد الأدنى لمدة الاحتفاظ يجب ألا يتجاوز مدة الاحتفاظ الافتراضية.',
+    })
+  }
+  if (data.minimumRetentionDays > data.sensitiveRetentionDays) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['minimumRetentionDays'],
+      message: 'الحد الأدنى لمدة الاحتفاظ يجب ألا يتجاوز مدة الاحتفاظ للمحتوى الحساس.',
+    })
+  }
 })
 
 export type UpdateFormGovernancePolicyFormValues = z.infer<typeof updateFormGovernancePolicySchema>

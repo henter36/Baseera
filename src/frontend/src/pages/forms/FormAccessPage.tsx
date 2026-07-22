@@ -38,8 +38,15 @@ export function FormAccessPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [revokeDialog, setRevokeDialog] = useState<{
+    grantId: string
+    rowVersion: string
+    principal: string
+    capability: string
+  } | null>(null)
   const [revokeReason, setRevokeReason] = useState('')
   const [revokeGrantId, setRevokeGrantId] = useState<string | null>(null)
+  const [revokeConflict, setRevokeConflict] = useState(false)
 
   const formQuery = useQuery({
     queryKey: ['form', id],
@@ -115,19 +122,42 @@ export function FormAccessPage() {
     },
   })
 
-  const revokeGrant = async (grantId: string, rowVersion: string) => {
+  const openRevokeDialog = (grant: { id: string; rowVersion: string; principalDisplayName?: string | null; principalId: string; capabilityAr: string }) => {
+    setServerError(null)
+    setRevokeConflict(false)
+    setRevokeReason('')
+    setRevokeDialog({
+      grantId: grant.id,
+      rowVersion: grant.rowVersion,
+      principal: grant.principalDisplayName || grant.principalId,
+      capability: grant.capabilityAr,
+    })
+  }
+
+  const confirmRevoke = async () => {
+    if (!revokeDialog) return
     if (!revokeReason.trim()) {
       setServerError('سبب الإلغاء مطلوب.')
       return
     }
-    setRevokeGrantId(grantId)
+    setRevokeGrantId(revokeDialog.grantId)
     setServerError(null)
+    setRevokeConflict(false)
     try {
-      await api.forms.revokeAccessGrant(id!, grantId, { reason: revokeReason, rowVersion })
+      await api.forms.revokeAccessGrant(id!, revokeDialog.grantId, {
+        reason: revokeReason,
+        rowVersion: revokeDialog.rowVersion,
+      })
+      setRevokeDialog(null)
       setRevokeReason('')
       await queryClient.invalidateQueries({ queryKey: ['form-access-grants', id] })
     } catch (err) {
-      setServerError(err instanceof ApiError ? err.message : 'تعذر إلغاء المنح.')
+      if (err instanceof ApiError && err.status === 409) {
+        setRevokeConflict(true)
+        setServerError(err.message || 'تعارض: المنح ملغى مسبقًا أو تغيّر إصدار السجل.')
+      } else {
+        setServerError(err instanceof ApiError ? err.message : 'تعذر إلغاء المنح.')
+      }
     } finally {
       setRevokeGrantId(null)
     }
@@ -294,9 +324,9 @@ export function FormAccessPage() {
                       type="button"
                       className="secondary"
                       disabled={revokeGrantId === grant.id}
-                      onClick={() => void revokeGrant(grant.id, grant.rowVersion)}
+                      onClick={() => openRevokeDialog(grant)}
                     >
-                      {revokeGrantId === grant.id ? 'جارٍ الإلغاء…' : 'إلغاء'}
+                      إلغاء
                     </button>
                   </td>
                 </tr>
@@ -304,11 +334,49 @@ export function FormAccessPage() {
             </tbody>
           </table>
         )}
-        <label className="field field-wide" style={{ marginTop: '1rem' }}>
-          <span>سبب إلغاء المنح</span>
-          <input aria-label="سبب إلغاء المنح" value={revokeReason} onChange={(e) => setRevokeReason(e.target.value)} />
-        </label>
       </div>
+
+      {revokeDialog && (
+        <div className="panel-section" role="dialog" aria-modal="true" aria-label="تأكيد إلغاء المنح">
+          <h2 className="section-title">تأكيد إلغاء المنح</h2>
+          <p>
+            المستفيد: <strong>{revokeDialog.principal}</strong>
+            {' — '}
+            الصلاحية: <strong>{revokeDialog.capability}</strong>
+          </p>
+          <label className="field field-wide">
+            <span>سبب الإلغاء *</span>
+            <input
+              aria-label="سبب إلغاء المنح"
+              value={revokeReason}
+              onChange={(e) => setRevokeReason(e.target.value)}
+              disabled={!!revokeGrantId}
+            />
+          </label>
+          {serverError && <div className="error" role="alert">{serverError}</div>}
+          <div className="form-actions">
+            <button
+              type="button"
+              disabled={!!revokeGrantId}
+              onClick={() => void confirmRevoke()}
+            >
+              {revokeGrantId ? 'جارٍ الإلغاء…' : 'تأكيد الإلغاء'}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={!!revokeGrantId}
+              onClick={() => {
+                setRevokeDialog(null)
+                setRevokeReason('')
+                if (!revokeConflict) setServerError(null)
+              }}
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

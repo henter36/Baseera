@@ -15,6 +15,7 @@ public sealed class FormDefinitionStateMachineTests
     [InlineData(FormDefinitionStatus.Rejected, FormDefinitionStatus.Draft)]
     [InlineData(FormDefinitionStatus.Rejected, FormDefinitionStatus.Archived)]
     [InlineData(FormDefinitionStatus.Archived, FormDefinitionStatus.Approved)]
+    [InlineData(FormDefinitionStatus.Archived, FormDefinitionStatus.Rejected)]
     public void Allowed_transitions_are_accepted(FormDefinitionStatus from, FormDefinitionStatus to)
     {
         Assert.True(FormDefinitionStateMachine.CanTransition(from, to));
@@ -36,7 +37,7 @@ public sealed class FormDefinitionStateMachineTests
     [InlineData(FormDefinitionStatus.Rejected, FormDefinitionStatus.InReview)]
     [InlineData(FormDefinitionStatus.Archived, FormDefinitionStatus.Draft)]
     [InlineData(FormDefinitionStatus.Archived, FormDefinitionStatus.InReview)]
-    [InlineData(FormDefinitionStatus.Archived, FormDefinitionStatus.Rejected)]
+    [InlineData(FormDefinitionStatus.Archived, FormDefinitionStatus.ChangesRequested)]
     public void Disallowed_transitions_are_rejected(FormDefinitionStatus from, FormDefinitionStatus to)
     {
         Assert.False(FormDefinitionStateMachine.CanTransition(from, to));
@@ -70,4 +71,30 @@ public sealed class FormDefinitionStateMachineTests
     [InlineData(FormDefinitionStatus.Rejected)]
     public void Non_terminal_locked_statuses_are_not_flagged(FormDefinitionStatus status) =>
         Assert.False(FormDefinitionStateMachine.IsTerminalLocked(status));
+
+    [Theory]
+    [InlineData(FormDefinitionStatus.Approved)]
+    [InlineData(FormDefinitionStatus.Rejected)]
+    public void Restorable_prior_statuses_are_accepted(FormDefinitionStatus priorStatus)
+    {
+        Assert.True(FormDefinitionStateMachine.CanRestore(priorStatus));
+        FormDefinitionStateMachine.EnsureRestorable(FormDefinitionStatus.Archived, priorStatus);
+    }
+
+    [Theory]
+    [InlineData(FormDefinitionStatus.Draft)]
+    [InlineData(FormDefinitionStatus.InReview)]
+    [InlineData(FormDefinitionStatus.ChangesRequested)]
+    [InlineData(FormDefinitionStatus.Archived)]
+    public void Non_restorable_prior_statuses_are_rejected(FormDefinitionStatus priorStatus)
+    {
+        Assert.False(FormDefinitionStateMachine.CanRestore(priorStatus));
+        Assert.Throws<InvalidOperationException>(() =>
+            FormDefinitionStateMachine.EnsureRestorable(FormDefinitionStatus.Archived, priorStatus));
+    }
+
+    [Fact]
+    public void EnsureRestorable_requires_from_archived() =>
+        Assert.Throws<InvalidOperationException>(() =>
+            FormDefinitionStateMachine.EnsureRestorable(FormDefinitionStatus.Approved, FormDefinitionStatus.Approved));
 }

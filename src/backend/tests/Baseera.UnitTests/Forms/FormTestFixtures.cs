@@ -132,7 +132,8 @@ internal static class FormTestFixtures
         ValidFromUtc = validFromUtc,
         ValidToUtc = validToUtc,
         Reason = "اختبار",
-        CreatedByUserId = principalId
+        CreatedByUserId = principalId,
+        ScopeKey = FormAccessGrant.BuildScopeKey(null, null, null)
     };
 
     public static FakeCurrentUser CurrentUser(

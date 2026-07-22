@@ -70,14 +70,15 @@ describe('FormReviewPage', () => {
     approveForm.mockReset()
     reviewDecisions.mockResolvedValue([])
     getForm.mockResolvedValue(inReviewForm)
+    currentPermissions.clear()
+    currentPermissions.add('Forms.Review')
+    currentPermissions.add('Forms.Approve')
   })
 
   it('shows forbidden without review permissions', async () => {
     currentPermissions.clear()
     renderPage()
     expect(await screen.findByRole('alert')).toHaveTextContent('ليست لديك صلاحية مراجعة النماذج.')
-    currentPermissions.add('Forms.Review')
-    currentPermissions.add('Forms.Approve')
   })
 
   it('shows review actions when form is in review', async () => {

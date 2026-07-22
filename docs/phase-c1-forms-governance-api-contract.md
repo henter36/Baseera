@@ -22,7 +22,7 @@ Errors: ProblemDetails; validation → **400**; in-scope forbidden → **403**; 
 | GET | `/api/v1/forms/{id}/retention-status` | Forms.View |
 | GET | `/api/v1/forms/{id}/access-grants` | Forms.ManageAccess |
 | POST | `/api/v1/forms/{id}/access-grants` | Forms.ManageAccess |
-| DELETE | `/api/v1/forms/{id}/access-grants/{grantId}` | Forms.ManageAccess |
+| POST | `/api/v1/forms/{id}/access-grants/{grantId}/revoke` | Forms.ManageAccess |
 | GET | `/api/v1/forms/governance-policy` | Forms.ManageGovernance |
 | PUT | `/api/v1/forms/governance-policy` | Forms.ManageGovernance |
 
@@ -46,7 +46,7 @@ Server-side scope filter applied before pagination. Sensitive fields redacted in
 | Approved | Archived | archive |
 | Rejected | Draft | reject policy (default rework) |
 | Rejected | Archived | reject policy |
-| Archived | Approved | restore |
+| Archived | Approved or Rejected | restore (prior status from latest Archive decision) |
 
 No direct status mutation via PUT.
 

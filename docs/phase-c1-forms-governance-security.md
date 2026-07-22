@@ -25,6 +25,10 @@ Matches Notes `NoteAccessHelper` policy to prevent enumeration.
 | IDOR / scope enumeration | Server-side scope on every read/write; 404 for out-of-scope IDs |
 | Privilege escalation via grants | Grantor scope validation; deny > allow; ManageAccess permission required |
 | Self-approval | SoD: creator ≠ reviewer, last editor ≠ approver, reviewer ≠ approver (policy flags) |
+| Form-grant Deny bypass | `IFormEffectiveAccessService` on write paths; Deny beats Allow/RBAC for that capability |
+| Mixed Facility/Unit scope leak | `FullFacilityIds` separate from `UnitIds`; unit scope never promotes facility to full |
+| Restore to wrong status | Latest Archive decision `FromStatus` drives restore target |
+| DELETE-with-body revoke | Replaced with `POST .../revoke` |
 | Admin override abuse | Requires reason + `IsAdministrativeOverride` on review decision + audit |
 | Concurrency tampering | RowVersion check → 409 |
 | Retention bypass | `FormRetentionPolicyService` evaluates expiry; no hard delete API |

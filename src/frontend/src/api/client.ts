@@ -1051,8 +1051,6 @@ function jsonRequest<T>(path: string, method: 'POST' | 'PUT', body: unknown): Pr
 
 const postJson = <T>(path: string, body: unknown) => jsonRequest<T>(path, 'POST', body)
 const putJson = <T>(path: string, body: unknown) => jsonRequest<T>(path, 'PUT', body)
-const deleteJson = <T>(path: string, body: unknown) =>
-  request<T>(path, { method: 'DELETE', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } })
 
 function appendPagingParams(params: URLSearchParams, filters: NoteListFilters): void {
   params.set('page', String(filters.page ?? 1))
@@ -1431,7 +1429,7 @@ export const api = {
     createAccessGrant: (id: string, body: CreateFormAccessGrantRequest) =>
       postJson<FormAccessGrant>(`/api/v1/forms/${id}/access-grants`, body),
     revokeAccessGrant: (id: string, grantId: string, body: FormTransitionRequest) =>
-      deleteJson<void>(`/api/v1/forms/${id}/access-grants/${grantId}`, body),
+      postJson<void>(`/api/v1/forms/${id}/access-grants/${grantId}/revoke`, body),
   },
 
   formGovernance: {

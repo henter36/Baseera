@@ -161,6 +161,60 @@ public sealed class FormScopeFilterQueryableTests
         Assert.Equal(ScopeType.Headquarters, visible[0].ScopeType);
     }
 
+    [Fact]
+    public void Mixed_full_facility_A_and_unit_in_B_sees_all_units_in_A_and_only_unit_in_B()
+    {
+        using var db = FormTestFixtures.CreateDb();
+        FormTestFixtures.SeedOrgGraph(db);
+        var unitA1 = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+        var unitA2 = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2");
+        var unitB1 = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1");
+        var unitB2 = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2");
+        db.FacilityUnits.AddRange(
+            new FacilityUnit { Id = unitA1, FacilityId = SeedIds.FacilityA1, Code = "UA1", NameAr = "و أ1", IsActive = true },
+            new FacilityUnit { Id = unitA2, FacilityId = SeedIds.FacilityA1, Code = "UA2", NameAr = "و أ2", IsActive = true },
+            new FacilityUnit { Id = unitB1, FacilityId = SeedIds.FacilityB1, Code = "UB1", NameAr = "و ب1", IsActive = true },
+            new FacilityUnit { Id = unitB2, FacilityId = SeedIds.FacilityB1, Code = "UB2", NameAr = "و ب2", IsActive = true });
+        var creator = FormTestFixtures.AddUser(db);
+        db.FormDefinitions.AddRange(
+            FormTestFixtures.NewForm(creator.Id, ScopeType.FacilityUnit, SeedIds.RegionA, SeedIds.FacilityA1, unitA1, code: "U-A1"),
+            FormTestFixtures.NewForm(creator.Id, ScopeType.FacilityUnit, SeedIds.RegionA, SeedIds.FacilityA1, unitA2, code: "U-A2"),
+            FormTestFixtures.NewForm(creator.Id, ScopeType.FacilityUnit, SeedIds.RegionB, SeedIds.FacilityB1, unitB1, code: "U-B1"),
+            FormTestFixtures.NewForm(creator.Id, ScopeType.FacilityUnit, SeedIds.RegionB, SeedIds.FacilityB1, unitB2, code: "U-B2"));
+        db.SaveChanges();
+
+        var current = FakeUser([
+            new UserScopeSnapshot(ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null),
+            new UserScopeSnapshot(ScopeType.FacilityUnit, SeedIds.RegionB, SeedIds.FacilityB1, unitB1),
+        ]);
+        var scope = new FormScopeService(new OrganizationalScopeService(current, db), current, db);
+        var codes = scope.FilterQueryable(db.FormDefinitions).Select(f => f.Code).OrderBy(c => c).ToList();
+        Assert.Equal(["U-A1", "U-A2", "U-B1"], codes);
+    }
+
+    [Fact]
+    public void Unit_only_scope_does_not_grant_sibling_units_in_same_facility()
+    {
+        using var db = FormTestFixtures.CreateDb();
+        FormTestFixtures.SeedOrgGraph(db);
+        var unitA1 = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1");
+        var unitA2 = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2");
+        db.FacilityUnits.AddRange(
+            new FacilityUnit { Id = unitA1, FacilityId = SeedIds.FacilityA1, Code = "UA1", NameAr = "و أ1", IsActive = true },
+            new FacilityUnit { Id = unitA2, FacilityId = SeedIds.FacilityA1, Code = "UA2", NameAr = "و أ2", IsActive = true });
+        var creator = FormTestFixtures.AddUser(db);
+        db.FormDefinitions.AddRange(
+            FormTestFixtures.NewForm(creator.Id, ScopeType.FacilityUnit, SeedIds.RegionA, SeedIds.FacilityA1, unitA1, code: "U-A1"),
+            FormTestFixtures.NewForm(creator.Id, ScopeType.FacilityUnit, SeedIds.RegionA, SeedIds.FacilityA1, unitA2, code: "U-A2"),
+            FormTestFixtures.NewForm(creator.Id, ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, code: "FAC-A1"));
+        db.SaveChanges();
+
+        var current = FakeUser([new UserScopeSnapshot(ScopeType.FacilityUnit, SeedIds.RegionA, SeedIds.FacilityA1, unitA1)]);
+        var scope = new FormScopeService(new OrganizationalScopeService(current, db), current, db);
+        var codes = scope.FilterQueryable(db.FormDefinitions).Select(f => f.Code).ToList();
+        Assert.Equal(["U-A1"], codes);
+    }
+
     private static ICurrentUser FakeUser(IReadOnlyCollection<UserScopeSnapshot> scopes) =>
         new FakeCurrentUser(true, Guid.NewGuid(), "u1", "user", Array.Empty<string>(), scopes);
 }

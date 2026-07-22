@@ -69,7 +69,7 @@ public sealed class FormSeparationOfDutiesServiceTests : IDisposable
         var creator = FormTestFixtures.AddUser(_db, "منشئ");
         var reviewer = FormTestFixtures.AddUser(_db, "مراجع");
         var form = FormTestFixtures.NewForm(creator.Id, status: FormDefinitionStatus.InReview);
-        form.LastModifiedByUserId = reviewer.Id;
+        form.LastModifiedByUserId = creator.Id;
         _db.FormDefinitions.Add(form);
         _db.FormReviewDecisions.Add(new FormReviewDecision
         {
@@ -82,8 +82,9 @@ public sealed class FormSeparationOfDutiesServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var service = CreateService(reviewer.Id, []);
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.EnforceApproveAsync(form, reviewer.Id));
+        Assert.Contains("طلب التعديلات", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

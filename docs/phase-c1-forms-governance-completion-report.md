@@ -1,6 +1,6 @@
 # Phase C.1 — Forms Governance Completion Report
 
-Status: **Ready for review** — backend unit and frontend gates green; integration tests require reachable SQL Server via `BASEERA_TEST_CONNECTION`.
+Status: **In review — not merge-ready until all gates below are green.**
 
 ## Branch and SHAs
 
@@ -8,52 +8,55 @@ Status: **Ready for review** — backend unit and frontend gates green; integrat
 |------|-------|
 | Branch | `phase-c1-forms-governance-foundation` |
 | Base (`main` at branch start) | `66f35f3f0916e398df6a7318d7bff13b0cc85433` (PR #60) |
-| Migration | `20260721123357_PhaseC1FormsGovernanceCore` |
+| Initial implementation | `c673e2f731ba7f07fff0e62b81d010651b5f5008` |
+| Migration | `20260722024228_PhaseC1FormsGovernanceCore` |
 | Epic / Issue | Epic #45, Issue #52 |
+| PR | #61 |
 
-## Gates (local)
+## CI failure root cause (run 29834609029)
+
+All **113** integration tests failed because `MapDelete` for grant revoke inferred a body parameter, which ASP.NET Core rejects at host startup:
+
+`Body was inferred but the method does not allow inferred body parameters`
+
+Fixed by replacing with `POST /api/v1/forms/{id}/access-grants/{grantId}/revoke`.
+
+## Local gates (post-fix)
 
 | Gate | Result |
 |------|--------|
-| `dotnet build src/backend/Baseera.slnx -c Release` | Pass (2 pre-existing NU1510 warnings) |
-| Unit tests | **427** passed, 0 failed, 0 skipped (+79 from baseline 348) |
-| Integration tests | **Blocked** — `BASEERA_TEST_CONNECTION` set but SQL Server TCP connect failed in this environment; suite defines **113** tests (+21 Forms) |
-| Frontend `typecheck` | Pass |
-| Frontend `lint` | Pass (pre-existing warnings only) |
-| Frontend `test` | **156** passed (+35 from baseline 121) |
-| Frontend `build` | Pass with CI Entra env vars |
-| Frontend `audit --audit-level=high` | 0 high/critical |
+| `dotnet build -c Release` | Pass (pre-existing NU1510 / CS8619 warnings only) |
+| Unit tests | **437** passed, 0 skipped |
+| Integration tests | Requires reachable SQL Server (`127.0.0.1:1434` unavailable locally); **run in CI** — suite expanded with deny/restore/revoke/rowversion cases |
+| Frontend typecheck / lint / test / build / audit | Pass (156 frontend tests; 0 high/critical audit) |
 | `git diff --check` | Pass |
+| RTL walkthrough | **Not completed** — blocked until API/SQL available for live walkthrough |
+| Sonar QG | Pending re-analysis after push (S6444 regex timeout fixed; duplication reduced via shared helpers) |
 
-## Implemented
+## Merge gate (all required)
 
-### Domain & persistence
-- `FormDefinition`, `FormReviewDecision`, `FormGovernancePolicy`, `FormAccessGrant`
-- State machine, EF configurations, global soft-delete filters, filtered unique `Code` index
-- Idempotent seed: Forms permissions/roles, default governance policy
+- [ ] Backend CI green (unit + integration Failed=0, Skipped=0)
+- [ ] Frontend CI green
+- [ ] Migration apply green
+- [ ] Sonar Quality Gate green (Security Rating A, new duplication ≤ 3%)
+- [ ] All review threads resolved
+- [ ] RTL walkthrough completed
+- [ ] Product acceptance
 
-### Application & API
-- Scope, access, SoD, retention, query/command/workflow/grant/governance services
-- `MapFormsEndpoints` — all C.1 routes under `/api/v1/forms`
-- Audit events for lifecycle, grants, governance, sensitive views
+## Key fixes in follow-up commits
 
-### Frontend (RTL)
-- `/forms`, `/forms/new`, `/forms/:id`, `/forms/:id/edit`, `/forms/:id/review`, `/forms/:id/access`, `/settings/forms-governance`
-- `api.forms.*`, `api.formGovernance.*`, URL filter sync, permission-gated actions
-
-### Tests
-- 5 unit test files + fixtures (79 tests)
-- `FormsCoreIntegrationTests` (21 tests)
-- 8 frontend test files (+ URL params test)
-
-### Documentation
-- Scope, API contract, security, test matrix, baseline, completion report
-- Updated `implementation-plan.md`, `permissions-matrix.md`
+- Restore prior status from latest Archive decision; soft-delete clear on restore
+- Mixed Facility + FacilityUnit scope (`FullFacilityIds` vs `UnitIds`)
+- Form-specific Deny on write paths via `IFormEffectiveAccessService`
+- Grant revoke POST route; IncludingDeleted lookup; historical principal names
+- RowVersion Base64 validation (400 vs 409)
+- Unique grant index with `ScopeKey`; retention CHECK constraints + cross-field validation
+- SoD unit test exercises RequestChanges rule correctly
 
 ## Explicit non-starts
 
-Form field designer, publish/respond/export execution, campaigns, compliance dashboard, AI (Issues #46–#51).
+Form field designer / publish / respond / export (Issues #46–#51).
 
 ## Decision
 
-**Ready for PR review** — merge after CI green with SQL Server integration job and product acceptance of C.1 scope. Residual: run full integration suite (113 tests) in environment with working `BASEERA_TEST_CONNECTION`; monitor list performance at scale; stub permissions `Forms.Publish/Respond/…` remain seeded for C.2+ only.
+**Do not merge** until CI integration, Sonar, RTL walkthrough, and product acceptance are complete.

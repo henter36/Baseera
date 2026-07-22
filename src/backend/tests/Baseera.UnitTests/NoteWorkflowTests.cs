@@ -72,6 +72,7 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Identity.User> Users => Enumerable.Empty<Domain.Identity.User>().AsQueryable();
         public IQueryable<Domain.Identity.User> UsersIncludingDeleted => Users;
         public IQueryable<Domain.Identity.Role> Roles => Enumerable.Empty<Domain.Identity.Role>().AsQueryable();
+        public IQueryable<Domain.Identity.Role> RolesIncludingDeleted => Roles;
         public IQueryable<Domain.Identity.Permission> Permissions => Enumerable.Empty<Domain.Identity.Permission>().AsQueryable();
         public IQueryable<Domain.Identity.UserRole> UserRoles => Enumerable.Empty<Domain.Identity.UserRole>().AsQueryable();
         public IQueryable<Domain.Identity.RolePermission> RolePermissions => Enumerable.Empty<Domain.Identity.RolePermission>().AsQueryable();

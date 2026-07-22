@@ -494,6 +494,166 @@ public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
+    [IntegrationConnectionFact]
+    public async Task Design_deny_grant_blocks_update_and_submit()
+    {
+        await SeedWorkflowUsersAsync();
+        var admin = _factory.CreateAuthenticatedClient("forms-admin");
+        var designer = _factory.CreateAuthenticatedClient("forms-designer");
+        var form = await CreateFormAsync(designer, ScopeType.Global, null, null, NextCode());
+
+        Guid designerUserId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            designerUserId = await db.Users.Where(u => u.ExternalSubject == "forms-designer").Select(u => u.Id).FirstAsync();
+        }
+
+        var grantResponse = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/access-grants", new
+        {
+            principalType = FormAccessGrantPrincipalType.User,
+            principalId = designerUserId,
+            capability = FormAccessCapability.Design,
+            effect = FormAccessGrantEffect.Deny,
+            scopeType = (ScopeType?)null,
+            regionId = (Guid?)null,
+            facilityId = (Guid?)null,
+            validFromUtc = (DateTimeOffset?)null,
+            validToUtc = (DateTimeOffset?)null,
+            reason = "منع التصميم"
+        });
+        Assert.Equal(HttpStatusCode.Created, grantResponse.StatusCode);
+
+        var detail = await designer.GetFromJsonAsync<FormDetailWithActions>($"/api/v1/forms/{form.Id}");
+        Assert.NotNull(detail);
+        Assert.DoesNotContain("UpdateDraft", detail!.AllowedActions);
+        Assert.DoesNotContain("SubmitForReview", detail.AllowedActions);
+
+        var update = await designer.PutAsJsonAsync($"/api/v1/forms/{form.Id}", new
+        {
+            nameAr = "محاولة تحديث",
+            nameEn = (string?)null,
+            description = "وصف",
+            classification = ClassificationLevel.Internal,
+            ownerDepartmentId = (Guid?)null,
+            rowVersion = form.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, update.StatusCode);
+
+        var submit = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/submit-review", new
+        {
+            reason = "محاولة إرسال",
+            rowVersion = form.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, submit.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Restore_returns_rejected_prior_status_and_revokes_via_post()
+    {
+        await SeedWorkflowUsersAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-designer");
+        var reviewer = _factory.CreateAuthenticatedClient("forms-reviewer");
+        var admin = _factory.CreateAuthenticatedClient("forms-admin");
+
+        var form = await CreateFormAsync(designer, ScopeType.Global, null, null, NextCode());
+        form = await PostTransitionAsync(designer, $"/api/v1/forms/{form.Id}/submit-review", form.RowVersion, "إرسال");
+        form = await PostTransitionAsync(reviewer, $"/api/v1/forms/{form.Id}/reject", form.RowVersion, "رفض");
+        var archive = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/archive", new
+        {
+            reason = "أرشفة مرفوض",
+            rowVersion = form.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.NoContent, archive.StatusCode);
+
+        string archivedRowVersion;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var entity = await db.FormDefinitions.IgnoreQueryFilters().FirstAsync(f => f.Id == form.Id);
+            Assert.Equal(FormDefinitionStatus.Archived, entity.Status);
+            archivedRowVersion = Convert.ToBase64String(entity.RowVersion);
+        }
+
+        var restore = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/restore", new
+        {
+            reason = "استعادة مرفوض",
+            rowVersion = archivedRowVersion
+        });
+        Assert.Equal(HttpStatusCode.NoContent, restore.StatusCode);
+
+        var restored = await admin.GetFromJsonAsync<FormDetail>($"/api/v1/forms/{form.Id}");
+        Assert.Equal(FormDefinitionStatus.Rejected, restored!.Status);
+
+        Guid roleId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            roleId = await db.Roles.Where(r => r.Code == RoleCodes.FormAnalyst).Select(r => r.Id).FirstAsync();
+        }
+
+        var createGrant = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/access-grants", new
+        {
+            principalType = FormAccessGrantPrincipalType.Role,
+            principalId = roleId,
+            capability = FormAccessCapability.View,
+            effect = FormAccessGrantEffect.Allow,
+            scopeType = (ScopeType?)null,
+            regionId = (Guid?)null,
+            facilityId = (Guid?)null,
+            validFromUtc = (DateTimeOffset?)null,
+            validToUtc = (DateTimeOffset?)null,
+            reason = "منح عرض"
+        });
+        Assert.Equal(HttpStatusCode.Created, createGrant.StatusCode);
+        var grant = await createGrant.Content.ReadFromJsonAsync<FormAccessGrantItem>(JsonOptions);
+        Assert.NotNull(grant);
+
+        var revoke = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/access-grants/{grant!.Id}/revoke", new
+        {
+            reason = "إلغاء المنح",
+            rowVersion = grant.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+
+        var revokeAgain = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/access-grants/{grant.Id}/revoke", new
+        {
+            reason = "إعادة إلغاء",
+            rowVersion = grant.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.Conflict, revokeAgain.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Missing_or_invalid_rowversion_returns_400()
+    {
+        await SeedWorkflowUsersAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-designer");
+        var form = await CreateFormAsync(designer, ScopeType.Global, null, null, NextCode());
+
+        var missing = await designer.PutAsJsonAsync($"/api/v1/forms/{form.Id}", new
+        {
+            nameAr = "بدون إصدار",
+            nameEn = (string?)null,
+            description = "وصف",
+            classification = ClassificationLevel.Internal,
+            ownerDepartmentId = (Guid?)null,
+            rowVersion = ""
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+
+        var invalid = await designer.PutAsJsonAsync($"/api/v1/forms/{form.Id}", new
+        {
+            nameAr = "إصدار باطل",
+            nameEn = (string?)null,
+            description = "وصف",
+            classification = ClassificationLevel.Internal,
+            ownerDepartmentId = (Guid?)null,
+            rowVersion = "!!!not-base64!!!"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
     private async Task SeedWorkflowUsersAsync()
     {
         await _factory.SeedUserAsync("forms-admin", "مسؤول", [RoleCodes.SystemAdministrator],
@@ -584,6 +744,13 @@ internal sealed record FormDetail(
     ClassificationLevel Classification,
     string RowVersion,
     bool IsSensitiveRedacted);
+internal sealed record FormDetailWithActions(
+    Guid Id,
+    string Code,
+    FormDefinitionStatus Status,
+    string RowVersion,
+    IReadOnlyList<string> AllowedActions);
+internal sealed record FormAccessGrantItem(Guid Id, string RowVersion);
 internal sealed record FormReviewDecisionItem(FormReviewDecisionType Decision, FormDefinitionStatus ToStatus);
 internal sealed record FormRetentionStatusItem(
     Guid FormDefinitionId,
