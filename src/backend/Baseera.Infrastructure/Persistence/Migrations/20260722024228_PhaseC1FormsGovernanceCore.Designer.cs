@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Baseera.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(BaseeraDbContext))]
-    [Migration("20260721123357_PhaseC1FormsGovernanceCore")]
+    [Migration("20260722024228_PhaseC1FormsGovernanceCore")]
     partial class PhaseC1FormsGovernanceCore
     {
         /// <inheritdoc />
@@ -991,6 +991,11 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
                     b.Property<int?>("ScopeType")
                         .HasColumnType("int");
 
@@ -1018,7 +1023,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ValidToUtc");
 
-                    b.HasIndex("FormDefinitionId", "PrincipalType", "PrincipalId", "Capability", "Effect")
+                    b.HasIndex("FormDefinitionId", "PrincipalType", "PrincipalId", "Capability", "Effect", "ScopeKey")
+                        .IsUnique()
                         .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("FormAccessGrants", (string)null);
@@ -1229,7 +1235,14 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UpdatedByUserId");
 
-                    b.ToTable("FormGovernancePolicies", (string)null);
+                    b.ToTable("FormGovernancePolicies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormGovernancePolicies_DefaultRetentionDays_NonNegative", "[DefaultRetentionDays] >= 0");
+
+                            t.HasCheckConstraint("CK_FormGovernancePolicies_MinimumRetentionDays_NonNegative", "[MinimumRetentionDays] >= 0");
+
+                            t.HasCheckConstraint("CK_FormGovernancePolicies_SensitiveRetentionDays_NonNegative", "[SensitiveRetentionDays] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Baseera.Domain.Forms.FormReviewDecision", b =>

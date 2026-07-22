@@ -129,6 +129,11 @@ public class FormAccessGrant : SoftDeletableEntity
     public Region? Region { get; set; }
     public Guid? FacilityId { get; set; }
     public Facility? Facility { get; set; }
+    /// <summary>
+    /// Deterministic, human-inspectable encoding of (ScopeType, RegionId, FacilityId) used to enforce
+    /// uniqueness of (form, principal, capability, effect, scope) via a filtered unique index.
+    /// </summary>
+    public string ScopeKey { get; set; } = string.Empty;
     public DateTimeOffset? ValidFromUtc { get; set; }
     public DateTimeOffset? ValidToUtc { get; set; }
     public string Reason { get; set; } = string.Empty;
@@ -137,4 +142,15 @@ public class FormAccessGrant : SoftDeletableEntity
     public Guid? RevokedByUserId { get; set; }
     public User? RevokedByUser { get; set; }
     public DateTimeOffset? RevokedAtUtc { get; set; }
+
+    public static string BuildScopeKey(ScopeType? scopeType, Guid? regionId, Guid? facilityId) =>
+        scopeType switch
+        {
+            null => "_",
+            Baseera.Domain.Common.ScopeType.Global => "G",
+            Baseera.Domain.Common.ScopeType.Headquarters => "H",
+            Baseera.Domain.Common.ScopeType.Region => $"R:{regionId:N}",
+            Baseera.Domain.Common.ScopeType.Facility => $"F:{facilityId:N}",
+            _ => "_"
+        };
 }

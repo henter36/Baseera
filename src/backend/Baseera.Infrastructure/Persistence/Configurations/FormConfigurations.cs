@@ -80,7 +80,18 @@ internal sealed class FormGovernancePolicyConfiguration : IEntityTypeConfigurati
 {
     public void Configure(EntityTypeBuilder<FormGovernancePolicy> builder)
     {
-        builder.ToTable("FormGovernancePolicies");
+        builder.ToTable("FormGovernancePolicies", t =>
+        {
+            t.HasCheckConstraint(
+                "CK_FormGovernancePolicies_DefaultRetentionDays_NonNegative",
+                "[DefaultRetentionDays] >= 0");
+            t.HasCheckConstraint(
+                "CK_FormGovernancePolicies_SensitiveRetentionDays_NonNegative",
+                "[SensitiveRetentionDays] >= 0");
+            t.HasCheckConstraint(
+                "CK_FormGovernancePolicies_MinimumRetentionDays_NonNegative",
+                "[MinimumRetentionDays] >= 0");
+        });
         builder.HasKey(x => x.Id);
         builder.HasOne(x => x.UpdatedByUser).WithMany().HasForeignKey(x => x.UpdatedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
@@ -95,7 +106,9 @@ internal sealed class FormAccessGrantConfiguration : IEntityTypeConfiguration<Fo
         builder.ToTable("FormAccessGrants");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
-        builder.HasIndex(x => new { x.FormDefinitionId, x.PrincipalType, x.PrincipalId, x.Capability, x.Effect })
+        builder.Property(x => x.ScopeKey).HasMaxLength(80).IsRequired();
+        builder.HasIndex(x => new { x.FormDefinitionId, x.PrincipalType, x.PrincipalId, x.Capability, x.Effect, x.ScopeKey })
+            .IsUnique()
             .HasFilter("[IsDeleted] = 0");
         builder.HasIndex(x => x.ValidToUtc);
         builder.HasOne(x => x.FormDefinition).WithMany(f => f.AccessGrants).HasForeignKey(x => x.FormDefinitionId)

@@ -133,6 +133,9 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FormGovernancePolicies", x => x.Id);
+                    table.CheckConstraint("CK_FormGovernancePolicies_DefaultRetentionDays_NonNegative", "[DefaultRetentionDays] >= 0");
+                    table.CheckConstraint("CK_FormGovernancePolicies_MinimumRetentionDays_NonNegative", "[MinimumRetentionDays] >= 0");
+                    table.CheckConstraint("CK_FormGovernancePolicies_SensitiveRetentionDays_NonNegative", "[SensitiveRetentionDays] >= 0");
                     table.ForeignKey(
                         name: "FK_FormGovernancePolicies_Users_UpdatedByUserId",
                         column: x => x.UpdatedByUserId,
@@ -154,6 +157,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     ScopeType = table.Column<int>(type: "int", nullable: true),
                     RegionId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     FacilityId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    ScopeKey = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
                     ValidFromUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     ValidToUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     Reason = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: false),
@@ -246,9 +250,10 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 column: "FacilityId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_FormAccessGrants_FormDefinitionId_PrincipalType_PrincipalId_Capability_Effect",
+                name: "IX_FormAccessGrants_FormDefinitionId_PrincipalType_PrincipalId_Capability_Effect_ScopeKey",
                 table: "FormAccessGrants",
-                columns: new[] { "FormDefinitionId", "PrincipalType", "PrincipalId", "Capability", "Effect" },
+                columns: new[] { "FormDefinitionId", "PrincipalType", "PrincipalId", "Capability", "Effect", "ScopeKey" },
+                unique: true,
                 filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(

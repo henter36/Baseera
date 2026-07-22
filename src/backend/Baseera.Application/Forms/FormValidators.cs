@@ -1,32 +1,78 @@
 namespace Baseera.Application.Forms;
 
+using System.Text.RegularExpressions;
 using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
 using FluentValidation;
+
+/// <summary>
+/// Shared validation helpers for Forms module requests.
+/// </summary>
+internal static class FormRequestValidation
+{
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(250);
+
+    private static readonly Regex CodePattern = new(
+        @"^[A-Za-z][A-Za-z0-9._-]{2,79}$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant,
+        RegexTimeout);
+
+    public static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+
+    public static bool BeValidCode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            return CodePattern.IsMatch(value.Trim());
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Row version must be non-empty and a syntactically valid Base64 string.</summary>
+    public static bool BeValidRowVersion(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            Convert.FromBase64String(value);
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+}
 
 public sealed class CreateFormRequestValidator : AbstractValidator<CreateFormRequest>
 {
     public CreateFormRequestValidator()
     {
         RuleFor(x => x.Code)
-            .Must(BeMeaningful)
+            .Must(FormRequestValidation.BeMeaningful)
             .WithMessage("رمز النموذج مطلوب.")
             .MaximumLength(80)
-            .Must(BeValidCode)
+            .Must(FormRequestValidation.BeValidCode)
             .WithMessage("رمز النموذج يجب أن يبدأ بحرف ويحتوي على أحرف كبيرة وأرقام أو . _ - فقط.");
-        RuleFor(x => x.NameAr).Must(BeMeaningful).WithMessage("اسم النموذج مطلوب.").MaximumLength(200);
+        RuleFor(x => x.NameAr).Must(FormRequestValidation.BeMeaningful).WithMessage("اسم النموذج مطلوب.").MaximumLength(200);
         RuleFor(x => x.NameEn).MaximumLength(200).When(x => x.NameEn is not null);
-        RuleFor(x => x.Description).Must(BeMeaningful).WithMessage("الوصف مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.Description).Must(FormRequestValidation.BeMeaningful).WithMessage("الوصف مطلوب.").MaximumLength(2000);
         RuleFor(x => x.Classification).IsInEnum().WithMessage("مستوى التصنيف غير صالح.");
         RuleFor(x => x.ScopeType).IsInEnum().WithMessage("نوع النطاق غير صالح.");
         RuleFor(x => x).Must(ValidScopeShape).WithMessage("تركيبة النطاق غير صالحة.");
     }
-
-    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
-
-    private static bool BeValidCode(string? value) =>
-        !string.IsNullOrWhiteSpace(value) &&
-        System.Text.RegularExpressions.Regex.IsMatch(value.Trim(), @"^[A-Za-z][A-Za-z0-9._-]{2,79}$");
 
     private static bool ValidScopeShape(CreateFormRequest request) =>
         request.ScopeType switch
@@ -47,47 +93,39 @@ public sealed class UpdateFormRequestValidator : AbstractValidator<UpdateFormReq
 {
     public UpdateFormRequestValidator()
     {
-        RuleFor(x => x.NameAr).Must(BeMeaningful).WithMessage("اسم النموذج مطلوب.").MaximumLength(200);
+        RuleFor(x => x.NameAr).Must(FormRequestValidation.BeMeaningful).WithMessage("اسم النموذج مطلوب.").MaximumLength(200);
         RuleFor(x => x.NameEn).MaximumLength(200).When(x => x.NameEn is not null);
-        RuleFor(x => x.Description).Must(BeMeaningful).WithMessage("الوصف مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.Description).Must(FormRequestValidation.BeMeaningful).WithMessage("الوصف مطلوب.").MaximumLength(2000);
         RuleFor(x => x.Classification).IsInEnum().WithMessage("مستوى التصنيف غير صالح.");
-        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x.RowVersion).Must(FormRequestValidation.BeValidRowVersion).WithMessage("إصدار السجل غير صالح.");
     }
-
-    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
 }
 
 public sealed class FormTransitionRequestValidator : AbstractValidator<FormTransitionRequest>
 {
     public FormTransitionRequestValidator()
     {
-        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("السبب مطلوب.").MaximumLength(2000);
-        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x.Reason).Must(FormRequestValidation.BeMeaningful).WithMessage("السبب مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(FormRequestValidation.BeValidRowVersion).WithMessage("إصدار السجل غير صالح.");
     }
-
-    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
 }
 
 public sealed class FormRejectTransitionRequestValidator : AbstractValidator<FormTransitionRequest>
 {
     public FormRejectTransitionRequestValidator()
     {
-        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب الرفض مطلوب.").MaximumLength(2000);
-        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x.Reason).Must(FormRequestValidation.BeMeaningful).WithMessage("سبب الرفض مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(FormRequestValidation.BeValidRowVersion).WithMessage("إصدار السجل غير صالح.");
     }
-
-    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
 }
 
 public sealed class FormArchiveTransitionRequestValidator : AbstractValidator<FormTransitionRequest>
 {
     public FormArchiveTransitionRequestValidator()
     {
-        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب الأرشفة مطلوب.").MaximumLength(2000);
-        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x.Reason).Must(FormRequestValidation.BeMeaningful).WithMessage("سبب الأرشفة مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(FormRequestValidation.BeValidRowVersion).WithMessage("إصدار السجل غير صالح.");
     }
-
-    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
 }
 
 public sealed class CreateFormAccessGrantRequestValidator : AbstractValidator<CreateFormAccessGrantRequest>
@@ -128,8 +166,12 @@ public sealed class UpdateFormGovernancePolicyRequestValidator : AbstractValidat
         RuleFor(x => x.DefaultRetentionDays).GreaterThanOrEqualTo(0);
         RuleFor(x => x.SensitiveRetentionDays).GreaterThanOrEqualTo(0);
         RuleFor(x => x.MinimumRetentionDays).GreaterThanOrEqualTo(0);
-        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x)
+            .Must(x => x.MinimumRetentionDays <= x.DefaultRetentionDays)
+            .WithMessage("الحد الأدنى لمدة الاحتفاظ يجب ألا يتجاوز مدة الاحتفاظ الافتراضية.");
+        RuleFor(x => x)
+            .Must(x => x.MinimumRetentionDays <= x.SensitiveRetentionDays)
+            .WithMessage("الحد الأدنى لمدة الاحتفاظ يجب ألا يتجاوز مدة الاحتفاظ للمحتوى الحساس.");
+        RuleFor(x => x.RowVersion).Must(FormRequestValidation.BeValidRowVersion).WithMessage("إصدار السجل غير صالح.");
     }
-
-    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
 }
