@@ -932,6 +932,134 @@ export type FormGovernancePolicy = {
   rowVersion: string
 }
 
+
+export type FormVersionStatus = 0 | 1 | 2 | 3 | 4
+
+export type FormVersionListItem = {
+  id: string
+  formDefinitionId: string
+  versionNumber: number
+  status: number
+  statusAr: string
+  basedOnVersionId?: string | null
+  draftSchemaHash?: string | null
+  schemaFormatVersion: number
+  createdAtUtc: string
+  lastSavedAtUtc?: string | null
+  approvedAtUtc?: string | null
+  snapshotId?: string | null
+  rowVersion: string
+}
+
+export type FormVersionDetail = FormVersionListItem & {
+  draftSchemaJson: string
+  createdByUserId: string
+  updatedByUserId?: string | null
+  submittedForReviewAtUtc?: string | null
+  approvedByUserId?: string | null
+  allowedActions: string[]
+}
+
+export type FormSchemaValidationIssue = {
+  code: string
+  path: string
+  entityId?: string | null
+  fieldKey?: string | null
+  messageAr: string
+  severity: number
+}
+
+export type FormVersionValidateResult = {
+  isValid: boolean
+  schemaHash?: string | null
+  issues: FormSchemaValidationIssue[]
+  pageCount: number
+  sectionCount: number
+  fieldCount: number
+  calculatedFieldCount: number
+  conditionCount: number
+}
+
+export type FormSchemaSnapshotDto = {
+  id: string
+  formVersionId: string
+  schemaFormatVersion: number
+  canonicalSchemaJson: string
+  schemaHash: string
+  schemaSizeBytes: number
+  pageCount: number
+  sectionCount: number
+  fieldCount: number
+  calculatedFieldCount: number
+  conditionCount: number
+  createdByUserId: string
+  createdAtUtc: string
+}
+
+export type FormVersionReviewDecisionDto = {
+  id: string
+  decision: number
+  decisionAr: string
+  reason?: string | null
+  reviewedByUserId: string
+  reviewedAtUtc: string
+  fromStatus: number
+  toStatus: number
+  isAdministrativeOverride: boolean
+}
+
+export type FormTemplateListItem = {
+  id: string
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  description: string
+  category: string
+  classification: number
+  visibility: number
+  ownerDepartmentId?: string | null
+  schemaHash: string
+  pageCount: number
+  sectionCount: number
+  fieldCount: number
+  createdAtUtc: string
+}
+
+export type SaveFormSchemaRequest = {
+  schemaJson: string
+  rowVersion: string
+}
+
+export type FormVersionTransitionRequest = {
+  reason?: string | null
+  rowVersion: string
+}
+
+export type CreateFormTemplateRequest = {
+  formDefinitionId: string
+  formVersionId: string
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  description: string
+  category: string
+  visibility: number
+  ownerDepartmentId?: string | null
+}
+
+export type CreateFormFromTemplateRequest = {
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  description: string
+  classification: number
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+  ownerDepartmentId?: string | null
+}
+
 export type FormRetentionStatus = {
   formDefinitionId: string
   isRetentionApplicable: boolean
@@ -1430,11 +1558,47 @@ export const api = {
       postJson<FormAccessGrant>(`/api/v1/forms/${id}/access-grants`, body),
     revokeAccessGrant: (id: string, grantId: string, body: FormTransitionRequest) =>
       postJson<void>(`/api/v1/forms/${id}/access-grants/${grantId}/revoke`, body),
+    listVersions: (formId: string) =>
+      request<FormVersionListItem[]>(`/api/v1/forms/${formId}/versions`),
+    getVersion: (formId: string, versionId: string) =>
+      request<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}`),
+    createVersion: (formId: string, body: { basedOnVersionId?: string | null } = {}) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions`, body),
+    cloneVersion: (formId: string, versionId: string) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/clone`, {}),
+    saveSchema: (formId: string, versionId: string, body: SaveFormSchemaRequest) =>
+      putJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/schema`, body),
+    autosaveSchema: (formId: string, versionId: string, body: SaveFormSchemaRequest) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/autosave`, body),
+    validateVersion: (formId: string, versionId: string, body: { schemaJson?: string | null; rowVersion: string }) =>
+      postJson<FormVersionValidateResult>(`/api/v1/forms/${formId}/versions/${versionId}/validate`, body),
+    submitVersionReview: (formId: string, versionId: string, body: FormVersionTransitionRequest) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/submit-review`, body),
+    requestVersionChanges: (formId: string, versionId: string, body: FormVersionTransitionRequest) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/request-changes`, body),
+    rejectVersion: (formId: string, versionId: string, body: FormVersionTransitionRequest) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/reject`, body),
+    reopenVersion: (formId: string, versionId: string, body: FormVersionTransitionRequest) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/reopen`, body),
+    approveLockVersion: (formId: string, versionId: string, body: FormVersionTransitionRequest) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/approve-lock`, body),
+    getVersionSnapshot: (formId: string, versionId: string) =>
+      request<FormSchemaSnapshotDto>(`/api/v1/forms/${formId}/versions/${versionId}/snapshot`),
+    getVersionReviewDecisions: (formId: string, versionId: string) =>
+      request<FormVersionReviewDecisionDto[]>(`/api/v1/forms/${formId}/versions/${versionId}/review-decisions`),
+
   },
 
   formGovernance: {
     getPolicy: () => request<FormGovernancePolicy>('/api/v1/forms/governance-policy'),
     updatePolicy: (body: UpdateFormGovernancePolicyRequest) =>
       putJson<FormGovernancePolicy>('/api/v1/forms/governance-policy', body),
+  },
+
+  formTemplates: {
+    list: () => request<FormTemplateListItem[]>('/api/v1/form-templates'),
+    create: (body: CreateFormTemplateRequest) => postJson<FormTemplateListItem>('/api/v1/form-templates', body),
+    createForm: (templateId: string, body: CreateFormFromTemplateRequest) =>
+      postJson<FormDetail>(`/api/v1/form-templates/${templateId}/create-form`, body),
   },
 }

@@ -387,3 +387,16 @@ code {
 .trend-bar--created { background: #2563eb; }
 .trend-bar--completed { background: #15803d; }
 .trend-bar--failure { background: var(--danger); }
+
+
+.designer-shell { display: flex; flex-direction: column; gap: 1rem; }
+.designer-grid { display: grid; grid-template-columns: 220px 1fr 280px; gap: 1rem; align-items: start; }
+.designer-palette, .designer-props { display: flex; flex-direction: column; gap: 0.5rem; }
+.designer-pages { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.designer-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+.designer-handle { cursor: grab; min-width: 2.5rem; }
+.designer-row-body { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; flex: 1; }
+.preview-frame { border: 1px solid #d0d7de; padding: 1rem; border-radius: 8px; background: #fafbfc; }
+@media (max-width: 960px) {
+  .designer-grid { grid-template-columns: 1fr; }
+}

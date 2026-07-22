@@ -32,6 +32,12 @@ import { FormReviewPage } from './pages/forms/FormReviewPage'
 import { FormsGovernanceSettingsPage } from './pages/forms/FormsGovernanceSettingsPage'
 import { FormsListPage } from './pages/forms/FormsListPage'
 import { OperationalDashboardPage } from './pages/dashboard/OperationalDashboardPage'
+import { FormVersionsPage } from './pages/forms/versions/FormVersionsPage'
+import { FormVersionDetailPage } from './pages/forms/versions/FormVersionDetailPage'
+import { FormDesignerPage } from './pages/forms/versions/FormDesignerPage'
+import { FormVersionReviewPage } from './pages/forms/versions/FormVersionReviewPage'
+import { FormVersionSnapshotPage } from './pages/forms/versions/FormVersionSnapshotPage'
+import { FormTemplatesPage } from './pages/forms/templates/FormTemplatesPage'
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { me, logout, hasPermission } = useAuth()
@@ -65,6 +71,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Organization.View') && <NavLink to="/facilities" className={({ isActive }) => isActive ? 'active' : undefined}>السجون</NavLink>}
           {hasPermission('Notes.View') && <NavLink to="/notes" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
           {hasPermission('Forms.View') && <NavLink to="/forms" className={({ isActive }) => isActive ? 'active' : undefined}>النماذج</NavLink>}
+          {hasPermission('Forms.View') && <NavLink to="/form-templates" className={({ isActive }) => isActive ? 'active' : undefined}>قوالب النماذج</NavLink>}
           {(hasPermission('Dashboard.ViewOperational') || hasPermission('Dashboard.ViewRisk') || hasPermission('Dashboard.ViewRouting') || hasPermission('Dashboard.ViewCorrectiveActions')) &&
             <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : undefined}>لوحة المتابعة</NavLink>}
           {hasPermission('CorrectiveActions.View') && <NavLink to="/corrective-actions" className={({ isActive }) => isActive ? 'active' : undefined}>الإجراءات التصحيحية</NavLink>}
@@ -115,6 +122,14 @@ export default function App() {
       <Route path="/forms/:id/edit" element={<Protected><FormEditPage /></Protected>} />
       <Route path="/forms/:id/review" element={<Protected><FormReviewPage /></Protected>} />
       <Route path="/forms/:id/access" element={<Protected><FormAccessPage /></Protected>} />
+      <Route path="/forms/:formId/versions" element={<Protected><FormVersionsPage /></Protected>} />
+      <Route path="/forms/:formId/versions/new" element={<Protected><FormVersionsPage /></Protected>} />
+      <Route path="/forms/:formId/versions/:versionId" element={<Protected><FormVersionDetailPage /></Protected>} />
+      <Route path="/forms/:formId/versions/:versionId/edit" element={<Protected><FormDesignerPage /></Protected>} />
+      <Route path="/forms/:formId/versions/:versionId/review" element={<Protected><FormVersionReviewPage /></Protected>} />
+      <Route path="/forms/:formId/versions/:versionId/snapshot" element={<Protected><FormVersionSnapshotPage /></Protected>} />
+      <Route path="/form-templates" element={<Protected><FormTemplatesPage /></Protected>} />
+
       <Route path="/settings/forms-governance" element={<Protected><FormsGovernanceSettingsPage /></Protected>} />
       <Route path="/notes/:noteId/corrective-actions/new" element={<Protected><CorrectiveActionCreatePage /></Protected>} />
       <Route path="/corrective-actions" element={<Protected><CorrectiveActionsListPage /></Protected>} />
