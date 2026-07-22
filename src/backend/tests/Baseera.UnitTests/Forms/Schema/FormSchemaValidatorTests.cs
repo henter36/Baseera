@@ -155,6 +155,60 @@ public sealed class FormSchemaValidatorTests
     }
 
     [Fact]
+    public void Page_visibility_condition_is_counted_once()
+    {
+        var predicateCount = 3;
+        var doc = DocWithPageVisibility(BuildFlatPredicates(predicateCount));
+
+        var issues = FormSchemaValidator.Validate(doc, requireMinimumContent: true);
+
+        Assert.DoesNotContain(issues, i => i.Code == "TooManyConditionNodes");
+        Assert.Equal(predicateCount, CountReportedConditionNodes(doc));
+    }
+
+    [Fact]
+    public void Section_visibility_condition_is_counted_once()
+    {
+        var predicateCount = 3;
+        var doc = DocWithSectionVisibility(BuildFlatPredicates(predicateCount));
+
+        var issues = FormSchemaValidator.Validate(doc, requireMinimumContent: true);
+
+        Assert.DoesNotContain(issues, i => i.Code == "TooManyConditionNodes");
+        Assert.Equal(predicateCount, CountReportedConditionNodes(doc));
+    }
+
+    [Fact]
+    public void Allows_exactly_MaxConditionNodes()
+    {
+        var doc = DocWithPageVisibility(BuildFlatPredicates(FormSchemaValidator.MaxConditionNodes));
+
+        var issues = FormSchemaValidator.Validate(doc, requireMinimumContent: true);
+
+        Assert.DoesNotContain(issues, i => i.Code == "TooManyConditionNodes");
+    }
+
+    [Fact]
+    public void Rejects_MaxConditionNodes_plus_one()
+    {
+        var doc = DocWithPageVisibility(BuildFlatPredicates(FormSchemaValidator.MaxConditionNodes + 1));
+
+        var issues = FormSchemaValidator.Validate(doc, requireMinimumContent: true);
+
+        Assert.Contains(issues, i => i.Code == "TooManyConditionNodes");
+    }
+
+    [Fact]
+    public void Condition_depth_exceeded_reported_once()
+    {
+        var doc = DocWithPageVisibility(BuildNestedConditionDepth(FormSchemaValidator.MaxConditionDepth + 1));
+
+        var issues = FormSchemaValidator.Validate(doc, requireMinimumContent: true);
+
+        Assert.Equal(1, issues.Count(i => i.Code == "ConditionDepthExceeded"));
+    }
+
+    [Fact]
     public void Enforces_page_limit()
     {
         var doc = new FormSchemaDocument
@@ -190,6 +244,71 @@ public sealed class FormSchemaValidatorTests
 
         var issues = FormSchemaValidator.Validate(doc, requireMinimumContent: true);
         Assert.Contains(issues, i => i.Code == "TooManyPages");
+    }
+
+    private static int CountReportedConditionNodes(FormSchemaDocument doc) =>
+        new FormSchemaCanonicalizer().Canonicalize(doc, requireMinimumContent: true).ConditionCount;
+
+    private static FormConditionGroup BuildFlatPredicates(int count) => new()
+    {
+        Predicates = Enumerable.Range(0, count)
+            .Select(i => new FormConditionPredicate
+            {
+                FieldKey = "f",
+                Operator = FormConditionOperator.Equals,
+                Value = $"v{i}"
+            })
+            .ToList()
+    };
+
+    private static FormConditionGroup BuildNestedConditionDepth(int depth)
+    {
+        if (depth <= 0)
+        {
+            return new FormConditionGroup
+            {
+                Predicates =
+                [
+                    new FormConditionPredicate
+                    {
+                        FieldKey = "f",
+                        Operator = FormConditionOperator.Equals,
+                        Value = "x"
+                    }
+                ]
+            };
+        }
+
+        return new FormConditionGroup
+        {
+            Groups = [BuildNestedConditionDepth(depth - 1)]
+        };
+    }
+
+    private static FormSchemaDocument DocWithPageVisibility(FormConditionGroup condition)
+    {
+        var doc = MinimalDoc(new FormFieldSchema
+        {
+            Id = Guid.NewGuid(),
+            Key = "f",
+            Type = FormFieldType.ShortText,
+            LabelAr = "حقل"
+        });
+        doc.Pages[0].VisibilityCondition = condition;
+        return doc;
+    }
+
+    private static FormSchemaDocument DocWithSectionVisibility(FormConditionGroup condition)
+    {
+        var doc = MinimalDoc(new FormFieldSchema
+        {
+            Id = Guid.NewGuid(),
+            Key = "f",
+            Type = FormFieldType.ShortText,
+            LabelAr = "حقل"
+        });
+        doc.Pages[0].Sections[0].VisibilityCondition = condition;
+        return doc;
     }
 
     private static FormSchemaDocument MinimalDoc(FormFieldSchema field) => new()

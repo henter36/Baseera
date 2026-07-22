@@ -53,47 +53,42 @@ public static class FormSchemaValidator
 
     public static List<FormSchemaValidationIssue> Validate(FormSchemaDocument document, bool requireMinimumContent)
     {
-        var issues = new List<FormSchemaValidationIssue>();
+        var context = new SchemaValidationContext();
+
         if (document.SchemaFormatVersion != CurrentSchemaFormatVersion)
         {
-            issues.Add(Issue("UnsupportedSchemaFormat", "$", null, null, "إصدار تنسيق المخطط غير مدعوم."));
+            context.Issues.Add(Issue("UnsupportedSchemaFormat", "$", null, null, "إصدار تنسيق المخطط غير مدعوم."));
         }
 
         if (document.Pages.Count > MaxPages)
         {
-            issues.Add(Issue("TooManyPages", "pages", null, null, $"عدد الصفحات يتجاوز الحد ({MaxPages})."));
+            context.Issues.Add(Issue("TooManyPages", "pages", null, null, $"عدد الصفحات يتجاوز الحد ({MaxPages})."));
         }
-
-        var ids = new HashSet<Guid>();
-        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var fieldsByKey = new Dictionary<string, FormFieldSchema>(StringComparer.OrdinalIgnoreCase);
-        var conditionNodes = 0;
-        var formulaNodes = 0;
 
         if (requireMinimumContent)
         {
-            ValidateMinimumContent(document, issues);
+            ValidateMinimumContent(document, context.Issues);
         }
 
         foreach (var page in document.Pages.OrderBy(p => p.Order).ThenBy(p => p.Key, StringComparer.OrdinalIgnoreCase))
         {
-            ValidatePage(page, issues, ids, keys, fieldsByKey, ref conditionNodes, ref formulaNodes);
+            ValidatePage(page, context);
         }
 
-        ValidateCrossReferences(document, fieldsByKey, issues, ref conditionNodes, ref formulaNodes);
+        ValidateCrossReferences(document, context);
 
-        if (conditionNodes > MaxConditionNodes)
+        if (context.ConditionNodes > MaxConditionNodes)
         {
-            issues.Add(Issue("TooManyConditionNodes", "conditions", null, null, $"عدد عقد الشروط يتجاوز الحد ({MaxConditionNodes})."));
+            context.Issues.Add(Issue("TooManyConditionNodes", "conditions", null, null, $"عدد عقد الشروط يتجاوز الحد ({MaxConditionNodes})."));
         }
 
-        if (formulaNodes > MaxFormulaNodes)
+        if (context.FormulaNodes > MaxFormulaNodes)
         {
-            issues.Add(Issue("TooManyFormulaNodes", "formulas", null, null, $"عدد عقد المعادلات يتجاوز الحد ({MaxFormulaNodes})."));
+            context.Issues.Add(Issue("TooManyFormulaNodes", "formulas", null, null, $"عدد عقد المعادلات يتجاوز الحد ({MaxFormulaNodes})."));
         }
 
-        issues.AddRange(FormDependencyGraph.DetectCyclesAndMissingRefs(document, fieldsByKey));
-        return issues;
+        context.Issues.AddRange(FormDependencyGraph.DetectCyclesAndMissingRefs(document, context.FieldsByKey));
+        return context.Issues;
     }
 
     private static void ValidateMinimumContent(FormSchemaDocument document, List<FormSchemaValidationIssue> issues)
@@ -112,88 +107,61 @@ public static class FormSchemaValidator
         }
     }
 
-    private static void ValidatePage(
-        FormPageSchema page,
-        List<FormSchemaValidationIssue> issues,
-        HashSet<Guid> ids,
-        HashSet<string> keys,
-        Dictionary<string, FormFieldSchema> fieldsByKey,
-        ref int conditionNodes,
-        ref int formulaNodes)
+    private static void ValidatePage(FormPageSchema page, SchemaValidationContext context)
     {
-        TrackId(page.Id, $"pages[{page.Key}]", ids, issues);
-        TrackKey(page.Key, $"pages[{page.Key}].key", page.Id, keys, issues);
-        ValidateTitle(page.TitleAr, $"pages[{page.Key}].titleAr", page.Id, page.Key, issues);
-        ValidateCondition(page.VisibilityCondition, $"pages[{page.Key}].visibility", page.Id, fieldsByKey, issues, deferFieldCheck: true, depth: 0, ref conditionNodes);
+        TrackId(page.Id, $"pages[{page.Key}]", context);
+        TrackKey(page.Key, $"pages[{page.Key}].key", page.Id, context);
+        ValidateTitle(page.TitleAr, $"pages[{page.Key}].titleAr", page.Id, page.Key, context.Issues);
 
         if (page.Sections.Count > MaxSectionsPerPage)
         {
-            issues.Add(Issue("TooManySections", $"pages[{page.Key}].sections", page.Id, page.Key, $"عدد الأقسام يتجاوز الحد ({MaxSectionsPerPage})."));
+            context.Issues.Add(Issue("TooManySections", $"pages[{page.Key}].sections", page.Id, page.Key, $"عدد الأقسام يتجاوز الحد ({MaxSectionsPerPage})."));
         }
 
         foreach (var section in page.Sections.OrderBy(s => s.Order).ThenBy(s => s.Key, StringComparer.OrdinalIgnoreCase))
         {
-            ValidateSection(section, page.Key, issues, ids, keys, fieldsByKey, ref conditionNodes, ref formulaNodes);
+            ValidateSection(section, context);
         }
     }
 
-    private static void ValidateSection(
-        FormSectionSchema section,
-        string pageKey,
-        List<FormSchemaValidationIssue> issues,
-        HashSet<Guid> ids,
-        HashSet<string> keys,
-        Dictionary<string, FormFieldSchema> fieldsByKey,
-        ref int conditionNodes,
-        ref int formulaNodes)
+    private static void ValidateSection(FormSectionSchema section, SchemaValidationContext context)
     {
-        TrackId(section.Id, $"sections[{section.Key}]", ids, issues);
-        TrackKey(section.Key, $"sections[{section.Key}].key", section.Id, keys, issues);
-        ValidateTitle(section.TitleAr, $"sections[{section.Key}].titleAr", section.Id, section.Key, issues);
-        ValidateCondition(section.VisibilityCondition, $"sections[{section.Key}].visibility", section.Id, fieldsByKey, issues, deferFieldCheck: true, depth: 0, ref conditionNodes);
+        TrackId(section.Id, $"sections[{section.Key}]", context);
+        TrackKey(section.Key, $"sections[{section.Key}].key", section.Id, context);
+        ValidateTitle(section.TitleAr, $"sections[{section.Key}].titleAr", section.Id, section.Key, context.Issues);
 
         if (section.Fields.Count > MaxFieldsPerSection)
         {
-            issues.Add(Issue("TooManyFields", $"sections[{section.Key}].fields", section.Id, section.Key, $"عدد الحقول يتجاوز الحد ({MaxFieldsPerSection})."));
+            context.Issues.Add(Issue("TooManyFields", $"sections[{section.Key}].fields", section.Id, section.Key, $"عدد الحقول يتجاوز الحد ({MaxFieldsPerSection})."));
         }
 
         foreach (var field in section.Fields.OrderBy(f => f.Order).ThenBy(f => f.Key, StringComparer.OrdinalIgnoreCase))
         {
-            ValidateField(field, $"fields[{field.Key}]", issues, ids, keys, fieldsByKey, insideRepeating: false, ref conditionNodes, ref formulaNodes);
+            ValidateField(field, $"fields[{field.Key}]", context, insideRepeating: false);
         }
     }
 
-    private static void ValidateCrossReferences(
-        FormSchemaDocument document,
-        Dictionary<string, FormFieldSchema> fieldsByKey,
-        List<FormSchemaValidationIssue> issues,
-        ref int conditionNodes,
-        ref int formulaNodes)
+    private static void ValidateCrossReferences(FormSchemaDocument document, SchemaValidationContext context)
     {
         foreach (var page in document.Pages)
         {
-            ValidateCondition(page.VisibilityCondition, $"pages[{page.Key}].visibility", page.Id, fieldsByKey, issues, deferFieldCheck: false, depth: 0, ref conditionNodes);
+            ValidateConditionGroup(page.VisibilityCondition, $"pages[{page.Key}].visibility", page.Id, context, deferFieldCheck: false, depth: 0);
             foreach (var section in page.Sections)
             {
-                ValidateCondition(section.VisibilityCondition, $"sections[{section.Key}].visibility", section.Id, fieldsByKey, issues, deferFieldCheck: false, depth: 0, ref conditionNodes);
+                ValidateConditionGroup(section.VisibilityCondition, $"sections[{section.Key}].visibility", section.Id, context, deferFieldCheck: false, depth: 0);
                 foreach (var field in section.Fields)
                 {
-                    ValidateFieldReferences(field, fieldsByKey, issues, ref conditionNodes, ref formulaNodes);
+                    ValidateFieldReferences(field, context);
                 }
             }
         }
     }
 
-    private static void ValidateFieldReferences(
-        FormFieldSchema field,
-        Dictionary<string, FormFieldSchema> fieldsByKey,
-        List<FormSchemaValidationIssue> issues,
-        ref int conditionNodes,
-        ref int formulaNodes)
+    private static void ValidateFieldReferences(FormFieldSchema field, SchemaValidationContext context)
     {
-        ValidateCondition(field.VisibilityCondition, $"fields[{field.Key}].visibility", field.Id, fieldsByKey, issues, deferFieldCheck: false, depth: 0, ref conditionNodes);
-        ValidateCondition(field.RequiredCondition, $"fields[{field.Key}].required", field.Id, fieldsByKey, issues, deferFieldCheck: false, depth: 0, ref conditionNodes);
-        ValidateFormula(field.Formula, $"fields[{field.Key}].formula", field.Id, field.Type, fieldsByKey, issues, ref formulaNodes);
+        ValidateConditionGroup(field.VisibilityCondition, $"fields[{field.Key}].visibility", field.Id, context, deferFieldCheck: false, depth: 0);
+        ValidateConditionGroup(field.RequiredCondition, $"fields[{field.Key}].required", field.Id, context, deferFieldCheck: false, depth: 0);
+        ValidateFormulaNode(field.Formula, $"fields[{field.Key}].formula", field.Id, field.Type, context);
         if (field.RepeatingTable is null)
         {
             return;
@@ -202,116 +170,87 @@ public static class FormSchemaValidator
         foreach (var col in field.RepeatingTable.Columns)
         {
             var colPath = $"fields[{field.Key}].columns[{col.Key}]";
-            ValidateCondition(col.VisibilityCondition, $"{colPath}.visibility", col.Id, fieldsByKey, issues, deferFieldCheck: false, depth: 0, ref conditionNodes);
-            ValidateCondition(col.RequiredCondition, $"{colPath}.required", col.Id, fieldsByKey, issues, deferFieldCheck: false, depth: 0, ref conditionNodes);
-            ValidateFormula(col.Formula, $"{colPath}.formula", col.Id, col.Type, fieldsByKey, issues, ref formulaNodes);
+            ValidateConditionGroup(col.VisibilityCondition, $"{colPath}.visibility", col.Id, context, deferFieldCheck: false, depth: 0);
+            ValidateConditionGroup(col.RequiredCondition, $"{colPath}.required", col.Id, context, deferFieldCheck: false, depth: 0);
+            ValidateFormulaNode(col.Formula, $"{colPath}.formula", col.Id, col.Type, context);
         }
     }
 
     private static void ValidateField(
         FormFieldSchema field,
         string path,
-        List<FormSchemaValidationIssue> issues,
-        HashSet<Guid> ids,
-        HashSet<string> keys,
-        Dictionary<string, FormFieldSchema> fieldsByKey,
-        bool insideRepeating,
-        ref int conditionNodes,
-        ref int formulaNodes)
+        SchemaValidationContext context,
+        bool insideRepeating)
     {
-        if (!ids.Add(field.Id))
+        ValidateFieldIdentity(field, path, context);
+        ValidateFieldLabel(field, path, context);
+        ValidateCalculatedConfiguration(field, path, context);
+        ValidateTextConfiguration(field, path, context);
+        ValidateChoiceConfiguration(field, path, context);
+
+        if (field.Type == FormFieldType.RepeatingTable)
         {
-            issues.Add(Issue("DuplicateId", path, field.Id, field.Key, "معرّف مكرر داخل المخطط."));
+            ValidateRepeatingTableConfiguration(field, path, context, insideRepeating);
+        }
+    }
+
+    private static void ValidateFieldIdentity(FormFieldSchema field, string path, SchemaValidationContext context)
+    {
+        if (!context.Ids.Add(field.Id))
+        {
+            context.Issues.Add(Issue("DuplicateId", path, field.Id, field.Key, "معرّف مكرر داخل المخطط."));
         }
 
-        if (string.IsNullOrWhiteSpace(field.Key) || field.Key.Length > MaxKeyLength || !keys.Add(field.Key))
+        if (string.IsNullOrWhiteSpace(field.Key) || field.Key.Length > MaxKeyLength || !context.Keys.Add(field.Key))
         {
-            issues.Add(Issue(
-                string.IsNullOrWhiteSpace(field.Key) ? "MissingKey" : field.Key.Length > MaxKeyLength ? "KeyTooLong" : "DuplicateKey",
-                path + ".key",
-                field.Id,
-                field.Key,
-                string.IsNullOrWhiteSpace(field.Key) ? "المفتاح مطلوب." : field.Key.Length > MaxKeyLength ? "المفتاح طويل جدًا." : "المفتاح مكرر دون اعتبار حالة الأحرف."));
+            string code;
+            string message;
+            if (string.IsNullOrWhiteSpace(field.Key))
+            {
+                code = "MissingKey";
+                message = "المفتاح مطلوب.";
+            }
+            else if (field.Key.Length > MaxKeyLength)
+            {
+                code = "KeyTooLong";
+                message = "المفتاح طويل جدًا.";
+            }
+            else
+            {
+                code = "DuplicateKey";
+                message = "المفتاح مكرر دون اعتبار حالة الأحرف.";
+            }
+
+            context.Issues.Add(Issue(code, path + ".key", field.Id, field.Key, message));
         }
         else
         {
-            fieldsByKey[field.Key] = field;
+            context.FieldsByKey[field.Key] = field;
         }
+    }
 
-        ValidateTitle(field.LabelAr, path + ".labelAr", field.Id, field.Key, issues);
-        ValidateTextLength(field.LabelEn, path + ".labelEn", field.Id, field.Key, issues);
-        ValidateTextLength(field.Description, path + ".description", field.Id, field.Key, issues);
+    private static void ValidateFieldLabel(FormFieldSchema field, string path, SchemaValidationContext context)
+    {
+        ValidateTitle(field.LabelAr, path + ".labelAr", field.Id, field.Key, context.Issues);
+        ValidateTextLength(field.LabelEn, path + ".labelEn", field.Id, field.Key, context.Issues);
+        ValidateTextLength(field.Description, path + ".description", field.Id, field.Key, context.Issues);
+    }
 
+    private static void ValidateCalculatedConfiguration(FormFieldSchema field, string path, SchemaValidationContext context)
+    {
         var calculated = field.Type is FormFieldType.CalculatedNumber or FormFieldType.CalculatedText;
         if (field.IsCalculated != calculated)
         {
-            issues.Add(Issue("CalculatedFlagMismatch", path, field.Id, field.Key, "علامة الحقل المحسوب غير متوافقة مع النوع."));
+            context.Issues.Add(Issue("CalculatedFlagMismatch", path, field.Id, field.Key, "علامة الحقل المحسوب غير متوافقة مع النوع."));
         }
 
         if (calculated && field.Formula is null)
         {
-            issues.Add(Issue("MissingFormula", path + ".formula", field.Id, field.Key, "الحقل المحسوب يتطلب معادلة."));
-        }
-
-        ValidateRegex(field, path, issues);
-
-        if (field.Type is FormFieldType.SingleChoice or FormFieldType.MultipleChoice)
-        {
-            if (field.Choice is null || field.Choice.Options.Count == 0)
-            {
-                issues.Add(Issue("MissingOptions", path + ".choice", field.Id, field.Key, "خيارات الحقل مطلوبة."));
-            }
-            else if (field.Choice.Options.Count > MaxOptionsPerChoice)
-            {
-                issues.Add(Issue("TooManyOptions", path + ".choice.options", field.Id, field.Key, $"عدد الخيارات يتجاوز الحد ({MaxOptionsPerChoice})."));
-            }
-        }
-
-        if (field.Type == FormFieldType.RepeatingTable)
-        {
-            ValidateRepeatingTable(field, path, issues, ids, keys, fieldsByKey, insideRepeating, ref conditionNodes, ref formulaNodes);
+            context.Issues.Add(Issue("MissingFormula", path + ".formula", field.Id, field.Key, "الحقل المحسوب يتطلب معادلة."));
         }
     }
 
-    private static void ValidateRepeatingTable(
-        FormFieldSchema field,
-        string path,
-        List<FormSchemaValidationIssue> issues,
-        HashSet<Guid> ids,
-        HashSet<string> keys,
-        Dictionary<string, FormFieldSchema> fieldsByKey,
-        bool insideRepeating,
-        ref int conditionNodes,
-        ref int formulaNodes)
-    {
-        if (insideRepeating)
-        {
-            issues.Add(Issue("NestedRepeatingTable", path, field.Id, field.Key, "لا يُسمح بجدول متكرر داخل جدول متكرر."));
-        }
-
-        if (field.RepeatingTable is null)
-        {
-            issues.Add(Issue("MissingRepeatingTable", path, field.Id, field.Key, "إعدادات الجدول المتكرر مطلوبة."));
-            return;
-        }
-
-        if (field.RepeatingTable.Columns.Count > MaxRepeatingTableColumns)
-        {
-            issues.Add(Issue("TooManyRepeatingColumns", path + ".repeatingTable.columns", field.Id, field.Key, $"عدد أعمدة الجدول يتجاوز الحد ({MaxRepeatingTableColumns})."));
-        }
-
-        if (field.RepeatingTable.MaxRows > MaxRepeatingTableRows)
-        {
-            issues.Add(Issue("TooManyRepeatingRows", path + ".repeatingTable.maxRows", field.Id, field.Key, $"الحد الأقصى للصفوف يتجاوز ({MaxRepeatingTableRows})."));
-        }
-
-        foreach (var col in field.RepeatingTable.Columns)
-        {
-            ValidateField(col, path + $".columns[{col.Key}]", issues, ids, keys, fieldsByKey, insideRepeating: true, ref conditionNodes, ref formulaNodes);
-        }
-    }
-
-    private static void ValidateRegex(FormFieldSchema field, string path, List<FormSchemaValidationIssue> issues)
+    private static void ValidateTextConfiguration(FormFieldSchema field, string path, SchemaValidationContext context)
     {
         if (field.Text?.Kind != FormTextValidationKind.CustomPattern)
         {
@@ -321,7 +260,7 @@ public static class FormSchemaValidator
         var pattern = field.Text.CustomPattern ?? string.Empty;
         if (pattern.Length is 0 or > MaxRegexLength)
         {
-            issues.Add(Issue("UnsafeRegex", path + ".text.customPattern", field.Id, field.Key, "نمط التحقق غير صالح أو يتجاوز الحد الآمن."));
+            context.Issues.Add(Issue("UnsafeRegex", path + ".text.customPattern", field.Id, field.Key, "نمط التحقق غير صالح أو يتجاوز الحد الآمن."));
             return;
         }
 
@@ -331,124 +270,165 @@ public static class FormSchemaValidator
         }
         catch (Exception)
         {
-            issues.Add(Issue("UnsafeRegex", path + ".text.customPattern", field.Id, field.Key, "نمط التحقق غير آمن أو غير صالح."));
+            context.Issues.Add(Issue("UnsafeRegex", path + ".text.customPattern", field.Id, field.Key, "نمط التحقق غير آمن أو غير صالح."));
         }
     }
 
-    private static void ValidateCondition(
+    private static void ValidateChoiceConfiguration(FormFieldSchema field, string path, SchemaValidationContext context)
+    {
+        if (field.Type is not (FormFieldType.SingleChoice or FormFieldType.MultipleChoice))
+        {
+            return;
+        }
+
+        if (field.Choice is null || field.Choice.Options.Count == 0)
+        {
+            context.Issues.Add(Issue("MissingOptions", path + ".choice", field.Id, field.Key, "خيارات الحقل مطلوبة."));
+        }
+        else if (field.Choice.Options.Count > MaxOptionsPerChoice)
+        {
+            context.Issues.Add(Issue("TooManyOptions", path + ".choice.options", field.Id, field.Key, $"عدد الخيارات يتجاوز الحد ({MaxOptionsPerChoice})."));
+        }
+    }
+
+    private static void ValidateRepeatingTableConfiguration(
+        FormFieldSchema field,
+        string path,
+        SchemaValidationContext context,
+        bool insideRepeating)
+    {
+        if (insideRepeating)
+        {
+            context.Issues.Add(Issue("NestedRepeatingTable", path, field.Id, field.Key, "لا يُسمح بجدول متكرر داخل جدول متكرر."));
+        }
+
+        if (field.RepeatingTable is null)
+        {
+            context.Issues.Add(Issue("MissingRepeatingTable", path, field.Id, field.Key, "إعدادات الجدول المتكرر مطلوبة."));
+            return;
+        }
+
+        if (field.RepeatingTable.Columns.Count > MaxRepeatingTableColumns)
+        {
+            context.Issues.Add(Issue("TooManyRepeatingColumns", path + ".repeatingTable.columns", field.Id, field.Key, $"عدد أعمدة الجدول يتجاوز الحد ({MaxRepeatingTableColumns})."));
+        }
+
+        if (field.RepeatingTable.MaxRows > MaxRepeatingTableRows)
+        {
+            context.Issues.Add(Issue("TooManyRepeatingRows", path + ".repeatingTable.maxRows", field.Id, field.Key, $"الحد الأقصى للصفوف يتجاوز ({MaxRepeatingTableRows})."));
+        }
+
+        foreach (var col in field.RepeatingTable.Columns)
+        {
+            ValidateField(col, path + $".columns[{col.Key}]", context, insideRepeating: true);
+        }
+    }
+
+    private static void ValidateConditionGroup(
         FormConditionGroup? group,
         string path,
         Guid? entityId,
-        IReadOnlyDictionary<string, FormFieldSchema> fieldsByKey,
-        List<FormSchemaValidationIssue> issues,
+        SchemaValidationContext context,
         bool deferFieldCheck,
-        int depth,
-        ref int conditionNodes)
+        int depth)
     {
         if (group is null)
         {
             return;
         }
 
-        if (depth > MaxConditionDepth)
+        if (!ValidateConditionDepth(depth, path, entityId, context))
         {
-            issues.Add(Issue("ConditionDepthExceeded", path, entityId, null, $"عمق الشروط يتجاوز الحد ({MaxConditionDepth})."));
             return;
         }
 
-        conditionNodes += group.Predicates.Count;
+        context.ConditionNodes += group.Predicates.Count;
         foreach (var predicate in group.Predicates)
         {
-            if (!deferFieldCheck)
-            {
-                if (!fieldsByKey.TryGetValue(predicate.FieldKey, out var field))
-                {
-                    issues.Add(Issue("MissingFieldReference", path, entityId, predicate.FieldKey, $"مرجع الحقل '{predicate.FieldKey}' غير موجود."));
-                    continue;
-                }
-
-                if (!IsOperatorCompatible(field.Type, predicate.Operator))
-                {
-                    issues.Add(Issue("OperatorTypeMismatch", path, entityId, predicate.FieldKey, "عامل الشرط غير متوافق مع نوع الحقل."));
-                }
-            }
+            ValidateConditionPredicate(predicate, path, entityId, context, deferFieldCheck);
         }
 
         foreach (var nested in group.Groups)
         {
-            ValidateCondition(nested, path, entityId, fieldsByKey, issues, deferFieldCheck, depth + 1, ref conditionNodes);
+            ValidateConditionGroup(nested, path, entityId, context, deferFieldCheck, depth + 1);
         }
     }
 
-    private static void ValidateFormula(
+    private static bool ValidateConditionDepth(int depth, string path, Guid? entityId, SchemaValidationContext context)
+    {
+        if (depth <= MaxConditionDepth)
+        {
+            return true;
+        }
+
+        context.Issues.Add(Issue("ConditionDepthExceeded", path, entityId, null, $"عمق الشروط يتجاوز الحد ({MaxConditionDepth})."));
+        return false;
+    }
+
+    private static void ValidateConditionPredicate(
+        FormConditionPredicate predicate,
+        string path,
+        Guid? entityId,
+        SchemaValidationContext context,
+        bool deferFieldCheck)
+    {
+        if (deferFieldCheck)
+        {
+            return;
+        }
+
+        if (!context.FieldsByKey.TryGetValue(predicate.FieldKey, out var field))
+        {
+            context.Issues.Add(Issue("MissingFieldReference", path, entityId, predicate.FieldKey, $"مرجع الحقل '{predicate.FieldKey}' غير موجود."));
+            return;
+        }
+
+        ValidateConditionOperator(field.Type, predicate.Operator, path, entityId, predicate.FieldKey, context);
+    }
+
+    private static void ValidateConditionOperator(
+        FormFieldType fieldType,
+        FormConditionOperator op,
+        string path,
+        Guid? entityId,
+        string fieldKey,
+        SchemaValidationContext context)
+    {
+        if (!IsOperatorCompatible(fieldType, op))
+        {
+            context.Issues.Add(Issue("OperatorTypeMismatch", path, entityId, fieldKey, "عامل الشرط غير متوافق مع نوع الحقل."));
+        }
+    }
+
+    private static void ValidateFormulaNode(
         FormFormulaNode? node,
         string path,
         Guid entityId,
         FormFieldType fieldType,
-        IReadOnlyDictionary<string, FormFieldSchema> fieldsByKey,
-        List<FormSchemaValidationIssue> issues,
-        ref int formulaNodes)
+        SchemaValidationContext context)
     {
         if (node is null)
         {
             return;
         }
 
-        formulaNodes++;
+        context.FormulaNodes++;
         switch (node)
         {
             case FormConstantNumberNode:
             case FormConstantTextNode:
                 break;
             case FormFieldReferenceNode fr:
-                if (string.IsNullOrWhiteSpace(fr.FieldKey))
-                {
-                    issues.Add(Issue("MissingFormulaFieldKey", path, entityId, null, "مرجع الحقل في المعادلة مطلوب."));
-                }
-                else if (!fieldsByKey.ContainsKey(fr.FieldKey))
-                {
-                    issues.Add(Issue("MissingFieldReference", path, entityId, fr.FieldKey, $"مرجع الحقل '{fr.FieldKey}' غير موجود."));
-                }
-
+                ValidateFormulaFieldReference(fr, path, entityId, context);
                 break;
             case FormBinaryOperationNode bin:
-                if (bin.Left is null)
-                {
-                    issues.Add(Issue("MissingFormulaOperand", path + ".left", entityId, null, "العامل الأيسر في المعادلة مطلوب."));
-                }
-                else
-                {
-                    ValidateFormula(bin.Left, path + ".left", entityId, fieldType, fieldsByKey, issues, ref formulaNodes);
-                }
-
-                if (bin.Right is null)
-                {
-                    issues.Add(Issue("MissingFormulaOperand", path + ".right", entityId, null, "العامل الأيمن في المعادلة مطلوب."));
-                }
-                else
-                {
-                    ValidateFormula(bin.Right, path + ".right", entityId, fieldType, fieldsByKey, issues, ref formulaNodes);
-                }
-
+                ValidateFormulaBinary(bin, path, entityId, fieldType, context);
                 break;
             case FormFunctionCallNode fn:
-                if (!Enum.IsDefined(fn.Function))
-                {
-                    issues.Add(Issue("UnknownFormulaFunction", path, entityId, null, "دالة معادلة غير مسجلة."));
-                }
-                else if (!HasRequiredArguments(fn))
-                {
-                    issues.Add(Issue("MissingFormulaArguments", path, entityId, null, "عدد وسائط الدالة غير كافٍ."));
-                }
-
-                foreach (var arg in fn.Arguments)
-                {
-                    ValidateFormula(arg, path, entityId, fieldType, fieldsByKey, issues, ref formulaNodes);
-                }
-
+                ValidateFormulaFunction(fn, path, entityId, fieldType, context);
                 break;
             default:
-                issues.Add(Issue("UnknownFormulaNode", path, entityId, null, "عقدة معادلة غير معروفة."));
+                context.Issues.Add(Issue("UnknownFormulaNode", path, entityId, null, "عقدة معادلة غير معروفة."));
                 break;
         }
 
@@ -459,7 +439,71 @@ public static class FormSchemaValidator
 
         if (fieldType == FormFieldType.CalculatedNumber && node is FormConstantTextNode)
         {
-            issues.Add(Issue("FormulaResultTypeMismatch", path, entityId, null, "نوع نتيجة المعادلة غير متوافق مع نوع الحقل."));
+            context.Issues.Add(Issue("FormulaResultTypeMismatch", path, entityId, null, "نوع نتيجة المعادلة غير متوافق مع نوع الحقل."));
+        }
+    }
+
+    private static void ValidateFormulaFieldReference(
+        FormFieldReferenceNode fr,
+        string path,
+        Guid entityId,
+        SchemaValidationContext context)
+    {
+        if (string.IsNullOrWhiteSpace(fr.FieldKey))
+        {
+            context.Issues.Add(Issue("MissingFormulaFieldKey", path, entityId, null, "مرجع الحقل في المعادلة مطلوب."));
+        }
+        else if (!context.FieldsByKey.ContainsKey(fr.FieldKey))
+        {
+            context.Issues.Add(Issue("MissingFieldReference", path, entityId, fr.FieldKey, $"مرجع الحقل '{fr.FieldKey}' غير موجود."));
+        }
+    }
+
+    private static void ValidateFormulaBinary(
+        FormBinaryOperationNode bin,
+        string path,
+        Guid entityId,
+        FormFieldType fieldType,
+        SchemaValidationContext context)
+    {
+        if (bin.Left is null)
+        {
+            context.Issues.Add(Issue("MissingFormulaOperand", path + ".left", entityId, null, "العامل الأيسر في المعادلة مطلوب."));
+        }
+        else
+        {
+            ValidateFormulaNode(bin.Left, path + ".left", entityId, fieldType, context);
+        }
+
+        if (bin.Right is null)
+        {
+            context.Issues.Add(Issue("MissingFormulaOperand", path + ".right", entityId, null, "العامل الأيمن في المعادلة مطلوب."));
+        }
+        else
+        {
+            ValidateFormulaNode(bin.Right, path + ".right", entityId, fieldType, context);
+        }
+    }
+
+    private static void ValidateFormulaFunction(
+        FormFunctionCallNode fn,
+        string path,
+        Guid entityId,
+        FormFieldType fieldType,
+        SchemaValidationContext context)
+    {
+        if (!Enum.IsDefined(fn.Function))
+        {
+            context.Issues.Add(Issue("UnknownFormulaFunction", path, entityId, null, "دالة معادلة غير مسجلة."));
+        }
+        else if (!HasRequiredArguments(fn))
+        {
+            context.Issues.Add(Issue("MissingFormulaArguments", path, entityId, null, "عدد وسائط الدالة غير كافٍ."));
+        }
+
+        foreach (var arg in fn.Arguments)
+        {
+            ValidateFormulaNode(arg, path, entityId, fieldType, context);
         }
     }
 
@@ -491,31 +535,31 @@ public static class FormSchemaValidator
         };
     }
 
-    private static void TrackId(Guid id, string path, HashSet<Guid> ids, List<FormSchemaValidationIssue> issues)
+    private static void TrackId(Guid id, string path, SchemaValidationContext context)
     {
-        if (!ids.Add(id))
+        if (!context.Ids.Add(id))
         {
-            issues.Add(Issue("DuplicateId", path, id, null, "معرّف مكرر داخل المخطط."));
+            context.Issues.Add(Issue("DuplicateId", path, id, null, "معرّف مكرر داخل المخطط."));
         }
     }
 
-    private static void TrackKey(string key, string path, Guid entityId, HashSet<string> keys, List<FormSchemaValidationIssue> issues)
+    private static void TrackKey(string key, string path, Guid entityId, SchemaValidationContext context)
     {
         if (string.IsNullOrWhiteSpace(key))
         {
-            issues.Add(Issue("MissingKey", path, entityId, key, "المفتاح مطلوب."));
+            context.Issues.Add(Issue("MissingKey", path, entityId, key, "المفتاح مطلوب."));
             return;
         }
 
         if (key.Length > MaxKeyLength)
         {
-            issues.Add(Issue("KeyTooLong", path, entityId, key, "المفتاح طويل جدًا."));
+            context.Issues.Add(Issue("KeyTooLong", path, entityId, key, "المفتاح طويل جدًا."));
             return;
         }
 
-        if (!keys.Add(key))
+        if (!context.Keys.Add(key))
         {
-            issues.Add(Issue("DuplicateKey", path, entityId, key, "المفتاح مكرر دون اعتبار حالة الأحرف."));
+            context.Issues.Add(Issue("DuplicateKey", path, entityId, key, "المفتاح مكرر دون اعتبار حالة الأحرف."));
         }
     }
 
@@ -548,4 +592,14 @@ public static class FormSchemaValidator
         MessageAr = messageAr,
         Severity = FormSchemaValidationSeverity.Error
     };
+
+    internal sealed class SchemaValidationContext
+    {
+        public List<FormSchemaValidationIssue> Issues { get; } = [];
+        public HashSet<Guid> Ids { get; } = [];
+        public HashSet<string> Keys { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, FormFieldSchema> FieldsByKey { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public int ConditionNodes { get; set; }
+        public int FormulaNodes { get; set; }
+    }
 }

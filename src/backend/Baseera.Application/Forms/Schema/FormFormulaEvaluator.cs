@@ -1,5 +1,6 @@
 namespace Baseera.Application.Forms.Schema;
 
+using System.Globalization;
 using Baseera.Domain.Forms.Schema;
 
 public static class FormFormulaEvaluator
@@ -12,18 +13,18 @@ public static class FormFormulaEvaluator
             FormConstantNumberNode n => n.Value,
             FormConstantTextNode t => t.Value,
             FormFieldReferenceNode fr => values.TryGetValue(fr.FieldKey, out var v) ? v : null,
-            FormBinaryOperationNode bin => EvaluateBinary(bin, values),
-            FormFunctionCallNode fn => EvaluateFunction(fn, values),
+            FormBinaryOperationNode bin => EvaluateBinary(bin.Operator, Evaluate(bin.Left, values), Evaluate(bin.Right, values)),
+            FormFunctionCallNode fn => EvaluateFunction(fn.Function, fn.Arguments.Select(a => Evaluate(a, values)).ToList()),
             _ => null
         };
     }
 
-    private static object? EvaluateBinary(FormBinaryOperationNode bin, IReadOnlyDictionary<string, object?> values)
+    private static object? EvaluateBinary(FormFormulaBinaryOperator op, object? leftVal, object? rightVal)
     {
-        var left = ToDecimal(Evaluate(bin.Left, values));
-        var right = ToDecimal(Evaluate(bin.Right, values));
+        var left = ToDecimal(leftVal);
+        var right = ToDecimal(rightVal);
         if (left is null || right is null) return null;
-        return bin.Operator switch
+        return op switch
         {
             FormFormulaBinaryOperator.Add => left + right,
             FormFormulaBinaryOperator.Subtract => left - right,
@@ -34,11 +35,10 @@ public static class FormFormulaEvaluator
         };
     }
 
-    private static object? EvaluateFunction(FormFunctionCallNode fn, IReadOnlyDictionary<string, object?> values)
+    private static object? EvaluateFunction(FormFormulaFunction function, IReadOnlyList<object?> args)
     {
-        var args = fn.Arguments.Select(a => Evaluate(a, values)).ToList();
         var nums = args.Select(ToDecimal).Where(x => x.HasValue).Select(x => x!.Value).ToList();
-        return fn.Function switch
+        return function switch
         {
             FormFormulaFunction.Min => nums.Count == 0 ? null : nums.Min(),
             FormFormulaFunction.Max => nums.Count == 0 ? null : nums.Max(),
@@ -49,7 +49,7 @@ public static class FormFormulaEvaluator
             FormFormulaFunction.Ceiling => nums.Count == 0 ? null : Math.Ceiling(nums[0]),
             FormFormulaFunction.Abs => nums.Count == 0 ? null : Math.Abs(nums[0]),
             FormFormulaFunction.Coalesce => args.FirstOrDefault(a => a is not null and not ""),
-            FormFormulaFunction.Concat => string.Concat(args.Select(a => a?.ToString() ?? string.Empty)),
+            FormFormulaFunction.Concat => string.Concat(args.Select(ToSafeString)),
             _ => null
         };
     }
@@ -65,4 +65,24 @@ public static class FormFormulaEvaluator
         string s when decimal.TryParse(s, out var parsed) => parsed,
         _ => null
     };
+
+    private static string ToSafeString(object? value)
+    {
+        if (value is null)
+        {
+            return string.Empty;
+        }
+
+        if (value is string s)
+        {
+            return s;
+        }
+
+        if (value is IFormattable formattable)
+        {
+            return formattable.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty;
+        }
+
+        return value.ToString() ?? string.Empty;
+    }
 }

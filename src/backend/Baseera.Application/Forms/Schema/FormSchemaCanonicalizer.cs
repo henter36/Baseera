@@ -95,13 +95,13 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
             .Select((p, i) =>
             {
                 p.Order = i;
-                p.VisibilityCondition = NormalizeConditionGroup(p.VisibilityCondition);
+                NormalizePageConditions(p);
                 p.Sections = p.Sections
                     .OrderBy(s => s.Order).ThenBy(s => s.Key, StringComparer.OrdinalIgnoreCase)
                     .Select((s, si) =>
                     {
                         s.Order = si;
-                        s.VisibilityCondition = NormalizeConditionGroup(s.VisibilityCondition);
+                        NormalizeSectionConditions(s);
                         s.Fields = s.Fields
                             .OrderBy(f => f.Order).ThenBy(f => f.Key, StringComparer.OrdinalIgnoreCase)
                             .Select((f, fi) => NormalizeField(f, fi))
@@ -113,11 +113,20 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
         return document;
     }
 
+    private static void NormalizePageConditions(FormPageSchema page)
+    {
+        page.VisibilityCondition = NormalizeConditionGroup(page.VisibilityCondition);
+    }
+
+    private static void NormalizeSectionConditions(FormSectionSchema section)
+    {
+        section.VisibilityCondition = NormalizeConditionGroup(section.VisibilityCondition);
+    }
+
     private static FormFieldSchema NormalizeField(FormFieldSchema field, int order)
     {
         field.Order = order;
-        field.VisibilityCondition = NormalizeConditionGroup(field.VisibilityCondition);
-        field.RequiredCondition = NormalizeConditionGroup(field.RequiredCondition);
+        NormalizeFieldConditions(field);
         if (field.Choice?.Options is { Count: > 0 })
         {
             field.Choice.Options = field.Choice.Options
@@ -137,6 +146,12 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
         return field;
     }
 
+    private static void NormalizeFieldConditions(FormFieldSchema field)
+    {
+        field.VisibilityCondition = NormalizeConditionGroup(field.VisibilityCondition);
+        field.RequiredCondition = NormalizeConditionGroup(field.RequiredCondition);
+    }
+
     private static FormConditionGroup? NormalizeConditionGroup(FormConditionGroup? group)
     {
         if (group is null)
@@ -153,12 +168,12 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
         group.Groups = group.Groups
             .Select(NormalizeConditionGroup)
             .Where(g => g is not null)
-            .OrderBy(g => ConditionGroupSortKey(g!))
+            .OrderBy(g => BuildConditionSortKey(g!))
             .ToList()!;
         return group;
     }
 
-    private static string ConditionGroupSortKey(FormConditionGroup group) =>
+    private static string BuildConditionSortKey(FormConditionGroup group) =>
         JsonSerializer.Serialize(group, SerializerOptions);
 
     private static int CountFields(IEnumerable<FormFieldSchema> fields) =>
