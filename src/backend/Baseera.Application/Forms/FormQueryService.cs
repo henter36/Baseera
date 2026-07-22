@@ -23,6 +23,54 @@ public sealed class FormQueryService(
     IFormEffectiveAccessService effectiveAccess,
     IAuditService audit) : IFormQueryService
 {
+    private sealed record AllowedActionRule(
+        string Action,
+        string Permission,
+        FormAccessCapability Capability,
+        Func<FormDefinition, bool> IsStateAllowed);
+
+    private static readonly AllowedActionRule[] AllowedActionRules =
+    [
+        new(
+            "UpdateDraft",
+            PermissionCodes.FormsUpdateDraft,
+            FormAccessCapability.Design,
+            form => FormDefinitionStateMachine.IsEditable(form.Status)),
+        new(
+            "SubmitForReview",
+            PermissionCodes.FormsSubmitForReview,
+            FormAccessCapability.Design,
+            form => FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.InReview)),
+        new(
+            "RequestChanges",
+            PermissionCodes.FormsRequestChanges,
+            FormAccessCapability.Review,
+            form => form.Status == FormDefinitionStatus.InReview &&
+                    FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.ChangesRequested)),
+        new(
+            "Approve",
+            PermissionCodes.FormsApprove,
+            FormAccessCapability.Approve,
+            form => form.Status == FormDefinitionStatus.InReview &&
+                    FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Approved)),
+        new(
+            "Reject",
+            PermissionCodes.FormsReject,
+            FormAccessCapability.Review,
+            form => form.Status == FormDefinitionStatus.InReview &&
+                    FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Rejected)),
+        new(
+            "Archive",
+            PermissionCodes.FormsArchive,
+            FormAccessCapability.Archive,
+            form => FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Archived)),
+        new(
+            "Restore",
+            PermissionCodes.FormsRestore,
+            FormAccessCapability.Restore,
+            form => form.Status == FormDefinitionStatus.Archived)
+    ];
+
     private static readonly HashSet<string> SortAllowlist = new(StringComparer.OrdinalIgnoreCase)
     {
         "createdAtUtc", "code", "nameAr", "status", "classification"
@@ -41,31 +89,9 @@ public sealed class FormQueryService(
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
         var rows = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
 
-        var items = rows.Select(f =>
-        {
-            var redact = FormAccessHelper.RequiresSensitive(f.Classification) && !canSensitive;
-            return new FormListItemDto(
-                f.Id,
-                f.Code,
-                redact ? FormAccessHelper.RedactedTitle : f.NameAr,
-                redact ? null : f.NameEn,
-                redact ? null : Truncate(f.Description, 160),
-                f.Status,
-                FormDisplay.StatusAr(f.Status),
-                f.Classification,
-                f.ScopeType,
-                f.RegionId,
-                f.FacilityId,
-                f.FacilityUnitId,
-                f.OwnerDepartmentId,
-                f.CreatedAtUtc,
-                Convert.ToBase64String(f.RowVersion),
-                redact);
-        }).ToList();
-
         return new PagedResult<FormListItemDto>
         {
-            Items = items,
+            Items = rows.Select(form => MapListItem(form, canSensitive)).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = total
@@ -88,73 +114,14 @@ public sealed class FormQueryService(
 
         var canSensitive = FormAccessHelper.CanViewSensitive(currentUser);
         var redact = FormAccessHelper.RequiresSensitive(form.Classification) && !canSensitive;
-        if (FormAccessHelper.RequiresSensitive(form.Classification) && canSensitive)
-        {
-            var policy = await db.FormGovernancePolicies.AsNoTracking().OrderBy(p => p.CreatedAtUtc).FirstAsync(cancellationToken);
-            if (policy.AuditSensitiveViews)
-            {
-                await audit.WriteAsync(new AuditEntry
-                {
-                    Action = "FormSensitiveViewed",
-                    Module = FormAccessHelper.ModuleName,
-                    EntityType = nameof(FormDefinition),
-                    EntityId = form.Id.ToString(),
-                    IsSensitiveView = true,
-                    NewValues = new { form.Code, form.Classification }
-                }, cancellationToken);
-                await db.SaveChangesAsync(cancellationToken);
-            }
-        }
+        await MaybeAuditSensitiveViewAsync(form, canSensitive, cancellationToken);
 
-        var userIds = new HashSet<Guid> { form.CreatedByUserId };
-        if (form.UpdatedByUserId.HasValue)
-        {
-            userIds.Add(form.UpdatedByUserId.Value);
-        }
-
-        if (form.LastModifiedByUserId.HasValue)
-        {
-            userIds.Add(form.LastModifiedByUserId.Value);
-        }
-
-        if (form.ArchivedByUserId.HasValue)
-        {
-            userIds.Add(form.ArchivedByUserId.Value);
-        }
-
-        var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
+        var userIds = CollectRelatedUserIds(form);
+        var users = await db.Users
+            .Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
         var allowedActions = await ResolveAllowedActionsAsync(form, cancellationToken);
-
-        return new FormDetailDto(
-            form.Id,
-            form.Code,
-            redact ? FormAccessHelper.RedactedTitle : form.NameAr,
-            redact ? null : form.NameEn,
-            redact ? FormAccessHelper.RedactedDescription : form.Description,
-            form.Status,
-            FormDisplay.StatusAr(form.Status),
-            form.Classification,
-            form.ScopeType,
-            form.RegionId,
-            form.FacilityId,
-            form.FacilityUnitId,
-            form.OwnerDepartmentId,
-            form.CreatedByUserId,
-            users.GetValueOrDefault(form.CreatedByUserId),
-            form.UpdatedByUserId,
-            form.UpdatedByUserId is Guid updatedId ? users.GetValueOrDefault(updatedId) : null,
-            form.LastModifiedByUserId,
-            form.LastModifiedByUserId is Guid modifiedId ? users.GetValueOrDefault(modifiedId) : null,
-            form.SubmittedForReviewAtUtc,
-            form.ApprovedAtUtc,
-            form.ArchivedAtUtc,
-            form.ArchivedByUserId,
-            form.ArchivedByUserId is Guid archivedId ? users.GetValueOrDefault(archivedId) : null,
-            form.CreatedAtUtc,
-            form.UpdatedAtUtc,
-            Convert.ToBase64String(form.RowVersion),
-            redact,
-            allowedActions);
+        return MapDetail(form, users, redact, allowedActions);
     }
 
     public async Task<IReadOnlyList<FormReviewDecisionDto>> GetReviewDecisionsAsync(
@@ -196,59 +163,57 @@ public sealed class FormQueryService(
     private async Task<IReadOnlyList<string>> ResolveAllowedActionsAsync(FormDefinition form, CancellationToken cancellationToken)
     {
         var actions = new List<string>();
-        if (FormDefinitionStateMachine.IsEditable(form.Status) &&
-            currentUser.HasPermission(PermissionCodes.FormsUpdateDraft) &&
-            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Design, cancellationToken))
+        foreach (var rule in AllowedActionRules)
         {
-            actions.Add("UpdateDraft");
-        }
-
-        if (FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.InReview) &&
-            currentUser.HasPermission(PermissionCodes.FormsSubmitForReview) &&
-            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Design, cancellationToken))
-        {
-            actions.Add("SubmitForReview");
-        }
-
-        if (form.Status == FormDefinitionStatus.InReview)
-        {
-            if (currentUser.HasPermission(PermissionCodes.FormsRequestChanges) &&
-                FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.ChangesRequested) &&
-                await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Review, cancellationToken))
-            {
-                actions.Add("RequestChanges");
-            }
-
-            if (currentUser.HasPermission(PermissionCodes.FormsApprove) &&
-                FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Approved) &&
-                await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Approve, cancellationToken))
-            {
-                actions.Add("Approve");
-            }
-
-            if (currentUser.HasPermission(PermissionCodes.FormsReject) &&
-                FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Rejected) &&
-                await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Review, cancellationToken))
-            {
-                actions.Add("Reject");
-            }
-        }
-
-        if (FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Archived) &&
-            currentUser.HasPermission(PermissionCodes.FormsArchive) &&
-            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Archive, cancellationToken))
-        {
-            actions.Add("Archive");
-        }
-
-        if (form.Status == FormDefinitionStatus.Archived &&
-            currentUser.HasPermission(PermissionCodes.FormsRestore) &&
-            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Restore, cancellationToken))
-        {
-            actions.Add("Restore");
+            await TryAddAllowedActionAsync(actions, form, rule, cancellationToken);
         }
 
         return actions;
+    }
+
+    private async Task TryAddAllowedActionAsync(
+        List<string> actions,
+        FormDefinition form,
+        AllowedActionRule rule,
+        CancellationToken cancellationToken)
+    {
+        if (!rule.IsStateAllowed(form) || !currentUser.HasPermission(rule.Permission))
+        {
+            return;
+        }
+
+        if (await effectiveAccess.HasCapabilityAsync(form, rule.Capability, cancellationToken))
+        {
+            actions.Add(rule.Action);
+        }
+    }
+
+    private async Task MaybeAuditSensitiveViewAsync(
+        FormDefinition form,
+        bool canSensitive,
+        CancellationToken cancellationToken)
+    {
+        if (!FormAccessHelper.RequiresSensitive(form.Classification) || !canSensitive)
+        {
+            return;
+        }
+
+        var policy = await db.FormGovernancePolicies.AsNoTracking().OrderBy(p => p.CreatedAtUtc).FirstAsync(cancellationToken);
+        if (!policy.AuditSensitiveViews)
+        {
+            return;
+        }
+
+        await audit.WriteAsync(new AuditEntry
+        {
+            Action = "FormSensitiveViewed",
+            Module = FormAccessHelper.ModuleName,
+            EntityType = nameof(FormDefinition),
+            EntityId = form.Id.ToString(),
+            IsSensitiveView = true,
+            NewValues = new { form.Code, form.Classification }
+        }, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task EnsureViewCapabilityAsync(FormDefinition form, CancellationToken cancellationToken)
@@ -257,6 +222,85 @@ public sealed class FormQueryService(
         {
             throw new UnauthorizedAccessException("ليست لديك صلاحية عرض هذا النموذج.");
         }
+    }
+
+    private static FormListItemDto MapListItem(FormDefinition form, bool canViewSensitive)
+    {
+        var redact = FormAccessHelper.RequiresSensitive(form.Classification) && !canViewSensitive;
+        return new FormListItemDto(
+            form.Id,
+            form.Code,
+            redact ? FormAccessHelper.RedactedTitle : form.NameAr,
+            redact ? null : form.NameEn,
+            redact ? null : Truncate(form.Description, 160),
+            form.Status,
+            FormDisplay.StatusAr(form.Status),
+            form.Classification,
+            form.ScopeType,
+            form.RegionId,
+            form.FacilityId,
+            form.FacilityUnitId,
+            form.OwnerDepartmentId,
+            form.CreatedAtUtc,
+            Convert.ToBase64String(form.RowVersion),
+            redact);
+    }
+
+    private static FormDetailDto MapDetail(
+        FormDefinition form,
+        IReadOnlyDictionary<Guid, string> users,
+        bool redact,
+        IReadOnlyList<string> allowedActions) =>
+        new(
+            form.Id,
+            form.Code,
+            redact ? FormAccessHelper.RedactedTitle : form.NameAr,
+            redact ? null : form.NameEn,
+            redact ? FormAccessHelper.RedactedDescription : form.Description,
+            form.Status,
+            FormDisplay.StatusAr(form.Status),
+            form.Classification,
+            form.ScopeType,
+            form.RegionId,
+            form.FacilityId,
+            form.FacilityUnitId,
+            form.OwnerDepartmentId,
+            form.CreatedByUserId,
+            users.GetValueOrDefault(form.CreatedByUserId),
+            form.UpdatedByUserId,
+            form.UpdatedByUserId is Guid updatedId ? users.GetValueOrDefault(updatedId) : null,
+            form.LastModifiedByUserId,
+            form.LastModifiedByUserId is Guid modifiedId ? users.GetValueOrDefault(modifiedId) : null,
+            form.SubmittedForReviewAtUtc,
+            form.ApprovedAtUtc,
+            form.ArchivedAtUtc,
+            form.ArchivedByUserId,
+            form.ArchivedByUserId is Guid archivedId ? users.GetValueOrDefault(archivedId) : null,
+            form.CreatedAtUtc,
+            form.UpdatedAtUtc,
+            Convert.ToBase64String(form.RowVersion),
+            redact,
+            allowedActions);
+
+    private static HashSet<Guid> CollectRelatedUserIds(FormDefinition form)
+    {
+        var userIds = new HashSet<Guid> { form.CreatedByUserId };
+        if (form.UpdatedByUserId.HasValue)
+        {
+            userIds.Add(form.UpdatedByUserId.Value);
+        }
+
+        if (form.LastModifiedByUserId.HasValue)
+        {
+            userIds.Add(form.LastModifiedByUserId.Value);
+        }
+
+        if (form.ArchivedByUserId.HasValue)
+        {
+            userIds.Add(form.ArchivedByUserId.Value);
+        }
+
+        return userIds;
     }
 
     private static IQueryable<FormDefinition> ApplyFilters(IQueryable<FormDefinition> q, FormListQuery query)

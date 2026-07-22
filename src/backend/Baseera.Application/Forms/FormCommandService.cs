@@ -23,10 +23,12 @@ public sealed class FormCommandService(
     IAuditService audit,
     IFormQueryService queries) : IFormCommandService
 {
+    private const string UnauthenticatedUserMessage = "المستخدم غير مصادق.";
+
     public async Task<FormDetailDto> CreateDraftAsync(CreateFormRequest request, CancellationToken cancellationToken = default)
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsCreate);
-        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException(UnauthenticatedUserMessage);
 
         formScope.ValidateScopeShape(request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId);
         await formScope.EnsureOrgEntitiesActiveAsync(
@@ -121,7 +123,7 @@ public sealed class FormCommandService(
             throw new KeyNotFoundException("الإدارة غير موجودة.");
         }
 
-        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException(UnauthenticatedUserMessage);
         var old = new
         {
             form.NameAr,
@@ -185,7 +187,7 @@ public sealed class FormCommandService(
 
         FormDefinitionStateMachine.EnsureAllowed(form.Status, FormDefinitionStatus.Archived);
 
-        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException(UnauthenticatedUserMessage);
         var from = form.Status;
         var now = DateTimeOffset.UtcNow;
         form.Status = FormDefinitionStatus.Archived;
@@ -197,7 +199,16 @@ public sealed class FormCommandService(
         db.Update(form);
 
         var archiveReason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
-        FormReviewDecisionWriter.Append(db, form.Id, FormReviewDecisionType.Archive, from, FormDefinitionStatus.Archived, userId, archiveReason, false);
+        FormReviewDecisionWriter.Append(
+            db,
+            new FormReviewDecisionWriteRequest(
+                form.Id,
+                FormReviewDecisionType.Archive,
+                from,
+                FormDefinitionStatus.Archived,
+                userId,
+                archiveReason,
+                false));
         await audit.WriteAsync(new AuditEntry
         {
             Action = "FormArchived",
@@ -238,7 +249,7 @@ public sealed class FormCommandService(
 
         FormDefinitionStateMachine.EnsureAllowed(FormDefinitionStatus.Archived, priorStatus);
 
-        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException(UnauthenticatedUserMessage);
         var from = form.Status;
         var now = DateTimeOffset.UtcNow;
         var wasSoftDeleted = form.IsDeleted;
@@ -259,7 +270,16 @@ public sealed class FormCommandService(
         form.UpdatedByUserId = userId;
         db.Update(form);
 
-        FormReviewDecisionWriter.Append(db, form.Id, FormReviewDecisionType.Restore, from, priorStatus, userId, request.Reason.Trim(), false);
+        FormReviewDecisionWriter.Append(
+            db,
+            new FormReviewDecisionWriteRequest(
+                form.Id,
+                FormReviewDecisionType.Restore,
+                from,
+                priorStatus,
+                userId,
+                request.Reason.Trim(),
+                false));
         await audit.WriteAsync(new AuditEntry
         {
             Action = "FormRestored",

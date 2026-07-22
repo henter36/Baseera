@@ -15,12 +15,12 @@ import {
 } from '../../forms/formEnums'
 import { type CreateFormAccessGrantFormValues, createFormAccessGrantSchema } from '../../forms/formSchema'
 
-const GRANT_SCOPE_TYPES: number[] = [
+const GRANT_SCOPE_TYPES = new Set<number>([
   ScopeType.Global,
   ScopeType.Headquarters,
   ScopeType.Region,
   ScopeType.Facility,
-]
+])
 
 function formatDate(value?: string | null): string {
   if (!value) return '—'
@@ -253,7 +253,7 @@ export function FormAccessPage() {
               <select aria-label="نطاق المنح" {...register('scopeType')}>
                 <option value="">بدون تقييد نطاق</option>
                 {enumOptions(ScopeTypeLabelsAr)
-                  .filter((o) => GRANT_SCOPE_TYPES.includes(o.value))
+                  .filter((o) => GRANT_SCOPE_TYPES.has(o.value))
                   .map((o) => (
                     <option key={o.value} value={o.value}>{o.labelAr}</option>
                   ))}
@@ -311,7 +311,7 @@ export function FormAccessPage() {
         <h2 className="section-title">المنح الحالية</h2>
         {grantsQuery.isError && (
           <div className="error" role="alert">
-            تعذر تحميل المنح.
+            <span>تعذر تحميل المنح.</span>
             <button type="button" className="secondary" onClick={() => grantsQuery.refetch()}>إعادة المحاولة</button>
           </div>
         )}

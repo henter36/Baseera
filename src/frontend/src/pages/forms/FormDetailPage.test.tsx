@@ -97,6 +97,24 @@ describe('FormDetailPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('النموذج غير موجود أو خارج نطاقك.')
   })
 
+  it('shows 403 message when view is forbidden', async () => {
+    getForm.mockRejectedValue(new ApiError(403, 'ممنوع'))
+    renderPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent('ليست لديك صلاحية عرض هذا النموذج.')
+  })
+
+  it('shows API error message for general failures', async () => {
+    getForm.mockRejectedValue(new ApiError(500, 'فشل الخادم'))
+    renderPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent('فشل الخادم')
+  })
+
+  it('shows fallback message when API error has empty text', async () => {
+    getForm.mockRejectedValue(new ApiError(500, ''))
+    renderPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذر تحميل النموذج.')
+  })
+
   it('shows edit link when UpdateDraft is allowed', async () => {
     getForm.mockResolvedValue(baseForm)
     renderPage()

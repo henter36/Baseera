@@ -8,13 +8,13 @@ import {
   enumOptions,
 } from './formEnums'
 
-const FORM_CREATE_SCOPE_TYPES: number[] = [
+const FORM_CREATE_SCOPE_TYPES = new Set<number>([
   ScopeType.Global,
   ScopeType.Headquarters,
   ScopeType.Region,
   ScopeType.Facility,
   ScopeType.FacilityUnit,
-]
+])
 
 type FormFormValues = {
   code?: string
@@ -85,7 +85,7 @@ export function FormForm({ mode }: Readonly<FormFormProps>) {
             <span>نوع النطاق *</span>
             <select aria-label="نوع النطاق" {...register('scopeType')}>
               {enumOptions(ScopeTypeLabelsAr)
-                .filter((o) => FORM_CREATE_SCOPE_TYPES.includes(o.value))
+                .filter((o) => FORM_CREATE_SCOPE_TYPES.has(o.value))
                 .map((o) => (
                   <option key={o.value} value={o.value}>{o.labelAr}</option>
                 ))}

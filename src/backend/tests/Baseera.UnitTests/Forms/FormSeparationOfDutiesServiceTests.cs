@@ -44,7 +44,10 @@ public sealed class FormSeparationOfDutiesServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var service = CreateService(creator.Id, []);
-        await service.EnforceReviewAsync(form, creator.Id);
+        var exception = await Record.ExceptionAsync(() =>
+            service.EnforceReviewAsync(form, creator.Id));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -111,7 +114,10 @@ public sealed class FormSeparationOfDutiesServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var service = CreateService(reviewer.Id, []);
-        await service.EnforceApproveAsync(form, reviewer.Id);
+        var exception = await Record.ExceptionAsync(() =>
+            service.EnforceApproveAsync(form, reviewer.Id));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -138,7 +144,10 @@ public sealed class FormSeparationOfDutiesServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var service = CreateService(creator.Id, []);
-        await service.EnforceSubmitForReviewAsync(form, creator.Id);
+        var exception = await Record.ExceptionAsync(() =>
+            service.EnforceSubmitForReviewAsync(form, creator.Id));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -153,7 +162,10 @@ public sealed class FormSeparationOfDutiesServiceTests : IDisposable
         var service = CreateService(
             creator.Id,
             [PermissionCodes.FormsManageGovernance]);
-        await service.EnforceReviewAsync(form, creator.Id, "تجاوز إداري لاختبار فصل الواجبات");
+        var exception = await Record.ExceptionAsync(() =>
+            service.EnforceReviewAsync(form, creator.Id, "تجاوز إداري لاختبار فصل الواجبات"));
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -171,9 +183,14 @@ public sealed class FormSeparationOfDutiesServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         var service = CreateService(creator.Id, []);
-        await service.EnforceReviewAsync(form, creator.Id);
-        await service.EnforceApproveAsync(form, creator.Id);
-        await service.EnforceGrantAsync(form, creator.Id);
+        var exception = await Record.ExceptionAsync(async () =>
+        {
+            await service.EnforceReviewAsync(form, creator.Id);
+            await service.EnforceApproveAsync(form, creator.Id);
+            await service.EnforceGrantAsync(form, creator.Id);
+        });
+
+        Assert.Null(exception);
     }
 
     private FormSeparationOfDutiesService CreateService(Guid userId, string[] permissions)

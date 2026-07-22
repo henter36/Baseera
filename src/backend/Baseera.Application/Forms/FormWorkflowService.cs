@@ -22,98 +22,114 @@ public sealed class FormWorkflowService(
     IAuditService audit,
     IFormQueryService queries) : IFormWorkflowService
 {
+    private sealed record FormTransitionDefinition(
+        string Permission,
+        FormAccessCapability Capability,
+        FormDefinitionStatus TargetStatus,
+        FormReviewDecisionType DecisionType,
+        string AuditAction,
+        Func<FormDefinition, Guid, string?, CancellationToken, Task> EnforceSeparationOfDuties,
+        Action<FormDefinition, Guid, DateTimeOffset>? Apply);
+
     public Task<FormDetailDto> SubmitForReviewAsync(Guid id, FormTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
             id,
             request,
-            PermissionCodes.FormsSubmitForReview,
-            FormAccessCapability.Design,
-            FormDefinitionStatus.InReview,
-            FormReviewDecisionType.SubmitForReview,
-            "FormSubmittedForReview",
-            sod.EnforceSubmitForReviewAsync,
-            ApplySubmitForReview,
+            new FormTransitionDefinition(
+                PermissionCodes.FormsSubmitForReview,
+                FormAccessCapability.Design,
+                FormDefinitionStatus.InReview,
+                FormReviewDecisionType.SubmitForReview,
+                "FormSubmittedForReview",
+                sod.EnforceSubmitForReviewAsync,
+                ApplySubmitForReview),
             cancellationToken);
 
     public Task<FormDetailDto> RequestChangesAsync(Guid id, FormTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
             id,
             request,
-            PermissionCodes.FormsRequestChanges,
-            FormAccessCapability.Review,
-            FormDefinitionStatus.ChangesRequested,
-            FormReviewDecisionType.RequestChanges,
-            "FormChangesRequested",
-            sod.EnforceReviewAsync,
-            null,
+            new FormTransitionDefinition(
+                PermissionCodes.FormsRequestChanges,
+                FormAccessCapability.Review,
+                FormDefinitionStatus.ChangesRequested,
+                FormReviewDecisionType.RequestChanges,
+                "FormChangesRequested",
+                sod.EnforceReviewAsync,
+                null),
             cancellationToken);
 
     public Task<FormDetailDto> ApproveAsync(Guid id, FormTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
             id,
             request,
-            PermissionCodes.FormsApprove,
-            FormAccessCapability.Approve,
-            FormDefinitionStatus.Approved,
-            FormReviewDecisionType.Approve,
-            "FormApproved",
-            sod.EnforceApproveAsync,
-            ApplyApprove,
+            new FormTransitionDefinition(
+                PermissionCodes.FormsApprove,
+                FormAccessCapability.Approve,
+                FormDefinitionStatus.Approved,
+                FormReviewDecisionType.Approve,
+                "FormApproved",
+                sod.EnforceApproveAsync,
+                ApplyApprove),
             cancellationToken);
 
     public Task<FormDetailDto> RejectAsync(Guid id, FormTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
             id,
             request,
-            PermissionCodes.FormsReject,
-            FormAccessCapability.Review,
-            FormDefinitionStatus.Rejected,
-            FormReviewDecisionType.Reject,
-            "FormRejected",
-            sod.EnforceReviewAsync,
-            null,
+            new FormTransitionDefinition(
+                PermissionCodes.FormsReject,
+                FormAccessCapability.Review,
+                FormDefinitionStatus.Rejected,
+                FormReviewDecisionType.Reject,
+                "FormRejected",
+                sod.EnforceReviewAsync,
+                null),
             cancellationToken);
 
     private async Task<FormDetailDto> TransitionAsync(
         Guid id,
         FormTransitionRequest request,
-        string permission,
-        FormAccessCapability capability,
-        FormDefinitionStatus toStatus,
-        FormReviewDecisionType decisionType,
-        string auditAction,
-        Func<FormDefinition, Guid, string?, CancellationToken, Task> enforceSod,
-        Action<FormDefinition, Guid, DateTimeOffset>? apply,
+        FormTransitionDefinition definition,
         CancellationToken cancellationToken)
     {
-        FormAccessHelper.EnsurePermission(currentUser, permission);
+        FormAccessHelper.EnsurePermission(currentUser, definition.Permission);
         var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, id, cancellationToken: cancellationToken);
-        await effectiveAccess.EnsureCapabilityAsync(form, capability, cancellationToken);
+        await effectiveAccess.EnsureCapabilityAsync(form, definition.Capability, cancellationToken);
         FormAccessHelper.EnsureRowVersion(form.RowVersion, request.RowVersion);
-        FormDefinitionStateMachine.EnsureAllowed(form.Status, toStatus);
+        FormDefinitionStateMachine.EnsureAllowed(form.Status, definition.TargetStatus);
 
         var actorId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
-        await enforceSod(form, actorId, null, cancellationToken);
+        await definition.EnforceSeparationOfDuties(form, actorId, null, cancellationToken);
 
         var from = form.Status;
         var now = DateTimeOffset.UtcNow;
-        form.Status = toStatus;
+        form.Status = definition.TargetStatus;
         form.UpdatedAtUtc = now;
         form.UpdatedBy = currentUser.ExternalSubject;
         form.UpdatedByUserId = actorId;
         form.LastModifiedByUserId = actorId;
-        apply?.Invoke(form, actorId, now);
+        definition.Apply?.Invoke(form, actorId, now);
         db.Update(form);
 
-        FormReviewDecisionWriter.Append(db, form.Id, decisionType, from, toStatus, actorId, request.Reason.Trim(), false);
+        FormReviewDecisionWriter.Append(
+            db,
+            new FormReviewDecisionWriteRequest(
+                form.Id,
+                definition.DecisionType,
+                from,
+                definition.TargetStatus,
+                actorId,
+                request.Reason.Trim(),
+                false));
         await audit.WriteAsync(new AuditEntry
         {
-            Action = auditAction,
+            Action = definition.AuditAction,
             Module = FormAccessHelper.ModuleName,
             EntityType = nameof(FormDefinition),
             EntityId = form.Id.ToString(),
             OldValues = new { Status = from },
-            NewValues = new { Status = toStatus },
+            NewValues = new { Status = definition.TargetStatus },
             Reason = request.Reason.Trim()
         }, cancellationToken);
 

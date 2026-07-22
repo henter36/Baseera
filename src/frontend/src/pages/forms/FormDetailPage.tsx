@@ -15,6 +15,18 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleString('ar-SA')
 }
 
+function formLoadErrorMessage(error: ApiError): string {
+  if (error.status === 403) {
+    return 'ليست لديك صلاحية عرض هذا النموذج.'
+  }
+
+  if (error.status === 404) {
+    return 'النموذج غير موجود أو خارج نطاقك.'
+  }
+
+  return error.message || 'تعذر تحميل النموذج.'
+}
+
 function ScopeLabel({ form }: Readonly<{ form: FormDetail }>) {
   const regionQuery = useQuery({
     queryKey: ['form-region', form.regionId],
@@ -78,11 +90,7 @@ export function FormDetailPage() {
 
   if (formQuery.isError) {
     const err = formQuery.error as ApiError
-    const message = err.status === 403
-      ? 'ليست لديك صلاحية عرض هذا النموذج.'
-      : err.status === 404
-        ? 'النموذج غير موجود أو خارج نطاقك.'
-        : err.message || 'تعذر تحميل النموذج.'
+    const message = formLoadErrorMessage(err)
     return (
       <div className="error" role="alert">
         <span>{message}</span>
