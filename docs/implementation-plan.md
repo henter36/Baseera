@@ -72,6 +72,13 @@
 
 تصميم، إصدارات، نشر، دورات، تعبئة، مراجعة، متأخرات، إشعارات.
 
+### Phase C.2 — Versioned Drag-and-Drop Form Designer (Issue #46, Epic #45)
+
+- `FormVersion` + immutable `FormSchemaSnapshot` + templates.
+- Typed schema AST, conditions, formulas, cycle detection, canonical SHA-256.
+- Designer UI with DnD, autosave, Undo/Redo, preview.
+- Does **not** include publish/responses (#47).
+
 ### Phase C.1 — Forms Governance & Security Foundation (Issue #52, Epic #45)
 
 - نموذج `FormDefinition` مع دورة حياة حوكمة (مسودة → مراجعة → اعتماد/رفض → أرشفة/استعادة).

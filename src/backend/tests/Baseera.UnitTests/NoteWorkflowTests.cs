@@ -110,6 +110,11 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Forms.FormGovernancePolicy> FormGovernancePolicies => Enumerable.Empty<Domain.Forms.FormGovernancePolicy>().AsQueryable();
         public IQueryable<Domain.Forms.FormAccessGrant> FormAccessGrants => Enumerable.Empty<Domain.Forms.FormAccessGrant>().AsQueryable();
         public IQueryable<Domain.Forms.FormAccessGrant> FormAccessGrantsIncludingDeleted => FormAccessGrants;
+        public IQueryable<Domain.Forms.FormVersion> FormVersions => Enumerable.Empty<Domain.Forms.FormVersion>().AsQueryable();
+        public IQueryable<Domain.Forms.FormSchemaSnapshot> FormSchemaSnapshots => Enumerable.Empty<Domain.Forms.FormSchemaSnapshot>().AsQueryable();
+        public IQueryable<Domain.Forms.FormVersionReviewDecision> FormVersionReviewDecisions => Enumerable.Empty<Domain.Forms.FormVersionReviewDecision>().AsQueryable();
+        public IQueryable<Domain.Forms.FormTemplate> FormTemplates => Enumerable.Empty<Domain.Forms.FormTemplate>().AsQueryable();
+        public IQueryable<Domain.Forms.FormTemplate> FormTemplatesIncludingDeleted => FormTemplates;
         public void Add<TEntity>(TEntity entity) where TEntity : class { }
         public void Update<TEntity>(TEntity entity) where TEntity : class { }
         public void Detach<TEntity>(TEntity entity) where TEntity : class { }

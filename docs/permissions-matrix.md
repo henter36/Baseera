@@ -230,3 +230,10 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 | تصدير حساس | يتطلب `Reports.ExportSensitive` أو `Attachments.DownloadSensitive` + تسجيل تدقيق |
 
 تُنفَّذ قواعد SoD في طبقة Application عند تفعيل الوحدات المعنية؛ في المرحلة A تُوثَّق وتُختبر بنية الصلاحيات والنطاق.
+
+## Phase C.2 additions
+| Permission | Purpose |
+|------------|---------|
+| Forms.CloneVersion | Clone a form version |
+| Forms.ViewVersionHistory | View version history |
+| Forms.ManageTemplates | Create templates / forms from templates |
