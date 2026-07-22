@@ -21,6 +21,35 @@ const optionalDate = z
 const requiredEnumString = (message: string) =>
   z.string().refine((v) => v !== '' && !Number.isNaN(Number(v)), { message })
 
+const formIdentityFields = {
+  nameAr: z.string().trim().min(1, 'اسم النموذج مطلوب.').max(200, 'الاسم طويل جدًا.'),
+  nameEn: z.string().trim().max(200, 'الاسم الإنجليزي طويل جدًا.').optional().or(z.literal('')),
+  description: z.string().trim().min(1, 'الوصف مطلوب.').max(2000, 'الوصف طويل جدًا.'),
+  classification: requiredEnumString('مستوى التصنيف الأمني غير صالح.'),
+  ownerDepartmentId: optionalGuid,
+}
+
+function refineFormScopeShape(
+  data: { scopeType: string; regionId?: string; facilityId?: string; facilityUnitId?: string },
+  ctx: z.RefinementCtx,
+) {
+  const scope = Number(data.scopeType)
+  if (scope === ScopeType.Region && !data.regionId) {
+    ctx.addIssue({ code: 'custom', path: ['regionId'], message: 'يجب اختيار المنطقة.' })
+  }
+  if (scope === ScopeType.Facility || scope === ScopeType.FacilityUnit) {
+    if (!data.regionId) {
+      ctx.addIssue({ code: 'custom', path: ['regionId'], message: 'يجب اختيار المنطقة أولًا.' })
+    }
+    if (!data.facilityId) {
+      ctx.addIssue({ code: 'custom', path: ['facilityId'], message: 'يجب اختيار السجن.' })
+    }
+  }
+  if (scope === ScopeType.FacilityUnit && !data.facilityUnitId) {
+    ctx.addIssue({ code: 'custom', path: ['facilityUnitId'], message: 'يجب اختيار الوحدة.' })
+  }
+}
+
 export const createFormSchema = z
   .object({
     code: z
@@ -31,51 +60,17 @@ export const createFormSchema = z
       .refine((v) => CODE_RE.test(v), {
         message: 'رمز النموذج يجب أن يبدأ بحرف ويحتوي على أحرف كبيرة وأرقام أو . _ - فقط.',
       }),
-    nameAr: z.string().trim().min(1, 'اسم النموذج مطلوب.').max(200, 'الاسم طويل جدًا.'),
-    nameEn: z.string().trim().max(200, 'الاسم الإنجليزي طويل جدًا.').optional().or(z.literal('')),
-    description: z.string().trim().min(1, 'الوصف مطلوب.').max(2000, 'الوصف طويل جدًا.'),
-    classification: requiredEnumString('مستوى التصنيف الأمني غير صالح.'),
+    ...formIdentityFields,
     scopeType: requiredEnumString('نوع النطاق غير صالح.'),
     regionId: optionalGuid,
     facilityId: optionalGuid,
     facilityUnitId: optionalGuid,
-    ownerDepartmentId: optionalGuid,
   })
-  .superRefine((data, ctx) => {
-    const scope = Number(data.scopeType)
-    if (scope === ScopeType.Region && !data.regionId) {
-      ctx.addIssue({ code: 'custom', path: ['regionId'], message: 'يجب اختيار المنطقة.' })
-    }
-    if (scope === ScopeType.Facility) {
-      if (!data.regionId) {
-        ctx.addIssue({ code: 'custom', path: ['regionId'], message: 'يجب اختيار المنطقة أولًا.' })
-      }
-      if (!data.facilityId) {
-        ctx.addIssue({ code: 'custom', path: ['facilityId'], message: 'يجب اختيار السجن.' })
-      }
-    }
-    if (scope === ScopeType.FacilityUnit) {
-      if (!data.regionId) {
-        ctx.addIssue({ code: 'custom', path: ['regionId'], message: 'يجب اختيار المنطقة أولًا.' })
-      }
-      if (!data.facilityId) {
-        ctx.addIssue({ code: 'custom', path: ['facilityId'], message: 'يجب اختيار السجن.' })
-      }
-      if (!data.facilityUnitId) {
-        ctx.addIssue({ code: 'custom', path: ['facilityUnitId'], message: 'يجب اختيار الوحدة.' })
-      }
-    }
-  })
+  .superRefine(refineFormScopeShape)
 
 export type CreateFormFormValues = z.infer<typeof createFormSchema>
 
-export const updateFormSchema = z.object({
-  nameAr: z.string().trim().min(1, 'اسم النموذج مطلوب.').max(200, 'الاسم طويل جدًا.'),
-  nameEn: z.string().trim().max(200, 'الاسم الإنجليزي طويل جدًا.').optional().or(z.literal('')),
-  description: z.string().trim().min(1, 'الوصف مطلوب.').max(2000, 'الوصف طويل جدًا.'),
-  classification: requiredEnumString('مستوى التصنيف الأمني غير صالح.'),
-  ownerDepartmentId: optionalGuid,
-})
+export const updateFormSchema = z.object(formIdentityFields)
 
 export type UpdateFormFormValues = z.infer<typeof updateFormSchema>
 

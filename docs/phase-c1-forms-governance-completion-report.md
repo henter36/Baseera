@@ -31,7 +31,7 @@ Fixed by replacing with `POST /api/v1/forms/{id}/access-grants/{grantId}/revoke`
 | Frontend typecheck / lint / test / build / audit | Pass (156 frontend tests; 0 high/critical audit) |
 | `git diff --check` | Pass |
 | RTL walkthrough | **Not completed** — blocked until API/SQL available for live walkthrough |
-| Sonar QG | Pending re-analysis after push (S6444 regex timeout fixed; duplication reduced via shared helpers) |
+| Sonar QG | Pending re-analysis after push (Security Rating A; migration rewritten to SQL; shared scope/list helpers for CPD ≤ 3%) |
 
 ## Merge gate (all required)
 

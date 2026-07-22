@@ -1,6 +1,7 @@
 namespace Baseera.Application.Forms;
 
 using Baseera.Application.Abstractions;
+using Baseera.Application.Security;
 using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
 using Microsoft.EntityFrameworkCore;
@@ -63,47 +64,33 @@ public sealed class FormScopeService(
         {
             case ScopeType.Global:
             case ScopeType.Headquarters:
-                EnsureNoIds(regionId, facilityId, facilityUnitId);
+                OrganizationalScopeShape.EnsureNoIds(regionId, facilityId, facilityUnitId);
                 break;
             case ScopeType.Region:
-                EnsureRegionOnly(regionId, facilityId, facilityUnitId);
+                OrganizationalScopeShape.EnsureRegionOnly(regionId, facilityId, facilityUnitId);
                 break;
             case ScopeType.Facility:
-                EnsureFacilityShape(regionId, facilityId, facilityUnitId);
+                OrganizationalScopeShape.EnsureFacilityShape(regionId, facilityId, facilityUnitId);
                 break;
             case ScopeType.FacilityUnit:
-                EnsureUnitShape(regionId, facilityId, facilityUnitId);
+                OrganizationalScopeShape.EnsureUnitShape(regionId, facilityId, facilityUnitId);
                 break;
         }
     }
 
-    public async Task EnsureOrgEntitiesActiveAsync(
+    public Task EnsureOrgEntitiesActiveAsync(
         ScopeType scopeType,
         Guid? regionId,
         Guid? facilityId,
         Guid? facilityUnitId,
-        CancellationToken cancellationToken = default)
-    {
-        if (scopeType == ScopeType.Region && regionId.HasValue)
-        {
-            await EnsureRegionExistsAsync(regionId.Value, cancellationToken);
-        }
-
-        if (facilityId.HasValue)
-        {
-            await EnsureFacilityConsistentAsync(regionId, facilityId.Value, cancellationToken);
-        }
-
-        if (facilityUnitId.HasValue)
-        {
-            if (!facilityId.HasValue)
-            {
-                throw new InvalidOperationException("نطاق الوحدة يتطلب FacilityId وFacilityUnitId.");
-            }
-
-            await EnsureUnitBelongsToFacilityAsync(facilityId.Value, facilityUnitId.Value, cancellationToken);
-        }
-    }
+        CancellationToken cancellationToken = default) =>
+        OrganizationalScopeEntityGuard.EnsureActiveAsync(
+            db,
+            scopeType,
+            regionId,
+            facilityId,
+            facilityUnitId,
+            cancellationToken);
 
     private IQueryable<FormDefinition> FilterWithScopeIds(
         IQueryable<FormDefinition> query,
@@ -129,8 +116,8 @@ public sealed class FormScopeService(
     private (HashSet<Guid> RegionIds, HashSet<Guid> FullFacilityIds, HashSet<Guid> UnitIds) BuildAccessibleScopeIds()
     {
         var ids = CollectScopeIdsFromUser();
-        ExpandFacilitiesFromAccessibleRegions(ids.RegionIds, ids.FullFacilityIds);
-        ExpandRegionsFromAccessibleFacilities(ids.RegionIds, ids.FullFacilityIds, ids.UnitIds);
+        OrganizationalAccessibleScopeExpansion.ExpandFacilitiesFromRegions(db, ids.RegionIds, ids.FullFacilityIds);
+        ExpandRegionsIncludingUnitFacilities(ids.RegionIds, ids.FullFacilityIds, ids.UnitIds);
         return ids;
     }
 
@@ -138,8 +125,10 @@ public sealed class FormScopeService(
         CancellationToken cancellationToken)
     {
         var ids = CollectScopeIdsFromUser();
-        await ExpandFacilitiesFromAccessibleRegionsAsync(ids.RegionIds, ids.FullFacilityIds, cancellationToken);
-        await ExpandRegionsFromAccessibleFacilitiesAsync(ids.RegionIds, ids.FullFacilityIds, ids.UnitIds, cancellationToken);
+        await OrganizationalAccessibleScopeExpansion.ExpandFacilitiesFromRegionsAsync(
+            db, ids.RegionIds, ids.FullFacilityIds, cancellationToken);
+        await ExpandRegionsIncludingUnitFacilitiesAsync(
+            ids.RegionIds, ids.FullFacilityIds, ids.UnitIds, cancellationToken);
         return ids;
     }
 
@@ -151,6 +140,7 @@ public sealed class FormScopeService(
             .Select(s => s.RegionId!.Value)
             .ToHashSet();
 
+        // FacilityUnit scopes intentionally do NOT promote the parent facility to full access.
         var fullFacilityIds = currentUser.Scopes
             .Where(s => s.FacilityId.HasValue &&
                         (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities))
@@ -166,40 +156,12 @@ public sealed class FormScopeService(
     }
 
     /// <summary>
-    /// A region-scoped user can see every facility within their regions, so add those facilities
-    /// to the "full facility access" set (grants Facility-scoped AND FacilityUnit-scoped form visibility).
+    /// Unit-only users still need Region-scoped forms for the region that owns their unit's facility.
     /// </summary>
-    private void ExpandFacilitiesFromAccessibleRegions(HashSet<Guid> regionIds, HashSet<Guid> fullFacilityIds)
-    {
-        foreach (var id in db.Facilities
-                     .Where(f => regionIds.Contains(f.RegionId) && !f.IsDeleted)
-                     .Select(f => f.Id)
-                     .ToList())
-        {
-            fullFacilityIds.Add(id);
-        }
-    }
-
-    private async Task ExpandFacilitiesFromAccessibleRegionsAsync(
+    private void ExpandRegionsIncludingUnitFacilities(
         HashSet<Guid> regionIds,
         HashSet<Guid> fullFacilityIds,
-        CancellationToken cancellationToken)
-    {
-        var regionFacilityIds = await db.Facilities
-            .Where(f => regionIds.Contains(f.RegionId) && !f.IsDeleted)
-            .Select(f => f.Id)
-            .ToListAsync(cancellationToken);
-        foreach (var id in regionFacilityIds)
-        {
-            fullFacilityIds.Add(id);
-        }
-    }
-
-    /// <summary>
-    /// A user who only has a facility-unit scope should still see Region-scoped forms for the
-    /// region that owns their facility, even though they don't have full facility access.
-    /// </summary>
-    private void ExpandRegionsFromAccessibleFacilities(HashSet<Guid> regionIds, HashSet<Guid> fullFacilityIds, HashSet<Guid> unitIds)
+        HashSet<Guid> unitIds)
     {
         if (fullFacilityIds.Count == 0 && unitIds.Count == 0)
         {
@@ -218,7 +180,7 @@ public sealed class FormScopeService(
         }
     }
 
-    private async Task ExpandRegionsFromAccessibleFacilitiesAsync(
+    private async Task ExpandRegionsIncludingUnitFacilitiesAsync(
         HashSet<Guid> regionIds,
         HashSet<Guid> fullFacilityIds,
         HashSet<Guid> unitIds,
@@ -239,68 +201,6 @@ public sealed class FormScopeService(
         foreach (var id in facilityRegionIds)
         {
             regionIds.Add(id);
-        }
-    }
-
-    private static void EnsureNoIds(Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
-    {
-        if (regionId.HasValue || facilityId.HasValue || facilityUnitId.HasValue)
-        {
-            throw new InvalidOperationException("نطاق Global/Headquarters لا يقبل معرفات منطقة أو سجن أو وحدة.");
-        }
-    }
-
-    private static void EnsureRegionOnly(Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
-    {
-        if (!regionId.HasValue || facilityId.HasValue || facilityUnitId.HasValue)
-        {
-            throw new InvalidOperationException("نطاق المنطقة يتطلب RegionId فقط.");
-        }
-    }
-
-    private static void EnsureFacilityShape(Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
-    {
-        if (!regionId.HasValue || !facilityId.HasValue || facilityUnitId.HasValue)
-        {
-            throw new InvalidOperationException("نطاق السجن يتطلب RegionId وFacilityId دون FacilityUnitId.");
-        }
-    }
-
-    private static void EnsureUnitShape(Guid? regionId, Guid? facilityId, Guid? facilityUnitId)
-    {
-        if (!regionId.HasValue || !facilityId.HasValue || !facilityUnitId.HasValue)
-        {
-            throw new InvalidOperationException("نطاق الوحدة يتطلب RegionId وFacilityId وFacilityUnitId.");
-        }
-    }
-
-    private async Task EnsureRegionExistsAsync(Guid regionId, CancellationToken cancellationToken)
-    {
-        if (!await db.Regions.AnyAsync(r => r.Id == regionId && !r.IsDeleted && r.IsActive, cancellationToken))
-        {
-            throw new KeyNotFoundException("المنطقة غير موجودة.");
-        }
-    }
-
-    private async Task EnsureFacilityConsistentAsync(Guid? regionId, Guid facilityId, CancellationToken cancellationToken)
-    {
-        var facility = await db.Facilities.FirstOrDefaultAsync(f => f.Id == facilityId && !f.IsDeleted && f.IsActive, cancellationToken)
-            ?? throw new KeyNotFoundException("السجن غير موجود.");
-
-        if (regionId.HasValue && facility.RegionId != regionId.Value)
-        {
-            throw new InvalidOperationException("المنطقة لا تطابق السجن المحدد.");
-        }
-    }
-
-    private async Task EnsureUnitBelongsToFacilityAsync(Guid facilityId, Guid facilityUnitId, CancellationToken cancellationToken)
-    {
-        var unit = await db.FacilityUnits.FirstOrDefaultAsync(u => u.Id == facilityUnitId && !u.IsDeleted && u.IsActive, cancellationToken)
-            ?? throw new KeyNotFoundException("الوحدة غير موجودة.");
-
-        if (unit.FacilityId != facilityId)
-        {
-            throw new InvalidOperationException("الوحدة لا تتبع السجن المحدد.");
         }
     }
 }

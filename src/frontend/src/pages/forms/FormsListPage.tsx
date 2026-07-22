@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, ApiError, type FormListFilters } from '../../api/client'
+import { api, type FormListFilters } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import {
   ClassificationLevelLabelsAr,
@@ -11,6 +11,12 @@ import {
   formStatusTone,
 } from '../../forms/formEnums'
 import { buildFormsListSearchParams } from './formsListSearchParams'
+import {
+  formatListDate,
+  listQueryErrorMessage,
+  listSortIndicator,
+  nextListSortState,
+} from '../../shared/listPageUtils'
 
 const PAGE_SIZE = 20
 
@@ -20,16 +26,6 @@ const SORT_COLUMNS: Array<{ key: string; labelAr: string }> = [
   { key: 'code', labelAr: 'الرمز' },
   { key: 'status', labelAr: 'الحالة' },
 ]
-
-function formatDate(value?: string | null): string {
-  if (!value) return '—'
-  return new Date(value).toLocaleString('ar-SA')
-}
-
-function sortIndicator(columnKey: string, sortBy: string, sortDesc: boolean): string {
-  if (sortBy !== columnKey) return ''
-  return sortDesc ? '↓' : '↑'
-}
 
 export function FormsListPage() {
   const canView = usePermission('Forms.View')
@@ -86,20 +82,16 @@ export function FormsListPage() {
 
   const toggleSort = (key: string) => {
     setPage(1)
-    if (sortBy === key) {
-      setSortDesc((d) => !d)
-    } else {
-      setSortBy(key)
-      setSortDesc(true)
-    }
+    const next = nextListSortState(sortBy, sortDesc, key)
+    setSortBy(next.sortBy)
+    setSortDesc(next.sortDesc)
   }
 
-  const errorMessage = (() => {
-    if (!query.error) return null
-    const err = query.error as ApiError
-    if (err.status === 403) return 'ليست لديك صلاحية عرض النماذج.'
-    return err.message || 'تعذر تحميل النماذج.'
-  })()
+  const errorMessage = listQueryErrorMessage(
+    query.error,
+    'ليست لديك صلاحية عرض النماذج.',
+    'تعذر تحميل النماذج.',
+  )
 
   return (
     <div className="panel" dir="rtl">
@@ -173,7 +165,7 @@ export function FormsListPage() {
                 {SORT_COLUMNS.map((col) => (
                   <th key={col.key}>
                     <button type="button" className="sort-header" onClick={() => toggleSort(col.key)}>
-                      {col.labelAr} {sortIndicator(col.key, sortBy, sortDesc)}
+                      {col.labelAr} {listSortIndicator(col.key, sortBy, sortDesc)}
                     </button>
                   </th>
                 ))}
@@ -189,7 +181,7 @@ export function FormsListPage() {
                   <td>
                     <span className="badge" data-tone={formStatusTone(form.status)}>{form.statusAr}</span>
                   </td>
-                  <td>{formatDate(form.createdAtUtc)}</td>
+                  <td>{formatListDate(form.createdAtUtc)}</td>
                   <td>
                     <span className="badge" data-tone={classificationTone(form.classification)}>
                       {ClassificationLevelLabelsAr[form.classification] ?? form.classification}
