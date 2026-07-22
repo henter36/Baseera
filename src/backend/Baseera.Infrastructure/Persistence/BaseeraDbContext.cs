@@ -53,6 +53,11 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<FormReviewDecision> FormReviewDecisions => Set<FormReviewDecision>();
     public DbSet<FormGovernancePolicy> FormGovernancePolicies => Set<FormGovernancePolicy>();
     public DbSet<FormAccessGrant> FormAccessGrants => Set<FormAccessGrant>();
+    public DbSet<FormVersion> FormVersions => Set<FormVersion>();
+    public DbSet<FormSchemaSnapshot> FormSchemaSnapshots => Set<FormSchemaSnapshot>();
+    public DbSet<FormVersionReviewDecision> FormVersionReviewDecisions => Set<FormVersionReviewDecision>();
+    public DbSet<FormTemplate> FormTemplates => Set<FormTemplate>();
+    public DbSet<FormDefinitionVersionCounter> FormDefinitionVersionCounters => Set<FormDefinitionVersionCounter>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -102,6 +107,12 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<FormGovernancePolicy> Application.Abstractions.IBaseeraDbContext.FormGovernancePolicies => FormGovernancePolicies;
     IQueryable<FormAccessGrant> Application.Abstractions.IBaseeraDbContext.FormAccessGrants => FormAccessGrants;
     IQueryable<FormAccessGrant> Application.Abstractions.IBaseeraDbContext.FormAccessGrantsIncludingDeleted => FormAccessGrants.IgnoreQueryFilters();
+    IQueryable<FormVersion> Application.Abstractions.IBaseeraDbContext.FormVersions => FormVersions;
+    IQueryable<FormSchemaSnapshot> Application.Abstractions.IBaseeraDbContext.FormSchemaSnapshots => FormSchemaSnapshots;
+    IQueryable<FormVersionReviewDecision> Application.Abstractions.IBaseeraDbContext.FormVersionReviewDecisions => FormVersionReviewDecisions;
+    IQueryable<FormTemplate> Application.Abstractions.IBaseeraDbContext.FormTemplates => FormTemplates;
+    IQueryable<FormTemplate> Application.Abstractions.IBaseeraDbContext.FormTemplatesIncludingDeleted => FormTemplates.IgnoreQueryFilters();
+    IQueryable<FormDefinitionVersionCounter> Application.Abstractions.IBaseeraDbContext.FormDefinitionVersionCounters => FormDefinitionVersionCounters;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -142,6 +153,37 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
             .SqlQueryRaw<SequenceValueRow>("SELECT NEXT VALUE FOR [CorrectiveActionReferenceSequence] AS [Value]")
             .ToListAsync(cancellationToken);
         return rows.Single().Value;
+    }
+
+    public async Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default)
+    {
+        if (formDefinitionId == Guid.Empty)
+        {
+            throw new ArgumentException("معرّف النموذج مطلوب.", nameof(formDefinitionId));
+        }
+
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            var max = await FormVersions
+                .Where(v => v.FormDefinitionId == formDefinitionId)
+                .Select(v => (int?)v.VersionNumber)
+                .MaxAsync(cancellationToken);
+            return (max ?? 0) + 1;
+        }
+
+        var rows = await Database.SqlQueryRaw<SequenceValueRow>(
+            """
+            MERGE [FormDefinitionVersionCounters] WITH (HOLDLOCK) AS target
+            USING (SELECT {0} AS [FormDefinitionId]) AS source
+            ON target.[FormDefinitionId] = source.[FormDefinitionId]
+            WHEN MATCHED THEN
+                UPDATE SET [NextVersionNumber] = target.[NextVersionNumber] + 1
+            WHEN NOT MATCHED THEN
+                INSERT ([FormDefinitionId], [NextVersionNumber]) VALUES (source.[FormDefinitionId], 2)
+            OUTPUT CAST(CASE WHEN $action = N'INSERT' THEN 1 ELSE deleted.[NextVersionNumber] END AS bigint) AS [Value];
+            """,
+            formDefinitionId).ToListAsync(cancellationToken);
+        return checked((int)rows.Single().Value);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -185,6 +227,8 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<EscalationRule>().HasQueryFilter(r => !r.IsDeleted && !r.EscalationPolicy.IsDeleted);
         modelBuilder.Entity<FormDefinition>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<FormAccessGrant>().HasQueryFilter(g => !g.IsDeleted);
+        modelBuilder.Entity<FormTemplate>().HasQueryFilter(t => !t.IsDeleted);
+        modelBuilder.Entity<FormVersionReviewDecision>().HasQueryFilter(d => !d.FormVersion.FormDefinition.IsDeleted);
         modelBuilder.Entity<FormReviewDecision>().HasQueryFilter(d => !d.FormDefinition.IsDeleted);
         modelBuilder.Entity<Notification>().HasQueryFilter(n => !n.RecipientUser.IsDeleted);
         modelBuilder.Entity<NotificationDeliveryAttempt>().HasQueryFilter(a => !a.Notification.RecipientUser.IsDeleted);
@@ -225,7 +269,24 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
+        FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(this);
     }
+
+}
+
+internal static class FormSchemaSnapshotImmutabilityGuard
+{
+    public static void EnsureImmutable(DbContext context)
+    {
+        var invalid = context.ChangeTracker
+            .Entries<FormSchemaSnapshot>()
+            .Where(e => e.State is EntityState.Modified or EntityState.Deleted);
+        if (invalid.Any())
+        {
+            throw new InvalidOperationException("FormSchemaSnapshot is immutable and cannot be modified or deleted.");
+        }
+    }
+
 }
 
 internal sealed class SequenceValueRow
@@ -346,9 +407,10 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         {
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
-        CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(eventData.Context);
         }
 
         return base.SavingChanges(eventData, result);
@@ -366,6 +428,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(eventData.Context);
         }
 
         return base.SavingChangesAsync(eventData, result, cancellationToken);

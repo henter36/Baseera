@@ -158,6 +158,7 @@ export function FormDetailPage() {
           <p className="muted">{form.code}</p>
         </div>
         <div className="toolbar">
+          <Link to={`/forms/${id}/versions`}>الإصدارات والتصميم</Link>
           {form.allowedActions.includes('UpdateDraft') && (
             <Link to={`/forms/${form.id}/edit`}><button type="button" className="secondary">تعديل</button></Link>
           )}

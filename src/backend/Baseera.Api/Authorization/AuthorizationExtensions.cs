@@ -78,6 +78,9 @@ public static class AuthPolicies
     public const string FormsManageAccess = PermissionPrefix + PermissionCodes.FormsManageAccess;
     public const string FormsManageGovernance = PermissionPrefix + PermissionCodes.FormsManageGovernance;
     public const string FormsManageRetention = PermissionPrefix + PermissionCodes.FormsManageRetention;
+    public const string FormsCloneVersion = PermissionPrefix + PermissionCodes.FormsCloneVersion;
+    public const string FormsViewVersionHistory = PermissionPrefix + PermissionCodes.FormsViewVersionHistory;
+    public const string FormsManageTemplates = PermissionPrefix + PermissionCodes.FormsManageTemplates;
 }
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
@@ -180,6 +183,9 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.FormsManageAccess, PermissionCodes.FormsManageAccess);
             AddPerm(AuthPolicies.FormsManageGovernance, PermissionCodes.FormsManageGovernance);
             AddPerm(AuthPolicies.FormsManageRetention, PermissionCodes.FormsManageRetention);
+            AddPerm(AuthPolicies.FormsCloneVersion, PermissionCodes.FormsCloneVersion);
+            AddPerm(AuthPolicies.FormsViewVersionHistory, PermissionCodes.FormsViewVersionHistory);
+            AddPerm(AuthPolicies.FormsManageTemplates, PermissionCodes.FormsManageTemplates);
         });
         return services;
     }

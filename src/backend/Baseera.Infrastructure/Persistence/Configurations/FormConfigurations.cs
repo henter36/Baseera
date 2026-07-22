@@ -56,6 +56,9 @@ internal sealed class FormDefinitionConfiguration : IEntityTypeConfiguration<For
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.LastModifiedByUser).WithMany().HasForeignKey(x => x.LastModifiedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.CurrentLockedVersion).WithMany().HasForeignKey(x => x.CurrentLockedVersionId)
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(x => x.CurrentLockedVersionId);
         builder.ConfigureRowVersion();
     }
 }

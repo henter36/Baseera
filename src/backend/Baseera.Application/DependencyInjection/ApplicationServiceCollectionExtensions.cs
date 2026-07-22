@@ -7,6 +7,7 @@ using Baseera.Application.CorrectiveActions;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Forms;
+using Baseera.Application.Forms.Schema;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
@@ -43,6 +44,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IFormCommandService, FormCommandService>();
         services.AddScoped<IFormWorkflowService, FormWorkflowService>();
         services.AddScoped<IFormAccessGrantService, FormAccessGrantService>();
+        services.AddScoped<IFormSchemaCanonicalizer, FormSchemaCanonicalizer>();
+        services.AddScoped<IFormVersionService, FormVersionService>();
+        services.AddScoped<IFormTemplateService, FormTemplateService>();
         services.AddScoped<ICorrectiveActionScopeService, CorrectiveActionScopeService>();
         services.AddScoped<ICorrectiveActionQueryService, CorrectiveActionQueryService>();
         services.AddScoped<ICorrectiveActionCommandService, CorrectiveActionCommandService>();

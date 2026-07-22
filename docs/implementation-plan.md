@@ -81,7 +81,16 @@
 - API `/api/v1/forms` وواجهة RTL (7 صفحات).
 - لا يشمل مصمم الحقول، النشر، التعبئة، التصدير، أو Issue #46–#51.
 
-**التالي:** Phase C.2 — Form field schema & designer (Issue #46).
+### Phase C.2 — Versioned Drag-and-Drop Form Designer (Issue #46, Epic #45)
+
+- `FormVersion` + immutable `FormSchemaSnapshot` + templates.
+- Typed schema AST, conditions, formulas, cycle detection, canonical SHA-256.
+- Atomic per-form version counters (`FormDefinitionVersionCounters` + MERGE).
+- Designer UI with DnD, autosave flush before submit, Undo/Redo, preview.
+- Version history gated by `Forms.ViewVersionHistory` (+ View Deny → 404).
+- Does **not** include publish/responses (Issue #47 not started).
+
+**التالي:** Phase C.3 / Issue #47 — publish, targeting, responses.
 
 ## المرحلة D — الموارد والتشغيل
 
