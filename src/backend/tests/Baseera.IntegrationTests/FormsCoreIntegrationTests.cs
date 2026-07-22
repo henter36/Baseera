@@ -119,19 +119,24 @@ public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
         });
         Assert.Equal(HttpStatusCode.NoContent, archive.StatusCode);
 
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
-        var archived = await db.FormDefinitions.SingleAsync(f => f.Id == form.Id);
-        Assert.Equal(FormDefinitionStatus.Archived, archived.Status);
+        string archivedRowVersion;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var archived = await db.FormDefinitions.SingleAsync(f => f.Id == form.Id);
+            Assert.Equal(FormDefinitionStatus.Archived, archived.Status);
+            archivedRowVersion = Convert.ToBase64String(archived.RowVersion);
+        }
 
         var restore = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/restore", new
         {
             reason = "استعادة",
-            rowVersion = Convert.ToBase64String(archived.RowVersion)
+            rowVersion = archivedRowVersion
         });
         Assert.Equal(HttpStatusCode.NoContent, restore.StatusCode);
-        var restored = await db.FormDefinitions.SingleAsync(f => f.Id == form.Id);
-        Assert.Equal(FormDefinitionStatus.Rejected, restored.Status);
+
+        var restored = await admin.GetFromJsonAsync<FormDetail>($"/api/v1/forms/{form.Id}");
+        Assert.Equal(FormDefinitionStatus.Rejected, restored!.Status);
     }
 
     [IntegrationConnectionFact]
