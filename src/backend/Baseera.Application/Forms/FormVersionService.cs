@@ -128,6 +128,7 @@ public sealed class FormVersionService(
     {
         EnsureViewPermission();
         var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        await EnsureViewOrNotFoundAsync(form, cancellationToken);
         var version = await LoadVersionAsync(formId, versionId, cancellationToken);
         FormAccessHelper.EnsureRowVersion(version.RowVersion, request.RowVersion);
         var json = string.IsNullOrWhiteSpace(request.SchemaJson) ? version.DraftSchemaJson : request.SchemaJson;
@@ -210,18 +211,20 @@ public sealed class FormVersionService(
             }
 
             var from = version.Status;
-            var snapshot = FormSchemaSnapshot.Create(
-                version.Id,
-                FormSchemaValidator.CurrentSchemaFormatVersion,
-                canonical.CanonicalJson,
-                canonical.SchemaHash,
-                canonical.SchemaSizeBytes,
-                canonical.PageCount,
-                canonical.SectionCount,
-                canonical.FieldCount,
-                canonical.CalculatedFieldCount,
-                canonical.ConditionCount,
-                userId);
+            var snapshot = FormSchemaSnapshot.Create(new FormSchemaSnapshotData
+            {
+                FormVersionId = version.Id,
+                SchemaFormatVersion = FormSchemaValidator.CurrentSchemaFormatVersion,
+                CanonicalSchemaJson = canonical.CanonicalJson,
+                SchemaHash = canonical.SchemaHash,
+                SchemaSizeBytes = canonical.SchemaSizeBytes,
+                PageCount = canonical.PageCount,
+                SectionCount = canonical.SectionCount,
+                FieldCount = canonical.FieldCount,
+                CalculatedFieldCount = canonical.CalculatedFieldCount,
+                ConditionCount = canonical.ConditionCount,
+                CreatedByUserId = userId
+            });
             db.Add(snapshot);
             version.Snapshot = snapshot;
             version.SnapshotId = snapshot.Id;
@@ -495,58 +498,93 @@ public sealed class FormVersionService(
         FormDefinition form,
         CancellationToken cancellationToken)
     {
+        var caps = await ResolveCapabilitiesAsync(form, cancellationToken);
         var actions = new List<string>();
+        AddDesignActions(actions, version, caps.CanDesign);
+        AddReviewActions(actions, version, caps.CanReview);
+        AddApprovalActions(actions, version, caps.CanApprove);
+        AddCloneActions(actions);
+        AddSnapshotActions(actions, version);
+        return actions;
+    }
+
+    private async Task<(bool CanDesign, bool CanReview, bool CanApprove)> ResolveCapabilitiesAsync(
+        FormDefinition form,
+        CancellationToken cancellationToken)
+    {
         var canDesign = currentUser.HasPermission(PermissionCodes.FormsUpdateDraft)
             && await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Design, cancellationToken);
         var canReview = await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Review, cancellationToken);
         var canApprove = await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Approve, cancellationToken);
+        return (canDesign, canReview, canApprove);
+    }
 
-        if (FormVersionStateMachine.IsEditable(version.Status) && canDesign)
+    private void AddDesignActions(List<string> actions, FormVersion version, bool canDesign)
+    {
+        if (!canDesign)
+        {
+            return;
+        }
+
+        if (FormVersionStateMachine.IsEditable(version.Status))
         {
             actions.AddRange(["UpdateDraft", "SaveSchema", "Autosave", "Validate"]);
         }
 
-        if ((version.Status == FormVersionStatus.Draft || version.Status == FormVersionStatus.ChangesRequested)
-            && currentUser.HasPermission(PermissionCodes.FormsSubmitForReview)
-            && canDesign)
+        if ((version.Status is FormVersionStatus.Draft or FormVersionStatus.ChangesRequested)
+            && currentUser.HasPermission(PermissionCodes.FormsSubmitForReview))
         {
             actions.Add("SubmitForReview");
         }
 
-        if (version.Status == FormVersionStatus.InReview)
-        {
-            if (currentUser.HasPermission(PermissionCodes.FormsRequestChanges) && canReview)
-            {
-                actions.Add("RequestChanges");
-            }
-
-            if (currentUser.HasPermission(PermissionCodes.FormsReject) && canReview)
-            {
-                actions.Add("Reject");
-            }
-
-            if (currentUser.HasPermission(PermissionCodes.FormsApprove) && canApprove)
-            {
-                actions.Add("ApproveAndLock");
-            }
-        }
-
-        if (version.Status == FormVersionStatus.Rejected && canDesign)
+        if (version.Status == FormVersionStatus.Rejected)
         {
             actions.Add("Reopen");
         }
+    }
 
+    private void AddReviewActions(List<string> actions, FormVersion version, bool canReview)
+    {
+        if (version.Status != FormVersionStatus.InReview || !canReview)
+        {
+            return;
+        }
+
+        if (currentUser.HasPermission(PermissionCodes.FormsRequestChanges))
+        {
+            actions.Add("RequestChanges");
+        }
+
+        if (currentUser.HasPermission(PermissionCodes.FormsReject))
+        {
+            actions.Add("Reject");
+        }
+    }
+
+    private void AddApprovalActions(List<string> actions, FormVersion version, bool canApprove)
+    {
+        if (version.Status == FormVersionStatus.InReview
+            && canApprove
+            && currentUser.HasPermission(PermissionCodes.FormsApprove))
+        {
+            actions.Add("ApproveAndLock");
+        }
+    }
+
+    private void AddCloneActions(List<string> actions)
+    {
         if (currentUser.HasPermission(PermissionCodes.FormsCloneVersion))
         {
             actions.Add("Clone");
         }
+    }
 
+    private void AddSnapshotActions(List<string> actions, FormVersion version)
+    {
         if (version.SnapshotId is not null && currentUser.HasPermission(PermissionCodes.FormsViewVersionHistory))
         {
             actions.Add("ViewSnapshot");
         }
-
-        return actions;
     }
 
     private static string DefaultSchemaJson()

@@ -55,6 +55,22 @@ public class FormVersion : EntityBase
     public ICollection<FormVersionReviewDecision> ReviewDecisions { get; set; } = new List<FormVersionReviewDecision>();
 }
 
+public sealed record FormSchemaSnapshotData
+{
+    public required Guid FormVersionId { get; init; }
+    public required int SchemaFormatVersion { get; init; }
+    public required string CanonicalSchemaJson { get; init; }
+    public required string SchemaHash { get; init; }
+    public required int SchemaSizeBytes { get; init; }
+    public required int PageCount { get; init; }
+    public required int SectionCount { get; init; }
+    public required int FieldCount { get; init; }
+    public required int CalculatedFieldCount { get; init; }
+    public required int ConditionCount { get; init; }
+    public required Guid CreatedByUserId { get; init; }
+    public DateTimeOffset? CreatedAtUtc { get; init; }
+}
+
 public class FormSchemaSnapshot
 {
     private FormSchemaSnapshot()
@@ -77,61 +93,56 @@ public class FormSchemaSnapshot
     public User CreatedByUser { get; private set; } = null!;
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
-    public static FormSchemaSnapshot Create(
-        Guid formVersionId,
-        int schemaFormatVersion,
-        string canonicalSchemaJson,
-        string schemaHash,
-        int schemaSizeBytes,
-        int pageCount,
-        int sectionCount,
-        int fieldCount,
-        int calculatedFieldCount,
-        int conditionCount,
-        Guid createdByUserId,
-        DateTimeOffset? createdAtUtc = null)
+    public static FormSchemaSnapshot Create(FormSchemaSnapshotData data)
     {
-        if (formVersionId == Guid.Empty)
+        ArgumentNullException.ThrowIfNull(data);
+
+        if (data.FormVersionId == Guid.Empty)
         {
-            throw new ArgumentException("معرّف الإصدار مطلوب.", nameof(formVersionId));
+            throw new ArgumentException("معرّف الإصدار مطلوب.", nameof(data));
         }
 
-        if (string.IsNullOrWhiteSpace(canonicalSchemaJson))
+        if (string.IsNullOrWhiteSpace(data.CanonicalSchemaJson))
         {
-            throw new ArgumentException("مخطط اللقطة مطلوب.", nameof(canonicalSchemaJson));
+            throw new ArgumentException("مخطط اللقطة مطلوب.", nameof(data));
         }
 
-        if (string.IsNullOrWhiteSpace(schemaHash) || schemaHash.Length > 64)
+        if (string.IsNullOrWhiteSpace(data.SchemaHash) || data.SchemaHash.Length is < 1 or > 64)
         {
-            throw new ArgumentException("تجزئة المخطط غير صالحة.", nameof(schemaHash));
+            throw new ArgumentException("تجزئة المخطط غير صالحة.", nameof(data));
         }
 
-        if (schemaSizeBytes < 0 || pageCount < 0 || sectionCount < 0 || fieldCount < 0
-            || calculatedFieldCount < 0 || conditionCount < 0)
+        if (data.SchemaSizeBytes < 0 || data.PageCount < 0 || data.SectionCount < 0 || data.FieldCount < 0
+            || data.CalculatedFieldCount < 0 || data.ConditionCount < 0)
         {
-            throw new ArgumentException("عدادات اللقطة غير صالحة.");
+            throw new ArgumentException("عدادات اللقطة غير صالحة.", nameof(data));
         }
 
-        if (createdByUserId == Guid.Empty)
+        if (data.CreatedByUserId == Guid.Empty)
         {
-            throw new ArgumentException("معرّف المنشئ مطلوب.", nameof(createdByUserId));
+            throw new ArgumentException("معرّف المنشئ مطلوب.", nameof(data));
+        }
+
+        if (data.CreatedAtUtc is DateTimeOffset createdAt && createdAt == default)
+        {
+            throw new ArgumentException("وقت الإنشاء غير صالح.", nameof(data));
         }
 
         return new FormSchemaSnapshot
         {
             Id = Guid.NewGuid(),
-            FormVersionId = formVersionId,
-            SchemaFormatVersion = schemaFormatVersion,
-            CanonicalSchemaJson = canonicalSchemaJson,
-            SchemaHash = schemaHash,
-            SchemaSizeBytes = schemaSizeBytes,
-            PageCount = pageCount,
-            SectionCount = sectionCount,
-            FieldCount = fieldCount,
-            CalculatedFieldCount = calculatedFieldCount,
-            ConditionCount = conditionCount,
-            CreatedByUserId = createdByUserId,
-            CreatedAtUtc = createdAtUtc ?? DateTimeOffset.UtcNow
+            FormVersionId = data.FormVersionId,
+            SchemaFormatVersion = data.SchemaFormatVersion,
+            CanonicalSchemaJson = data.CanonicalSchemaJson,
+            SchemaHash = data.SchemaHash,
+            SchemaSizeBytes = data.SchemaSizeBytes,
+            PageCount = data.PageCount,
+            SectionCount = data.SectionCount,
+            FieldCount = data.FieldCount,
+            CalculatedFieldCount = data.CalculatedFieldCount,
+            ConditionCount = data.ConditionCount,
+            CreatedByUserId = data.CreatedByUserId,
+            CreatedAtUtc = data.CreatedAtUtc ?? DateTimeOffset.UtcNow
         };
     }
 }

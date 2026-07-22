@@ -28,14 +28,13 @@ public sealed class FormTemplateService(
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsView);
         var userId = currentUser.UserId ?? throw new UnauthorizedAccessException();
         var canSensitive = FormAccessHelper.CanViewSensitive(currentUser);
-        var scopedFormIds = await formScope.FilterQueryable(db.FormDefinitions)
-            .Select(f => f.Id)
-            .ToListAsync(cancellationToken);
-        var accessibleDepartmentIds = await formScope.FilterQueryable(db.FormDefinitions)
+
+        var scopedForms = await formScope.FilterQueryableAsync(db.FormDefinitions, cancellationToken);
+        var scopedFormIds = scopedForms.Select(f => f.Id);
+        var accessibleDepartmentIds = scopedForms
             .Where(f => f.OwnerDepartmentId != null)
             .Select(f => f.OwnerDepartmentId!.Value)
-            .Distinct()
-            .ToListAsync(cancellationToken);
+            .Distinct();
 
         var query = db.FormTemplates.AsNoTracking();
         if (!canSensitive)
