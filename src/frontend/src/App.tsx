@@ -38,6 +38,9 @@ import { FormDesignerPage } from './pages/forms/versions/FormDesignerPage'
 import { FormVersionReviewPage } from './pages/forms/versions/FormVersionReviewPage'
 import { FormVersionSnapshotPage } from './pages/forms/versions/FormVersionSnapshotPage'
 import { FormTemplatesPage } from './pages/forms/templates/FormTemplatesPage'
+import { FormCampaignsListPage, FormCampaignDetailPage } from './pages/form-campaigns/FormCampaignsListPage'
+import { FormCampaignWizardPage } from './pages/form-campaigns/FormCampaignWizardPage'
+import { FormCampaignCyclesPage, FormCampaignCycleDetailPage, FormCampaignPreviewPage } from './pages/form-campaigns/FormCampaignCyclesPage'
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { me, logout, hasPermission } = useAuth()
@@ -72,6 +75,9 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Notes.View') && <NavLink to="/notes" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
           {hasPermission('Forms.View') && <NavLink to="/forms" className={({ isActive }) => isActive ? 'active' : undefined}>النماذج</NavLink>}
           {hasPermission('Forms.View') && <NavLink to="/form-templates" className={({ isActive }) => isActive ? 'active' : undefined}>قوالب النماذج</NavLink>}
+          {(hasPermission('Forms.Publish') || hasPermission('Forms.ManageCampaigns') || hasPermission('Forms.View')) && (
+            <NavLink to="/form-campaigns" className={({ isActive }) => isActive ? 'active' : undefined}>حملات النشر</NavLink>
+          )}
           {(hasPermission('Dashboard.ViewOperational') || hasPermission('Dashboard.ViewRisk') || hasPermission('Dashboard.ViewRouting') || hasPermission('Dashboard.ViewCorrectiveActions')) &&
             <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : undefined}>لوحة المتابعة</NavLink>}
           {hasPermission('CorrectiveActions.View') && <NavLink to="/corrective-actions" className={({ isActive }) => isActive ? 'active' : undefined}>الإجراءات التصحيحية</NavLink>}
@@ -129,6 +135,15 @@ export default function App() {
       <Route path="/forms/:formId/versions/:versionId/review" element={<Protected><FormVersionReviewPage /></Protected>} />
       <Route path="/forms/:formId/versions/:versionId/snapshot" element={<Protected><FormVersionSnapshotPage /></Protected>} />
       <Route path="/form-templates" element={<Protected><FormTemplatesPage /></Protected>} />
+      <Route path="/form-campaigns" element={<Protected><FormCampaignsListPage /></Protected>} />
+      <Route path="/form-campaigns/new" element={<Protected><FormCampaignWizardPage /></Protected>} />
+      <Route path="/form-campaigns/:campaignId" element={<Protected><FormCampaignDetailPage /></Protected>} />
+      <Route path="/form-campaigns/:campaignId/edit" element={<Protected><FormCampaignWizardPage /></Protected>} />
+      <Route path="/form-campaigns/:campaignId/targeting" element={<Protected><FormCampaignWizardPage /></Protected>} />
+      <Route path="/form-campaigns/:campaignId/schedule" element={<Protected><FormCampaignWizardPage /></Protected>} />
+      <Route path="/form-campaigns/:campaignId/preview" element={<Protected><FormCampaignPreviewPage /></Protected>} />
+      <Route path="/form-campaigns/:campaignId/cycles" element={<Protected><FormCampaignCyclesPage /></Protected>} />
+      <Route path="/form-campaigns/:campaignId/cycles/:cycleId" element={<Protected><FormCampaignCycleDetailPage /></Protected>} />
 
       <Route path="/settings/forms-governance" element={<Protected><FormsGovernanceSettingsPage /></Protected>} />
       <Route path="/notes/:noteId/corrective-actions/new" element={<Protected><CorrectiveActionCreatePage /></Protected>} />
