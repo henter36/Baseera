@@ -95,11 +95,13 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
             .Select((p, i) =>
             {
                 p.Order = i;
+                p.VisibilityCondition = NormalizeConditionGroup(p.VisibilityCondition);
                 p.Sections = p.Sections
                     .OrderBy(s => s.Order).ThenBy(s => s.Key, StringComparer.OrdinalIgnoreCase)
                     .Select((s, si) =>
                     {
                         s.Order = si;
+                        s.VisibilityCondition = NormalizeConditionGroup(s.VisibilityCondition);
                         s.Fields = s.Fields
                             .OrderBy(f => f.Order).ThenBy(f => f.Key, StringComparer.OrdinalIgnoreCase)
                             .Select((f, fi) => NormalizeField(f, fi))
@@ -114,6 +116,8 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
     private static FormFieldSchema NormalizeField(FormFieldSchema field, int order)
     {
         field.Order = order;
+        field.VisibilityCondition = NormalizeConditionGroup(field.VisibilityCondition);
+        field.RequiredCondition = NormalizeConditionGroup(field.RequiredCondition);
         if (field.Choice?.Options is { Count: > 0 })
         {
             field.Choice.Options = field.Choice.Options
@@ -132,6 +136,30 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
 
         return field;
     }
+
+    private static FormConditionGroup? NormalizeConditionGroup(FormConditionGroup? group)
+    {
+        if (group is null)
+        {
+            return null;
+        }
+
+        group.Predicates = group.Predicates
+            .OrderBy(p => p.FieldKey, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => p.Operator)
+            .ThenBy(p => p.Value, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => p.Values is null ? string.Empty : string.Join('\u001f', p.Values.OrderBy(v => v, StringComparer.OrdinalIgnoreCase)))
+            .ToList();
+        group.Groups = group.Groups
+            .Select(NormalizeConditionGroup)
+            .Where(g => g is not null)
+            .OrderBy(g => ConditionGroupSortKey(g!))
+            .ToList()!;
+        return group;
+    }
+
+    private static string ConditionGroupSortKey(FormConditionGroup group) =>
+        JsonSerializer.Serialize(group, SerializerOptions);
 
     private static int CountFields(IEnumerable<FormFieldSchema> fields) =>
         fields.Sum(f => 1 + (f.RepeatingTable?.Columns.Count ?? 0));

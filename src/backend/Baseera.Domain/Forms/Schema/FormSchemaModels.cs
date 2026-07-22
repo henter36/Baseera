@@ -3,6 +3,7 @@ namespace Baseera.Domain.Forms.Schema;
 using System.Text.Json.Serialization;
 using Baseera.Domain.Attachments;
 
+// Numeric values are part of the immutable schema contract; append only.
 public enum FormFieldType
 {
     ShortText = 0,
