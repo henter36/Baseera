@@ -5,6 +5,7 @@ using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Escalations;
+using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
@@ -22,6 +23,8 @@ public interface IBaseeraDbContext
     /// <summary>Includes soft-deleted users for administrative validation only.</summary>
     IQueryable<User> UsersIncludingDeleted { get; }
     IQueryable<Role> Roles { get; }
+    /// <summary>Includes soft-deleted roles for administrative validation only.</summary>
+    IQueryable<Role> RolesIncludingDeleted { get; }
     IQueryable<Permission> Permissions { get; }
     IQueryable<UserRole> UserRoles { get; }
     IQueryable<RolePermission> RolePermissions { get; }
@@ -54,6 +57,12 @@ public interface IBaseeraDbContext
     IQueryable<Notification> Notifications { get; }
     IQueryable<NotificationDeliveryAttempt> NotificationDeliveryAttempts { get; }
     IQueryable<BackgroundJobLease> BackgroundJobLeases { get; }
+    IQueryable<FormDefinition> FormDefinitions { get; }
+    IQueryable<FormDefinition> FormDefinitionsIncludingDeleted { get; }
+    IQueryable<FormReviewDecision> FormReviewDecisions { get; }
+    IQueryable<FormGovernancePolicy> FormGovernancePolicies { get; }
+    IQueryable<FormAccessGrant> FormAccessGrants { get; }
+    IQueryable<FormAccessGrant> FormAccessGrantsIncludingDeleted { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;

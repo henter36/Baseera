@@ -64,6 +64,20 @@ public static class AuthPolicies
     public const string DashboardViewRisk = PermissionPrefix + PermissionCodes.DashboardViewRisk;
     public const string DashboardViewRouting = PermissionPrefix + PermissionCodes.DashboardViewRouting;
     public const string DashboardViewCorrectiveActions = PermissionPrefix + PermissionCodes.DashboardViewCorrectiveActions;
+    public const string FormsView = PermissionPrefix + PermissionCodes.FormsView;
+    public const string FormsViewSensitive = PermissionPrefix + PermissionCodes.FormsViewSensitive;
+    public const string FormsCreate = PermissionPrefix + PermissionCodes.FormsCreate;
+    public const string FormsUpdateDraft = PermissionPrefix + PermissionCodes.FormsUpdateDraft;
+    public const string FormsSubmitForReview = PermissionPrefix + PermissionCodes.FormsSubmitForReview;
+    public const string FormsReview = PermissionPrefix + PermissionCodes.FormsReview;
+    public const string FormsApprove = PermissionPrefix + PermissionCodes.FormsApprove;
+    public const string FormsReject = PermissionPrefix + PermissionCodes.FormsReject;
+    public const string FormsRequestChanges = PermissionPrefix + PermissionCodes.FormsRequestChanges;
+    public const string FormsArchive = PermissionPrefix + PermissionCodes.FormsArchive;
+    public const string FormsRestore = PermissionPrefix + PermissionCodes.FormsRestore;
+    public const string FormsManageAccess = PermissionPrefix + PermissionCodes.FormsManageAccess;
+    public const string FormsManageGovernance = PermissionPrefix + PermissionCodes.FormsManageGovernance;
+    public const string FormsManageRetention = PermissionPrefix + PermissionCodes.FormsManageRetention;
 }
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
@@ -152,6 +166,20 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.DashboardViewRisk, PermissionCodes.DashboardViewRisk);
             AddPerm(AuthPolicies.DashboardViewRouting, PermissionCodes.DashboardViewRouting);
             AddPerm(AuthPolicies.DashboardViewCorrectiveActions, PermissionCodes.DashboardViewCorrectiveActions);
+            AddPerm(AuthPolicies.FormsView, PermissionCodes.FormsView);
+            AddPerm(AuthPolicies.FormsViewSensitive, PermissionCodes.FormsViewSensitive);
+            AddPerm(AuthPolicies.FormsCreate, PermissionCodes.FormsCreate);
+            AddPerm(AuthPolicies.FormsUpdateDraft, PermissionCodes.FormsUpdateDraft);
+            AddPerm(AuthPolicies.FormsSubmitForReview, PermissionCodes.FormsSubmitForReview);
+            AddPerm(AuthPolicies.FormsReview, PermissionCodes.FormsReview);
+            AddPerm(AuthPolicies.FormsApprove, PermissionCodes.FormsApprove);
+            AddPerm(AuthPolicies.FormsReject, PermissionCodes.FormsReject);
+            AddPerm(AuthPolicies.FormsRequestChanges, PermissionCodes.FormsRequestChanges);
+            AddPerm(AuthPolicies.FormsArchive, PermissionCodes.FormsArchive);
+            AddPerm(AuthPolicies.FormsRestore, PermissionCodes.FormsRestore);
+            AddPerm(AuthPolicies.FormsManageAccess, PermissionCodes.FormsManageAccess);
+            AddPerm(AuthPolicies.FormsManageGovernance, PermissionCodes.FormsManageGovernance);
+            AddPerm(AuthPolicies.FormsManageRetention, PermissionCodes.FormsManageRetention);
         });
         return services;
     }

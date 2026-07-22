@@ -926,6 +926,364 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.ToTable("NotificationDeliveryAttempts");
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Forms.FormAccessGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Capability")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Effect")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FormDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("PrincipalId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PrincipalType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid?>("RegionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int?>("ScopeType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("ValidFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ValidToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("FacilityId");
+
+                    b.HasIndex("RegionId");
+
+                    b.HasIndex("RevokedByUserId");
+
+                    b.HasIndex("ValidToUtc");
+
+                    b.HasIndex("FormDefinitionId", "PrincipalType", "PrincipalId", "Capability", "Effect", "ScopeKey")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("FormAccessGrants", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ApprovedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ArchivedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("ArchivedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Classification")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("DeletedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid?>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("LastModifiedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("OwnerDepartmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RegionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ScopeType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("SubmittedForReviewAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArchivedByUserId");
+
+                    b.HasIndex("Classification");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("DeletedByUserId");
+
+                    b.HasIndex("FacilityId");
+
+                    b.HasIndex("FacilityUnitId");
+
+                    b.HasIndex("IsDeleted");
+
+                    b.HasIndex("LastModifiedByUserId");
+
+                    b.HasIndex("OwnerDepartmentId");
+
+                    b.HasIndex("RegionId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.ToTable("FormDefinitions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormDefinitions_Facility_RequiresFacility", "([ScopeType] <> 3) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NOT NULL AND [FacilityUnitId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_FormDefinitions_GlobalHq_NoIds", "([ScopeType] NOT IN (0, 1)) OR ([RegionId] IS NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_FormDefinitions_Region_RequiresRegion", "([ScopeType] <> 2) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NULL AND [FacilityUnitId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_FormDefinitions_Unit_RequiresUnit", "([ScopeType] <> 4) OR ([RegionId] IS NOT NULL AND [FacilityId] IS NOT NULL AND [FacilityUnitId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormGovernancePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowApproverToPublish")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AllowDesignerToReviewOwnForm")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AllowReviewerToApproveOwnReview")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AuditExports")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AuditSensitiveViews")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DefaultRetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinimumRetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RequireReasonForArchive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireReviewBeforeApproval")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireSeparationOfDuties")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SensitiveRetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.ToTable("FormGovernancePolicies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormGovernancePolicies_DefaultRetentionDays_NonNegative", "[DefaultRetentionDays] >= 0");
+
+                            t.HasCheckConstraint("CK_FormGovernancePolicies_MinimumRetentionDays_NonNegative", "[MinimumRetentionDays] >= 0");
+
+                            t.HasCheckConstraint("CK_FormGovernancePolicies_SensitiveRetentionDays_NonNegative", "[SensitiveRetentionDays] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormReviewDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Decision")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("FormDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("FromStatus")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsAdministrativeOverride")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("ReviewedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ReviewedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ToStatus")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormDefinitionId");
+
+                    b.HasIndex("ReviewedAtUtc");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.ToTable("FormReviewDecisions", (string)null);
+                });
+
             modelBuilder.Entity("Baseera.Domain.Identity.Permission", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2829,6 +3187,142 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("Notification");
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Forms.FormAccessGrant", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Forms.FormDefinition", "FormDefinition")
+                        .WithMany("AccessGrants")
+                        .HasForeignKey("FormDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Region", "Region")
+                        .WithMany()
+                        .HasForeignKey("RegionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Identity.User", "RevokedByUser")
+                        .WithMany()
+                        .HasForeignKey("RevokedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FormDefinition");
+
+                    b.Navigation("Region");
+
+                    b.Navigation("RevokedByUser");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormDefinition", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "ArchivedByUser")
+                        .WithMany()
+                        .HasForeignKey("ArchivedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Identity.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "DeletedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeletedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Identity.User", "LastModifiedByUser")
+                        .WithMany()
+                        .HasForeignKey("LastModifiedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Department", "OwnerDepartment")
+                        .WithMany()
+                        .HasForeignKey("OwnerDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Region", "Region")
+                        .WithMany()
+                        .HasForeignKey("RegionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Identity.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ArchivedByUser");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("DeletedByUser");
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("LastModifiedByUser");
+
+                    b.Navigation("OwnerDepartment");
+
+                    b.Navigation("Region");
+
+                    b.Navigation("UpdatedByUser");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormGovernancePolicy", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("UpdatedByUser");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormReviewDecision", b =>
+                {
+                    b.HasOne("Baseera.Domain.Forms.FormDefinition", "FormDefinition")
+                        .WithMany("ReviewDecisions")
+                        .HasForeignKey("FormDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FormDefinition");
+
+                    b.Navigation("ReviewedByUser");
+                });
+
             modelBuilder.Entity("Baseera.Domain.Identity.RolePermission", b =>
                 {
                     b.HasOne("Baseera.Domain.Identity.Permission", "Permission")
@@ -3413,6 +3907,13 @@ namespace Baseera.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Baseera.Domain.Escalations.EscalationPolicy", b =>
                 {
                     b.Navigation("Rules");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormDefinition", b =>
+                {
+                    b.Navigation("AccessGrants");
+
+                    b.Navigation("ReviewDecisions");
                 });
 
             modelBuilder.Entity("Baseera.Domain.Identity.Permission", b =>

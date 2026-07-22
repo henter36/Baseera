@@ -114,6 +114,17 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
 
         foreach (var s in scopes)
         {
+            var exists = await db.UserScopes.AnyAsync(us =>
+                us.UserId == user.Id &&
+                us.ScopeType == s.ScopeType &&
+                us.RegionId == s.RegionId &&
+                us.FacilityId == s.FacilityId &&
+                us.FacilityUnitId == null);
+            if (exists)
+            {
+                continue;
+            }
+
             db.UserScopes.Add(new UserScope
             {
                 UserId = user.Id,

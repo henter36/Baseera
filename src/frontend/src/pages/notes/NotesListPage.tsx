@@ -1,9 +1,10 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, ApiError, type NoteListFilters } from '../../api/client'
+import { api, type NoteListFilters } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import { buildNotesListSearchParams } from './notesListSearchParams'
+import { formatListDate, listQueryErrorMessage, listSortIndicator, nextListSortState } from '../../shared/listPageUtils'
 import {
   ClassificationLevelLabelsAr,
   NoteSeverityLabelsAr,
@@ -23,16 +24,6 @@ const SORT_COLUMNS: Array<{ key: string; labelAr: string }> = [
   { key: 'referenceNumber', labelAr: 'الرقم المرجعي' },
   { key: 'title', labelAr: 'العنوان' },
 ]
-
-function formatDate(value?: string | null): string {
-  if (!value) return '—'
-  return new Date(value).toLocaleString('ar-SA')
-}
-
-function sortIndicator(columnKey: string, sortBy: string, sortDesc: boolean): string {
-  if (sortBy !== columnKey) return ''
-  return sortDesc ? '↓' : '↑'
-}
 
 export function NotesListPage() {
   const canView = usePermission('Notes.View')
@@ -116,20 +107,16 @@ export function NotesListPage() {
 
   const toggleSort = (key: string) => {
     setPage(1)
-    if (sortBy === key) {
-      setSortDesc((d) => !d)
-    } else {
-      setSortBy(key)
-      setSortDesc(true)
-    }
+    const next = nextListSortState(sortBy, sortDesc, key)
+    setSortBy(next.sortBy)
+    setSortDesc(next.sortDesc)
   }
 
-  const errorMessage = (() => {
-    if (!query.error) return null
-    const err = query.error as ApiError
-    if (err.status === 403) return 'ليست لديك صلاحية عرض الملاحظات.'
-    return err.message || 'تعذر تحميل الملاحظات.'
-  })()
+  const errorMessage = listQueryErrorMessage(
+    query.error,
+    'ليست لديك صلاحية عرض الملاحظات.',
+    'تعذر تحميل الملاحظات.',
+  )
 
   return (
     <div className="panel">
@@ -281,7 +268,7 @@ export function NotesListPage() {
                 {SORT_COLUMNS.map((col) => (
                   <th key={col.key}>
                     <button type="button" className="sort-header" onClick={() => toggleSort(col.key)}>
-                      {col.labelAr} {sortIndicator(col.key, sortBy, sortDesc)}
+                      {col.labelAr} {listSortIndicator(col.key, sortBy, sortDesc)}
                     </button>
                   </th>
                 ))}
@@ -303,7 +290,7 @@ export function NotesListPage() {
                   </td>
                   <td>{note.noteTypeNameAr}{!note.noteTypeIsActive ? ' (غير فعال)' : ''}</td>
                   <td>
-                    {formatDate(note.dueAtUtc)}
+                    {formatListDate(note.dueAtUtc)}
                     {note.isOverdue && <span className="badge" data-tone="danger" style={{ marginRight: '0.35rem' }}>متأخرة</span>}
                   </td>
                   <td>{note.currentAssigneeDisplay || '—'}</td>

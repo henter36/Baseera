@@ -5,6 +5,7 @@ using Baseera.Domain.Audit;
 using Baseera.Domain.Common;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Escalations;
+using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Organization;
@@ -48,6 +49,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<NotificationDeliveryAttempt> NotificationDeliveryAttempts => Set<NotificationDeliveryAttempt>();
     public DbSet<BackgroundJobLease> BackgroundJobLeases => Set<BackgroundJobLease>();
+    public DbSet<FormDefinition> FormDefinitions => Set<FormDefinition>();
+    public DbSet<FormReviewDecision> FormReviewDecisions => Set<FormReviewDecision>();
+    public DbSet<FormGovernancePolicy> FormGovernancePolicies => Set<FormGovernancePolicy>();
+    public DbSet<FormAccessGrant> FormAccessGrants => Set<FormAccessGrant>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -59,6 +64,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<User> Application.Abstractions.IBaseeraDbContext.Users => Users;
     IQueryable<User> Application.Abstractions.IBaseeraDbContext.UsersIncludingDeleted => Users.IgnoreQueryFilters();
     IQueryable<Role> Application.Abstractions.IBaseeraDbContext.Roles => Roles;
+    IQueryable<Role> Application.Abstractions.IBaseeraDbContext.RolesIncludingDeleted => Roles.IgnoreQueryFilters();
     IQueryable<Permission> Application.Abstractions.IBaseeraDbContext.Permissions => Permissions;
     IQueryable<UserRole> Application.Abstractions.IBaseeraDbContext.UserRoles => UserRoles;
     IQueryable<RolePermission> Application.Abstractions.IBaseeraDbContext.RolePermissions => RolePermissions;
@@ -90,6 +96,12 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<Notification> Application.Abstractions.IBaseeraDbContext.Notifications => Notifications;
     IQueryable<NotificationDeliveryAttempt> Application.Abstractions.IBaseeraDbContext.NotificationDeliveryAttempts => NotificationDeliveryAttempts;
     IQueryable<BackgroundJobLease> Application.Abstractions.IBaseeraDbContext.BackgroundJobLeases => BackgroundJobLeases;
+    IQueryable<FormDefinition> Application.Abstractions.IBaseeraDbContext.FormDefinitions => FormDefinitions;
+    IQueryable<FormDefinition> Application.Abstractions.IBaseeraDbContext.FormDefinitionsIncludingDeleted => FormDefinitions.IgnoreQueryFilters();
+    IQueryable<FormReviewDecision> Application.Abstractions.IBaseeraDbContext.FormReviewDecisions => FormReviewDecisions;
+    IQueryable<FormGovernancePolicy> Application.Abstractions.IBaseeraDbContext.FormGovernancePolicies => FormGovernancePolicies;
+    IQueryable<FormAccessGrant> Application.Abstractions.IBaseeraDbContext.FormAccessGrants => FormAccessGrants;
+    IQueryable<FormAccessGrant> Application.Abstractions.IBaseeraDbContext.FormAccessGrantsIncludingDeleted => FormAccessGrants.IgnoreQueryFilters();
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -171,6 +183,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<CorrectiveActionAssignment>().HasQueryFilter(a => !a.CorrectiveAction.IsDeleted && !a.AssignedByUser.IsDeleted);
         modelBuilder.Entity<CorrectiveActionStatusHistory>().HasQueryFilter(h => !h.CorrectiveAction.IsDeleted && !h.ChangedByUser.IsDeleted);
         modelBuilder.Entity<EscalationRule>().HasQueryFilter(r => !r.IsDeleted && !r.EscalationPolicy.IsDeleted);
+        modelBuilder.Entity<FormDefinition>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<FormAccessGrant>().HasQueryFilter(g => !g.IsDeleted);
+        modelBuilder.Entity<FormReviewDecision>().HasQueryFilter(d => !d.FormDefinition.IsDeleted);
         modelBuilder.Entity<Notification>().HasQueryFilter(n => !n.RecipientUser.IsDeleted);
         modelBuilder.Entity<NotificationDeliveryAttempt>().HasQueryFilter(a => !a.Notification.RecipientUser.IsDeleted);
 

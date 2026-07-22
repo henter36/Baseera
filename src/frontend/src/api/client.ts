@@ -828,6 +828,187 @@ export type Attachment = {
   isSensitiveRedacted?: boolean
 }
 
+// Enums serialize as numbers (System.Text.Json default). Keep in sync with Baseera.Domain.Forms.
+
+export type FormListItem = {
+  id: string
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  descriptionSnippet?: string | null
+  status: number
+  statusAr: string
+  classification: number
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+  ownerDepartmentId?: string | null
+  createdAtUtc: string
+  rowVersion: string
+  isSensitiveRedacted: boolean
+}
+
+export type FormDetail = {
+  id: string
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  description: string
+  status: number
+  statusAr: string
+  classification: number
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+  ownerDepartmentId?: string | null
+  createdByUserId: string
+  createdByDisplayName?: string | null
+  updatedByUserId?: string | null
+  updatedByDisplayName?: string | null
+  lastModifiedByUserId?: string | null
+  lastModifiedByDisplayName?: string | null
+  submittedForReviewAtUtc?: string | null
+  approvedAtUtc?: string | null
+  archivedAtUtc?: string | null
+  archivedByUserId?: string | null
+  archivedByDisplayName?: string | null
+  createdAtUtc: string
+  updatedAtUtc?: string | null
+  rowVersion: string
+  isSensitiveRedacted: boolean
+  allowedActions: string[]
+}
+
+export type FormReviewDecision = {
+  id: string
+  decision: number
+  decisionAr: string
+  reason?: string | null
+  reviewedByUserId: string
+  reviewedByDisplayName?: string | null
+  reviewedAtUtc: string
+  fromStatus: number
+  fromStatusAr: string
+  toStatus: number
+  toStatusAr: string
+  isAdministrativeOverride: boolean
+}
+
+export type FormAccessGrant = {
+  id: string
+  principalType: number
+  principalId: string
+  principalDisplayName?: string | null
+  capability: number
+  capabilityAr: string
+  effect: number
+  scopeType?: number | null
+  regionId?: string | null
+  facilityId?: string | null
+  validFromUtc?: string | null
+  validToUtc?: string | null
+  reason: string
+  createdByUserId: string
+  createdByDisplayName?: string | null
+  createdAtUtc: string
+  rowVersion: string
+}
+
+export type FormGovernancePolicy = {
+  id: string
+  requireReviewBeforeApproval: boolean
+  requireSeparationOfDuties: boolean
+  allowDesignerToReviewOwnForm: boolean
+  allowReviewerToApproveOwnReview: boolean
+  allowApproverToPublish: boolean
+  defaultRetentionDays: number
+  sensitiveRetentionDays: number
+  minimumRetentionDays: number
+  auditSensitiveViews: boolean
+  auditExports: boolean
+  requireReasonForArchive: boolean
+  rowVersion: string
+}
+
+export type FormRetentionStatus = {
+  formDefinitionId: string
+  isRetentionApplicable: boolean
+  retentionAnchorUtc?: string | null
+  retentionDays: number
+  expiresAtUtc?: string | null
+  isExpired: boolean
+  isEligibleForArchive: boolean
+}
+
+export type FormListFilters = {
+  page?: number
+  pageSize?: number
+  search?: string
+  status?: number
+  classification?: number
+  regionId?: string
+  facilityId?: string
+  sortBy?: string
+  sortDesc?: boolean
+}
+
+export type CreateFormRequest = {
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  description: string
+  classification: number
+  scopeType: number
+  regionId?: string | null
+  facilityId?: string | null
+  facilityUnitId?: string | null
+  ownerDepartmentId?: string | null
+}
+
+export type UpdateFormRequest = {
+  nameAr: string
+  nameEn?: string | null
+  description: string
+  classification: number
+  ownerDepartmentId?: string | null
+  rowVersion: string
+}
+
+export type FormTransitionRequest = {
+  reason: string
+  rowVersion: string
+}
+
+export type CreateFormAccessGrantRequest = {
+  principalType: number
+  principalId: string
+  capability: number
+  effect: number
+  scopeType?: number | null
+  regionId?: string | null
+  facilityId?: string | null
+  validFromUtc?: string | null
+  validToUtc?: string | null
+  reason: string
+}
+
+export type UpdateFormGovernancePolicyRequest = {
+  requireReviewBeforeApproval: boolean
+  requireSeparationOfDuties: boolean
+  allowDesignerToReviewOwnForm: boolean
+  allowReviewerToApproveOwnReview: boolean
+  allowApproverToPublish: boolean
+  defaultRetentionDays: number
+  sensitiveRetentionDays: number
+  minimumRetentionDays: number
+  auditSensitiveViews: boolean
+  auditExports: boolean
+  requireReasonForArchive: boolean
+  rowVersion: string
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   if (isTestAuthAllowed()) {
@@ -952,6 +1133,20 @@ function buildSimpleQuery(filters: Record<string, string | number | boolean | un
   if (!params.has('page')) params.set('page', '1')
   if (!params.has('pageSize')) params.set('pageSize', '20')
   return params.toString()
+}
+
+function buildFormQuery(filters: FormListFilters): string {
+  return buildSimpleQuery({
+    page: filters.page,
+    pageSize: filters.pageSize,
+    search: filters.search,
+    status: filters.status,
+    classification: filters.classification,
+    regionId: filters.regionId,
+    facilityId: filters.facilityId,
+    sortBy: filters.sortBy,
+    sortDesc: filters.sortDesc,
+  })
 }
 
 function appendCorrectiveActionPaging(params: URLSearchParams, filters: CorrectiveActionListFilters): void {
@@ -1208,5 +1403,38 @@ export const api = {
       priorityQueues: (filters: DashboardOperationsFilters = {}) =>
         request<DashboardPriorityQueues>(`/api/v1/dashboard/operations/priority-queues?${buildDashboardQuery(filters)}`),
     },
+  },
+
+  forms: {
+    list: (filters: FormListFilters = {}) =>
+      request<Paged<FormListItem>>(`/api/v1/forms?${buildFormQuery(filters)}`),
+    get: (id: string) => request<FormDetail>(`/api/v1/forms/${id}`),
+    create: (body: CreateFormRequest) => postJson<FormDetail>('/api/v1/forms', body),
+    update: (id: string, body: UpdateFormRequest) => putJson<FormDetail>(`/api/v1/forms/${id}`, body),
+    submitReview: (id: string, body: FormTransitionRequest) =>
+      postJson<FormDetail>(`/api/v1/forms/${id}/submit-review`, body),
+    requestChanges: (id: string, body: FormTransitionRequest) =>
+      postJson<FormDetail>(`/api/v1/forms/${id}/request-changes`, body),
+    approve: (id: string, body: FormTransitionRequest) =>
+      postJson<FormDetail>(`/api/v1/forms/${id}/approve`, body),
+    reject: (id: string, body: FormTransitionRequest) =>
+      postJson<FormDetail>(`/api/v1/forms/${id}/reject`, body),
+    archive: (id: string, body: FormTransitionRequest) =>
+      request<void>(`/api/v1/forms/${id}/archive`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    restore: (id: string, body: FormTransitionRequest) =>
+      request<void>(`/api/v1/forms/${id}/restore`, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+    reviewDecisions: (id: string) => request<FormReviewDecision[]>(`/api/v1/forms/${id}/review-decisions`),
+    retentionStatus: (id: string) => request<FormRetentionStatus>(`/api/v1/forms/${id}/retention-status`),
+    accessGrants: (id: string) => request<FormAccessGrant[]>(`/api/v1/forms/${id}/access-grants`),
+    createAccessGrant: (id: string, body: CreateFormAccessGrantRequest) =>
+      postJson<FormAccessGrant>(`/api/v1/forms/${id}/access-grants`, body),
+    revokeAccessGrant: (id: string, grantId: string, body: FormTransitionRequest) =>
+      postJson<void>(`/api/v1/forms/${id}/access-grants/${grantId}/revoke`, body),
+  },
+
+  formGovernance: {
+    getPolicy: () => request<FormGovernancePolicy>('/api/v1/forms/governance-policy'),
+    updatePolicy: (body: UpdateFormGovernancePolicyRequest) =>
+      putJson<FormGovernancePolicy>('/api/v1/forms/governance-policy', body),
   },
 }
