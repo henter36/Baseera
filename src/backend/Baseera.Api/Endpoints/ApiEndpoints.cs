@@ -241,7 +241,7 @@ public static class ApiEndpoints
         forms.MapPost("/{id:guid}/reject", async (
             Guid id,
             FormTransitionRequest request,
-            IValidator<FormTransitionRequest> validator,
+            FormRejectTransitionRequestValidator validator,
             IFormWorkflowService workflow,
             CancellationToken ct) =>
         {
@@ -252,7 +252,7 @@ public static class ApiEndpoints
         forms.MapPost("/{id:guid}/archive", async (
             Guid id,
             FormTransitionRequest request,
-            IValidator<FormTransitionRequest> validator,
+            FormArchiveTransitionRequestValidator validator,
             IFormCommandService commands,
             CancellationToken ct) =>
         {

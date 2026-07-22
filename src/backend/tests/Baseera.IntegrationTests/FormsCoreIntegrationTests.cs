@@ -131,7 +131,7 @@ public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
         });
         Assert.Equal(HttpStatusCode.NoContent, restore.StatusCode);
         var restored = await db.FormDefinitions.SingleAsync(f => f.Id == form.Id);
-        Assert.Equal(FormDefinitionStatus.Approved, restored.Status);
+        Assert.Equal(FormDefinitionStatus.Rejected, restored.Status);
     }
 
     [IntegrationConnectionFact]
@@ -139,9 +139,11 @@ public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
     {
         await SeedWorkflowUsersAsync();
         var designer = _factory.CreateAuthenticatedClient("forms-designer");
+        var approver = _factory.CreateAuthenticatedClient("forms-approver");
         var form = await CreateFormAsync(designer, ScopeType.Global, null, null, NextCode());
 
-        var response = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/approve", new
+        // Approver has Forms.Approve but Draft→Approved is illegal — expect state-machine 409.
+        var response = await approver.PostAsJsonAsync($"/api/v1/forms/{form.Id}/approve", new
         {
             reason = "انتقال غير صالح",
             rowVersion = form.RowVersion
@@ -230,7 +232,14 @@ public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
     public async Task Creator_cannot_review_own_form_sod()
     {
         await SeedWorkflowUsersAsync();
-        var designer = _factory.CreateAuthenticatedClient("forms-designer");
+        await _factory.SeedUserWithPermissionsAsync(
+            "forms-designer-reviewer",
+            "منشئ مراجع",
+            [RoleCodes.FormDesigner],
+            [PermissionCodes.FormsRequestChanges],
+            (ScopeType.Global, null, null));
+
+        var designer = _factory.CreateAuthenticatedClient("forms-designer-reviewer");
         var form = await CreateFormAsync(designer, ScopeType.Global, null, null, NextCode());
         form = await PostTransitionAsync(designer, $"/api/v1/forms/{form.Id}/submit-review", form.RowVersion, "تقديم");
 
@@ -293,8 +302,10 @@ public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
     {
         await SeedWorkflowUsersAsync();
         var admin = _factory.CreateAuthenticatedClient("forms-admin");
+        var designer = _factory.CreateAuthenticatedClient("forms-designer");
         var viewer = _factory.CreateAuthenticatedClient("forms-viewer");
-        var form = await CreateFormAsync(admin, ScopeType.Global, null, null, NextCode());
+        // Create as designer so admin is not the form creator (SoD blocks creator grants).
+        var form = await CreateFormAsync(designer, ScopeType.Global, null, null, NextCode());
 
         Guid viewerId;
         using (var scope = _factory.Services.CreateScope())
@@ -327,8 +338,9 @@ public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
     {
         await SeedWorkflowUsersAsync();
         var admin = _factory.CreateAuthenticatedClient("forms-admin");
+        var designer = _factory.CreateAuthenticatedClient("forms-designer");
         var viewer = _factory.CreateAuthenticatedClient("forms-viewer");
-        var form = await CreateFormAsync(admin, ScopeType.Global, null, null, NextCode());
+        var form = await CreateFormAsync(designer, ScopeType.Global, null, null, NextCode());
 
         Guid viewerId;
         using (var scope = _factory.Services.CreateScope())

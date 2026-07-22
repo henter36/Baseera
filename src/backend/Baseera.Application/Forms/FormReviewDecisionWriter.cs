@@ -12,7 +12,7 @@ internal static class FormReviewDecisionWriter
         FormDefinitionStatus from,
         FormDefinitionStatus to,
         Guid userId,
-        string reason,
+        string? reason,
         bool isAdministrativeOverride)
     {
         db.Add(new FormReviewDecision

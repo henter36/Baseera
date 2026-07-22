@@ -196,7 +196,8 @@ public sealed class FormCommandService(
         form.UpdatedByUserId = userId;
         db.Update(form);
 
-        FormReviewDecisionWriter.Append(db, form.Id, FormReviewDecisionType.Archive, from, FormDefinitionStatus.Archived, userId, request.Reason.Trim(), false);
+        var archiveReason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
+        FormReviewDecisionWriter.Append(db, form.Id, FormReviewDecisionType.Archive, from, FormDefinitionStatus.Archived, userId, archiveReason, false);
         await audit.WriteAsync(new AuditEntry
         {
             Action = "FormArchived",
@@ -205,7 +206,7 @@ public sealed class FormCommandService(
             EntityId = form.Id.ToString(),
             OldValues = new { Status = from },
             NewValues = new { Status = FormDefinitionStatus.Archived },
-            Reason = request.Reason.Trim()
+            Reason = archiveReason
         }, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);

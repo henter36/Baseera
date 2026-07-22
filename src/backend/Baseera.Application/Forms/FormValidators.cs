@@ -123,7 +123,8 @@ public sealed class FormArchiveTransitionRequestValidator : AbstractValidator<Fo
 {
     public FormArchiveTransitionRequestValidator()
     {
-        RuleFor(x => x.Reason).Must(FormRequestValidation.BeMeaningful).WithMessage("سبب الأرشفة مطلوب.").MaximumLength(2000);
+        // Reason is enforced by FormCommandService when RequireReasonForArchive is true.
+        RuleFor(x => x.Reason).MaximumLength(2000).When(x => !string.IsNullOrWhiteSpace(x.Reason));
         RuleFor(x => x.RowVersion).Must(FormRequestValidation.BeValidRowVersion).WithMessage("إصدار السجل غير صالح.");
     }
 }

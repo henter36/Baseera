@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { api, ApiError } from '../../api/client'
@@ -47,6 +47,23 @@ export function FormAccessPage() {
   const [revokeReason, setRevokeReason] = useState('')
   const [revokeGrantId, setRevokeGrantId] = useState<string | null>(null)
   const [revokeConflict, setRevokeConflict] = useState(false)
+  const revokeDialogRef = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const dialog = revokeDialogRef.current
+    if (!dialog) return
+    if (revokeDialog) {
+      if (!dialog.open) dialog.showModal()
+    } else if (dialog.open) {
+      dialog.close()
+    }
+  }, [revokeDialog])
+
+  const closeRevokeDialog = () => {
+    setRevokeDialog(null)
+    setRevokeReason('')
+    if (!revokeConflict) setServerError(null)
+  }
 
   const formQuery = useQuery({
     queryKey: ['form', id],
@@ -336,47 +353,58 @@ export function FormAccessPage() {
         )}
       </div>
 
-      {revokeDialog && (
-        <div className="panel-section" role="dialog" aria-modal="true" aria-label="تأكيد إلغاء المنح">
-          <h2 className="section-title">تأكيد إلغاء المنح</h2>
+      <dialog
+        ref={revokeDialogRef}
+        className="panel-section"
+        aria-label="تأكيد إلغاء المنح"
+        onCancel={(e) => {
+          if (revokeGrantId) {
+            e.preventDefault()
+            return
+          }
+          closeRevokeDialog()
+        }}
+        onClose={() => {
+          if (revokeDialog) closeRevokeDialog()
+        }}
+      >
+        <h2 className="section-title">تأكيد إلغاء المنح</h2>
+        {revokeDialog && (
           <p>
             المستفيد: <strong>{revokeDialog.principal}</strong>
             {' — '}
             الصلاحية: <strong>{revokeDialog.capability}</strong>
           </p>
-          <label className="field field-wide">
-            <span>سبب الإلغاء *</span>
-            <input
-              aria-label="سبب إلغاء المنح"
-              value={revokeReason}
-              onChange={(e) => setRevokeReason(e.target.value)}
-              disabled={!!revokeGrantId}
-            />
-          </label>
-          {serverError && <div className="error" role="alert">{serverError}</div>}
-          <div className="form-actions">
-            <button
-              type="button"
-              disabled={!!revokeGrantId}
-              onClick={() => void confirmRevoke()}
-            >
-              {revokeGrantId ? 'جارٍ الإلغاء…' : 'تأكيد الإلغاء'}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={!!revokeGrantId}
-              onClick={() => {
-                setRevokeDialog(null)
-                setRevokeReason('')
-                if (!revokeConflict) setServerError(null)
-              }}
-            >
-              إغلاق
-            </button>
-          </div>
+        )}
+        <label className="field field-wide">
+          <span>سبب الإلغاء *</span>
+          <input
+            aria-label="سبب إلغاء المنح"
+            value={revokeReason}
+            onChange={(e) => setRevokeReason(e.target.value)}
+            disabled={!!revokeGrantId}
+            autoFocus
+          />
+        </label>
+        {serverError && <div className="error" role="alert">{serverError}</div>}
+        <div className="form-actions">
+          <button
+            type="button"
+            disabled={!!revokeGrantId || !revokeDialog}
+            onClick={() => void confirmRevoke()}
+          >
+            {revokeGrantId ? 'جارٍ الإلغاء…' : 'تأكيد الإلغاء'}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={!!revokeGrantId}
+            onClick={closeRevokeDialog}
+          >
+            إغلاق
+          </button>
         </div>
-      )}
+      </dialog>
     </div>
   )
 }
