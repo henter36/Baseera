@@ -34,10 +34,13 @@ public sealed class FormVersionService(
     IFormSchemaCanonicalizer canonicalizer,
     IAuditService audit) : IFormVersionService
 {
+    private const int MaxVersionAllocationAttempts = 5;
+
     public async Task<IReadOnlyList<FormVersionListItemDto>> ListAsync(Guid formId, CancellationToken cancellationToken = default)
     {
-        EnsureViewPermission();
-        await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        EnsureVersionHistoryPermission();
+        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        await EnsureViewOrNotFoundAsync(form, cancellationToken);
         var versions = await db.FormVersions.AsNoTracking()
             .Where(v => v.FormDefinitionId == formId)
             .OrderByDescending(v => v.VersionNumber)
@@ -47,11 +50,11 @@ public sealed class FormVersionService(
 
     public async Task<FormVersionDetailDto> GetAsync(Guid formId, Guid versionId, CancellationToken cancellationToken = default)
     {
-        EnsureViewPermission();
+        EnsureVersionHistoryPermission();
         var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        await EnsureViewOrNotFoundAsync(form, cancellationToken);
         var version = await LoadVersionAsync(formId, versionId, cancellationToken);
-        await effectiveAccess.EnsureCapabilityAsync(form, FormAccessCapability.View, cancellationToken);
-        return MapDetail(version, form);
+        return await MapDetailAsync(version, form, cancellationToken);
     }
 
     public async Task<FormVersionDetailDto> CreateAsync(Guid formId, CreateFormVersionRequest request, CancellationToken cancellationToken = default)
@@ -63,59 +66,8 @@ public sealed class FormVersionService(
 
         return await db.ExecuteInTransactionAsync(async ct =>
         {
-            string schemaJson;
-            Guid? basedOn = request.BasedOnVersionId;
-            if (basedOn is Guid basedOnId)
-            {
-                var source = await db.FormVersions.FirstOrDefaultAsync(v => v.Id == basedOnId && v.FormDefinitionId == formId, ct)
-                    ?? throw new KeyNotFoundException("الإصدار المصدر غير موجود.");
-                schemaJson = source.Status == FormVersionStatus.Locked && source.SnapshotId is not null
-                    ? (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == source.SnapshotId, ct)).CanonicalSchemaJson
-                    : source.DraftSchemaJson;
-            }
-            else
-            {
-                var latestLocked = await db.FormVersions
-                    .Where(v => v.FormDefinitionId == formId && v.Status == FormVersionStatus.Locked)
-                    .OrderByDescending(v => v.VersionNumber)
-                    .FirstOrDefaultAsync(ct);
-                if (latestLocked?.SnapshotId is Guid snapId)
-                {
-                    schemaJson = (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == snapId, ct)).CanonicalSchemaJson;
-                    basedOn = latestLocked.Id;
-                }
-                else
-                {
-                    schemaJson = DefaultSchemaJson();
-                }
-            }
-
-            var nextNumber = await NextVersionNumberAsync(formId, ct);
-            var canonical = canonicalizer.Canonicalize(schemaJson);
-            var version = new FormVersion
-            {
-                FormDefinitionId = formId,
-                VersionNumber = nextNumber,
-                Status = FormVersionStatus.Draft,
-                BasedOnVersionId = basedOn,
-                DraftSchemaJson = canonical.CanonicalJson,
-                DraftSchemaHash = canonical.SchemaHash,
-                SchemaFormatVersion = FormSchemaValidator.CurrentSchemaFormatVersion,
-                CreatedByUserId = userId,
-                UpdatedByUserId = userId,
-                LastSavedAtUtc = DateTimeOffset.UtcNow
-            };
-            db.Add(version);
-            await audit.WriteAsync(new AuditEntry
-            {
-                Action = "FormVersionCreated",
-                Module = FormAccessHelper.ModuleName,
-                EntityType = nameof(FormVersion),
-                EntityId = version.Id.ToString("D"),
-                NewValues = new { formId, version.VersionNumber, version.DraftSchemaHash }
-            }, ct);
-            await db.SaveChangesAsync(ct);
-            return MapDetail(version, form);
+            var (schemaJson, basedOn) = await ResolveSourceSchemaAsync(formId, request.BasedOnVersionId, ct);
+            return await AllocateAndPersistVersionAsync(form, formId, basedOn, schemaJson, userId, ct);
         }, cancellationToken);
     }
 
@@ -139,7 +91,7 @@ public sealed class FormVersionService(
         if (string.Equals(version.DraftSchemaHash, canonical.SchemaHash, StringComparison.OrdinalIgnoreCase)
             && string.Equals(version.DraftSchemaJson, canonical.CanonicalJson, StringComparison.Ordinal))
         {
-            return MapDetail(version, form);
+            return await MapDetailAsync(version, form, cancellationToken);
         }
 
         version.DraftSchemaJson = canonical.CanonicalJson;
@@ -157,7 +109,7 @@ public sealed class FormVersionService(
             Module = FormAccessHelper.ModuleName,
             EntityType = nameof(FormVersion),
             EntityId = version.Id.ToString("D"),
-            NewValues = JsonSerializer.Serialize(new
+            NewValues = new
             {
                 formId,
                 version.VersionNumber,
@@ -165,10 +117,10 @@ public sealed class FormVersionService(
                 canonical.PageCount,
                 canonical.SectionCount,
                 canonical.FieldCount
-            })
+            }
         }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return MapDetail(version, form);
+        return await MapDetailAsync(version, form, cancellationToken);
     }
 
     public async Task<FormVersionValidateResultDto> ValidateAsync(
@@ -201,7 +153,8 @@ public sealed class FormVersionService(
     }
 
     public Task<FormVersionDetailDto> SubmitForReviewAsync(Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default) =>
-        TransitionAsync(formId, versionId, request, PermissionCodes.FormsSubmitForReview, FormAccessCapability.Design,
+        TransitionAsync(new VersionTransitionContext(
+            formId, versionId, request, PermissionCodes.FormsSubmitForReview, FormAccessCapability.Design,
             FormVersionStatus.InReview, FormVersionReviewDecisionType.SubmitForReview, "FormVersionSubmittedForReview",
             async (form, version, ct) =>
             {
@@ -215,22 +168,25 @@ public sealed class FormVersionService(
                 version.DraftSchemaHash = canonical.SchemaHash;
                 await sod.EnforceSubmitForReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct);
                 version.SubmittedForReviewAtUtc = DateTimeOffset.UtcNow;
-            }, cancellationToken);
+            }), cancellationToken);
 
     public Task<FormVersionDetailDto> RequestChangesAsync(Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default) =>
-        TransitionAsync(formId, versionId, request, PermissionCodes.FormsRequestChanges, FormAccessCapability.Review,
+        TransitionAsync(new VersionTransitionContext(
+            formId, versionId, request, PermissionCodes.FormsRequestChanges, FormAccessCapability.Review,
             FormVersionStatus.ChangesRequested, FormVersionReviewDecisionType.RequestChanges, "FormVersionChangesRequested",
-            async (form, _, ct) => await sod.EnforceReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct), cancellationToken);
+            async (form, _, ct) => await sod.EnforceReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct)), cancellationToken);
 
     public Task<FormVersionDetailDto> RejectAsync(Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default) =>
-        TransitionAsync(formId, versionId, request, PermissionCodes.FormsReject, FormAccessCapability.Review,
+        TransitionAsync(new VersionTransitionContext(
+            formId, versionId, request, PermissionCodes.FormsReject, FormAccessCapability.Review,
             FormVersionStatus.Rejected, FormVersionReviewDecisionType.Reject, "FormVersionRejected",
-            async (form, _, ct) => await sod.EnforceReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct), cancellationToken);
+            async (form, _, ct) => await sod.EnforceReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct)), cancellationToken);
 
     public Task<FormVersionDetailDto> ReopenAsync(Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default) =>
-        TransitionAsync(formId, versionId, request, PermissionCodes.FormsUpdateDraft, FormAccessCapability.Design,
+        TransitionAsync(new VersionTransitionContext(
+            formId, versionId, request, PermissionCodes.FormsUpdateDraft, FormAccessCapability.Design,
             FormVersionStatus.Draft, FormVersionReviewDecisionType.Reopen, "FormVersionReopened",
-            (_, _, _) => Task.CompletedTask, cancellationToken);
+            (_, _, _) => Task.CompletedTask), cancellationToken);
 
     public async Task<FormVersionDetailDto> ApproveAndLockAsync(
         Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default)
@@ -254,20 +210,18 @@ public sealed class FormVersionService(
             }
 
             var from = version.Status;
-            var snapshot = new FormSchemaSnapshot
-            {
-                FormVersionId = version.Id,
-                SchemaFormatVersion = FormSchemaValidator.CurrentSchemaFormatVersion,
-                CanonicalSchemaJson = canonical.CanonicalJson,
-                SchemaHash = canonical.SchemaHash,
-                SchemaSizeBytes = canonical.SchemaSizeBytes,
-                PageCount = canonical.PageCount,
-                SectionCount = canonical.SectionCount,
-                FieldCount = canonical.FieldCount,
-                CalculatedFieldCount = canonical.CalculatedFieldCount,
-                ConditionCount = canonical.ConditionCount,
-                CreatedByUserId = userId
-            };
+            var snapshot = FormSchemaSnapshot.Create(
+                version.Id,
+                FormSchemaValidator.CurrentSchemaFormatVersion,
+                canonical.CanonicalJson,
+                canonical.SchemaHash,
+                canonical.SchemaSizeBytes,
+                canonical.PageCount,
+                canonical.SectionCount,
+                canonical.FieldCount,
+                canonical.CalculatedFieldCount,
+                canonical.ConditionCount,
+                userId);
             db.Add(snapshot);
             version.Snapshot = snapshot;
             version.SnapshotId = snapshot.Id;
@@ -298,7 +252,7 @@ public sealed class FormVersionService(
                 Module = FormAccessHelper.ModuleName,
                 EntityType = nameof(FormSchemaSnapshot),
                 EntityId = snapshot.Id.ToString("D"),
-                NewValues = JsonSerializer.Serialize(new
+                NewValues = new
                 {
                     formId,
                     versionId = version.Id,
@@ -306,7 +260,7 @@ public sealed class FormVersionService(
                     snapshot.SchemaHash,
                     snapshot.PageCount,
                     snapshot.FieldCount
-                })
+                }
             }, ct);
             await audit.WriteAsync(new AuditEntry
             {
@@ -316,23 +270,24 @@ public sealed class FormVersionService(
                 EntityId = version.Id.ToString("D"),
                 Reason = request.Reason,
                 OldValues = new { Status = from },
-                NewValues = JsonSerializer.Serialize(new
+                NewValues = new
                 {
                     Status = FormVersionStatus.Locked,
                     version.VersionNumber,
                     snapshot.SchemaHash
-                })
+                }
             }, ct);
 
             await db.SaveChangesAsync(ct);
-            return MapDetail(version, form);
+            return await MapDetailAsync(version, form, ct);
         }, cancellationToken);
     }
 
     public async Task<FormSchemaSnapshotDto> GetSnapshotAsync(Guid formId, Guid versionId, CancellationToken cancellationToken = default)
     {
-        EnsureViewPermission();
-        await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        EnsureVersionHistoryPermission();
+        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        await EnsureViewOrNotFoundAsync(form, cancellationToken);
         var version = await LoadVersionAsync(formId, versionId, cancellationToken);
         if (version.SnapshotId is null)
         {
@@ -352,8 +307,9 @@ public sealed class FormVersionService(
     public async Task<IReadOnlyList<FormVersionReviewDecisionDto>> GetReviewDecisionsAsync(
         Guid formId, Guid versionId, CancellationToken cancellationToken = default)
     {
-        EnsureViewPermission();
-        await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        EnsureVersionHistoryPermission();
+        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
+        await EnsureViewOrNotFoundAsync(form, cancellationToken);
         await LoadVersionAsync(formId, versionId, cancellationToken);
         var decisions = await db.FormVersionReviewDecisions.AsNoTracking()
             .Where(d => d.FormVersionId == versionId)
@@ -365,52 +321,120 @@ public sealed class FormVersionService(
     }
 
     private async Task<FormVersionDetailDto> TransitionAsync(
-        Guid formId,
-        Guid versionId,
-        FormVersionTransitionRequest request,
-        string permission,
-        FormAccessCapability capability,
-        FormVersionStatus target,
-        FormVersionReviewDecisionType decisionType,
-        string auditAction,
-        Func<FormDefinition, FormVersion, CancellationToken, Task> beforeSave,
+        VersionTransitionContext context,
         CancellationToken cancellationToken)
     {
-        FormAccessHelper.EnsurePermission(currentUser, permission);
+        FormAccessHelper.EnsurePermission(currentUser, context.Permission);
         var userId = currentUser.UserId ?? throw new UnauthorizedAccessException();
-        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formId, cancellationToken: cancellationToken);
-        await effectiveAccess.EnsureCapabilityAsync(form, capability, cancellationToken);
-        var version = await LoadVersionAsync(formId, versionId, cancellationToken);
-        FormAccessHelper.EnsureRowVersion(version.RowVersion, request.RowVersion);
-        FormVersionStateMachine.EnsureAllowed(version.Status, target);
-        await beforeSave(form, version, cancellationToken);
+        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, context.FormId, cancellationToken: cancellationToken);
+        await effectiveAccess.EnsureCapabilityAsync(form, context.Capability, cancellationToken);
+        var version = await LoadVersionAsync(context.FormId, context.VersionId, cancellationToken);
+        FormAccessHelper.EnsureRowVersion(version.RowVersion, context.Request.RowVersion);
+        FormVersionStateMachine.EnsureAllowed(version.Status, context.Target);
+        await context.BeforeSave(form, version, cancellationToken);
 
         var from = version.Status;
-        version.Status = target;
+        version.Status = context.Target;
         version.UpdatedByUserId = userId;
         version.UpdatedAtUtc = DateTimeOffset.UtcNow;
         form.LastModifiedByUserId = userId;
         db.Add(new FormVersionReviewDecision
         {
             FormVersionId = version.Id,
-            Decision = decisionType,
-            Reason = request.Reason,
+            Decision = context.DecisionType,
+            Reason = context.Request.Reason,
             ReviewedByUserId = userId,
             FromStatus = from,
-            ToStatus = target
+            ToStatus = context.Target
         });
         await audit.WriteAsync(new AuditEntry
         {
-            Action = auditAction,
+            Action = context.AuditAction,
             Module = FormAccessHelper.ModuleName,
             EntityType = nameof(FormVersion),
             EntityId = version.Id.ToString("D"),
-            Reason = request.Reason,
+            Reason = context.Request.Reason,
             OldValues = new { Status = from },
-            NewValues = new { Status = target, version.VersionNumber, version.DraftSchemaHash }
+            NewValues = new { Status = context.Target, version.VersionNumber, version.DraftSchemaHash }
         }, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return MapDetail(version, form);
+        return await MapDetailAsync(version, form, cancellationToken);
+    }
+
+    private async Task<(string SchemaJson, Guid? BasedOn)> ResolveSourceSchemaAsync(
+        Guid formId,
+        Guid? basedOnVersionId,
+        CancellationToken cancellationToken)
+    {
+        if (basedOnVersionId is Guid basedOnId)
+        {
+            var source = await db.FormVersions.FirstOrDefaultAsync(v => v.Id == basedOnId && v.FormDefinitionId == formId, cancellationToken)
+                ?? throw new KeyNotFoundException("الإصدار المصدر غير موجود.");
+            var schemaJson = source.Status == FormVersionStatus.Locked && source.SnapshotId is not null
+                ? (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == source.SnapshotId, cancellationToken)).CanonicalSchemaJson
+                : source.DraftSchemaJson;
+            return (schemaJson, basedOnId);
+        }
+
+        var latestLocked = await db.FormVersions
+            .Where(v => v.FormDefinitionId == formId && v.Status == FormVersionStatus.Locked)
+            .OrderByDescending(v => v.VersionNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (latestLocked?.SnapshotId is Guid snapId)
+        {
+            var schemaJson = (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == snapId, cancellationToken)).CanonicalSchemaJson;
+            return (schemaJson, latestLocked.Id);
+        }
+
+        return (DefaultSchemaJson(), null);
+    }
+
+    private async Task<FormVersionDetailDto> AllocateAndPersistVersionAsync(
+        FormDefinition form,
+        Guid formId,
+        Guid? basedOn,
+        string schemaJson,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < MaxVersionAllocationAttempts; attempt++)
+        {
+            try
+            {
+                var nextNumber = await db.AllocateFormVersionNumberAsync(formId, cancellationToken);
+                var canonical = canonicalizer.Canonicalize(schemaJson);
+                var version = new FormVersion
+                {
+                    FormDefinitionId = formId,
+                    VersionNumber = nextNumber,
+                    Status = FormVersionStatus.Draft,
+                    BasedOnVersionId = basedOn,
+                    DraftSchemaJson = canonical.CanonicalJson,
+                    DraftSchemaHash = canonical.SchemaHash,
+                    SchemaFormatVersion = FormSchemaValidator.CurrentSchemaFormatVersion,
+                    CreatedByUserId = userId,
+                    UpdatedByUserId = userId,
+                    LastSavedAtUtc = DateTimeOffset.UtcNow
+                };
+                db.Add(version);
+                await audit.WriteAsync(new AuditEntry
+                {
+                    Action = "FormVersionCreated",
+                    Module = FormAccessHelper.ModuleName,
+                    EntityType = nameof(FormVersion),
+                    EntityId = version.Id.ToString("D"),
+                    NewValues = new { formId, version.VersionNumber, version.DraftSchemaHash }
+                }, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
+                return await MapDetailAsync(version, form, cancellationToken);
+            }
+            catch (DbUpdateException ex) when (IsFormVersionNumberConflict(ex) && attempt < MaxVersionAllocationAttempts - 1)
+            {
+                db.ClearChanges();
+            }
+        }
+
+        throw new InvalidOperationException("تعذر تخصيص رقم إصدار جديد بسبب تعارض متزامن. أعد المحاولة.");
     }
 
     private async Task<FormVersion> LoadVersionAsync(Guid formId, Guid versionId, CancellationToken cancellationToken)
@@ -419,10 +443,11 @@ public sealed class FormVersionService(
         return version ?? throw new KeyNotFoundException("إصدار النموذج غير موجود.");
     }
 
-    private async Task<int> NextVersionNumberAsync(Guid formId, CancellationToken cancellationToken)
+    private static bool IsFormVersionNumberConflict(DbUpdateException exception)
     {
-        var max = await db.FormVersions.Where(v => v.FormDefinitionId == formId).Select(v => (int?)v.VersionNumber).MaxAsync(cancellationToken);
-        return (max ?? 0) + 1;
+        var message = exception.InnerException?.Message ?? exception.Message;
+        return message.Contains("FormVersions", StringComparison.OrdinalIgnoreCase)
+               && message.Contains("VersionNumber", StringComparison.OrdinalIgnoreCase);
     }
 
     private void EnsureViewPermission()
@@ -434,55 +459,94 @@ public sealed class FormVersionService(
         }
     }
 
+    private void EnsureVersionHistoryPermission() =>
+        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsViewVersionHistory);
+
+    private async Task EnsureViewOrNotFoundAsync(FormDefinition form, CancellationToken cancellationToken)
+    {
+        if (!await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.View, cancellationToken))
+        {
+            throw new KeyNotFoundException("النموذج غير موجود.");
+        }
+    }
+
     private static FormVersionListItemDto MapListItem(FormVersion version) => new(
         version.Id, version.FormDefinitionId, version.VersionNumber, version.Status,
         FormVersionLabels.StatusAr(version.Status), version.BasedOnVersionId, version.DraftSchemaHash,
         version.SchemaFormatVersion, version.CreatedAtUtc, version.LastSavedAtUtc, version.ApprovedAtUtc,
         version.SnapshotId, Convert.ToBase64String(version.RowVersion));
 
-    private FormVersionDetailDto MapDetail(FormVersion version, FormDefinition form)
+    private async Task<FormVersionDetailDto> MapDetailAsync(
+        FormVersion version,
+        FormDefinition form,
+        CancellationToken cancellationToken)
     {
-        var actions = new List<string>();
-        if (FormVersionStateMachine.IsEditable(version.Status)
-            && currentUser.HasPermission(PermissionCodes.FormsUpdateDraft))
-        {
-            actions.Add("UpdateDraft");
-            actions.Add("SaveSchema");
-            actions.Add("Autosave");
-            actions.Add("Validate");
-        }
-
-        if (version.Status == FormVersionStatus.Draft && currentUser.HasPermission(PermissionCodes.FormsSubmitForReview))
-        {
-            actions.Add("SubmitForReview");
-        }
-
-        if (version.Status == FormVersionStatus.InReview)
-        {
-            if (currentUser.HasPermission(PermissionCodes.FormsRequestChanges)) actions.Add("RequestChanges");
-            if (currentUser.HasPermission(PermissionCodes.FormsReject)) actions.Add("Reject");
-            if (currentUser.HasPermission(PermissionCodes.FormsApprove)) actions.Add("ApproveAndLock");
-        }
-
-        if (version.Status == FormVersionStatus.ChangesRequested && currentUser.HasPermission(PermissionCodes.FormsSubmitForReview))
-        {
-            actions.Add("SubmitForReview");
-        }
-
-        if (version.Status == FormVersionStatus.Rejected && currentUser.HasPermission(PermissionCodes.FormsUpdateDraft))
-        {
-            actions.Add("Reopen");
-        }
-
-        if (currentUser.HasPermission(PermissionCodes.FormsCloneVersion)) actions.Add("Clone");
-        if (version.SnapshotId is not null) actions.Add("ViewSnapshot");
-
+        var actions = await BuildAllowedActionsAsync(version, form, cancellationToken);
         return new FormVersionDetailDto(
             version.Id, version.FormDefinitionId, version.VersionNumber, version.Status,
             FormVersionLabels.StatusAr(version.Status), version.BasedOnVersionId, version.DraftSchemaJson,
             version.DraftSchemaHash, version.SchemaFormatVersion, version.CreatedByUserId, version.UpdatedByUserId,
             version.CreatedAtUtc, version.LastSavedAtUtc, version.SubmittedForReviewAtUtc, version.ApprovedAtUtc,
             version.ApprovedByUserId, version.SnapshotId, Convert.ToBase64String(version.RowVersion), actions);
+    }
+
+    private async Task<List<string>> BuildAllowedActionsAsync(
+        FormVersion version,
+        FormDefinition form,
+        CancellationToken cancellationToken)
+    {
+        var actions = new List<string>();
+        var canDesign = currentUser.HasPermission(PermissionCodes.FormsUpdateDraft)
+            && await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Design, cancellationToken);
+        var canReview = await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Review, cancellationToken);
+        var canApprove = await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Approve, cancellationToken);
+
+        if (FormVersionStateMachine.IsEditable(version.Status) && canDesign)
+        {
+            actions.AddRange(["UpdateDraft", "SaveSchema", "Autosave", "Validate"]);
+        }
+
+        if ((version.Status == FormVersionStatus.Draft || version.Status == FormVersionStatus.ChangesRequested)
+            && currentUser.HasPermission(PermissionCodes.FormsSubmitForReview)
+            && canDesign)
+        {
+            actions.Add("SubmitForReview");
+        }
+
+        if (version.Status == FormVersionStatus.InReview)
+        {
+            if (currentUser.HasPermission(PermissionCodes.FormsRequestChanges) && canReview)
+            {
+                actions.Add("RequestChanges");
+            }
+
+            if (currentUser.HasPermission(PermissionCodes.FormsReject) && canReview)
+            {
+                actions.Add("Reject");
+            }
+
+            if (currentUser.HasPermission(PermissionCodes.FormsApprove) && canApprove)
+            {
+                actions.Add("ApproveAndLock");
+            }
+        }
+
+        if (version.Status == FormVersionStatus.Rejected && canDesign)
+        {
+            actions.Add("Reopen");
+        }
+
+        if (currentUser.HasPermission(PermissionCodes.FormsCloneVersion))
+        {
+            actions.Add("Clone");
+        }
+
+        if (version.SnapshotId is not null && currentUser.HasPermission(PermissionCodes.FormsViewVersionHistory))
+        {
+            actions.Add("ViewSnapshot");
+        }
+
+        return actions;
     }
 
     private static string DefaultSchemaJson()
@@ -527,4 +591,15 @@ public sealed class FormVersionService(
         };
         return JsonSerializer.Serialize(doc, FormSchemaCanonicalizer.SerializerOptions);
     }
+
+    private sealed record VersionTransitionContext(
+        Guid FormId,
+        Guid VersionId,
+        FormVersionTransitionRequest Request,
+        string Permission,
+        FormAccessCapability Capability,
+        FormVersionStatus Target,
+        FormVersionReviewDecisionType DecisionType,
+        string AuditAction,
+        Func<FormDefinition, FormVersion, CancellationToken, Task> BeforeSave);
 }

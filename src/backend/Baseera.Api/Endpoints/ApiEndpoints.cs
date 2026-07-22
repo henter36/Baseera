@@ -313,11 +313,11 @@ public static class ApiEndpoints
 
         forms.MapGet("/{formId:guid}/versions", async (Guid formId, IFormVersionService service, CancellationToken ct) =>
             Results.Ok(await service.ListAsync(formId, ct)))
-            .RequireAuthorization(AuthPolicies.FormsView);
+            .RequireAuthorization(AuthPolicies.FormsViewVersionHistory);
 
         forms.MapGet("/{formId:guid}/versions/{versionId:guid}", async (Guid formId, Guid versionId, IFormVersionService service, CancellationToken ct) =>
             Results.Ok(await service.GetAsync(formId, versionId, ct)))
-            .RequireAuthorization(AuthPolicies.FormsView);
+            .RequireAuthorization(AuthPolicies.FormsViewVersionHistory);
 
         forms.MapPost("/{formId:guid}/versions", async (
             Guid formId,
@@ -401,11 +401,11 @@ public static class ApiEndpoints
 
         forms.MapGet("/{formId:guid}/versions/{versionId:guid}/snapshot", async (Guid formId, Guid versionId, IFormVersionService service, CancellationToken ct) =>
             Results.Ok(await service.GetSnapshotAsync(formId, versionId, ct)))
-            .RequireAuthorization(AuthPolicies.FormsView);
+            .RequireAuthorization(AuthPolicies.FormsViewVersionHistory);
 
         forms.MapGet("/{formId:guid}/versions/{versionId:guid}/review-decisions", async (Guid formId, Guid versionId, IFormVersionService service, CancellationToken ct) =>
             Results.Ok(await service.GetReviewDecisionsAsync(formId, versionId, ct)))
-            .RequireAuthorization(AuthPolicies.FormsView);
+            .RequireAuthorization(AuthPolicies.FormsViewVersionHistory);
 
     }
 

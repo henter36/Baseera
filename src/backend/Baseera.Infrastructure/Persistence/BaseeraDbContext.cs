@@ -57,6 +57,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<FormSchemaSnapshot> FormSchemaSnapshots => Set<FormSchemaSnapshot>();
     public DbSet<FormVersionReviewDecision> FormVersionReviewDecisions => Set<FormVersionReviewDecision>();
     public DbSet<FormTemplate> FormTemplates => Set<FormTemplate>();
+    public DbSet<FormDefinitionVersionCounter> FormDefinitionVersionCounters => Set<FormDefinitionVersionCounter>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -111,6 +112,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<FormVersionReviewDecision> Application.Abstractions.IBaseeraDbContext.FormVersionReviewDecisions => FormVersionReviewDecisions;
     IQueryable<FormTemplate> Application.Abstractions.IBaseeraDbContext.FormTemplates => FormTemplates;
     IQueryable<FormTemplate> Application.Abstractions.IBaseeraDbContext.FormTemplatesIncludingDeleted => FormTemplates.IgnoreQueryFilters();
+    IQueryable<FormDefinitionVersionCounter> Application.Abstractions.IBaseeraDbContext.FormDefinitionVersionCounters => FormDefinitionVersionCounters;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -151,6 +153,37 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
             .SqlQueryRaw<SequenceValueRow>("SELECT NEXT VALUE FOR [CorrectiveActionReferenceSequence] AS [Value]")
             .ToListAsync(cancellationToken);
         return rows.Single().Value;
+    }
+
+    public async Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default)
+    {
+        if (formDefinitionId == Guid.Empty)
+        {
+            throw new ArgumentException("معرّف النموذج مطلوب.", nameof(formDefinitionId));
+        }
+
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            var max = await FormVersions
+                .Where(v => v.FormDefinitionId == formDefinitionId)
+                .Select(v => (int?)v.VersionNumber)
+                .MaxAsync(cancellationToken);
+            return (max ?? 0) + 1;
+        }
+
+        var rows = await Database.SqlQueryRaw<SequenceValueRow>(
+            """
+            MERGE [FormDefinitionVersionCounters] WITH (HOLDLOCK) AS target
+            USING (SELECT {0} AS [FormDefinitionId]) AS source
+            ON target.[FormDefinitionId] = source.[FormDefinitionId]
+            WHEN MATCHED THEN
+                UPDATE SET [NextVersionNumber] = target.[NextVersionNumber] + 1
+            WHEN NOT MATCHED THEN
+                INSERT ([FormDefinitionId], [NextVersionNumber]) VALUES (source.[FormDefinitionId], 2)
+            OUTPUT CAST(CASE WHEN $action = N'INSERT' THEN 1 ELSE deleted.[NextVersionNumber] END AS bigint) AS [Value];
+            """,
+            formDefinitionId).ToListAsync(cancellationToken);
+        return checked((int)rows.Single().Value);
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -374,9 +407,10 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
         {
             AuditAppendOnlyGuard.EnsureAuditEntriesAreAppendOnly(eventData.Context);
             NoteStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
-        CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(eventData.Context);
         }
 
         return base.SavingChanges(eventData, result);

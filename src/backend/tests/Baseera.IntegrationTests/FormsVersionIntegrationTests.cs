@@ -5,6 +5,8 @@ using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Baseera.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
@@ -98,6 +100,164 @@ public sealed class FormsVersionIntegrationTests : IClassFixture<BaseeraApiFacto
         Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
     }
 
+    [IntegrationConnectionFact]
+    public async Task Version_history_requires_ViewVersionHistory_permission()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-v-designer");
+        var analyst = _factory.CreateAuthenticatedClient("forms-v-analyst");
+        var form = await CreateFormAsync(designer);
+        var created = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions", new { });
+        var version = JsonSerializer.Deserialize<VersionDetail>(await created.Content.ReadAsStringAsync(), JsonOptions)!;
+
+        var denied = await analyst.GetAsync($"/api/v1/forms/{form.Id}/versions");
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+
+        var detailDenied = await analyst.GetAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}");
+        Assert.Equal(HttpStatusCode.Forbidden, detailDenied.StatusCode);
+
+        var allowed = await designer.GetAsync($"/api/v1/forms/{form.Id}/versions");
+        Assert.True(allowed.IsSuccessStatusCode);
+
+        var decisionsDenied = await analyst.GetAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}/review-decisions");
+        Assert.Equal(HttpStatusCode.Forbidden, decisionsDenied.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Version_history_view_deny_returns_404()
+    {
+        await SeedAsync();
+        await _factory.SeedUserAsync("forms-v-admin", "مدير", [RoleCodes.SystemAdministrator],
+            (ScopeType.Global, null, null));
+        await _factory.SeedUserAsync("forms-v-viewer", "عارض", [RoleCodes.FormDesigner],
+            (ScopeType.Global, null, null));
+
+        var designer = _factory.CreateAuthenticatedClient("forms-v-designer");
+        var admin = _factory.CreateAuthenticatedClient("forms-v-admin");
+        var viewer = _factory.CreateAuthenticatedClient("forms-v-viewer");
+        var form = await CreateFormAsync(designer);
+        var created = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions", new { });
+        var version = JsonSerializer.Deserialize<VersionDetail>(await created.Content.ReadAsStringAsync(), JsonOptions)!;
+
+        Guid viewerId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            viewerId = await db.Users.Where(u => u.ExternalSubject == "forms-v-viewer").Select(u => u.Id).FirstAsync();
+        }
+
+        var grantResponse = await admin.PostAsJsonAsync($"/api/v1/forms/{form.Id}/access-grants", new
+        {
+            principalType = FormAccessGrantPrincipalType.User,
+            principalId = viewerId,
+            capability = FormAccessCapability.View,
+            effect = FormAccessGrantEffect.Deny,
+            scopeType = (ScopeType?)null,
+            regionId = (Guid?)null,
+            facilityId = (Guid?)null,
+            validFromUtc = (DateTimeOffset?)null,
+            validToUtc = (DateTimeOffset?)null,
+            reason = "منع العرض"
+        });
+        Assert.Equal(HttpStatusCode.Created, grantResponse.StatusCode);
+
+        var viewDeny = await viewer.GetAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, viewDeny.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Concurrent_version_create_assigns_distinct_numbers()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-v-designer");
+        var form = await CreateFormAsync(designer);
+
+        var tasks = Enumerable.Range(0, 8)
+            .Select(_ => designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions", new { basedOnVersionId = (Guid?)null }))
+            .ToArray();
+        var responses = await Task.WhenAll(tasks);
+        foreach (var response in responses)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.True(response.IsSuccessStatusCode, body);
+        }
+
+        var versions = new List<VersionDetail>();
+        foreach (var response in responses)
+        {
+            versions.Add(JsonSerializer.Deserialize<VersionDetail>(await response.Content.ReadAsStringAsync(), JsonOptions)!);
+        }
+
+        Assert.Equal(versions.Count, versions.Select(v => v.VersionNumber).Distinct().Count());
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Create_form_from_invalid_template_does_not_persist_form()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-v-designer");
+        var form = await CreateFormAsync(designer);
+        var created = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions", new { });
+        var version = JsonSerializer.Deserialize<VersionDetail>(await created.Content.ReadAsStringAsync(), JsonOptions)!;
+        var schema = MinimalValidSchemaJson();
+        var save = await designer.PutAsJsonAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}/schema", new { schemaJson = schema, rowVersion = version.RowVersion });
+        var saveBody = await save.Content.ReadAsStringAsync();
+        Assert.True(save.IsSuccessStatusCode, saveBody);
+        version = JsonSerializer.Deserialize<VersionDetail>(saveBody, JsonOptions)!;
+        var submit = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}/submit-review", new { reason = "x", rowVersion = version.RowVersion });
+        var submitBody = await submit.Content.ReadAsStringAsync();
+        Assert.True(submit.IsSuccessStatusCode, submitBody);
+        version = JsonSerializer.Deserialize<VersionDetail>(submitBody, JsonOptions)!;
+
+        var approver = _factory.CreateAuthenticatedClient("forms-v-approver");
+        var approve = await approver.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}/approve-lock", new { reason = "x", rowVersion = version.RowVersion });
+        Assert.True(approve.IsSuccessStatusCode);
+
+        var templateResponse = await designer.PostAsJsonAsync("/api/v1/form-templates", new
+        {
+            formDefinitionId = form.Id,
+            formVersionId = version.Id,
+            code = $"TPL{Interlocked.Increment(ref _codeSequence):D4}",
+            nameAr = "قالب",
+            description = "وصف",
+            category = "عام",
+            visibility = 0
+        });
+        Assert.True(templateResponse.IsSuccessStatusCode);
+        var template = JsonSerializer.Deserialize<TemplateItem>(await templateResponse.Content.ReadAsStringAsync(), JsonOptions)!;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var entity = await db.FormTemplates.FirstAsync(t => t.Id == template.Id);
+            entity.CanonicalSchemaJson = "{}";
+            await db.SaveChangesAsync();
+        }
+
+        var beforeCount = 0;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            beforeCount = await db.FormDefinitions.CountAsync();
+        }
+
+        var createFromTemplate = await designer.PostAsJsonAsync($"/api/v1/form-templates/{template.Id}/create-form", new
+        {
+            code = $"TF{Interlocked.Increment(ref _codeSequence):D4}",
+            nameAr = "من قالب",
+            description = "وصف",
+            classification = 1,
+            scopeType = ScopeType.Global
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, createFromTemplate.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            Assert.Equal(beforeCount, await db.FormDefinitions.CountAsync());
+        }
+    }
+
     private async Task SeedAsync()
     {
         await _factory.SeedUserAsync("forms-v-designer", "مصمم", [RoleCodes.FormDesigner],
@@ -105,6 +265,8 @@ public sealed class FormsVersionIntegrationTests : IClassFixture<BaseeraApiFacto
         await _factory.SeedUserAsync("forms-v-reviewer", "مراجع", [RoleCodes.FormReviewer],
             (ScopeType.Global, null, null));
         await _factory.SeedUserAsync("forms-v-approver", "معتمد", [RoleCodes.FormApprover],
+            (ScopeType.Global, null, null));
+        await _factory.SeedUserAsync("forms-v-analyst", "محلل", [RoleCodes.FormAnalyst],
             (ScopeType.Global, null, null));
     }
 
@@ -187,4 +349,6 @@ public sealed class FormsVersionIntegrationTests : IClassFixture<BaseeraApiFacto
         string RowVersion);
 
     private sealed record SnapshotDto(Guid Id, string SchemaHash, string CanonicalSchemaJson);
+
+    private sealed record TemplateItem(Guid Id, string Code);
 }

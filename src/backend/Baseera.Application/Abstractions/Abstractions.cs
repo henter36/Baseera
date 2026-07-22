@@ -68,6 +68,7 @@ public interface IBaseeraDbContext
     IQueryable<FormVersionReviewDecision> FormVersionReviewDecisions { get; }
     IQueryable<FormTemplate> FormTemplates { get; }
     IQueryable<FormTemplate> FormTemplatesIncludingDeleted { get; }
+    IQueryable<FormDefinitionVersionCounter> FormDefinitionVersionCounters { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
@@ -77,6 +78,7 @@ public interface IBaseeraDbContext
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);
+    Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default);
 }
 
 public interface ICurrentUser

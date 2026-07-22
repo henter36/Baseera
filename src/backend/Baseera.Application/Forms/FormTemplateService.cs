@@ -2,6 +2,8 @@ namespace Baseera.Application.Forms;
 
 using Baseera.Application.Abstractions;
 using Baseera.Application.Forms.Schema;
+using Baseera.Domain.Attachments;
+using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -17,24 +19,41 @@ public sealed class FormTemplateService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     IFormScopeService formScope,
-    IFormCommandService formCommands,
-    IFormVersionService versions,
     IFormSchemaCanonicalizer canonicalizer,
-    IAuditService audit) : IFormTemplateService
+    IAuditService audit,
+    IFormQueryService queries) : IFormTemplateService
 {
     public async Task<IReadOnlyList<FormTemplateListItemDto>> ListAsync(CancellationToken cancellationToken = default)
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsView);
-        var templates = await db.FormTemplates.AsNoTracking()
-            .OrderBy(t => t.NameAr)
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException();
+        var canSensitive = FormAccessHelper.CanViewSensitive(currentUser);
+        var scopedFormIds = await formScope.FilterQueryable(db.FormDefinitions)
+            .Select(f => f.Id)
             .ToListAsync(cancellationToken);
-        var userId = currentUser.UserId;
-        return templates
-            .Where(t => t.Visibility == FormTemplateVisibility.Organization
-                        || (t.Visibility == FormTemplateVisibility.Private && t.OwnerUserId == userId)
-                        || t.Visibility == FormTemplateVisibility.Department)
-            .Select(Map)
-            .ToList();
+        var accessibleDepartmentIds = await formScope.FilterQueryable(db.FormDefinitions)
+            .Where(f => f.OwnerDepartmentId != null)
+            .Select(f => f.OwnerDepartmentId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var query = db.FormTemplates.AsNoTracking();
+        if (!canSensitive)
+        {
+            query = query.Where(t => t.Classification < ClassificationLevel.Confidential);
+        }
+
+        query = query.Where(t =>
+            t.Visibility == FormTemplateVisibility.Organization
+            || (t.Visibility == FormTemplateVisibility.Private && t.OwnerUserId == userId)
+            || (t.Visibility == FormTemplateVisibility.Department
+                && t.OwnerDepartmentId != null
+                && (t.OwnerUserId == userId || accessibleDepartmentIds.Contains(t.OwnerDepartmentId.Value))));
+
+        query = query.Where(t => !t.SourceFormDefinitionId.HasValue || scopedFormIds.Contains(t.SourceFormDefinitionId.Value));
+
+        var templates = await query.OrderBy(t => t.NameAr).ToListAsync(cancellationToken);
+        return templates.Select(Map).ToList();
     }
 
     public async Task<FormTemplateListItemDto> CreateFromLockedVersionAsync(
@@ -92,35 +111,117 @@ public sealed class FormTemplateService(
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsManageTemplates);
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsCreate);
-        var template = await db.FormTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == templateId, cancellationToken)
-            ?? throw new KeyNotFoundException("القالب غير موجود.");
-        _ = canonicalizer.Canonicalize(template.CanonicalSchemaJson);
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException();
 
-        var form = await formCommands.CreateDraftAsync(new CreateFormRequest(
-            request.Code,
-            request.NameAr,
-            request.NameEn,
-            request.Description,
-            request.Classification,
-            request.ScopeType,
-            request.RegionId,
-            request.FacilityId,
-            request.FacilityUnitId,
-            request.OwnerDepartmentId), cancellationToken);
-
-        var version = await versions.CreateAsync(form.Id, new CreateFormVersionRequest(null), cancellationToken);
-        await versions.SaveSchemaAsync(form.Id, version.Id, new SaveFormSchemaRequest(template.CanonicalSchemaJson, version.RowVersion), autosave: false, cancellationToken);
-
-        await audit.WriteAsync(new AuditEntry
+        return await db.ExecuteInTransactionAsync(async ct =>
         {
-            Action = "FormVersionCreatedFromTemplate",
-            Module = FormAccessHelper.ModuleName,
-            EntityType = nameof(FormDefinition),
-            EntityId = form.Id.ToString("D"),
-            NewValues = new { templateId, FormDefinitionId = form.Id, FormVersionId = version.Id, template.SchemaHash }
+            var template = await db.FormTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == templateId, ct)
+                ?? throw new KeyNotFoundException("القالب غير موجود.");
+
+            var canonical = canonicalizer.Canonicalize(template.CanonicalSchemaJson, requireMinimumContent: true);
+            if (!canonical.IsValid)
+            {
+                throw new ArgumentException(canonical.Issues.FirstOrDefault()?.MessageAr ?? "مخطط القالب غير صالح.");
+            }
+
+            if (!string.Equals(template.SchemaHash, canonical.SchemaHash, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("تجزئة مخطط القالب لا تطابق المحتوى المخزن.");
+            }
+
+            formScope.ValidateScopeShape(request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId);
+            await formScope.EnsureOrgEntitiesActiveAsync(
+                request.ScopeType, request.RegionId, request.FacilityId, request.FacilityUnitId, ct);
+
+            var probe = new FormDefinition
+            {
+                ScopeType = request.ScopeType,
+                RegionId = request.RegionId,
+                FacilityId = request.FacilityId,
+                FacilityUnitId = request.FacilityUnitId
+            };
+            if (!formScope.CanAccess(probe))
+            {
+                throw new UnauthorizedAccessException("لا صلاحية على نطاق هذا النموذج.");
+            }
+
+            if (request.OwnerDepartmentId.HasValue &&
+                !await db.Departments.AnyAsync(d => d.Id == request.OwnerDepartmentId.Value && !d.IsDeleted, ct))
+            {
+                throw new KeyNotFoundException("الإدارة غير موجودة.");
+            }
+
+            var normalizedCode = request.Code.Trim().ToUpperInvariant();
+            if (await db.FormDefinitions.AnyAsync(f => f.Code == normalizedCode, ct))
+            {
+                throw new InvalidOperationException("رمز النموذج مستخدم مسبقًا.");
+            }
+
+            var form = new FormDefinition
+            {
+                Code = normalizedCode,
+                NameAr = request.NameAr.Trim(),
+                NameEn = string.IsNullOrWhiteSpace(request.NameEn) ? null : request.NameEn.Trim(),
+                Description = request.Description.Trim(),
+                Classification = request.Classification,
+                ScopeType = request.ScopeType,
+                RegionId = request.RegionId,
+                FacilityId = request.FacilityId,
+                FacilityUnitId = request.FacilityUnitId,
+                OwnerDepartmentId = request.OwnerDepartmentId,
+                Status = FormDefinitionStatus.Draft,
+                CreatedByUserId = userId,
+                LastModifiedByUserId = userId,
+                CreatedBy = currentUser.ExternalSubject
+            };
+            db.Add(form);
+            await db.SaveChangesAsync(ct);
+
+            var nextNumber = await db.AllocateFormVersionNumberAsync(form.Id, ct);
+            var version = new FormVersion
+            {
+                FormDefinitionId = form.Id,
+                VersionNumber = nextNumber,
+                Status = FormVersionStatus.Draft,
+                DraftSchemaJson = canonical.CanonicalJson,
+                DraftSchemaHash = canonical.SchemaHash,
+                SchemaFormatVersion = FormSchemaValidator.CurrentSchemaFormatVersion,
+                CreatedByUserId = userId,
+                UpdatedByUserId = userId,
+                LastSavedAtUtc = DateTimeOffset.UtcNow
+            };
+            db.Add(version);
+
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "FormCreated",
+                Module = FormAccessHelper.ModuleName,
+                EntityType = nameof(FormDefinition),
+                EntityId = form.Id.ToString("D"),
+                NewValues = new
+                {
+                    form.Code,
+                    form.NameAr,
+                    form.Status,
+                    form.Classification,
+                    form.ScopeType,
+                    form.RegionId,
+                    form.FacilityId,
+                    form.FacilityUnitId
+                }
+            }, ct);
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "FormVersionCreatedFromTemplate",
+                Module = FormAccessHelper.ModuleName,
+                EntityType = nameof(FormDefinition),
+                EntityId = form.Id.ToString("D"),
+                NewValues = new { templateId, FormDefinitionId = form.Id, FormVersionId = version.Id, template.SchemaHash }
+            }, ct);
+
+            await db.SaveChangesAsync(ct);
+            return (await queries.GetDetailAsync(form.Id, ct))!;
         }, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        return form;
     }
 
     private static FormTemplateListItemDto Map(FormTemplate template) => new(

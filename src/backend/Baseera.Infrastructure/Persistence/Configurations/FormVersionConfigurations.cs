@@ -65,6 +65,19 @@ internal sealed class FormVersionReviewDecisionConfiguration : IEntityTypeConfig
     }
 }
 
+internal sealed class FormDefinitionVersionCounterConfiguration : IEntityTypeConfiguration<FormDefinitionVersionCounter>
+{
+    public void Configure(EntityTypeBuilder<FormDefinitionVersionCounter> builder)
+    {
+        builder.ToTable("FormDefinitionVersionCounters");
+        builder.HasKey(x => x.FormDefinitionId);
+        builder.Property(x => x.NextVersionNumber).IsRequired();
+        builder.Property(x => x.RowVersion).IsRowVersion();
+        builder.HasOne(x => x.FormDefinition).WithOne().HasForeignKey<FormDefinitionVersionCounter>(x => x.FormDefinitionId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 internal sealed class FormTemplateConfiguration : IEntityTypeConfiguration<FormTemplate>
 {
     public void Configure(EntityTypeBuilder<FormTemplate> builder)
