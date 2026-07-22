@@ -81,6 +81,7 @@ public sealed class FormAccessGrantService(
             ScopeType = request.ScopeType,
             RegionId = request.RegionId,
             FacilityId = request.FacilityId,
+            ScopeKey = FormAccessGrant.BuildScopeKey(request.ScopeType, request.RegionId, request.FacilityId),
             ValidFromUtc = request.ValidFromUtc,
             ValidToUtc = request.ValidToUtc,
             Reason = request.Reason.Trim(),
@@ -123,7 +124,7 @@ public sealed class FormAccessGrantService(
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsManageAccess);
         var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, formDefinitionId, cancellationToken: cancellationToken);
-        var grant = await db.FormAccessGrants.FirstOrDefaultAsync(
+        var grant = await db.FormAccessGrantsIncludingDeleted.FirstOrDefaultAsync(
             g => g.Id == grantId && g.FormDefinitionId == form.Id,
             cancellationToken)
             ?? throw new KeyNotFoundException("منح الوصول غير موجود.");
@@ -224,8 +225,8 @@ public sealed class FormAccessGrantService(
         var roleIds = rows.Where(r => r.PrincipalType == FormAccessGrantPrincipalType.Role).Select(r => r.PrincipalId).ToHashSet();
         var creatorIds = rows.Select(r => r.CreatedByUserId).ToHashSet();
 
-        var users = await db.Users.Where(u => userIds.Union(creatorIds).Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
-        var roles = await db.Roles.Where(r => roleIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.NameAr, cancellationToken);
+        var users = await db.UsersIncludingDeleted.Where(u => userIds.Union(creatorIds).Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
+        var roles = await db.RolesIncludingDeleted.Where(r => roleIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.NameAr, cancellationToken);
 
         return rows.Select(g => new FormAccessGrantDto(
             g.Id,

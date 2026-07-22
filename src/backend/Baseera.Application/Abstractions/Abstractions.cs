@@ -23,6 +23,8 @@ public interface IBaseeraDbContext
     /// <summary>Includes soft-deleted users for administrative validation only.</summary>
     IQueryable<User> UsersIncludingDeleted { get; }
     IQueryable<Role> Roles { get; }
+    /// <summary>Includes soft-deleted roles for administrative validation only.</summary>
+    IQueryable<Role> RolesIncludingDeleted { get; }
     IQueryable<Permission> Permissions { get; }
     IQueryable<UserRole> UserRoles { get; }
     IQueryable<RolePermission> RolePermissions { get; }

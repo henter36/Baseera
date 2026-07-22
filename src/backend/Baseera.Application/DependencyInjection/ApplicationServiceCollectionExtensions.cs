@@ -35,6 +35,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<INoteAssignmentService, NoteAssignmentService>();
         services.AddScoped<INoteWorkflowService, NoteWorkflowService>();
         services.AddScoped<IFormScopeService, FormScopeService>();
+        services.AddScoped<IFormEffectiveAccessService, FormEffectiveAccessService>();
         services.AddScoped<IFormSeparationOfDutiesService, FormSeparationOfDutiesService>();
         services.AddScoped<IFormRetentionPolicyService, FormRetentionPolicyService>();
         services.AddScoped<IFormGovernanceService, FormGovernanceService>();

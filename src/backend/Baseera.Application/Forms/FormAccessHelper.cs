@@ -26,12 +26,21 @@ internal static class FormAccessHelper
 
     public static void EnsureRowVersion(byte[] current, string incomingBase64)
     {
+        if (string.IsNullOrWhiteSpace(incomingBase64))
+        {
+            throw new InvalidOperationException("إصدار السجل غير صالح.");
+        }
+
         byte[] incoming;
         try
         {
             incoming = Convert.FromBase64String(incomingBase64);
         }
         catch (FormatException)
+        {
+            throw new InvalidOperationException("إصدار السجل غير صالح.");
+        }
+        catch (ArgumentNullException)
         {
             throw new InvalidOperationException("إصدار السجل غير صالح.");
         }

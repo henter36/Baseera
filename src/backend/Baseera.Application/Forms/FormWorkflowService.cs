@@ -18,6 +18,7 @@ public sealed class FormWorkflowService(
     ICurrentUser currentUser,
     IFormScopeService formScope,
     IFormSeparationOfDutiesService sod,
+    IFormEffectiveAccessService effectiveAccess,
     IAuditService audit,
     IFormQueryService queries) : IFormWorkflowService
 {
@@ -26,6 +27,7 @@ public sealed class FormWorkflowService(
             id,
             request,
             PermissionCodes.FormsSubmitForReview,
+            FormAccessCapability.Design,
             FormDefinitionStatus.InReview,
             FormReviewDecisionType.SubmitForReview,
             "FormSubmittedForReview",
@@ -38,6 +40,7 @@ public sealed class FormWorkflowService(
             id,
             request,
             PermissionCodes.FormsRequestChanges,
+            FormAccessCapability.Review,
             FormDefinitionStatus.ChangesRequested,
             FormReviewDecisionType.RequestChanges,
             "FormChangesRequested",
@@ -50,6 +53,7 @@ public sealed class FormWorkflowService(
             id,
             request,
             PermissionCodes.FormsApprove,
+            FormAccessCapability.Approve,
             FormDefinitionStatus.Approved,
             FormReviewDecisionType.Approve,
             "FormApproved",
@@ -62,6 +66,7 @@ public sealed class FormWorkflowService(
             id,
             request,
             PermissionCodes.FormsReject,
+            FormAccessCapability.Review,
             FormDefinitionStatus.Rejected,
             FormReviewDecisionType.Reject,
             "FormRejected",
@@ -73,6 +78,7 @@ public sealed class FormWorkflowService(
         Guid id,
         FormTransitionRequest request,
         string permission,
+        FormAccessCapability capability,
         FormDefinitionStatus toStatus,
         FormReviewDecisionType decisionType,
         string auditAction,
@@ -82,6 +88,7 @@ public sealed class FormWorkflowService(
     {
         FormAccessHelper.EnsurePermission(currentUser, permission);
         var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, id, cancellationToken: cancellationToken);
+        await effectiveAccess.EnsureCapabilityAsync(form, capability, cancellationToken);
         FormAccessHelper.EnsureRowVersion(form.RowVersion, request.RowVersion);
         FormDefinitionStateMachine.EnsureAllowed(form.Status, toStatus);
 
@@ -98,7 +105,7 @@ public sealed class FormWorkflowService(
         apply?.Invoke(form, actorId, now);
         db.Update(form);
 
-        AppendDecision(form.Id, decisionType, from, toStatus, actorId, request.Reason.Trim(), false);
+        FormReviewDecisionWriter.Append(db, form.Id, decisionType, from, toStatus, actorId, request.Reason.Trim(), false);
         await audit.WriteAsync(new AuditEntry
         {
             Action = auditAction,
@@ -122,27 +129,5 @@ public sealed class FormWorkflowService(
     private static void ApplyApprove(FormDefinition form, Guid actorId, DateTimeOffset now)
     {
         form.ApprovedAtUtc = now;
-    }
-
-    private void AppendDecision(
-        Guid formId,
-        FormReviewDecisionType decision,
-        FormDefinitionStatus from,
-        FormDefinitionStatus to,
-        Guid userId,
-        string reason,
-        bool isAdministrativeOverride)
-    {
-        db.Add(new FormReviewDecision
-        {
-            FormDefinitionId = formId,
-            Decision = decision,
-            Reason = reason,
-            ReviewedByUserId = userId,
-            ReviewedAtUtc = DateTimeOffset.UtcNow,
-            FromStatus = from,
-            ToStatus = to,
-            IsAdministrativeOverride = isAdministrativeOverride
-        });
     }
 }

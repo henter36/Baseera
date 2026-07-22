@@ -297,7 +297,7 @@ public static class ApiEndpoints
             return Results.Created($"/api/v1/forms/{id}/access-grants/{created.Id}", created);
         }).RequireAuthorization(AuthPolicies.FormsManageAccess);
 
-        forms.MapDelete("/{id:guid}/access-grants/{grantId:guid}", async (
+        forms.MapPost("/{id:guid}/access-grants/{grantId:guid}/revoke", async (
             Guid id,
             Guid grantId,
             FormTransitionRequest request,

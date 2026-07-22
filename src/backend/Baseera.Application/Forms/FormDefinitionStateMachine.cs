@@ -16,6 +16,7 @@ public static class FormDefinitionStateMachine
             (FormDefinitionStatus.Rejected, FormDefinitionStatus.Draft) => true,
             (FormDefinitionStatus.Rejected, FormDefinitionStatus.Archived) => true,
             (FormDefinitionStatus.Archived, FormDefinitionStatus.Approved) => true,
+            (FormDefinitionStatus.Archived, FormDefinitionStatus.Rejected) => true,
             _ => false
         };
 
@@ -25,6 +26,22 @@ public static class FormDefinitionStateMachine
         {
             throw new InvalidOperationException(
                 $"انتقال حالة النموذج من {FormDisplay.StatusAr(from)} إلى {FormDisplay.StatusAr(to)} غير مسموح.");
+        }
+    }
+
+    /// <summary>
+    /// Restoring an archived form returns it to its prior status. Only statuses the state machine
+    /// recognizes as valid restore targets from Archived are permitted.
+    /// </summary>
+    public static bool CanRestore(FormDefinitionStatus priorStatus) =>
+        CanTransition(FormDefinitionStatus.Archived, priorStatus);
+
+    public static void EnsureRestorable(FormDefinitionStatus from, FormDefinitionStatus to)
+    {
+        if (from != FormDefinitionStatus.Archived || !CanRestore(to))
+        {
+            throw new InvalidOperationException(
+                $"لا يمكن استعادة النموذج من {FormDisplay.StatusAr(from)} إلى {FormDisplay.StatusAr(to)}.");
         }
     }
 

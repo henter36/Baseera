@@ -20,6 +20,7 @@ public sealed class FormQueryService(
     ICurrentUser currentUser,
     IFormScopeService formScope,
     IFormRetentionPolicyService retention,
+    IFormEffectiveAccessService effectiveAccess,
     IAuditService audit) : IFormQueryService
 {
     private static readonly HashSet<string> SortAllowlist = new(StringComparer.OrdinalIgnoreCase)
@@ -80,7 +81,7 @@ public sealed class FormQueryService(
             return null;
         }
 
-        if (!await HasEffectiveCapabilityAsync(form, FormAccessCapability.View, cancellationToken))
+        if (!await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.View, cancellationToken))
         {
             return null;
         }
@@ -197,13 +198,14 @@ public sealed class FormQueryService(
         var actions = new List<string>();
         if (FormDefinitionStateMachine.IsEditable(form.Status) &&
             currentUser.HasPermission(PermissionCodes.FormsUpdateDraft) &&
-            await HasEffectiveCapabilityAsync(form, FormAccessCapability.Design, cancellationToken))
+            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Design, cancellationToken))
         {
             actions.Add("UpdateDraft");
         }
 
         if (FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.InReview) &&
-            currentUser.HasPermission(PermissionCodes.FormsSubmitForReview))
+            currentUser.HasPermission(PermissionCodes.FormsSubmitForReview) &&
+            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Design, cancellationToken))
         {
             actions.Add("SubmitForReview");
         }
@@ -212,20 +214,21 @@ public sealed class FormQueryService(
         {
             if (currentUser.HasPermission(PermissionCodes.FormsRequestChanges) &&
                 FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.ChangesRequested) &&
-                await HasEffectiveCapabilityAsync(form, FormAccessCapability.Review, cancellationToken))
+                await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Review, cancellationToken))
             {
                 actions.Add("RequestChanges");
             }
 
             if (currentUser.HasPermission(PermissionCodes.FormsApprove) &&
                 FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Approved) &&
-                await HasEffectiveCapabilityAsync(form, FormAccessCapability.Approve, cancellationToken))
+                await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Approve, cancellationToken))
             {
                 actions.Add("Approve");
             }
 
             if (currentUser.HasPermission(PermissionCodes.FormsReject) &&
-                FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Rejected))
+                FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Rejected) &&
+                await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Review, cancellationToken))
             {
                 actions.Add("Reject");
             }
@@ -233,15 +236,14 @@ public sealed class FormQueryService(
 
         if (FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Archived) &&
             currentUser.HasPermission(PermissionCodes.FormsArchive) &&
-            await HasEffectiveCapabilityAsync(form, FormAccessCapability.Archive, cancellationToken))
+            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Archive, cancellationToken))
         {
             actions.Add("Archive");
         }
 
-        if (FormDefinitionStateMachine.CanTransition(form.Status, FormDefinitionStatus.Approved) &&
-            form.Status == FormDefinitionStatus.Archived &&
+        if (form.Status == FormDefinitionStatus.Archived &&
             currentUser.HasPermission(PermissionCodes.FormsRestore) &&
-            await HasEffectiveCapabilityAsync(form, FormAccessCapability.Restore, cancellationToken))
+            await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.Restore, cancellationToken))
         {
             actions.Add("Restore");
         }
@@ -249,32 +251,9 @@ public sealed class FormQueryService(
         return actions;
     }
 
-    private async Task<bool> HasEffectiveCapabilityAsync(
-        FormDefinition form,
-        FormAccessCapability capability,
-        CancellationToken cancellationToken)
-    {
-        var userId = currentUser.UserId;
-        if (!userId.HasValue)
-        {
-            return false;
-        }
-
-        var roleIds = await db.UserRoles.Where(r => r.UserId == userId.Value).Select(r => r.RoleId).ToListAsync(cancellationToken);
-        var grants = await db.FormAccessGrants.Where(g => g.FormDefinitionId == form.Id).ToListAsync(cancellationToken);
-        var decision = FormGrantResolver.ResolveEffectiveGrant(
-            grants,
-            capability,
-            userId.Value,
-            roleIds,
-            form,
-            DateTimeOffset.UtcNow);
-        return decision is not false;
-    }
-
     private async Task EnsureViewCapabilityAsync(FormDefinition form, CancellationToken cancellationToken)
     {
-        if (!await HasEffectiveCapabilityAsync(form, FormAccessCapability.View, cancellationToken))
+        if (!await effectiveAccess.HasCapabilityAsync(form, FormAccessCapability.View, cancellationToken))
         {
             throw new UnauthorizedAccessException("ليست لديك صلاحية عرض هذا النموذج.");
         }

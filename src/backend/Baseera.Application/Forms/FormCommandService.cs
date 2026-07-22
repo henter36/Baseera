@@ -19,6 +19,7 @@ public sealed class FormCommandService(
     ICurrentUser currentUser,
     IFormScopeService formScope,
     IFormRetentionPolicyService retention,
+    IFormEffectiveAccessService effectiveAccess,
     IAuditService audit,
     IFormQueryService queries) : IFormCommandService
 {
@@ -106,6 +107,7 @@ public sealed class FormCommandService(
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsUpdateDraft);
         var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, id, cancellationToken: cancellationToken);
+        await effectiveAccess.EnsureCapabilityAsync(form, FormAccessCapability.Design, cancellationToken);
         FormAccessHelper.EnsureRowVersion(form.RowVersion, request.RowVersion);
 
         if (!FormDefinitionStateMachine.IsEditable(form.Status))
@@ -166,6 +168,7 @@ public sealed class FormCommandService(
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsArchive);
         var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, id, cancellationToken: cancellationToken);
+        await effectiveAccess.EnsureCapabilityAsync(form, FormAccessCapability.Archive, cancellationToken);
         FormAccessHelper.EnsureRowVersion(form.RowVersion, request.RowVersion);
 
         var policy = await db.FormGovernancePolicies.AsNoTracking().OrderBy(p => p.CreatedAtUtc).FirstAsync(cancellationToken);
@@ -193,7 +196,7 @@ public sealed class FormCommandService(
         form.UpdatedByUserId = userId;
         db.Update(form);
 
-        AppendDecision(form.Id, FormReviewDecisionType.Archive, from, FormDefinitionStatus.Archived, userId, request.Reason.Trim(), false);
+        FormReviewDecisionWriter.Append(db, form.Id, FormReviewDecisionType.Archive, from, FormDefinitionStatus.Archived, userId, request.Reason.Trim(), false);
         await audit.WriteAsync(new AuditEntry
         {
             Action = "FormArchived",
@@ -211,22 +214,51 @@ public sealed class FormCommandService(
     public async Task RestoreAsync(Guid id, FormTransitionRequest request, CancellationToken cancellationToken = default)
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsRestore);
-        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, id, cancellationToken: cancellationToken);
+        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, id, includeDeleted: true, cancellationToken: cancellationToken);
+        await effectiveAccess.EnsureCapabilityAsync(form, FormAccessCapability.Restore, cancellationToken);
         FormAccessHelper.EnsureRowVersion(form.RowVersion, request.RowVersion);
-        FormDefinitionStateMachine.EnsureAllowed(form.Status, FormDefinitionStatus.Approved);
+
+        if (form.Status != FormDefinitionStatus.Archived)
+        {
+            throw new InvalidOperationException("لا يمكن استعادة النموذج إلا إذا كان في حالة مؤرشف.");
+        }
+
+        var archiveDecision = await db.FormReviewDecisions
+            .Where(d => d.FormDefinitionId == form.Id && d.Decision == FormReviewDecisionType.Archive)
+            .OrderByDescending(d => d.ReviewedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException("لا يمكن استعادة النموذج: لا يوجد قرار أرشفة موثوق.");
+
+        var priorStatus = archiveDecision.FromStatus;
+        if (priorStatus == FormDefinitionStatus.Archived || !FormDefinitionStateMachine.CanRestore(priorStatus))
+        {
+            throw new InvalidOperationException("لا يمكن استعادة النموذج: الحالة السابقة للأرشفة غير صالحة للاستعادة.");
+        }
+
+        FormDefinitionStateMachine.EnsureAllowed(FormDefinitionStatus.Archived, priorStatus);
 
         var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير مصادق.");
         var from = form.Status;
         var now = DateTimeOffset.UtcNow;
-        form.Status = FormDefinitionStatus.Approved;
+        var wasSoftDeleted = form.IsDeleted;
+
+        if (form.IsDeleted)
+        {
+            form.IsDeleted = false;
+            form.DeletedAtUtc = null;
+            form.DeletedBy = null;
+            form.DeletedByUserId = null;
+        }
+
         form.ArchivedAtUtc = null;
         form.ArchivedByUserId = null;
+        form.Status = priorStatus;
         form.UpdatedAtUtc = now;
         form.UpdatedBy = currentUser.ExternalSubject;
         form.UpdatedByUserId = userId;
         db.Update(form);
 
-        AppendDecision(form.Id, FormReviewDecisionType.Restore, from, FormDefinitionStatus.Approved, userId, request.Reason.Trim(), false);
+        FormReviewDecisionWriter.Append(db, form.Id, FormReviewDecisionType.Restore, from, priorStatus, userId, request.Reason.Trim(), false);
         await audit.WriteAsync(new AuditEntry
         {
             Action = "FormRestored",
@@ -234,32 +266,10 @@ public sealed class FormCommandService(
             EntityType = nameof(FormDefinition),
             EntityId = form.Id.ToString(),
             OldValues = new { Status = from },
-            NewValues = new { Status = FormDefinitionStatus.Approved },
+            NewValues = new { Status = priorStatus, WasSoftDeleted = wasSoftDeleted },
             Reason = request.Reason.Trim()
         }, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
-    }
-
-    private void AppendDecision(
-        Guid formId,
-        FormReviewDecisionType decision,
-        FormDefinitionStatus from,
-        FormDefinitionStatus to,
-        Guid userId,
-        string reason,
-        bool isAdministrativeOverride)
-    {
-        db.Add(new FormReviewDecision
-        {
-            FormDefinitionId = formId,
-            Decision = decision,
-            Reason = reason,
-            ReviewedByUserId = userId,
-            ReviewedAtUtc = DateTimeOffset.UtcNow,
-            FromStatus = from,
-            ToStatus = to,
-            IsAdministrativeOverride = isAdministrativeOverride
-        });
     }
 }
