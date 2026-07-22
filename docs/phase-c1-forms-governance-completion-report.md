@@ -12,6 +12,7 @@ Status: **In review — not merge-ready until all gates below are green.**
 | Migration | `20260722024228_PhaseC1FormsGovernanceCore` |
 | Epic / Issue | Epic #45, Issue #52 |
 | PR | #61 |
+| Tip SHA | `b3cffd2e6ea7bdb5bd084a8e1ebfb17a0de4384c` |
 
 ## CI failure root cause (run 29834609029)
 
@@ -27,19 +28,19 @@ Fixed by replacing with `POST /api/v1/forms/{id}/access-grants/{grantId}/revoke`
 |------|--------|
 | `dotnet build -c Release` | Pass (pre-existing NU1510 / CS8619 warnings only) |
 | Unit tests | **437** passed, 0 skipped |
-| Integration tests | Requires reachable SQL Server (`127.0.0.1:1434` unavailable locally); **run in CI** — suite expanded with deny/restore/revoke/rowversion cases |
+| Integration tests | **116** passed, Failed=0, Skipped=0 on CI run `29888273188` |
 | Frontend typecheck / lint / test / build / audit | Pass (156 frontend tests; 0 high/critical audit) |
 | `git diff --check` | Pass |
 | RTL walkthrough | **Not completed** — blocked until API/SQL available for live walkthrough |
-| Sonar QG | Pending re-analysis after push (Security Rating A; migration rewritten to SQL; shared scope/list helpers for CPD ≤ 3%) |
+| Sonar QG | **Pass** — Security Rating A; new duplication ≈ 0.38% |
 
 ## Merge gate (all required)
 
-- [ ] Backend CI green (unit + integration Failed=0, Skipped=0)
-- [ ] Frontend CI green
-- [ ] Migration apply green
-- [ ] Sonar Quality Gate green (Security Rating A, new duplication ≤ 3%)
-- [ ] All review threads resolved
+- [x] Backend CI green (unit + integration Failed=0, Skipped=0)
+- [x] Frontend CI green
+- [x] Migration apply green (CI SQL Server)
+- [x] Sonar Quality Gate green (Security Rating A, new duplication ≈ 0.38%)
+- [x] All review threads resolved (0 open)
 - [ ] RTL walkthrough completed
 - [ ] Product acceptance
 
@@ -59,4 +60,4 @@ Form field designer / publish / respond / export (Issues #46–#51).
 
 ## Decision
 
-**Do not merge** until CI integration, Sonar, RTL walkthrough, and product acceptance are complete.
+**Do not merge** until RTL walkthrough and product acceptance are complete. CI/Sonar are green; RTL remains outstanding.
