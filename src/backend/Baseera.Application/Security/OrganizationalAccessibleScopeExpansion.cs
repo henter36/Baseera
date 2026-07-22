@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 
 /// <summary>
 /// Shared facility/region expansion used by Notes and Forms scope filters.
+/// Callers must expand facilities only from directly granted regions; do not
+/// feed facility-derived regions back into facility expansion (closure loop).
 /// </summary>
 public static class OrganizationalAccessibleScopeExpansion
 {

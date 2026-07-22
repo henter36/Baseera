@@ -186,8 +186,19 @@ public sealed class NoteScopeService(
     private (HashSet<Guid> RegionIds, HashSet<Guid> FacilityIds, HashSet<Guid> UnitIds) BuildAccessibleScopeIds()
     {
         var ids = CollectScopeIdsFromUser();
-        OrganizationalAccessibleScopeExpansion.ExpandRegionsFromFacilities(db, ids.RegionIds, ids.FacilityIds);
-        OrganizationalAccessibleScopeExpansion.ExpandFacilitiesFromRegions(db, ids.RegionIds, ids.FacilityIds);
+
+        // Expand facilities only from directly granted regions.
+        // Facility-derived regions must not feed back into facility expansion.
+        var directlyGrantedRegionIds = ids.RegionIds.ToHashSet();
+        OrganizationalAccessibleScopeExpansion.ExpandFacilitiesFromRegions(
+            db,
+            directlyGrantedRegionIds,
+            ids.FacilityIds);
+        OrganizationalAccessibleScopeExpansion.ExpandRegionsFromFacilities(
+            db,
+            ids.RegionIds,
+            ids.FacilityIds);
+
         return ids;
     }
 
@@ -195,10 +206,21 @@ public sealed class NoteScopeService(
         CancellationToken cancellationToken)
     {
         var ids = CollectScopeIdsFromUser();
-        await OrganizationalAccessibleScopeExpansion.ExpandRegionsFromFacilitiesAsync(
-            db, ids.RegionIds, ids.FacilityIds, cancellationToken);
+
+        // Expand facilities only from directly granted regions.
+        // Facility-derived regions must not feed back into facility expansion.
+        var directlyGrantedRegionIds = ids.RegionIds.ToHashSet();
         await OrganizationalAccessibleScopeExpansion.ExpandFacilitiesFromRegionsAsync(
-            db, ids.RegionIds, ids.FacilityIds, cancellationToken);
+            db,
+            directlyGrantedRegionIds,
+            ids.FacilityIds,
+            cancellationToken);
+        await OrganizationalAccessibleScopeExpansion.ExpandRegionsFromFacilitiesAsync(
+            db,
+            ids.RegionIds,
+            ids.FacilityIds,
+            cancellationToken);
+
         return ids;
     }
 
@@ -258,7 +280,6 @@ public sealed class NoteScopeService(
         CancellationToken cancellationToken = default) =>
         OrganizationalScopeEntityGuard.EnsureActiveAsync(
             db,
-            scopeType,
             regionId,
             facilityId,
             facilityUnitId,

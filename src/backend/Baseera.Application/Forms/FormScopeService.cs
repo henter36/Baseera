@@ -86,7 +86,6 @@ public sealed class FormScopeService(
         CancellationToken cancellationToken = default) =>
         OrganizationalScopeEntityGuard.EnsureActiveAsync(
             db,
-            scopeType,
             regionId,
             facilityId,
             facilityUnitId,
@@ -116,6 +115,8 @@ public sealed class FormScopeService(
     private (HashSet<Guid> RegionIds, HashSet<Guid> FullFacilityIds, HashSet<Guid> UnitIds) BuildAccessibleScopeIds()
     {
         var ids = CollectScopeIdsFromUser();
+        // Expand facilities only from directly granted regions.
+        // Facility-derived regions must not feed back into facility expansion.
         OrganizationalAccessibleScopeExpansion.ExpandFacilitiesFromRegions(db, ids.RegionIds, ids.FullFacilityIds);
         ExpandRegionsIncludingUnitFacilities(ids.RegionIds, ids.FullFacilityIds, ids.UnitIds);
         return ids;
@@ -125,6 +126,8 @@ public sealed class FormScopeService(
         CancellationToken cancellationToken)
     {
         var ids = CollectScopeIdsFromUser();
+        // Expand facilities only from directly granted regions.
+        // Facility-derived regions must not feed back into facility expansion.
         await OrganizationalAccessibleScopeExpansion.ExpandFacilitiesFromRegionsAsync(
             db, ids.RegionIds, ids.FullFacilityIds, cancellationToken);
         await ExpandRegionsIncludingUnitFacilitiesAsync(

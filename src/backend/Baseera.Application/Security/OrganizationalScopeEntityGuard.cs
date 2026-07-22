@@ -1,7 +1,6 @@
 namespace Baseera.Application.Security;
 
 using Baseera.Application.Abstractions;
-using Baseera.Domain.Common;
 using Microsoft.EntityFrameworkCore;
 
 /// <summary>
@@ -11,28 +10,36 @@ public static class OrganizationalScopeEntityGuard
 {
     public static async Task EnsureActiveAsync(
         IBaseeraDbContext db,
-        ScopeType scopeType,
         Guid? regionId,
         Guid? facilityId,
         Guid? facilityUnitId,
         CancellationToken cancellationToken = default)
     {
-        await EnsureRegionActiveAsync(db, scopeType, regionId, cancellationToken);
+        await EnsureRegionActiveAsync(db, regionId, cancellationToken);
         await EnsureFacilityActiveAndConsistentAsync(db, regionId, facilityId, cancellationToken);
         await EnsureUnitActiveAndConsistentAsync(db, facilityId, facilityUnitId, cancellationToken);
     }
 
     private static async Task EnsureRegionActiveAsync(
         IBaseeraDbContext db,
-        ScopeType scopeType,
         Guid? regionId,
         CancellationToken cancellationToken)
     {
-        if (scopeType == ScopeType.Region &&
-            regionId is Guid requiredRegionId &&
-            !await db.Regions.AsNoTracking().AnyAsync(
-                r => r.Id == requiredRegionId && !r.IsDeleted && r.IsActive,
-                cancellationToken))
+        if (regionId is not Guid requiredRegionId)
+        {
+            return;
+        }
+
+        var exists = await db.Regions
+            .AsNoTracking()
+            .AnyAsync(
+                region =>
+                    region.Id == requiredRegionId &&
+                    !region.IsDeleted &&
+                    region.IsActive,
+                cancellationToken);
+
+        if (!exists)
         {
             throw new KeyNotFoundException("المنطقة غير موجودة.");
         }
