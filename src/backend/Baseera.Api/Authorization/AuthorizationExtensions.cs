@@ -81,6 +81,14 @@ public static class AuthPolicies
     public const string FormsCloneVersion = PermissionPrefix + PermissionCodes.FormsCloneVersion;
     public const string FormsViewVersionHistory = PermissionPrefix + PermissionCodes.FormsViewVersionHistory;
     public const string FormsManageTemplates = PermissionPrefix + PermissionCodes.FormsManageTemplates;
+    public const string FormsPublish = PermissionPrefix + PermissionCodes.FormsPublish;
+    public const string FormsManageCampaigns = PermissionPrefix + PermissionCodes.FormsManageCampaigns;
+    public const string FormsPreviewTargets = PermissionPrefix + PermissionCodes.FormsPreviewTargets;
+    public const string FormsPauseCampaign = PermissionPrefix + PermissionCodes.FormsPauseCampaign;
+    public const string FormsCancelCampaign = PermissionPrefix + PermissionCodes.FormsCancelCampaign;
+    public const string FormsViewCampaignAssignments = PermissionPrefix + PermissionCodes.FormsViewCampaignAssignments;
+    public const string FormsMonitorRegion = PermissionPrefix + PermissionCodes.FormsMonitorRegion;
+    public const string FormsMonitorHeadquarters = PermissionPrefix + PermissionCodes.FormsMonitorHeadquarters;
 }
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
@@ -186,6 +194,14 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.FormsCloneVersion, PermissionCodes.FormsCloneVersion);
             AddPerm(AuthPolicies.FormsViewVersionHistory, PermissionCodes.FormsViewVersionHistory);
             AddPerm(AuthPolicies.FormsManageTemplates, PermissionCodes.FormsManageTemplates);
+            AddPerm(AuthPolicies.FormsPublish, PermissionCodes.FormsPublish);
+            AddPerm(AuthPolicies.FormsManageCampaigns, PermissionCodes.FormsManageCampaigns);
+            AddPerm(AuthPolicies.FormsPreviewTargets, PermissionCodes.FormsPreviewTargets);
+            AddPerm(AuthPolicies.FormsPauseCampaign, PermissionCodes.FormsPauseCampaign);
+            AddPerm(AuthPolicies.FormsCancelCampaign, PermissionCodes.FormsCancelCampaign);
+            AddPerm(AuthPolicies.FormsViewCampaignAssignments, PermissionCodes.FormsViewCampaignAssignments);
+            AddPerm(AuthPolicies.FormsMonitorRegion, PermissionCodes.FormsMonitorRegion);
+            AddPerm(AuthPolicies.FormsMonitorHeadquarters, PermissionCodes.FormsMonitorHeadquarters);
         });
         return services;
     }
