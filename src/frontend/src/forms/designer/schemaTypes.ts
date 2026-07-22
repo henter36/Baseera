@@ -200,7 +200,22 @@ export function reindexOrders(schema: FormSchemaDocument): FormSchemaDocument {
       sections: page.sections.map((section, si) => ({
         ...section,
         order: si,
-        fields: section.fields.map((field, fi) => ({ ...field, order: fi })),
+        fields: section.fields.map((field, fi) => ({
+          ...field,
+          order: fi,
+          choice: field.choice
+            ? {
+                ...field.choice,
+                options: field.choice.options.map((option, oi) => ({ ...option, order: oi })),
+              }
+            : field.choice,
+          repeatingTable: field.repeatingTable
+            ? {
+                ...field.repeatingTable,
+                columns: field.repeatingTable.columns.map((column, ci) => ({ ...column, order: ci })),
+              }
+            : field.repeatingTable,
+        })),
       })),
     })),
   }
