@@ -151,6 +151,7 @@ public static class ApiEndpoints
         MapNotificationEndpoints(api);
         MapOperationalDashboardEndpoints(api);
         MapFormsEndpoints(api);
+        MapFormTemplateEndpoints(api);
 
         return api;
     }
@@ -309,6 +310,135 @@ public static class ApiEndpoints
             await service.RevokeGrantAsync(id, grantId, request, ct);
             return Results.NoContent();
         }).RequireAuthorization(AuthPolicies.FormsManageAccess);
+
+        forms.MapGet("/{formId:guid}/versions", async (Guid formId, IFormVersionService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(formId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapGet("/{formId:guid}/versions/{versionId:guid}", async (Guid formId, Guid versionId, IFormVersionService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAsync(formId, versionId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapPost("/{formId:guid}/versions", async (
+            Guid formId,
+            CreateFormVersionRequest? request,
+            IFormVersionService service,
+            CancellationToken ct) =>
+        {
+            var created = await service.CreateAsync(formId, request ?? new CreateFormVersionRequest(null), ct);
+            return Results.Created($"/api/v1/forms/{formId}/versions/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsUpdateDraft);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/clone", async (Guid formId, Guid versionId, IFormVersionService service, CancellationToken ct) =>
+        {
+            var created = await service.CloneAsync(formId, versionId, ct);
+            return Results.Created($"/api/v1/forms/{formId}/versions/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsCloneVersion);
+
+        forms.MapPut("/{formId:guid}/versions/{versionId:guid}/schema", async (
+            Guid formId, Guid versionId, SaveFormSchemaRequest request,
+            IValidator<SaveFormSchemaRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.SaveSchemaAsync(formId, versionId, request, autosave: false, ct));
+        }).RequireAuthorization(AuthPolicies.FormsUpdateDraft);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/autosave", async (
+            Guid formId, Guid versionId, SaveFormSchemaRequest request,
+            IValidator<SaveFormSchemaRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.SaveSchemaAsync(formId, versionId, request, autosave: true, ct));
+        }).RequireAuthorization(AuthPolicies.FormsUpdateDraft);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/validate", async (
+            Guid formId, Guid versionId, SaveFormSchemaRequest request,
+            IValidator<SaveFormSchemaRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ValidateAsync(formId, versionId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/submit-review", async (
+            Guid formId, Guid versionId, FormVersionTransitionRequest request,
+            IValidator<FormVersionTransitionRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.SubmitForReviewAsync(formId, versionId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsSubmitForReview);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/request-changes", async (
+            Guid formId, Guid versionId, FormVersionTransitionRequest request,
+            IValidator<FormVersionTransitionRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.RequestChangesAsync(formId, versionId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsRequestChanges);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/reject", async (
+            Guid formId, Guid versionId, FormVersionTransitionRequest request,
+            IValidator<FormVersionTransitionRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.RejectAsync(formId, versionId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsReject);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/reopen", async (
+            Guid formId, Guid versionId, FormVersionTransitionRequest request,
+            IValidator<FormVersionTransitionRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ReopenAsync(formId, versionId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsUpdateDraft);
+
+        forms.MapPost("/{formId:guid}/versions/{versionId:guid}/approve-lock", async (
+            Guid formId, Guid versionId, FormVersionTransitionRequest request,
+            IValidator<FormVersionTransitionRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ApproveAndLockAsync(formId, versionId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsApprove);
+
+        forms.MapGet("/{formId:guid}/versions/{versionId:guid}/snapshot", async (Guid formId, Guid versionId, IFormVersionService service, CancellationToken ct) =>
+            Results.Ok(await service.GetSnapshotAsync(formId, versionId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        forms.MapGet("/{formId:guid}/versions/{versionId:guid}/review-decisions", async (Guid formId, Guid versionId, IFormVersionService service, CancellationToken ct) =>
+            Results.Ok(await service.GetReviewDecisionsAsync(formId, versionId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+    }
+
+    private static void MapFormTemplateEndpoints(RouteGroupBuilder api)
+    {
+        var templates = api.MapGroup("/form-templates");
+
+        templates.MapGet("/", async (IFormTemplateService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        templates.MapPost("/", async (
+            CreateFormTemplateRequest request,
+            IValidator<CreateFormTemplateRequest> validator,
+            IFormTemplateService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateFromLockedVersionAsync(request, ct);
+            return Results.Created($"/api/v1/form-templates/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsManageTemplates);
+
+        templates.MapPost("/{templateId:guid}/create-form", async (
+            Guid templateId,
+            CreateFormFromTemplateRequest request,
+            IValidator<CreateFormFromTemplateRequest> validator,
+            IFormTemplateService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateFormFromTemplateAsync(templateId, request, ct);
+            return Results.Created($"/api/v1/forms/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsManageTemplates);
     }
 
     private static void MapOperationalDashboardEndpoints(RouteGroupBuilder api)
