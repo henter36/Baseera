@@ -157,7 +157,7 @@ const FORMULA_FUNCTIONS: Record<number, (args: unknown[]) => unknown> = {
     const first = Number(args[0])
     return Number.isNaN(first) ? null : Math.abs(first)
   },
-  8: (args) => args.find((value) => value != null && value !== '') ?? null,
+  8: (args) => args.find((value) => !isEmpty(value)) ?? null,
   9: (args) => args.map((value) => toDisplayString(value)).join(''),
 }
 
