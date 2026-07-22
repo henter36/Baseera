@@ -1,45 +1,64 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
+import { formatApiError, hasAllowedAction } from '../../../forms/designer/designerHelpers'
 
 export function FormVersionReviewPage() {
-  const canReviewPerm = usePermission('Forms.Review')
-  const canRequestChanges = usePermission('Forms.RequestChanges')
-  const canReject = usePermission('Forms.Reject')
-  const canReview = canReviewPerm || canRequestChanges || canReject
-  const canApprove = usePermission('Forms.Approve')
+  const canViewHistory = usePermission('Forms.ViewVersionHistory')
   const { formId, versionId } = useParams<{ formId: string; versionId: string }>()
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const versionQuery = useQuery({
     queryKey: ['form-version', formId, versionId],
     queryFn: () => api.forms.getVersion(formId!, versionId!),
-    enabled: (canReview || canApprove) && !!formId && !!versionId,
+    enabled: canViewHistory && !!formId && !!versionId,
   })
 
   const run = useMutation({
     mutationFn: async (action: 'changes' | 'reject' | 'approve') => {
-      const body = { reason, rowVersion: versionQuery.data!.rowVersion }
-      if (action === 'changes') return api.forms.requestVersionChanges(formId!, versionId!, body)
-      if (action === 'reject') return api.forms.rejectVersion(formId!, versionId!, body)
+      const body = { reason: reason.trim(), rowVersion: versionQuery.data!.rowVersion }
+      if (action === 'changes') {
+        return api.forms.requestVersionChanges(formId!, versionId!, body)
+      }
+
+      if (action === 'reject') {
+        return api.forms.rejectVersion(formId!, versionId!, body)
+      }
+
       return api.forms.approveLockVersion(formId!, versionId!, body)
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['form-version', formId, versionId] })
-      window.location.assign(`/forms/${formId}/versions/${versionId}`)
+      void navigate(`/forms/${formId}/versions/${versionId}`)
     },
     onError: (err: ApiError) => {
-      setError(err.status === 409 ? 'تعارض أو انتقال غير صالح.' : err.message)
+      setError(formatApiError(err))
     },
   })
 
-  if (!(canReview || canApprove)) return <div className="error" role="alert">ليست لديك صلاحية المراجعة.</div>
-  if (versionQuery.isLoading) return <div className="loading">جاري التحميل…</div>
-  if (versionQuery.isError) return <div className="error" role="alert">{(versionQuery.error as ApiError).message}</div>
+  const allowedActions = versionQuery.data?.allowedActions ?? []
+  const canRequestChanges = hasAllowedAction(allowedActions, 'RequestChanges')
+  const canReject = hasAllowedAction(allowedActions, 'Reject')
+  const canApprove = hasAllowedAction(allowedActions, 'ApproveAndLock')
+  const trimmedReason = reason.trim()
+  const disabled = run.isPending || !versionQuery.data
+
+  if (!canViewHistory) {
+    return <div className="error" role="alert">ليست لديك صلاحية عرض سجل الإصدارات.</div>
+  }
+
+  if (versionQuery.isLoading) {
+    return <div className="loading">جاري التحميل…</div>
+  }
+
+  if (versionQuery.isError) {
+    return <div className="error" role="alert">{formatApiError(versionQuery.error as ApiError)}</div>
+  }
 
   return (
     <div className="panel" dir="rtl">
@@ -49,13 +68,35 @@ export function FormVersionReviewPage() {
       </div>
       {error && <div className="error" role="alert">{error}</div>}
       <label className="field">
-        السبب
-        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
+        السبب <span className="muted">(مطلوب لطلب التعديلات والرفض)</span>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} disabled={disabled} />
       </label>
       <div className="toolbar">
-        {canReview && <button type="button" className="secondary" onClick={() => run.mutate('changes')}>طلب تعديلات</button>}
-        {canReview && <button type="button" className="secondary" onClick={() => run.mutate('reject')}>رفض</button>}
-        {canApprove && <button type="button" onClick={() => run.mutate('approve')}>اعتماد وقفل</button>}
+        {canRequestChanges && (
+          <button
+            type="button"
+            className="secondary"
+            disabled={disabled || trimmedReason.length === 0}
+            onClick={() => run.mutate('changes')}
+          >
+            طلب تعديلات
+          </button>
+        )}
+        {canReject && (
+          <button
+            type="button"
+            className="secondary"
+            disabled={disabled || trimmedReason.length === 0}
+            onClick={() => run.mutate('reject')}
+          >
+            رفض
+          </button>
+        )}
+        {canApprove && (
+          <button type="button" disabled={disabled} onClick={() => run.mutate('approve')}>
+            اعتماد وقفل
+          </button>
+        )}
       </div>
     </div>
   )

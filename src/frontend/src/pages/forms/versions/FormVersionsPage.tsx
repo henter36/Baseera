@@ -1,43 +1,41 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
-
-const statusAr: Record<number, string> = {
-  0: 'مسودة',
-  1: 'قيد المراجعة',
-  2: 'مطلوب تعديلات',
-  3: 'مرفوض',
-  4: 'مقفل',
-}
+import { formatApiError } from '../../../forms/designer/designerHelpers'
+import type { FormVersionStatus } from '../../../api/client'
 
 export function FormVersionsPage() {
-  const canViewForms = usePermission('Forms.View')
   const canViewHistory = usePermission('Forms.ViewVersionHistory')
-  const canView = canViewForms || canViewHistory
   const canDesign = usePermission('Forms.UpdateDraft')
   const { formId } = useParams<{ formId: string }>()
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const versionsQuery = useQuery({
     queryKey: ['form-versions', formId],
     queryFn: () => api.forms.listVersions(formId!),
-    enabled: canView && !!formId,
+    enabled: canViewHistory && !!formId,
   })
 
   const createMutation = useMutation({
     mutationFn: () => api.forms.createVersion(formId!),
     onSuccess: (version) => {
       void qc.invalidateQueries({ queryKey: ['form-versions', formId] })
-      window.location.assign(`/forms/${formId}/versions/${version.id}/edit`)
+      void navigate(`/forms/${formId}/versions/${version.id}/edit`)
     },
   })
 
-  if (!canView) return <div className="error" role="alert">ليست لديك صلاحية عرض إصدارات النموذج.</div>
-  if (versionsQuery.isLoading) return <div className="loading">جاري تحميل الإصدارات…</div>
+  if (!canViewHistory) {
+    return <div className="error" role="alert">ليست لديك صلاحية عرض إصدارات النموذج.</div>
+  }
+
+  if (versionsQuery.isLoading) {
+    return <div className="loading">جاري تحميل الإصدارات…</div>
+  }
+
   if (versionsQuery.isError) {
-    const err = versionsQuery.error as ApiError
-    return <div className="error" role="alert">{err.status === 404 ? 'النموذج غير موجود أو خارج نطاقك.' : err.message}</div>
+    return <div className="error" role="alert">{formatApiError(versionsQuery.error as ApiError)}</div>
   }
 
   const items = versionsQuery.data ?? []
@@ -68,26 +66,32 @@ export function FormVersionsPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((v) => (
-              <tr key={v.id}>
-                <td>v{v.versionNumber}</td>
-                <td>{statusAr[v.status] ?? v.statusAr}</td>
-                <td>{v.lastSavedAtUtc ? new Date(v.lastSavedAtUtc).toLocaleString('ar-SA') : '—'}</td>
-                <td>
-                  <Link to={`/forms/${formId}/versions/${v.id}`}>عرض</Link>
-                  {' · '}
-                  {(v.status === 0 || v.status === 2) && canDesign && (
-                    <Link to={`/forms/${formId}/versions/${v.id}/edit`}>تصميم</Link>
-                  )}
-                  {v.status === 4 && (
-                    <>
-                      {' · '}
-                      <Link to={`/forms/${formId}/versions/${v.id}/snapshot`}>لقطة</Link>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {items.map((v) => {
+              const status = v.status as FormVersionStatus
+              const editable = status === 0 || status === 2
+              return (
+                <tr key={v.id}>
+                  <td>v{v.versionNumber}</td>
+                  <td>{v.statusAr}</td>
+                  <td>{v.lastSavedAtUtc ? new Date(v.lastSavedAtUtc).toLocaleString('ar-SA') : '—'}</td>
+                  <td>
+                    <Link to={`/forms/${formId}/versions/${v.id}`}>عرض</Link>
+                    {editable && canDesign && (
+                      <>
+                        {' · '}
+                        <Link to={`/forms/${formId}/versions/${v.id}/edit`}>تصميم</Link>
+                      </>
+                    )}
+                    {status === 4 && (
+                      <>
+                        {' · '}
+                        <Link to={`/forms/${formId}/versions/${v.id}/snapshot`}>لقطة</Link>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       )}

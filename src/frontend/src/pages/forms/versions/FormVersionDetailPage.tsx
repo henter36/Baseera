@@ -2,34 +2,44 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
+import { formatApiError, hasAllowedAction } from '../../../forms/designer/designerHelpers'
 
 export function FormVersionDetailPage() {
-  const canViewForms = usePermission('Forms.View')
   const canViewHistory = usePermission('Forms.ViewVersionHistory')
-  const canView = canViewForms || canViewHistory
   const { formId, versionId } = useParams<{ formId: string; versionId: string }>()
   const query = useQuery({
     queryKey: ['form-version', formId, versionId],
     queryFn: () => api.forms.getVersion(formId!, versionId!),
-    enabled: canView && !!formId && !!versionId,
+    enabled: canViewHistory && !!formId && !!versionId,
   })
 
-  if (!canView) return <div className="error" role="alert">ليست لديك صلاحية العرض.</div>
-  if (query.isLoading) return <div className="loading">جاري التحميل…</div>
-  if (query.isError) {
-    const err = query.error as ApiError
-    return <div className="error" role="alert">{err.status === 404 ? 'الإصدار غير موجود.' : err.message}</div>
+  if (!canViewHistory) {
+    return <div className="error" role="alert">ليست لديك صلاحية عرض سجل الإصدارات.</div>
   }
+
+  if (query.isLoading) {
+    return <div className="loading">جاري التحميل…</div>
+  }
+
+  if (query.isError) {
+    return <div className="error" role="alert">{formatApiError(query.error as ApiError)}</div>
+  }
+
   const v = query.data!
+  const actions = v.allowedActions
+  const canDesign = hasAllowedAction(actions, 'SaveSchema')
+  const canReview = hasAllowedAction(actions, 'RequestChanges') || hasAllowedAction(actions, 'Reject') || hasAllowedAction(actions, 'ApproveAndLock')
+  const canViewSnapshot = hasAllowedAction(actions, 'ViewSnapshot')
+
   return (
     <div className="panel" dir="rtl">
       <div className="page-header">
         <h1 className="page-title">إصدار v{v.versionNumber}</h1>
         <div className="toolbar">
           <Link to={`/forms/${formId}/versions`}>كل الإصدارات</Link>
-          {(v.status === 0 || v.status === 2) && <Link to={`/forms/${formId}/versions/${versionId}/edit`}>فتح المصمم</Link>}
-          {v.status === 1 && <Link to={`/forms/${formId}/versions/${versionId}/review`}>مراجعة</Link>}
-          {v.snapshotId && <Link to={`/forms/${formId}/versions/${versionId}/snapshot`}>اللقطة</Link>}
+          {canDesign && <Link to={`/forms/${formId}/versions/${versionId}/edit`}>فتح المصمم</Link>}
+          {canReview && <Link to={`/forms/${formId}/versions/${versionId}/review`}>مراجعة</Link>}
+          {canViewSnapshot && <Link to={`/forms/${formId}/versions/${versionId}/snapshot`}>اللقطة</Link>}
         </div>
       </div>
       <dl className="detail-grid">
