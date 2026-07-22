@@ -116,8 +116,16 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Forms.FormTemplate> FormTemplates => Enumerable.Empty<Domain.Forms.FormTemplate>().AsQueryable();
         public IQueryable<Domain.Forms.FormTemplate> FormTemplatesIncludingDeleted => FormTemplates;
         public IQueryable<Domain.Forms.FormDefinitionVersionCounter> FormDefinitionVersionCounters => Enumerable.Empty<Domain.Forms.FormDefinitionVersionCounter>().AsQueryable();
+        public IQueryable<Domain.Forms.FormCampaign> FormCampaigns => Enumerable.Empty<Domain.Forms.FormCampaign>().AsQueryable();
+        public IQueryable<Domain.Forms.FormCampaign> FormCampaignsIncludingDeleted => FormCampaigns;
+        public IQueryable<Domain.Forms.FormTargetRule> FormTargetRules => Enumerable.Empty<Domain.Forms.FormTargetRule>().AsQueryable();
+        public IQueryable<Domain.Forms.FormCampaignExclusion> FormCampaignExclusions => Enumerable.Empty<Domain.Forms.FormCampaignExclusion>().AsQueryable();
+        public IQueryable<Domain.Forms.FormCycle> FormCycles => Enumerable.Empty<Domain.Forms.FormCycle>().AsQueryable();
+        public IQueryable<Domain.Forms.FormFacilityAssignment> FormFacilityAssignments => Enumerable.Empty<Domain.Forms.FormFacilityAssignment>().AsQueryable();
+        public IQueryable<Domain.Forms.OrganizationBusinessCalendarDate> OrganizationBusinessCalendarDates => Enumerable.Empty<Domain.Forms.OrganizationBusinessCalendarDate>().AsQueryable();
         public void Add<TEntity>(TEntity entity) where TEntity : class { }
         public void Update<TEntity>(TEntity entity) where TEntity : class { }
+        public void Remove<TEntity>(TEntity entity) where TEntity : class { }
         public void Detach<TEntity>(TEntity entity) where TEntity : class { }
         public void ClearChanges() { }
         public Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default) =>
