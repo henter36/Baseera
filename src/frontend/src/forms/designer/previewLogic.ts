@@ -21,31 +21,27 @@ export function toDisplayString(value: unknown): string {
     return ''
   }
 
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value)
-  }
-
-  if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value)
-    } catch {
+  switch (typeof value) {
+    case 'string':
+      return value
+    case 'number':
+    case 'boolean':
+    case 'bigint':
+    case 'symbol':
+      return String(value)
+    case 'object':
+      try {
+        return JSON.stringify(value)
+      } catch {
+        return ''
+      }
+    default:
       return ''
-    }
   }
-
-  return String(value)
 }
 
 function toComparableString(value: unknown): string {
-  if (value == null) {
-    return ''
-  }
-
-  return String(value)
+  return toDisplayString(value)
 }
 
 function compareNumbers(current: unknown, expected: unknown, compare: (left: number, right: number) => boolean): boolean {
@@ -93,9 +89,9 @@ function evaluatePredicate(
     case 11:
       return current === false || current === 'false' || current === 0
     case 12:
-      return (predicate.values ?? []).map(String).includes(currentText)
+      return (predicate.values ?? []).map(toComparableString).includes(currentText)
     case 13:
-      return !(predicate.values ?? []).map(String).includes(currentText)
+      return !(predicate.values ?? []).map(toComparableString).includes(currentText)
     case 14:
       return currentText < expectedText
     case 15:

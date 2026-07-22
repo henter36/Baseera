@@ -50,52 +50,29 @@ export function updateFieldInSchema(
   )
 }
 
+function flattenFieldTree(fields: FormFieldSchema[]): FormFieldSchema[] {
+  return fields.flatMap((field) => [
+    field,
+    ...flattenFieldTree(field.repeatingTable?.columns ?? []),
+  ])
+}
+
+function getAllFields(schema: FormSchemaDocument): FormFieldSchema[] {
+  return schema.pages.flatMap((page) =>
+    page.sections.flatMap((section) => flattenFieldTree(section.fields)),
+  )
+}
+
 function collectFieldKeys(schema: FormSchemaDocument, excludeFieldId: string): Set<string> {
-  const keys = new Set<string>()
-
-  const trackField = (field: FormFieldSchema) => {
-    if (field.id !== excludeFieldId) {
-      keys.add(field.key.toLowerCase())
-    }
-
-    if (field.repeatingTable) {
-      for (const column of field.repeatingTable.columns) {
-        trackField(column)
-      }
-    }
-  }
-
-  for (const page of schema.pages) {
-    for (const section of page.sections) {
-      for (const field of section.fields) {
-        trackField(field)
-      }
-    }
-  }
-
-  return keys
+  return new Set(
+    getAllFields(schema)
+      .filter((field) => field.id !== excludeFieldId)
+      .map((field) => field.key.toLowerCase()),
+  )
 }
 
 function findFieldKey(schema: FormSchemaDocument, fieldId: string): string | null {
-  for (const page of schema.pages) {
-    for (const section of page.sections) {
-      for (const field of section.fields) {
-        if (field.id === fieldId) {
-          return field.key
-        }
-
-        if (field.repeatingTable) {
-          for (const column of field.repeatingTable.columns) {
-            if (column.id === fieldId) {
-              return column.key
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return null
+  return getAllFields(schema).find((field) => field.id === fieldId)?.key ?? null
 }
 
 function mapConditionGroup(

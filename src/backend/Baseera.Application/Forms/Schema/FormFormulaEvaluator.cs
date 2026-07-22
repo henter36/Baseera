@@ -35,24 +35,39 @@ public static class FormFormulaEvaluator
         };
     }
 
-    private static object? EvaluateFunction(FormFormulaFunction function, IReadOnlyList<object?> args)
-    {
-        var nums = args.Select(ToDecimal).Where(x => x.HasValue).Select(x => x!.Value).ToList();
-        return function switch
+    private static object? EvaluateFunction(FormFormulaFunction function, IReadOnlyList<object?> arguments) =>
+        function switch
         {
-            FormFormulaFunction.Min => nums.Count == 0 ? null : nums.Min(),
-            FormFormulaFunction.Max => nums.Count == 0 ? null : nums.Max(),
-            FormFormulaFunction.Sum => nums.Sum(),
-            FormFormulaFunction.Average => nums.Count == 0 ? null : nums.Average(),
-            FormFormulaFunction.Round => nums.Count == 0 ? null : Math.Round(nums[0]),
-            FormFormulaFunction.Floor => nums.Count == 0 ? null : Math.Floor(nums[0]),
-            FormFormulaFunction.Ceiling => nums.Count == 0 ? null : Math.Ceiling(nums[0]),
-            FormFormulaFunction.Abs => nums.Count == 0 ? null : Math.Abs(nums[0]),
-            FormFormulaFunction.Coalesce => args.FirstOrDefault(a => a is not null and not ""),
-            FormFormulaFunction.Concat => string.Concat(args.Select(ToSafeString)),
+            FormFormulaFunction.Coalesce => EvaluateCoalesce(arguments),
+            FormFormulaFunction.Concat => EvaluateConcat(arguments),
+            _ => EvaluateNumericFunction(function, GetNumericArguments(arguments))
+        };
+
+    private static IReadOnlyList<decimal> GetNumericArguments(IReadOnlyList<object?> arguments) =>
+        arguments.Select(ToDecimal).Where(x => x.HasValue).Select(x => x!.Value).ToList();
+
+    private static object? EvaluateNumericFunction(FormFormulaFunction function, IReadOnlyList<decimal> numbers) =>
+        function switch
+        {
+            FormFormulaFunction.Min => numbers.Count == 0 ? null : numbers.Min(),
+            FormFormulaFunction.Max => numbers.Count == 0 ? null : numbers.Max(),
+            FormFormulaFunction.Sum => numbers.Sum(),
+            FormFormulaFunction.Average => numbers.Count == 0 ? null : numbers.Average(),
+            FormFormulaFunction.Round => FirstOrNull(numbers) is { } round ? Math.Round(round) : null,
+            FormFormulaFunction.Floor => FirstOrNull(numbers) is { } floor ? Math.Floor(floor) : null,
+            FormFormulaFunction.Ceiling => FirstOrNull(numbers) is { } ceiling ? Math.Ceiling(ceiling) : null,
+            FormFormulaFunction.Abs => FirstOrNull(numbers) is { } abs ? Math.Abs(abs) : null,
             _ => null
         };
-    }
+
+    private static object? EvaluateCoalesce(IReadOnlyList<object?> arguments) =>
+        arguments.FirstOrDefault(a => a is not null and not "");
+
+    private static string EvaluateConcat(IReadOnlyList<object?> arguments) =>
+        string.Concat(arguments.Select(ToSafeString));
+
+    private static decimal? FirstOrNull(IReadOnlyList<decimal> numbers) =>
+        numbers.Count == 0 ? null : numbers[0];
 
     private static decimal? ToDecimal(object? value) => value switch
     {

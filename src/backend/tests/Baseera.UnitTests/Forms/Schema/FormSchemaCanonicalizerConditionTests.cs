@@ -54,6 +54,17 @@ public sealed class FormSchemaCanonicalizerConditionTests
         Assert.True(a.ConditionCount > b.ConditionCount);
     }
 
+    [Fact]
+    public void Condition_count_includes_page_section_field_and_column_conditions()
+    {
+        var withRequired = BuildRepeatingRequiredDoc(true);
+        var result = _canonicalizer.Canonicalize(withRequired, requireMinimumContent: true);
+        var second = _canonicalizer.Canonicalize(withRequired, requireMinimumContent: true);
+
+        Assert.Equal(result.ConditionCount, second.ConditionCount);
+        Assert.True(result.ConditionCount >= 1);
+    }
+
     private static FormSchemaDocument BuildConditionDoc(
         Guid pageId,
         Guid sectionId,

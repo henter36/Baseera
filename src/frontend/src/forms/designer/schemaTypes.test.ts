@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createEmptySchema,
+  isValidFieldKey,
   reindexChoice,
   reindexField,
   reindexOrders,
@@ -9,6 +10,19 @@ import {
   reindexSection,
   type FormFieldSchema,
 } from './schemaTypes'
+
+describe('isValidFieldKey', () => {
+  it('accepts and rejects field keys per contract', () => {
+    expect(isValidFieldKey('field_name1')).toBe(true)
+    expect(isValidFieldKey('Field1')).toBe(true)
+    expect(isValidFieldKey('_field')).toBe(false)
+    expect(isValidFieldKey('1field')).toBe(false)
+    expect(isValidFieldKey('field-name')).toBe(false)
+    expect(isValidFieldKey('حقل')).toBe(false)
+    expect(isValidFieldKey('')).toBe(false)
+    expect(isValidFieldKey('   ')).toBe(false)
+  })
+})
 
 describe('reindexOrders helpers', () => {
   it('reindexes nested orders without mutating the original', () => {

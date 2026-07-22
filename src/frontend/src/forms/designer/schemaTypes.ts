@@ -193,7 +193,7 @@ export function createEmptySchema(): FormSchemaDocument {
 
 export const MAX_FIELD_KEY_LENGTH = 80
 
-const FIELD_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/
+const FIELD_KEY_PATTERN = /^[A-Za-z]\w*$/
 
 export function isValidFieldKey(key: string): boolean {
   const trimmed = key.trim()

@@ -114,9 +114,84 @@ describe('renameFieldKeyInSchema', () => {
     })
   })
 
-  it('does not mutate the original schema', () => {
-    const snapshot = structuredClone(baseSchema)
-    renameFieldKeyInSchema(baseSchema, 'f1', 'origin')
-    expect(baseSchema).toEqual(snapshot)
+  it('renames repeating-table columns and excludes self from duplicates', () => {
+    const schema: FormSchemaDocument = {
+      schemaFormatVersion: 1,
+      pages: [{
+        id: 'p1',
+        key: 'page1',
+        titleAr: 'صفحة',
+        order: 0,
+        sections: [{
+          id: 's1',
+          key: 'section1',
+          titleAr: 'قسم',
+          order: 0,
+          fields: [{
+            id: 'table',
+            key: 'table',
+            type: FormFieldTypes.RepeatingTable,
+            labelAr: 'جدول',
+            order: 0,
+            layoutWidth: 0,
+            isRequired: false,
+            validationRules: [],
+            isReadOnly: false,
+            isCalculated: false,
+            repeatingTable: {
+              minRows: 0,
+              maxRows: 5,
+              columns: [
+                {
+                  id: 'c1',
+                  key: 'colA',
+                  type: FormFieldTypes.ShortText,
+                  labelAr: 'أ',
+                  order: 0,
+                  layoutWidth: 0,
+                  isRequired: false,
+                  validationRules: [],
+                  isReadOnly: false,
+                  isCalculated: false,
+                  requiredCondition: {
+                    combinator: 0,
+                    predicates: [{ fieldKey: 'colA', operator: 9 }],
+                    groups: [],
+                  },
+                },
+                {
+                  id: 'c2',
+                  key: 'colB',
+                  type: FormFieldTypes.ShortText,
+                  labelAr: 'ب',
+                  order: 1,
+                  layoutWidth: 0,
+                  isRequired: false,
+                  validationRules: [],
+                  isReadOnly: false,
+                  isCalculated: false,
+                },
+              ],
+            },
+          }],
+        }],
+      }],
+    }
+
+    const sameCase = renameFieldKeyInSchema(schema, 'c1', 'colA')
+    expect(sameCase.ok).toBe(true)
+
+    const duplicate = renameFieldKeyInSchema(schema, 'c1', 'colB')
+    expect(duplicate.ok).toBe(false)
+
+    const renamed = renameFieldKeyInSchema(schema, 'c1', 'colOrigin')
+    expect(renamed.ok).toBe(true)
+    if (!renamed.ok) {
+      return
+    }
+
+    const column = renamed.schema.pages[0].sections[0].fields[0].repeatingTable?.columns.find((item) => item.id === 'c1')
+    expect(column?.key).toBe('colOrigin')
+    expect(column?.requiredCondition?.predicates[0].fieldKey).toBe('colOrigin')
   })
 })

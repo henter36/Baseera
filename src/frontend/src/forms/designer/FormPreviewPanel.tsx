@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { getPreviewWidth } from './formPreviewWidths'
 import { collectVisibleFields, evaluateCondition, evaluateFormula, toDisplayString } from './previewLogic'
 import { FormFieldTypes, FormFieldTypeLabelsAr, type FormFieldSchema, type FormPageSchema, type FormSchemaDocument, type FormSectionSchema } from './schemaTypes'
 
@@ -116,7 +117,7 @@ export function FormPreviewPanel({
 }>) {
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [pageIndex, setPageIndex] = useState(0)
-  const width = mode === 'mobile' ? 360 : mode === 'tablet' ? 768 : 1024
+  const width = getPreviewWidth(mode)
   const page = schema.pages[pageIndex]
 
   const visibleFields = useMemo(() => collectVisibleFields(schema, values), [schema, values])

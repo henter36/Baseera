@@ -185,4 +185,28 @@ public sealed class FormFormulaEvaluatorTests
 
         Assert.Null(FormFormulaEvaluator.Evaluate(node, Values));
     }
+
+    [Fact]
+    public void Sum_with_no_numeric_args_returns_zero()
+    {
+        var node = new FormFunctionCallNode
+        {
+            Function = FormFormulaFunction.Sum,
+            Arguments = [new FormConstantTextNode { Value = "x" }]
+        };
+
+        Assert.Equal(0m, FormFormulaEvaluator.Evaluate(node, Values));
+    }
+
+    [Fact]
+    public void Unknown_function_returns_null()
+    {
+        var node = new FormFunctionCallNode
+        {
+            Function = (FormFormulaFunction)999,
+            Arguments = [new FormConstantNumberNode { Value = 1 }]
+        };
+
+        Assert.Null(FormFormulaEvaluator.Evaluate(node, Values));
+    }
 }

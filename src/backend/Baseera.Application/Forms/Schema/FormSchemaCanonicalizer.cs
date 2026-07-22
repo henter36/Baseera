@@ -184,38 +184,37 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
             (f.IsCalculated ? 1 : 0) +
             (f.RepeatingTable?.Columns.Count(c => c.IsCalculated) ?? 0));
 
-    private static int CountConditions(FormSchemaDocument document)
+    private static int CountConditions(FormSchemaDocument document) =>
+        document.Pages.Sum(CountPageConditions);
+
+    private static int CountPageConditions(FormPageSchema page) =>
+        CountConditionGroup(page.VisibilityCondition) +
+        page.Sections.Sum(CountSectionConditions);
+
+    private static int CountSectionConditions(FormSectionSchema section) =>
+        CountConditionGroup(section.VisibilityCondition) +
+        section.Fields.Sum(CountFieldConditions);
+
+    private static int CountFieldConditions(FormFieldSchema field)
     {
-        var count = 0;
-        void Walk(FormConditionGroup? g)
+        var ownConditions =
+            CountConditionGroup(field.VisibilityCondition) +
+            CountConditionGroup(field.RequiredCondition);
+
+        var columnConditions =
+            field.RepeatingTable?.Columns.Sum(CountFieldConditions) ?? 0;
+
+        return ownConditions + columnConditions;
+    }
+
+    private static int CountConditionGroup(FormConditionGroup? group)
+    {
+        if (group is null)
         {
-            if (g is null) return;
-            count += g.Predicates.Count;
-            foreach (var n in g.Groups) Walk(n);
+            return 0;
         }
 
-        foreach (var page in document.Pages)
-        {
-            Walk(page.VisibilityCondition);
-            foreach (var section in page.Sections)
-            {
-                Walk(section.VisibilityCondition);
-                foreach (var field in section.Fields)
-                {
-                    Walk(field.VisibilityCondition);
-                    Walk(field.RequiredCondition);
-                    if (field.RepeatingTable is not null)
-                    {
-                        foreach (var col in field.RepeatingTable.Columns)
-                        {
-                            Walk(col.VisibilityCondition);
-                            Walk(col.RequiredCondition);
-                        }
-                    }
-                }
-            }
-        }
-
-        return count;
+        return group.Predicates.Count +
+               group.Groups.Sum(CountConditionGroup);
     }
 }
