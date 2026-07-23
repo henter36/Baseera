@@ -40,6 +40,8 @@ public sealed class FormResponseValidationResult
 
 public sealed class FormResponseValidator : IFormResponseValidator
 {
+    private const string ErrorSeverity = "Error";
+    private const string TypeMismatchCode = "TYPE_MISMATCH";
     public const int MaxAnswersJsonBytes = 512 * 1024;
     public const int MaxAnswerKeys = 500;
     public const int MaxRepeatingRows = 100;
@@ -59,20 +61,20 @@ public sealed class FormResponseValidator : IFormResponseValidator
         var issues = new List<FormResponseValidationIssueDto>();
         if (answers.ValueKind is not JsonValueKind.Object)
         {
-            issues.Add(Issue("MALFORMED", "$", null, "صيغة الإجابات غير صالحة.", "Error"));
+            issues.Add(Issue("MALFORMED", "$", null, "صيغة الإجابات غير صالحة.", ErrorSeverity));
             return Fail(issues);
         }
 
         var raw = answers.GetRawText();
         if (Encoding.UTF8.GetByteCount(raw) > MaxAnswersJsonBytes)
         {
-            issues.Add(Issue("PAYLOAD_TOO_LARGE", "$", null, "حجم الإجابات كبير جدًا.", "Error"));
+            issues.Add(Issue("PAYLOAD_TOO_LARGE", "$", null, "حجم الإجابات كبير جدًا.", ErrorSeverity));
             return Fail(issues);
         }
 
         var fields = FlattenFields(schema);
-        var provided = ParseAnswers(answers, fields, issues, mode);
-        if (issues.Any(i => i.Severity == "Error" && IsStructural(i.Code)))
+        var provided = ParseAnswers(answers, fields, issues);
+        if (issues.Any(i => i.Severity == ErrorSeverity && IsStructural(i.Code)))
         {
             return Fail(issues, provided);
         }
@@ -84,7 +86,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
 
         foreach (var field in fields.Values)
         {
-            ValidateField(field, values, visible, required, mode, attachmentsById, issues);
+            ValidateField(new FieldValidationContext(field, values, visible, required, mode, attachmentsById, issues));
         }
 
         var canonical = BuildCanonical(fields, values, visible);
@@ -95,7 +97,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
 
         return new FormResponseValidationResult
         {
-            IsValid = issues.All(i => i.Severity != "Error"),
+            IsValid = issues.All(i => i.Severity != ErrorSeverity),
             Issues = issues,
             CanonicalAnswersJson = canonical,
             AnswersHash = hash,
@@ -107,7 +109,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
     }
 
     private static bool IsStructural(string code) =>
-        code is "UNKNOWN_FIELD" or "DUPLICATE_KEY" or "TYPE_MISMATCH" or "READONLY_WRITE"
+        code is "UNKNOWN_FIELD" or "DUPLICATE_KEY" or TypeMismatchCode or "READONLY_WRITE"
             or "CALCULATED_WRITE" or "ATTACHMENT_UNAUTHORIZED" or "MALFORMED" or "PAYLOAD_TOO_LARGE";
 
     private static FormResponseValidationResult Fail(
@@ -142,8 +144,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
     private static Dictionary<string, object?> ParseAnswers(
         JsonElement answers,
         Dictionary<string, FormFieldSchema> fields,
-        List<FormResponseValidationIssueDto> issues,
-        FormResponseValidationMode mode)
+        List<FormResponseValidationIssueDto> issues)
     {
         var result = new Dictionary<string, object?>(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -153,19 +154,19 @@ public sealed class FormResponseValidator : IFormResponseValidator
             count++;
             if (count > MaxAnswerKeys)
             {
-                issues.Add(Issue("TOO_MANY_KEYS", "$", null, "عدد مفاتيح الإجابات يتجاوز الحد.", "Error"));
+                issues.Add(Issue("TOO_MANY_KEYS", "$", null, "عدد مفاتيح الإجابات يتجاوز الحد.", ErrorSeverity));
                 break;
             }
 
             if (!seen.Add(prop.Name))
             {
-                issues.Add(Issue("DUPLICATE_KEY", prop.Name, prop.Name, "مفتاح إجابة مكرر.", "Error"));
+                issues.Add(Issue("DUPLICATE_KEY", prop.Name, prop.Name, "مفتاح إجابة مكرر.", ErrorSeverity));
                 continue;
             }
 
             if (!fields.TryGetValue(prop.Name, out var field))
             {
-                issues.Add(Issue("UNKNOWN_FIELD", prop.Name, prop.Name, "حقل غير موجود في المخطط.", "Error"));
+                issues.Add(Issue("UNKNOWN_FIELD", prop.Name, prop.Name, "حقل غير موجود في المخطط.", ErrorSeverity));
                 continue;
             }
 
@@ -176,7 +177,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
                     prop.Name,
                     prop.Name,
                     "لا يمكن تعديل هذا الحقل من العميل.",
-                    "Error"));
+                    ErrorSeverity));
                 continue;
             }
 
@@ -216,7 +217,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
         }
         catch (InvalidCastException)
         {
-            issues.Add(Issue("TYPE_MISMATCH", field.Key, field.Key, "نوع القيمة غير مطابق للحقل.", "Error"));
+            issues.Add(Issue(TypeMismatchCode, field.Key, field.Key, "نوع القيمة غير مطابق للحقل.", ErrorSeverity));
             return null;
         }
     }
@@ -311,7 +312,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
         if (value.ValueKind != JsonValueKind.Array) throw new InvalidCastException(field.Key);
         if (value.GetArrayLength() > MaxRepeatingRows)
         {
-            issues.Add(Issue("TOO_MANY_ROWS", field.Key, field.Key, "عدد صفوف الجدول يتجاوز الحد.", "Error"));
+            issues.Add(Issue("TOO_MANY_ROWS", field.Key, field.Key, "عدد صفوف الجدول يتجاوز الحد.", ErrorSeverity));
             return [];
         }
 
@@ -324,7 +325,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
         {
             if (row.ValueKind != JsonValueKind.Object)
             {
-                issues.Add(Issue("TYPE_MISMATCH", $"{field.Key}[{index}]", field.Key, "صف غير صالح.", "Error"));
+                issues.Add(Issue(TypeMismatchCode, $"{field.Key}[{index}]", field.Key, "صف غير صالح.", ErrorSeverity));
                 index++;
                 continue;
             }
@@ -337,7 +338,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
                     var id = prop.Value.GetString() ?? string.Empty;
                     if (!rowIds.Add(id))
                     {
-                        issues.Add(Issue("DUPLICATE_ROW", $"{field.Key}[{index}]._rowId", field.Key, "معرّف صف مكرر.", "Error"));
+                        issues.Add(Issue("DUPLICATE_ROW", $"{field.Key}[{index}]._rowId", field.Key, "معرّف صف مكرر.", ErrorSeverity));
                     }
 
                     dict["_rowId"] = id;
@@ -346,7 +347,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
 
                 if (!colMap.ContainsKey(prop.Name))
                 {
-                    issues.Add(Issue("UNKNOWN_FIELD", $"{field.Key}[{index}].{prop.Name}", field.Key, "عمود غير معروف.", "Error"));
+                    issues.Add(Issue("UNKNOWN_FIELD", $"{field.Key}[{index}].{prop.Name}", field.Key, "عمود غير معروف.", ErrorSeverity));
                     continue;
                 }
 
@@ -416,47 +417,61 @@ public sealed class FormResponseValidator : IFormResponseValidator
         return required;
     }
 
-    private static void ValidateField(
-        FormFieldSchema field,
-        IReadOnlyDictionary<string, object?> values,
-        IReadOnlySet<string> visible,
-        IReadOnlySet<string> required,
-        FormResponseValidationMode mode,
-        IReadOnlyDictionary<Guid, Attachment>? attachmentsById,
-        List<FormResponseValidationIssueDto> issues)
+    private static void ValidateField(FieldValidationContext context)
     {
-        if (!visible.Contains(field.Key)) return;
-        values.TryGetValue(field.Key, out var value);
-        if (mode == FormResponseValidationMode.FullSubmit && required.Contains(field.Key) && IsEmptyValue(value))
-        {
-            issues.Add(Issue("REQUIRED", field.Key, field.Key, $"الحقل «{field.LabelAr}» مطلوب.", "Error"));
-            return;
-        }
-
+        if (!context.Visible.Contains(context.Field.Key)) return;
+        if (ValidateRequired(context)) return;
+        context.Values.TryGetValue(context.Field.Key, out var value);
         if (IsEmptyValue(value)) return;
-        switch (field.Type)
+
+        switch (context.Field.Type)
         {
             case FormFieldType.ShortText:
             case FormFieldType.LongText:
-                ValidateText(field, value, issues);
+                ValidateTextField(context, value);
                 break;
             case FormFieldType.Number:
             case FormFieldType.Percentage:
-                ValidateNumber(field, value, issues);
+                ValidateNumberField(context, value);
                 break;
             case FormFieldType.SingleChoice:
             case FormFieldType.MultipleChoice:
-                ValidateChoice(field, value, issues);
+                ValidateChoiceField(context, value);
+                break;
+            case FormFieldType.Date:
+            case FormFieldType.Time:
+            case FormFieldType.DateTime:
+                ValidateTemporalField(context, value);
                 break;
             case FormFieldType.File:
             case FormFieldType.Image:
             case FormFieldType.Signature:
-                ValidateAttachments(field, value, attachmentsById, issues);
+                ValidateFileField(context, value);
+                break;
+            case FormFieldType.OrganizationalReference:
+                ValidateOrgField(context, value);
                 break;
             case FormFieldType.RepeatingTable:
-                ValidateRepeating(field, value, mode, issues);
+                ValidateRepeatingField(context, value);
                 break;
         }
+    }
+
+    private static bool ValidateRequired(FieldValidationContext context)
+    {
+        if (context.Mode != FormResponseValidationMode.FullSubmit || !context.Required.Contains(context.Field.Key))
+        {
+            return false;
+        }
+
+        context.Values.TryGetValue(context.Field.Key, out var value);
+        if (!IsEmptyValue(value))
+        {
+            return false;
+        }
+
+        context.Issues.Add(Issue("REQUIRED", context.Field.Key, context.Field.Key, $"الحقل «{context.Field.LabelAr}» مطلوب.", ErrorSeverity));
+        return true;
     }
 
     private static bool IsEmptyValue(object? value) =>
@@ -466,21 +481,21 @@ public sealed class FormResponseValidator : IFormResponseValidator
         || (value is IReadOnlyList<Guid> g && g.Count == 0)
         || (value is IReadOnlyList<string> ss && ss.Count == 0);
 
-    private static void ValidateText(FormFieldSchema field, object? value, List<FormResponseValidationIssueDto> issues)
+    private static void ValidateTextField(FieldValidationContext context, object? value)
     {
         var text = value?.ToString() ?? string.Empty;
-        var settings = field.Text;
+        var settings = context.Field.Text;
         if (settings?.MinLength is int min && text.Length < min)
         {
-            issues.Add(Issue("MIN_LENGTH", field.Key, field.Key, $"الحد الأدنى للطول {min}.", "Error"));
+            context.Issues.Add(Issue("MIN_LENGTH", context.Field.Key, context.Field.Key, $"الحد الأدنى للطول {min}.", ErrorSeverity));
         }
 
         if (settings?.MaxLength is int max && text.Length > max)
         {
-            issues.Add(Issue("MAX_LENGTH", field.Key, field.Key, $"الحد الأقصى للطول {max}.", "Error"));
+            context.Issues.Add(Issue("MAX_LENGTH", context.Field.Key, context.Field.Key, $"الحد الأقصى للطول {max}.", ErrorSeverity));
         }
 
-        ValidateTextKind(field, text, settings, issues);
+        ValidateTextKind(context.Field, text, settings, context.Issues);
     }
 
     private static void ValidateTextKind(
@@ -502,7 +517,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
         };
         if (!ok)
         {
-            issues.Add(Issue("PATTERN", field.Key, field.Key, "صيغة النص غير صالحة.", "Error"));
+            issues.Add(Issue("PATTERN", field.Key, field.Key, "صيغة النص غير صالحة.", ErrorSeverity));
         }
     }
 
@@ -522,29 +537,29 @@ public sealed class FormResponseValidator : IFormResponseValidator
         }
     }
 
-    private static void ValidateNumber(FormFieldSchema field, object? value, List<FormResponseValidationIssueDto> issues)
+    private static void ValidateNumberField(FieldValidationContext context, object? value)
     {
         if (value is not decimal number
             && !(value is string s && decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out number)))
         {
-            issues.Add(Issue("TYPE_MISMATCH", field.Key, field.Key, "قيمة رقمية غير صالحة.", "Error"));
+            context.Issues.Add(Issue(TypeMismatchCode, context.Field.Key, context.Field.Key, "قيمة رقمية غير صالحة.", ErrorSeverity));
             return;
         }
 
-        var settings = field.Number;
+        var settings = context.Field.Number;
         if (settings?.Min is decimal min && number < min)
         {
-            issues.Add(Issue("MIN", field.Key, field.Key, $"الحد الأدنى {min.ToString(CultureInfo.InvariantCulture)}.", "Error"));
+            context.Issues.Add(Issue("MIN", context.Field.Key, context.Field.Key, $"الحد الأدنى {min.ToString(CultureInfo.InvariantCulture)}.", ErrorSeverity));
         }
 
         if (settings?.Max is decimal max && number > max)
         {
-            issues.Add(Issue("MAX", field.Key, field.Key, $"الحد الأقصى {max.ToString(CultureInfo.InvariantCulture)}.", "Error"));
+            context.Issues.Add(Issue("MAX", context.Field.Key, context.Field.Key, $"الحد الأقصى {max.ToString(CultureInfo.InvariantCulture)}.", ErrorSeverity));
         }
 
-        if (field.Type == FormFieldType.Percentage && (number < 0 || number > 100))
+        if (context.Field.Type == FormFieldType.Percentage && (number < 0 || number > 100))
         {
-            issues.Add(Issue("PERCENTAGE_RANGE", field.Key, field.Key, "النسبة يجب أن تكون بين 0 و100.", "Error"));
+            context.Issues.Add(Issue("PERCENTAGE_RANGE", context.Field.Key, context.Field.Key, "النسبة يجب أن تكون بين 0 و100.", ErrorSeverity));
         }
 
         if (settings?.DecimalPlaces is int places)
@@ -552,88 +567,98 @@ public sealed class FormResponseValidator : IFormResponseValidator
             var scaled = decimal.Round(number, places, MidpointRounding.AwayFromZero);
             if (scaled != number)
             {
-                issues.Add(Issue("DECIMAL_PLACES", field.Key, field.Key, $"عدد الخانات العشرية المسموح {places}.", "Error"));
+                context.Issues.Add(Issue("DECIMAL_PLACES", context.Field.Key, context.Field.Key, $"عدد الخانات العشرية المسموح {places}.", ErrorSeverity));
             }
         }
     }
 
-    private static void ValidateChoice(FormFieldSchema field, object? value, List<FormResponseValidationIssueDto> issues)
+    private static void ValidateChoiceField(FieldValidationContext context, object? value)
     {
-        var options = field.Choice?.Options?.Where(o => o.IsActive).Select(o => o.Value).ToHashSet(StringComparer.Ordinal)
+        var options = context.Field.Choice?.Options?.Where(o => o.IsActive).Select(o => o.Value).ToHashSet(StringComparer.Ordinal)
             ?? new HashSet<string>(StringComparer.Ordinal);
-        if (field.Type == FormFieldType.SingleChoice)
+        if (context.Field.Type == FormFieldType.SingleChoice)
         {
             var selected = value?.ToString() ?? string.Empty;
-            if (!options.Contains(selected) && !(field.Choice?.AllowOther == true))
+            if (!options.Contains(selected) && !(context.Field.Choice?.AllowOther == true))
             {
-                issues.Add(Issue("INVALID_OPTION", field.Key, field.Key, "خيار غير صالح.", "Error"));
+                context.Issues.Add(Issue("INVALID_OPTION", context.Field.Key, context.Field.Key, "خيار غير صالح.", ErrorSeverity));
             }
 
             return;
         }
 
         var list = value as IReadOnlyList<string> ?? [];
-        if (field.Choice?.MinSelections is int minSel && list.Count < minSel)
+        if (context.Field.Choice?.MinSelections is int minSel && list.Count < minSel)
         {
-            issues.Add(Issue("MIN_SELECTIONS", field.Key, field.Key, $"الحد الأدنى للاختيارات {minSel}.", "Error"));
+            context.Issues.Add(Issue("MIN_SELECTIONS", context.Field.Key, context.Field.Key, $"الحد الأدنى للاختيارات {minSel}.", ErrorSeverity));
         }
 
-        if (field.Choice?.MaxSelections is int maxSel && list.Count > maxSel)
+        if (context.Field.Choice?.MaxSelections is int maxSel && list.Count > maxSel)
         {
-            issues.Add(Issue("MAX_SELECTIONS", field.Key, field.Key, $"الحد الأقصى للاختيارات {maxSel}.", "Error"));
+            context.Issues.Add(Issue("MAX_SELECTIONS", context.Field.Key, context.Field.Key, $"الحد الأقصى للاختيارات {maxSel}.", ErrorSeverity));
         }
 
-        foreach (var item in list.Where(item => !options.Contains(item) && field.Choice?.AllowOther != true))
+        foreach (var item in list.Where(item => !options.Contains(item) && context.Field.Choice?.AllowOther != true))
         {
-            issues.Add(Issue("INVALID_OPTION", field.Key, field.Key, "خيار غير صالح.", "Error"));
+            context.Issues.Add(Issue("INVALID_OPTION", context.Field.Key, context.Field.Key, "خيار غير صالح.", ErrorSeverity));
         }
     }
 
-    private static void ValidateAttachments(
-        FormFieldSchema field,
-        object? value,
-        IReadOnlyDictionary<Guid, Attachment>? attachmentsById,
-        List<FormResponseValidationIssueDto> issues)
+    private static void ValidateTemporalField(FieldValidationContext context, object? value)
+    {
+        if (value is null) return;
+        if (value is not string)
+        {
+            context.Issues.Add(Issue(TypeMismatchCode, context.Field.Key, context.Field.Key, "قيمة زمنية غير صالحة.", ErrorSeverity));
+        }
+    }
+
+    private static void ValidateOrgField(FieldValidationContext context, object? value)
+    {
+        if (value is null) return;
+        if (value is not Guid)
+        {
+            context.Issues.Add(Issue(TypeMismatchCode, context.Field.Key, context.Field.Key, "مرجع تنظيمي غير صالح.", ErrorSeverity));
+        }
+    }
+
+    private static void ValidateFileField(FieldValidationContext context, object? value)
     {
         var ids = value as IReadOnlyList<Guid> ?? [];
-        var settings = field.File;
+        var settings = context.Field.File;
         if (settings is not null && ids.Count > settings.MaxFiles)
         {
-            issues.Add(Issue("MAX_FILES", field.Key, field.Key, $"الحد الأقصى للملفات {settings.MaxFiles}.", "Error"));
+            context.Issues.Add(Issue("MAX_FILES", context.Field.Key, context.Field.Key, $"الحد الأقصى للملفات {settings.MaxFiles}.", ErrorSeverity));
         }
 
-        if (attachmentsById is null) return;
+        if (context.AttachmentsById is null) return;
         foreach (var id in ids)
         {
-            if (!attachmentsById.TryGetValue(id, out var attachment))
+            if (!context.AttachmentsById.TryGetValue(id, out var attachment))
             {
-                issues.Add(Issue("ATTACHMENT_UNAUTHORIZED", field.Key, field.Key, "مرفق غير مصرح.", "Error"));
+                context.Issues.Add(Issue("ATTACHMENT_UNAUTHORIZED", context.Field.Key, context.Field.Key, "مرفق غير مصرح.", ErrorSeverity));
                 continue;
             }
 
             if (attachment.ScanStatus is AttachmentScanStatus.PendingScan or AttachmentScanStatus.Quarantined or AttachmentScanStatus.Rejected)
             {
-                issues.Add(Issue("ATTACHMENT_SCAN", field.Key, field.Key, "حالة فحص المرفق غير مقبولة للإرسال.", "Error"));
+                context.Issues.Add(Issue("ATTACHMENT_SCAN", context.Field.Key, context.Field.Key, "حالة فحص المرفق غير مقبولة للإرسال.", ErrorSeverity));
             }
         }
     }
 
-    private static void ValidateRepeating(
-        FormFieldSchema field,
-        object? value,
-        FormResponseValidationMode mode,
-        List<FormResponseValidationIssueDto> issues)
+    private static void ValidateRepeatingField(FieldValidationContext context, object? value)
     {
         var rows = value as IReadOnlyList<Dictionary<string, object?>> ?? [];
-        var settings = field.RepeatingTable;
-        if (settings is not null && mode == FormResponseValidationMode.FullSubmit && rows.Count < settings.MinRows)
+        var settings = context.Field.RepeatingTable;
+        if (settings is not null && context.Mode == FormResponseValidationMode.FullSubmit && rows.Count < settings.MinRows)
         {
-            issues.Add(Issue("MIN_ROWS", field.Key, field.Key, $"الحد الأدنى للصفوف {settings.MinRows}.", "Error"));
+            context.Issues.Add(Issue("MIN_ROWS", context.Field.Key, context.Field.Key, $"الحد الأدنى للصفوف {settings.MinRows}.", ErrorSeverity));
         }
 
         if (settings is not null && rows.Count > settings.MaxRows)
         {
-            issues.Add(Issue("MAX_ROWS", field.Key, field.Key, $"الحد الأقصى للصفوف {settings.MaxRows}.", "Error"));
+            context.Issues.Add(Issue("MAX_ROWS", context.Field.Key, context.Field.Key, $"الحد الأقصى للصفوف {settings.MaxRows}.", ErrorSeverity));
         }
     }
 
@@ -679,4 +704,13 @@ public sealed class FormResponseValidator : IFormResponseValidator
         string messageAr,
         string severity) =>
         new(code, path, fieldKey, messageAr, severity);
+
+    private sealed record FieldValidationContext(
+        FormFieldSchema Field,
+        IReadOnlyDictionary<string, object?> Values,
+        IReadOnlySet<string> Visible,
+        IReadOnlySet<string> Required,
+        FormResponseValidationMode Mode,
+        IReadOnlyDictionary<Guid, Attachment>? AttachmentsById,
+        List<FormResponseValidationIssueDto> Issues);
 }

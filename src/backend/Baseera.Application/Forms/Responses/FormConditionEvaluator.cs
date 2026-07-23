@@ -1,6 +1,8 @@
 namespace Baseera.Application.Forms.Responses;
 
+using System.Collections;
 using System.Globalization;
+using System.Text.Json;
 using Baseera.Domain.Forms.Schema;
 
 public static class FormConditionEvaluator
@@ -50,35 +52,89 @@ public static class FormConditionEvaluator
         };
     }
 
-    private static bool IsEmpty(object? value) =>
-        value is null
-        || (value is string s && string.IsNullOrWhiteSpace(s))
-        || (value is IEnumerable<object?> e && !e.Any())
-        || (value is System.Text.Json.JsonElement je && IsJsonEmpty(je));
+    private static IReadOnlyList<object?>? TryNormalizeCollection(object? value)
+    {
+        if (value is null || value is string)
+        {
+            return null;
+        }
 
-    private static bool IsJsonEmpty(System.Text.Json.JsonElement je) =>
-        je.ValueKind is System.Text.Json.JsonValueKind.Null or System.Text.Json.JsonValueKind.Undefined
-        || (je.ValueKind == System.Text.Json.JsonValueKind.String && string.IsNullOrWhiteSpace(je.GetString()))
-        || (je.ValueKind == System.Text.Json.JsonValueKind.Array && je.GetArrayLength() == 0);
+        if (value is JsonElement je)
+        {
+            if (je.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            return je.EnumerateArray().Select(NormalizeJsonElement).Cast<object?>().ToList();
+        }
+
+        if (value is IEnumerable enumerable and not IEnumerable<char>)
+        {
+            var list = new List<object?>();
+            foreach (var item in enumerable)
+            {
+                list.Add(item);
+            }
+
+            return list;
+        }
+
+        return null;
+    }
+
+    private static object? NormalizeJsonElement(JsonElement je) => je.ValueKind switch
+    {
+        JsonValueKind.String => je.GetString(),
+        JsonValueKind.Number => je.TryGetDecimal(out var d) ? d : je.GetRawText(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Null => null,
+        _ => je.GetRawText()
+    };
+
+    private static bool IsEmpty(object? value)
+    {
+        if (value is null) return true;
+        if (value is string s) return string.IsNullOrWhiteSpace(s);
+        if (value is JsonElement je)
+        {
+            return je.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
+                || (je.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(je.GetString()))
+                || (je.ValueKind == JsonValueKind.Array && je.GetArrayLength() == 0);
+        }
+
+        var collection = TryNormalizeCollection(value);
+        return collection is { Count: 0 };
+    }
 
     private static bool IsTruthy(object? value) => value switch
     {
         bool b => b,
         string s => bool.TryParse(s, out var parsed) && parsed,
-        System.Text.Json.JsonElement je when je.ValueKind == System.Text.Json.JsonValueKind.True => true,
-        System.Text.Json.JsonElement je when je.ValueKind == System.Text.Json.JsonValueKind.False => false,
+        JsonElement je when je.ValueKind == JsonValueKind.True => true,
+        JsonElement je when je.ValueKind == JsonValueKind.False => false,
         _ => false
     };
 
-    private static bool EqualsValue(object? raw, string? expected) =>
-        string.Equals(Normalize(raw), expected ?? string.Empty, StringComparison.Ordinal);
+    private static bool EqualsValue(object? raw, string? expected)
+    {
+        var collection = TryNormalizeCollection(raw);
+        if (collection is not null)
+        {
+            return collection.Any(x => string.Equals(Normalize(x), expected ?? string.Empty, StringComparison.Ordinal));
+        }
+
+        return string.Equals(Normalize(raw), expected ?? string.Empty, StringComparison.Ordinal);
+    }
 
     private static bool ContainsValue(object? raw, string? expected)
     {
         if (expected is null) return false;
-        if (raw is IEnumerable<object?> list && raw is not string)
+        var collection = TryNormalizeCollection(raw);
+        if (collection is not null)
         {
-            return list.Any(x => string.Equals(Normalize(x), expected, StringComparison.Ordinal));
+            return collection.Any(x => string.Equals(Normalize(x), expected, StringComparison.Ordinal));
         }
 
         return Normalize(raw).Contains(expected, StringComparison.Ordinal);
@@ -87,6 +143,12 @@ public static class FormConditionEvaluator
     private static bool InValues(object? raw, List<string>? values)
     {
         if (values is null || values.Count == 0) return false;
+        var collection = TryNormalizeCollection(raw);
+        if (collection is not null)
+        {
+            return collection.Any(item => values.Any(v => string.Equals(v, Normalize(item), StringComparison.Ordinal)));
+        }
+
         var normalized = Normalize(raw);
         return values.Any(v => string.Equals(v, normalized, StringComparison.Ordinal));
     }
@@ -114,12 +176,12 @@ public static class FormConditionEvaluator
         string s => s,
         bool b => b ? "true" : "false",
         IFormattable f => f.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty,
-        System.Text.Json.JsonElement je => je.ValueKind switch
+        JsonElement je => je.ValueKind switch
         {
-            System.Text.Json.JsonValueKind.String => je.GetString() ?? string.Empty,
-            System.Text.Json.JsonValueKind.Number => je.GetRawText(),
-            System.Text.Json.JsonValueKind.True => "true",
-            System.Text.Json.JsonValueKind.False => "false",
+            JsonValueKind.String => je.GetString() ?? string.Empty,
+            JsonValueKind.Number => je.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
             _ => je.ToString()
         },
         _ => value.ToString() ?? string.Empty
