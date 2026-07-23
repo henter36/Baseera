@@ -1,11 +1,19 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, type CreateFormCampaignRequest, type FormCampaignScheduleRequest, type FormCampaignTargetRequest } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import { listQueryErrorMessage } from '../../shared/listPageUtils'
 
 const STEPS = ['الإصدار', 'البيانات', 'الاستهداف', 'الاستثناءات', 'الجدولة', 'المعاينة', 'التأكيد'] as const
+
+function FieldLabel({ htmlFor, children }: { htmlFor: string; children: ReactNode }) {
+  return (
+    <label htmlFor={htmlFor}>
+      <span>{children}</span>
+    </label>
+  )
+}
 
 export function FormCampaignWizardPage() {
   const canManage = usePermission('Forms.ManageCampaigns')
@@ -130,64 +138,109 @@ export function FormCampaignWizardPage() {
 
       {step === 0 && (
         <div className="form-grid">
-          <label>النموذج
-            <select value={formDefinitionId} onChange={(e) => { setFormDefinitionId(e.target.value); setFormVersionId('') }}>
+          <div>
+            <FieldLabel htmlFor="campaign-form-definition">النموذج</FieldLabel>
+            <select
+              id="campaign-form-definition"
+              value={formDefinitionId}
+              onChange={(e) => { setFormDefinitionId(e.target.value); setFormVersionId('') }}
+            >
               <option value="">اختر…</option>
               {(forms.data?.items ?? []).map((f) => <option key={f.id} value={f.id}>{f.nameAr}</option>)}
             </select>
-          </label>
-          <label>إصدار مقفل
-            <select value={formVersionId} onChange={(e) => setFormVersionId(e.target.value)}>
+          </div>
+          <div>
+            <FieldLabel htmlFor="campaign-form-version">إصدار مقفل</FieldLabel>
+            <select
+              id="campaign-form-version"
+              value={formVersionId}
+              onChange={(e) => setFormVersionId(e.target.value)}
+            >
               <option value="">اختر…</option>
               {lockedVersions.map((v) => <option key={v.id} value={v.id}>v{v.versionNumber}</option>)}
             </select>
-          </label>
+          </div>
         </div>
       )}
 
       {step === 1 && (
         <div className="form-grid">
-          <label>الرمز<input value={code} onChange={(e) => setCode(e.target.value)} /></label>
-          <label>الاسم العربي<input value={nameAr} onChange={(e) => setNameAr(e.target.value)} /></label>
+          <div>
+            <FieldLabel htmlFor="campaign-code">الرمز</FieldLabel>
+            <input id="campaign-code" value={code} onChange={(e) => setCode(e.target.value)} />
+          </div>
+          <div>
+            <FieldLabel htmlFor="campaign-name-ar">الاسم العربي</FieldLabel>
+            <input id="campaign-name-ar" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+          </div>
         </div>
       )}
 
       {step === 2 && (
         <div className="form-grid">
-          <label>نمط الاستهداف
-            <select value={ruleType} onChange={(e) => setRuleType(Number(e.target.value))}>
+          <div>
+            <FieldLabel htmlFor="campaign-rule-type">نمط الاستهداف</FieldLabel>
+            <select
+              id="campaign-rule-type"
+              value={ruleType}
+              onChange={(e) => setRuleType(Number(e.target.value))}
+            >
               <option value={0}>جميع المواقع</option>
               <option value={1}>مناطق محددة</option>
               <option value={2}>مواقع محددة</option>
               <option value={3}>مجموعة ديناميكية</option>
             </select>
-          </label>
+          </div>
           {ruleType === 1 && (
-            <label>المناطق
-              <select multiple value={regionIds} onChange={(e) => setRegionIds(Array.from(e.target.selectedOptions).map((o) => o.value))}>
+            <div>
+              <FieldLabel htmlFor="campaign-regions">المناطق</FieldLabel>
+              <select
+                id="campaign-regions"
+                multiple
+                value={regionIds}
+                onChange={(e) => setRegionIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+              >
                 {(regions.data?.items ?? []).map((r) => <option key={r.facilityId} value={r.facilityId}>{r.nameAr}</option>)}
               </select>
-            </label>
+            </div>
           )}
           {ruleType === 2 && (
-            <label>المواقع
-              <select multiple value={facilityIds} onChange={(e) => setFacilityIds(Array.from(e.target.selectedOptions).map((o) => o.value))}>
+            <div>
+              <FieldLabel htmlFor="campaign-facilities">المواقع</FieldLabel>
+              <select
+                id="campaign-facilities"
+                multiple
+                value={facilityIds}
+                onChange={(e) => setFacilityIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+              >
                 {(facilities.data?.items ?? []).map((f) => <option key={f.facilityId} value={f.facilityId}>{f.nameAr}</option>)}
               </select>
-            </label>
+            </div>
           )}
         </div>
       )}
 
       {step === 3 && (
         <div className="form-grid">
-          <label>موقع مستثنى
-            <select value={exclusionFacilityId} onChange={(e) => setExclusionFacilityId(e.target.value)}>
+          <div>
+            <FieldLabel htmlFor="campaign-exclusion-facility">موقع مستثنى</FieldLabel>
+            <select
+              id="campaign-exclusion-facility"
+              value={exclusionFacilityId}
+              onChange={(e) => setExclusionFacilityId(e.target.value)}
+            >
               <option value="">اختر…</option>
               {(facilities.data?.items ?? []).map((f) => <option key={f.facilityId} value={f.facilityId}>{f.nameAr}</option>)}
             </select>
-          </label>
-          <label>سبب الاستثناء<input value={exclusionReason} onChange={(e) => setExclusionReason(e.target.value)} /></label>
+          </div>
+          <div>
+            <FieldLabel htmlFor="campaign-exclusion-reason">سبب الاستثناء</FieldLabel>
+            <input
+              id="campaign-exclusion-reason"
+              value={exclusionReason}
+              onChange={(e) => setExclusionReason(e.target.value)}
+            />
+          </div>
           <button type="button" onClick={() => {
             if (!exclusionFacilityId || !exclusionReason.trim()) return
             setExclusions((prev) => [...prev, { facilityId: exclusionFacilityId, reason: exclusionReason.trim() }])
@@ -200,27 +253,79 @@ export function FormCampaignWizardPage() {
 
       {step === 4 && (
         <div className="form-grid">
-          <label>التكرار
-            <select value={recurrenceKind} onChange={(e) => setRecurrenceKind(Number(e.target.value))}>
+          <div>
+            <FieldLabel htmlFor="campaign-recurrence">التكرار</FieldLabel>
+            <select
+              id="campaign-recurrence"
+              value={recurrenceKind}
+              onChange={(e) => setRecurrenceKind(Number(e.target.value))}
+            >
               <option value={0}>مرة واحدة</option>
               <option value={1}>يومي</option>
               <option value={2}>أسبوعي</option>
               <option value={3}>شهري</option>
             </select>
-          </label>
-          <label>أول فتح محلي<input type="datetime-local" value={firstOpenAtLocal} onChange={(e) => setFirstOpenAtLocal(e.target.value)} /></label>
-          <label>نافذة الاستجابة (دقيقة)<input type="number" value={responseWindowMinutes} onChange={(e) => setResponseWindowMinutes(Number(e.target.value))} /></label>
-          <label>مهلة السماح<input type="number" value={gracePeriodMinutes} onChange={(e) => setGracePeriodMinutes(Number(e.target.value))} /></label>
-          <label>الإغلاق بعد<input type="number" value={closeAfterMinutes} onChange={(e) => setCloseAfterMinutes(Number(e.target.value))} /></label>
+          </div>
+          <div>
+            <FieldLabel htmlFor="campaign-first-open">أول فتح محلي</FieldLabel>
+            <input
+              id="campaign-first-open"
+              type="datetime-local"
+              value={firstOpenAtLocal}
+              onChange={(e) => setFirstOpenAtLocal(e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="campaign-response-window">نافذة الاستجابة (دقيقة)</FieldLabel>
+            <input
+              id="campaign-response-window"
+              type="number"
+              value={responseWindowMinutes}
+              onChange={(e) => setResponseWindowMinutes(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="campaign-grace">مهلة السماح</FieldLabel>
+            <input
+              id="campaign-grace"
+              type="number"
+              value={gracePeriodMinutes}
+              onChange={(e) => setGracePeriodMinutes(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <FieldLabel htmlFor="campaign-close-after">الإغلاق بعد</FieldLabel>
+            <input
+              id="campaign-close-after"
+              type="number"
+              value={closeAfterMinutes}
+              onChange={(e) => setCloseAfterMinutes(Number(e.target.value))}
+            />
+          </div>
           {recurrenceKind === 3 && (
             <>
-              <label>يوم الشهر<input type="number" min={1} max={31} value={dayOfMonth} onChange={(e) => setDayOfMonth(Number(e.target.value))} /></label>
-              <label>سياسة اليوم المفقود
-                <select value={missingDayPolicy} onChange={(e) => setMissingDayPolicy(Number(e.target.value))}>
+              <div>
+                <FieldLabel htmlFor="campaign-day-of-month">يوم الشهر</FieldLabel>
+                <input
+                  id="campaign-day-of-month"
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={dayOfMonth}
+                  onChange={(e) => setDayOfMonth(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <FieldLabel htmlFor="campaign-missing-day-policy">سياسة اليوم المفقود</FieldLabel>
+                <select
+                  id="campaign-missing-day-policy"
+                  value={missingDayPolicy}
+                  onChange={(e) => setMissingDayPolicy(Number(e.target.value))}
+                >
                   <option value={0}>آخر يوم في الشهر</option>
                   <option value={1}>تخطي الاستحقاق</option>
                 </select>
-              </label>
+              </div>
             </>
           )}
         </div>

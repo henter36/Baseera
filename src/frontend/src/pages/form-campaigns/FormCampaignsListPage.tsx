@@ -23,6 +23,12 @@ export function FormCampaignsListPage() {
     return <div className="error" role="alert">ليست لديك صلاحية عرض حملات النماذج.</div>
   }
 
+  const items = query.data?.items ?? []
+  const showEmpty = query.isSuccess && items.length === 0
+  const showTable = query.isSuccess && items.length > 0
+  const totalCount = query.data?.totalCount ?? 0
+  const pageSize = query.data?.pageSize ?? 20
+
   return (
     <div className="panel" dir="rtl">
       <div className="page-header">
@@ -34,17 +40,23 @@ export function FormCampaignsListPage() {
       </div>
 
       <div className="toolbar">
-        <label>
-          بحث
-          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
-        </label>
+        <div>
+          <label htmlFor="form-campaign-search">
+            <span>بحث</span>
+          </label>
+          <input
+            id="form-campaign-search"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+          />
+        </div>
       </div>
 
       {query.isLoading && <div className="loading">جاري التحميل…</div>}
       {query.isError && <div className="error" role="alert">{listQueryErrorMessage(query.error, 'ليست لديك صلاحية.', 'تعذر إكمال العملية.')}</div>}
-      {query.data && query.data.items.length === 0 && <div className="empty">لا توجد حملات.</div>}
+      {showEmpty && <div className="empty">لا توجد حملات.</div>}
 
-      {query.data && query.data.items.length > 0 && (
+      {showTable && (
         <table>
           <thead>
             <tr>
@@ -59,7 +71,7 @@ export function FormCampaignsListPage() {
             </tr>
           </thead>
           <tbody>
-            {query.data.items.map((item) => (
+            {items.map((item) => (
               <tr key={item.id}>
                 <td><Link to={`/form-campaigns/${item.id}`}>{item.nameAr}</Link></td>
                 <td>{item.formNameAr}</td>
@@ -75,11 +87,11 @@ export function FormCampaignsListPage() {
         </table>
       )}
 
-      {query.data && query.data.totalCount > query.data.pageSize && (
+      {query.isSuccess && totalCount > pageSize && (
         <div className="toolbar">
           <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>السابق</button>
           <span>صفحة {page}</span>
-          <button type="button" disabled={page * query.data.pageSize >= query.data.totalCount} onClick={() => setPage((p) => p + 1)}>التالي</button>
+          <button type="button" disabled={page * pageSize >= totalCount} onClick={() => setPage((p) => p + 1)}>التالي</button>
         </div>
       )}
     </div>
