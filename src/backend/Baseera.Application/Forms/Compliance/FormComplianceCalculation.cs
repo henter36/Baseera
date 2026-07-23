@@ -79,6 +79,18 @@ internal sealed class FormComplianceFactRow
     public bool IsCompleted { get; init; }
 }
 
+internal sealed class FormComplianceResponseProjection
+{
+    public required FormComplianceFactRow FactRow { get; init; }
+    public Guid? ResponseId { get; init; }
+    public DateTimeOffset? LastSavedAtUtc { get; init; }
+    public DateTimeOffset? SubmittedAtUtc { get; init; }
+    public Guid? LastSavedByUserId { get; init; }
+    public Guid? SubmittedByUserId { get; init; }
+    public string? LastSavedByUserName { get; init; }
+    public string? SubmittedByUserName { get; init; }
+}
+
 internal sealed record FormCompliancePage(int Page, int PageSize, string? Search);
 internal sealed record PreviousCycleLookup(Guid CurrentCycleId, Guid CampaignId, int PreviousSequenceNumber);
 internal sealed record ComplianceStatusBucket(
