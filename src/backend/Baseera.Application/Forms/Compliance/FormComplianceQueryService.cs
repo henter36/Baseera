@@ -476,18 +476,28 @@ public sealed class FormComplianceQueryService(
         IQueryable<FormFacilityAssignment> assignments,
         DateTimeOffset nowUtc)
     {
-        var joined = assignments.LeftJoin(
+        var joined = BuildComplianceJoin(assignments);
+        var facts = BuildComplianceFacts(joined);
+        return BuildComplianceSourceRows(facts, nowUtc);
+    }
+
+    private IQueryable<FormComplianceJoinRow> BuildComplianceJoin(
+        IQueryable<FormFacilityAssignment> assignments) =>
+        assignments.LeftJoin(
             db.FormResponses,
             assignment => assignment.Id,
             response => response.AssignmentId,
-            (assignment, response) => new
+            (assignment, response) => new FormComplianceJoinRow
             {
                 Assignment = assignment,
                 Response = response
             });
 
+    private static IQueryable<FormComplianceFactRow> BuildComplianceFacts(
+        IQueryable<FormComplianceJoinRow> source)
+    {
         return
-            from row in joined
+            from row in source
             let assignment = row.Assignment
             let response = row.Response
             let completionBasis = assignment.Campaign.ResponsePolicy == null
@@ -511,49 +521,61 @@ public sealed class FormComplianceQueryService(
             let isCompleted = completionBasis == FormCompletionBasis.Submitted
                 ? submittedCompletion
                 : approvedCompletion
-            let lastSavedByUser = response == null ? null : response.LastSavedByUser
-            let submittedByUser = response == null ? null : response.SubmittedByUser
-            select new FormComplianceSourceRow
+            select new FormComplianceFactRow
             {
-                AssignmentId = assignment.Id,
-                CampaignId = assignment.CampaignId,
-                FormDefinitionId = assignment.Campaign.FormDefinitionId,
-                CycleId = assignment.CycleId,
-                FacilityId = assignment.FacilityId,
-                RegionIdAtAssignment = assignment.RegionIdAtAssignment,
-                FacilityCodeAtAssignment = assignment.FacilityCodeAtAssignment,
-                FacilityNameAtAssignment = assignment.FacilityNameArAtAssignment,
-                RegionNameAtAssignment = assignment.RegionNameArAtAssignment,
-                CampaignCode = assignment.Campaign.Code,
-                CampaignNameAr = assignment.Campaign.NameAr,
-                IsAvailable = assignment.IsAvailable,
-                UnavailableReason = assignment.UnavailableReason,
-                CycleStatus = assignment.Cycle.Status,
+                Assignment = assignment,
+                Response = response,
                 CompletionBasis = completionBasis,
                 ResponseStatus = responseStatus,
-                ResponseId = response == null ? null : response.Id,
-                OpenAtUtc = assignment.Cycle.OpenAtUtc,
-                DueAtUtc = assignment.Cycle.DueAtUtc,
-                CloseAtUtc = assignment.Cycle.CloseAtUtc,
-                ScheduledOccurrenceUtc = assignment.Cycle.ScheduledOccurrenceUtc,
-                SequenceNumber = assignment.Cycle.SequenceNumber,
-                OccurrenceKey = assignment.Cycle.OccurrenceKey,
                 EffectiveDueAtUtc = effectiveDueAtUtc,
                 CompletionAtUtc = completionAtUtc,
-                LastSavedAtUtc = response == null ? null : response.LastSavedAtUtc,
-                SubmittedAtUtc = response == null ? null : response.SubmittedAtUtc,
-                LastSavedByUserId = response == null ? null : response.LastSavedByUserId,
-                SubmittedByUserId = response == null ? null : response.SubmittedByUserId,
-                LastSavedByUserName = lastSavedByUser == null
-                    ? null
-                    : lastSavedByUser.DisplayNameAr,
-                SubmittedByUserName = submittedByUser == null
-                    ? null
-                    : submittedByUser.DisplayNameAr,
-                IsCompleted = isCompleted,
-                IsOverdue = assignment.IsAvailable && !isCompleted && nowUtc > effectiveDueAtUtc
+                IsCompleted = isCompleted
             };
     }
+
+    private static IQueryable<FormComplianceSourceRow> BuildComplianceSourceRows(
+        IQueryable<FormComplianceFactRow> source,
+        DateTimeOffset nowUtc) =>
+        source.Select(row => new FormComplianceSourceRow
+            {
+                AssignmentId = row.Assignment.Id,
+                CampaignId = row.Assignment.CampaignId,
+                FormDefinitionId = row.Assignment.Campaign.FormDefinitionId,
+                CycleId = row.Assignment.CycleId,
+                FacilityId = row.Assignment.FacilityId,
+                RegionIdAtAssignment = row.Assignment.RegionIdAtAssignment,
+                FacilityCodeAtAssignment = row.Assignment.FacilityCodeAtAssignment,
+                FacilityNameAtAssignment = row.Assignment.FacilityNameArAtAssignment,
+                RegionNameAtAssignment = row.Assignment.RegionNameArAtAssignment,
+                CampaignCode = row.Assignment.Campaign.Code,
+                CampaignNameAr = row.Assignment.Campaign.NameAr,
+                IsAvailable = row.Assignment.IsAvailable,
+                UnavailableReason = row.Assignment.UnavailableReason,
+                CycleStatus = row.Assignment.Cycle.Status,
+                CompletionBasis = row.CompletionBasis,
+                ResponseStatus = row.ResponseStatus,
+                ResponseId = row.Response == null ? null : row.Response.Id,
+                OpenAtUtc = row.Assignment.Cycle.OpenAtUtc,
+                DueAtUtc = row.Assignment.Cycle.DueAtUtc,
+                CloseAtUtc = row.Assignment.Cycle.CloseAtUtc,
+                ScheduledOccurrenceUtc = row.Assignment.Cycle.ScheduledOccurrenceUtc,
+                SequenceNumber = row.Assignment.Cycle.SequenceNumber,
+                OccurrenceKey = row.Assignment.Cycle.OccurrenceKey,
+                EffectiveDueAtUtc = row.EffectiveDueAtUtc,
+                CompletionAtUtc = row.CompletionAtUtc,
+                LastSavedAtUtc = row.Response == null ? null : row.Response.LastSavedAtUtc,
+                SubmittedAtUtc = row.Response == null ? null : row.Response.SubmittedAtUtc,
+                LastSavedByUserId = row.Response == null ? null : row.Response.LastSavedByUserId,
+                SubmittedByUserId = row.Response == null ? null : row.Response.SubmittedByUserId,
+                LastSavedByUserName = row.Response == null || row.Response.LastSavedByUser == null
+                    ? null
+                    : row.Response.LastSavedByUser.DisplayNameAr,
+                SubmittedByUserName = row.Response == null || row.Response.SubmittedByUser == null
+                    ? null
+                    : row.Response.SubmittedByUser.DisplayNameAr,
+                IsCompleted = row.IsCompleted,
+                IsOverdue = row.Assignment.IsAvailable && !row.IsCompleted && nowUtc > row.EffectiveDueAtUtc
+            });
 
     private static IQueryable<FormComplianceSourceRow> ApplyCalculatedFilters(
         IQueryable<FormComplianceSourceRow> source,

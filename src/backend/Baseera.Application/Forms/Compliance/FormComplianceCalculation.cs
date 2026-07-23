@@ -62,6 +62,23 @@ internal sealed class FormComplianceSourceRow
     public bool IsOverdue { get; init; }
 }
 
+internal sealed class FormComplianceJoinRow
+{
+    public required FormFacilityAssignment Assignment { get; init; }
+    public FormResponse? Response { get; init; }
+}
+
+internal sealed class FormComplianceFactRow
+{
+    public required FormFacilityAssignment Assignment { get; init; }
+    public FormResponse? Response { get; init; }
+    public FormCompletionBasis CompletionBasis { get; init; }
+    public FormResponseStatus? ResponseStatus { get; init; }
+    public DateTimeOffset EffectiveDueAtUtc { get; init; }
+    public DateTimeOffset? CompletionAtUtc { get; init; }
+    public bool IsCompleted { get; init; }
+}
+
 internal sealed record FormCompliancePage(int Page, int PageSize, string? Search);
 internal sealed record PreviousCycleLookup(Guid CurrentCycleId, Guid CampaignId, int PreviousSequenceNumber);
 internal sealed record ComplianceStatusBucket(
