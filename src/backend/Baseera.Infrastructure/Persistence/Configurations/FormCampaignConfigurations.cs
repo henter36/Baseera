@@ -122,6 +122,7 @@ internal sealed class FormFacilityAssignmentConfiguration : IEntityTypeConfigura
     {
         builder.ToTable("FormFacilityAssignments");
         builder.HasKey(x => x.Id);
+        builder.HasAlternateKey(x => new { x.Id, x.CampaignId, x.CycleId, x.FacilityId });
         builder.Property(x => x.FacilityCodeAtAssignment).HasMaxLength(80).IsRequired();
         builder.Property(x => x.FacilityNameArAtAssignment).HasMaxLength(200).IsRequired();
         builder.Property(x => x.RegionNameArAtAssignment).HasMaxLength(200).IsRequired();

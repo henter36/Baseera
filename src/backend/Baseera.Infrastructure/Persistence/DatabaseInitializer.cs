@@ -291,6 +291,8 @@ public static class DatabaseInitializer
             PermissionCodes.OrganizationView,
             PermissionCodes.AttachmentsUpload,
             PermissionCodes.AttachmentsDownload,
+            PermissionCodes.FormsRespond,
+            PermissionCodes.FormsViewResponses,
             PermissionCodes.NotesView,
             PermissionCodes.NotesCreate,
             PermissionCodes.NotesUpdate,
@@ -350,13 +352,22 @@ public static class DatabaseInitializer
         [
             PermissionCodes.FormsView,
             PermissionCodes.FormsMonitorRegion,
-            PermissionCodes.FormsViewCampaignAssignments
+            PermissionCodes.FormsViewCampaignAssignments,
+            PermissionCodes.FormsViewResponses,
+            PermissionCodes.FormsReviewResponses,
+            PermissionCodes.FormsApproveResponses,
+            PermissionCodes.FormsCloseResponses
         ];
         string[] formsHqMonitor =
         [
             PermissionCodes.FormsView,
             PermissionCodes.FormsMonitorHeadquarters,
-            PermissionCodes.FormsViewCampaignAssignments
+            PermissionCodes.FormsViewCampaignAssignments,
+            PermissionCodes.FormsViewResponses,
+            PermissionCodes.FormsReviewResponses,
+            PermissionCodes.FormsApproveResponses,
+            PermissionCodes.FormsCloseResponses,
+            PermissionCodes.FormsViewSensitiveResponses
         ];
         string[] formsAnalyst = [PermissionCodes.FormsView, PermissionCodes.FormsAnalyze];
         string[] formsAuditorView = [PermissionCodes.FormsView, PermissionCodes.FormsViewCampaignAssignments];
@@ -391,6 +402,10 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsStartWork,
             PermissionCodes.CorrectiveActionsSubmitForVerification,
             PermissionCodes.CorrectiveActionsCancel,
+            PermissionCodes.FormsRespond,
+            PermissionCodes.FormsViewResponses,
+            PermissionCodes.AttachmentsUpload,
+            PermissionCodes.AttachmentsDownload,
             ownNotifications);
 
         await db.SaveChangesAsync(cancellationToken);
@@ -833,6 +848,10 @@ public static class DatabaseInitializer
             (PermissionCodes.FormsManageRetention, "إدارة احتفاظ النماذج", FormsModule),
             (PermissionCodes.FormsPublish, "نشر نموذج", FormsModule),
             (PermissionCodes.FormsRespond, "الرد على نموذج", FormsModule),
+            (PermissionCodes.FormsViewResponses, "عرض ردود النماذج", FormsModule),
+            (PermissionCodes.FormsReviewResponses, "مراجعة ردود النماذج", FormsModule),
+            (PermissionCodes.FormsCloseResponses, "إغلاق ردود النماذج", FormsModule),
+            (PermissionCodes.FormsViewSensitiveResponses, "عرض الردود الحساسة", FormsModule),
             (PermissionCodes.FormsMonitorRegion, "مراقبة نماذج المنطقة", FormsModule),
             (PermissionCodes.FormsMonitorHeadquarters, "مراقبة نماذج المقر", FormsModule),
             (PermissionCodes.FormsApproveResponses, "اعتماد ردود النماذج", FormsModule),

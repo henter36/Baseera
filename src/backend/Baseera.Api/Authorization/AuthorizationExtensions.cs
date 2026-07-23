@@ -89,7 +89,14 @@ public static class AuthPolicies
     public const string FormsViewCampaignAssignments = PermissionPrefix + PermissionCodes.FormsViewCampaignAssignments;
     public const string FormsMonitorRegion = PermissionPrefix + PermissionCodes.FormsMonitorRegion;
     public const string FormsMonitorHeadquarters = PermissionPrefix + PermissionCodes.FormsMonitorHeadquarters;
+    public const string FormsRespond = PermissionPrefix + PermissionCodes.FormsRespond;
+    public const string FormsViewResponses = PermissionPrefix + PermissionCodes.FormsViewResponses;
+    public const string FormsReviewResponses = PermissionPrefix + PermissionCodes.FormsReviewResponses;
+    public const string FormsApproveResponses = PermissionPrefix + PermissionCodes.FormsApproveResponses;
+    public const string FormsCloseResponses = PermissionPrefix + PermissionCodes.FormsCloseResponses;
+    public const string FormsViewSensitiveResponses = PermissionPrefix + PermissionCodes.FormsViewSensitiveResponses;
 }
+
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
 {
@@ -202,6 +209,12 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.FormsViewCampaignAssignments, PermissionCodes.FormsViewCampaignAssignments);
             AddPerm(AuthPolicies.FormsMonitorRegion, PermissionCodes.FormsMonitorRegion);
             AddPerm(AuthPolicies.FormsMonitorHeadquarters, PermissionCodes.FormsMonitorHeadquarters);
+            AddPerm(AuthPolicies.FormsRespond, PermissionCodes.FormsRespond);
+            AddPerm(AuthPolicies.FormsViewResponses, PermissionCodes.FormsViewResponses);
+            AddPerm(AuthPolicies.FormsReviewResponses, PermissionCodes.FormsReviewResponses);
+            AddPerm(AuthPolicies.FormsApproveResponses, PermissionCodes.FormsApproveResponses);
+            AddPerm(AuthPolicies.FormsCloseResponses, PermissionCodes.FormsCloseResponses);
+            AddPerm(AuthPolicies.FormsViewSensitiveResponses, PermissionCodes.FormsViewSensitiveResponses);
         });
         return services;
     }
