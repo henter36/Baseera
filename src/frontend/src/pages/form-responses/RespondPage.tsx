@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { api } from '../../api/client'
+import { api, ApiError } from '../../api/client'
 import { AutosaveUiLabelsAr, FormResponseStatusLabelsAr, type AutosaveUiState } from './responseLabels'
 
 type SchemaField = {
@@ -20,6 +20,82 @@ type SchemaDoc = {
 function parseAnswers(json?: string | null): Record<string, unknown> {
   if (!json) return {}
   try { return JSON.parse(json) as Record<string, unknown> } catch { return {} }
+}
+
+function isConflictError(err: unknown): boolean {
+  if (err instanceof ApiError) return err.status === 409
+  return (err as { status?: number })?.status === 409
+}
+
+function parseYesNoSelection(raw: string): boolean | null {
+  if (raw === '') return null
+  return raw === 'true'
+}
+
+function toYesNoSelectValue(value: unknown): string {
+  if (value === true) return 'true'
+  if (value === false) return 'false'
+  return ''
+}
+
+function applyYesNoChange(
+  answers: Record<string, unknown>,
+  fieldKey: string,
+  raw: string,
+): Record<string, unknown> {
+  const selection = parseYesNoSelection(raw)
+  if (selection === null) {
+    const next = { ...answers }
+    delete next[fieldKey]
+    return next
+  }
+  return { ...answers, [fieldKey]: selection }
+}
+
+type ResponseFieldControlProps = {
+  field: SchemaField
+  value: unknown
+  readOnly: boolean
+  redacted: boolean
+  onChange: (next: Record<string, unknown>) => void
+  answers: Record<string, unknown>
+}
+
+function ResponseFieldControl({
+  field,
+  value,
+  readOnly,
+  redacted,
+  onChange,
+  answers,
+}: ResponseFieldControlProps) {
+  if (redacted) {
+    return <input value="***" readOnly aria-label={`${field.labelAr} محجوب`} />
+  }
+
+  if (field.type === 9) {
+    return (
+      <select
+        aria-label={field.labelAr}
+        disabled={readOnly}
+        value={toYesNoSelectValue(value)}
+        onChange={(e) => onChange(applyYesNoChange(answers, field.key, e.target.value))}
+      >
+        <option value="">—</option>
+        <option value="true">نعم</option>
+        <option value="false">لا</option>
+      </select>
+    )
+  }
+
+  return (
+    <input
+      aria-label={field.labelAr}
+      disabled={readOnly}
+      value={value == null ? '' : String(value)}
+      onChange={(e) => onChange({ ...answers, [field.key]: e.target.value })}
+    />
+  )
 }
 
 export function RespondPage() {
@@ -94,8 +170,7 @@ export function RespondPage() {
       }
     },
     onError: (err: unknown) => {
-      const status = (err as { status?: number })?.status
-      if (status === 409) {
+      if (isConflictError(err)) {
         conflictRef.current = true
         setSaveState('conflict')
         return
@@ -130,6 +205,12 @@ export function RespondPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['assignment-response', assignmentId] })
       await queryClient.invalidateQueries({ queryKey: ['form-response-workspace'] })
+    },
+    onError: (err: unknown) => {
+      if (isConflictError(err)) {
+        conflictRef.current = true
+        setSaveState('conflict')
+      }
     },
   })
 
@@ -169,7 +250,7 @@ export function RespondPage() {
 
       {saveState === 'conflict' && (
         <div className="error" role="alert">
-          تعارض في النسخة. أعد تحميل نسخة الخادم.
+          <p>تعارض في النسخة. أعد تحميل نسخة الخادم.</p>
           <button
             type="button"
             onClick={() => {
@@ -202,7 +283,7 @@ export function RespondPage() {
         ))}
       </nav>
 
-      {currentPage && currentPage.sections.map((section) => (
+      {currentPage?.sections.map((section) => (
         <section key={section.key}>
           <h2>{section.titleAr}</h2>
           {section.fields.map((field) => {
@@ -212,35 +293,17 @@ export function RespondPage() {
             return (
               <label key={field.key} className="field">
                 <span>{field.labelAr}{field.isRequired ? ' *' : ''}</span>
-                {redacted ? (
-                  <input value="***" readOnly aria-label={`${field.labelAr} محجوب`} />
-                ) : field.type === 9 ? (
-                  <select
-                    aria-label={field.labelAr}
-                    disabled={readOnly}
-                    value={value === true ? 'true' : value === false ? 'false' : ''}
-                    onChange={(e) => {
-                      const next = { ...answers, [field.key]: e.target.value === 'true' }
-                      setAnswers(next)
-                      queueSave(next)
-                    }}
-                  >
-                    <option value="">—</option>
-                    <option value="true">نعم</option>
-                    <option value="false">لا</option>
-                  </select>
-                ) : (
-                  <input
-                    aria-label={field.labelAr}
-                    disabled={readOnly}
-                    value={value == null ? '' : String(value)}
-                    onChange={(e) => {
-                      const next = { ...answers, [field.key]: e.target.value }
-                      setAnswers(next)
-                      queueSave(next)
-                    }}
-                  />
-                )}
+                <ResponseFieldControl
+                  field={field}
+                  value={value}
+                  readOnly={readOnly}
+                  redacted={Boolean(redacted)}
+                  answers={answers}
+                  onChange={(next) => {
+                    setAnswers(next)
+                    queueSave(next)
+                  }}
+                />
               </label>
             )
           })}
@@ -266,7 +329,9 @@ export function RespondPage() {
           </button>
         )}
       </div>
-      {submitMutation.isError && <p className="error" role="alert">فشل الإرسال.</p>}
+      {submitMutation.isError && saveState !== 'conflict' && (
+        <p className="error" role="alert">فشل الإرسال.</p>
+      )}
     </div>
   )
 }
