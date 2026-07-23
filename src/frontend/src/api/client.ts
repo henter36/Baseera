@@ -632,6 +632,150 @@ export type DashboardOperationsFilters = {
   queue?: number
 }
 
+export type FormComplianceFilters = {
+  fromUtc?: string
+  toUtc?: string
+  formDefinitionId?: string
+  campaignId?: string
+  cycleId?: string
+  regionId?: string
+  facilityId?: string
+  cycleStatus?: number
+  completionBasis?: number
+  responseStatus?: number
+  isCompleted?: boolean
+  isOverdue?: boolean
+  isAvailable?: boolean
+  search?: string
+  sort?: string
+  page?: number
+  pageSize?: number
+  groupBy?: number
+  view?: number
+}
+
+export type FormComplianceSummary = {
+  targetedAssignmentCount: number
+  distinctFacilityCount: number
+  unavailableAssignmentCount: number
+  eligibleAssignmentCount: number
+  completedCount: number
+  remainingCount: number
+  completionRate?: number | null
+  notStartedCount: number
+  draftCount: number
+  submittedCount: number
+  underReviewCount: number
+  returnedCount: number
+  approvedCount: number
+  rejectedCount: number
+  closedCount: number
+  overdueCount: number
+  completedOnTimeCount: number
+  completedLateCount: number
+  averageCompletionMinutes?: number | null
+  unknownCompletionTimestampCount: number
+  invalidCompletionDurationCount: number
+  statusBucketTotal: number
+  statusReconciliationValid: boolean
+  generatedAtUtc: string
+}
+
+export type FormComplianceRegionRow = {
+  regionIdAtAssignment: string
+  regionNameAtAssignment: string
+  targetedAssignmentCount: number
+  unavailableAssignmentCount: number
+  eligibleAssignmentCount: number
+  completedCount: number
+  remainingCount: number
+  completionRate?: number | null
+  overdueCount: number
+  notStartedCount: number
+  returnedCount: number
+  averageCompletionMinutes?: number | null
+  rank: number
+}
+
+export type FormComplianceFacilityRow = {
+  facilityId: string
+  facilityCodeAtAssignment: string
+  facilityNameAtAssignment: string
+  regionIdAtAssignment: string
+  regionNameAtAssignment: string
+  cycleCount: number
+  eligibleAssignmentCount: number
+  completedCount: number
+  remainingCount: number
+  completionRate?: number | null
+  overdueCount: number
+  latestEffectiveDueAtUtc?: string | null
+  responsibleUserId?: string | null
+  responsibleUserName?: string | null
+  allowedActions: string[]
+}
+
+export type FormComplianceCycleRow = {
+  cycleId: string
+  campaignId: string
+  campaignCode: string
+  campaignNameAr: string
+  sequenceNumber: number
+  occurrenceKey: string
+  scheduledOccurrenceUtc: string
+  openAtUtc: string
+  dueAtUtc: string
+  closeAtUtc: string
+  cycleStatus: number
+  completionBasis: number
+  targetedAssignmentCount: number
+  eligibleAssignmentCount: number
+  completedCount: number
+  remainingCount: number
+  completionRate?: number | null
+  overdueCount: number
+  averageCompletionMinutes?: number | null
+  previousCycleCompletionRate?: number | null
+  completionRateDelta?: number | null
+}
+
+export type FormCompliancePendingItem = {
+  assignmentId: string
+  campaignId: string
+  campaignNameAr: string
+  cycleId: string
+  occurrenceKey: string
+  facilityId: string
+  facilityNameAtAssignment: string
+  regionIdAtAssignment: string
+  regionNameAtAssignment: string
+  responseId?: string | null
+  responseStatus?: number | null
+  workStatus: number
+  isOverdue: boolean
+  openAtUtc: string
+  effectiveDueAtUtc: string
+  daysOverdue?: number | null
+  lastSavedAtUtc?: string | null
+  submittedAtUtc?: string | null
+  responsibleUserId?: string | null
+  responsibleUserName?: string | null
+  allowedActions: string[]
+}
+
+export type FormComplianceTrendPoint = {
+  occurrenceUtc?: string | null
+  dateLocal?: string | null
+  eligibleAssignmentCount: number
+  completedCount: number
+  completionRate?: number | null
+  overdueCount: number
+  averageCompletionMinutes?: number | null
+  completedThatDay?: number | null
+  cumulativeCompleted?: number | null
+  cumulativeCompletionRate?: number | null
+}
+
 export type DashboardWorkloadSummary = {
   openTotal: number
   assigned: number
@@ -1499,6 +1643,10 @@ function buildDashboardQuery(filters: DashboardOperationsFilters): string {
   })
 }
 
+function buildFormComplianceQuery(filters: FormComplianceFilters): string {
+  return buildSimpleQuery(filters as Record<string, QueryParameterValue>)
+}
+
 function buildSimpleQuery(filters: Record<string, QueryParameterValue>): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
@@ -1777,6 +1925,23 @@ export const api = {
       priorityQueues: (filters: DashboardOperationsFilters = {}) =>
         request<DashboardPriorityQueues>(`/api/v1/dashboard/operations/priority-queues?${buildDashboardQuery(filters)}`),
     },
+  },
+
+  formCompliance: {
+    summary: (filters: FormComplianceFilters = {}) =>
+      request<FormComplianceSummary>(`/api/v1/form-compliance/summary?${buildFormComplianceQuery(filters)}`),
+    regions: (filters: FormComplianceFilters = {}) =>
+      request<Paged<FormComplianceRegionRow>>(`/api/v1/form-compliance/regions?${buildFormComplianceQuery(filters)}`),
+    facilities: (filters: FormComplianceFilters = {}) =>
+      request<Paged<FormComplianceFacilityRow>>(`/api/v1/form-compliance/facilities?${buildFormComplianceQuery(filters)}`),
+    cycles: (filters: FormComplianceFilters = {}) =>
+      request<Paged<FormComplianceCycleRow>>(`/api/v1/form-compliance/cycles?${buildFormComplianceQuery(filters)}`),
+    pending: (filters: FormComplianceFilters = {}) =>
+      request<Paged<FormCompliancePendingItem>>(`/api/v1/form-compliance/pending?${buildFormComplianceQuery(filters)}`),
+    trend: (filters: FormComplianceFilters = {}) =>
+      request<FormComplianceTrendPoint[]>(`/api/v1/form-compliance/trend?${buildFormComplianceQuery(filters)}`),
+    exportCsv: (filters: FormComplianceFilters = {}) =>
+      downloadFile(`/api/v1/form-compliance/export.csv?${buildFormComplianceQuery(filters)}`),
   },
 
   forms: {

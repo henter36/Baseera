@@ -41,6 +41,7 @@ import { FormTemplatesPage } from './pages/forms/templates/FormTemplatesPage'
 import { FormCampaignsListPage, FormCampaignDetailPage } from './pages/form-campaigns/FormCampaignsListPage'
 import { FormCampaignWizardPage } from './pages/form-campaigns/FormCampaignWizardPage'
 import { FormCampaignCyclesPage, FormCampaignCycleDetailPage, FormCampaignPreviewPage } from './pages/form-campaigns/FormCampaignCyclesPage'
+import { FormCompliancePage } from './pages/form-compliance/FormCompliancePage'
 import { MyFormResponsesPage } from './pages/form-responses/MyFormResponsesPage'
 import { RespondPage } from './pages/form-responses/RespondPage'
 import { FormResponseReviewsPage, FormResponseReviewDetailPage } from './pages/form-responses/FormResponseReviewsPage'
@@ -83,6 +84,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           )}
           {hasPermission('Forms.Respond') && <NavLink to="/my-form-responses" className={({ isActive }) => isActive ? 'active' : undefined}>ردودي</NavLink>}
           {hasPermission('Forms.ReviewResponses') && <NavLink to="/form-response-reviews" className={({ isActive }) => isActive ? 'active' : undefined}>مراجعة الردود</NavLink>}
+          {hasPermission('Forms.ViewComplianceDashboard') && <NavLink to="/form-compliance" className={({ isActive }) => isActive ? 'active' : undefined}>التزام النماذج</NavLink>}
           {(hasPermission('Dashboard.ViewOperational') || hasPermission('Dashboard.ViewRisk') || hasPermission('Dashboard.ViewRouting') || hasPermission('Dashboard.ViewCorrectiveActions')) &&
             <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : undefined}>لوحة المتابعة</NavLink>}
           {hasPermission('CorrectiveActions.View') && <NavLink to="/corrective-actions" className={({ isActive }) => isActive ? 'active' : undefined}>الإجراءات التصحيحية</NavLink>}
@@ -153,6 +155,10 @@ export default function App() {
       <Route path="/form-assignments/:assignmentId/respond" element={<Protected><RespondPage /></Protected>} />
       <Route path="/form-response-reviews" element={<Protected><FormResponseReviewsPage /></Protected>} />
       <Route path="/form-responses/:responseId/review" element={<Protected><FormResponseReviewDetailPage /></Protected>} />
+      <Route path="/form-compliance" element={<Protected><FormCompliancePage /></Protected>} />
+      <Route path="/form-compliance/regions/:regionId" element={<Protected><FormCompliancePage /></Protected>} />
+      <Route path="/form-compliance/facilities/:facilityId" element={<Protected><FormCompliancePage /></Protected>} />
+      <Route path="/form-compliance/cycles/:cycleId" element={<Protected><FormCompliancePage /></Protected>} />
 
       <Route path="/settings/forms-governance" element={<Protected><FormsGovernanceSettingsPage /></Protected>} />
       <Route path="/notes/:noteId/corrective-actions/new" element={<Protected><CorrectiveActionCreatePage /></Protected>} />

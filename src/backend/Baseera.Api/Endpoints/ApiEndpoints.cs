@@ -10,6 +10,7 @@ using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Forms;
 using Baseera.Application.Forms.Campaigns;
+using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Forms.Responses;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
@@ -153,6 +154,7 @@ public static class ApiEndpoints
         MapEscalationEndpoints(api);
         MapNotificationEndpoints(api);
         MapOperationalDashboardEndpoints(api);
+        MapFormComplianceEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
         MapFormCampaignEndpoints(api);
@@ -738,6 +740,62 @@ public static class ApiEndpoints
                 await service.GetPriorityQueuesAsync(
                     query,
                     ct)));
+    }
+
+    private static void MapFormComplianceEndpoints(RouteGroupBuilder api)
+    {
+        var compliance = api.MapGroup("/form-compliance");
+
+        compliance.MapGet("/summary", async (
+            [AsParameters] FormComplianceQuery query,
+            IFormComplianceQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetSummaryAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewComplianceDashboard);
+
+        compliance.MapGet("/regions", async (
+            [AsParameters] FormComplianceQuery query,
+            IFormComplianceQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetRegionsAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewComplianceDashboard);
+
+        compliance.MapGet("/facilities", async (
+            [AsParameters] FormComplianceQuery query,
+            IFormComplianceQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetFacilitiesAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewComplianceDashboard);
+
+        compliance.MapGet("/cycles", async (
+            [AsParameters] FormComplianceQuery query,
+            IFormComplianceQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetCyclesAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewComplianceDashboard);
+
+        compliance.MapGet("/pending", async (
+            [AsParameters] FormComplianceQuery query,
+            IFormComplianceQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetPendingAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewComplianceDashboard);
+
+        compliance.MapGet("/trend", async (
+            [AsParameters] FormComplianceQuery query,
+            IFormComplianceQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetTrendAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewComplianceDashboard);
+
+        compliance.MapGet("/export.csv", async (
+            [AsParameters] FormComplianceQuery query,
+            IFormComplianceQueryService service,
+            CancellationToken ct) =>
+        {
+            var result = await service.ExportCsvAsync(query, ct);
+            return Results.File(result.Content, result.ContentType, result.FileName);
+        }).RequireAuthorization(AuthPolicies.FormsExportComplianceDashboard);
     }
 
     private static void MapNoteTypeEndpoints(RouteGroupBuilder api)

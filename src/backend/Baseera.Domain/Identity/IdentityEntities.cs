@@ -34,20 +34,22 @@ public class Permission : EntityBase
     public ICollection<RolePermission> RolePermissions { get; set; } = new List<RolePermission>();
 }
 
+#pragma warning disable CS8618 // Required navigation properties are initialized by EF Core.
+
 public class RolePermission
 {
     public Guid RoleId { get; set; }
-    public Role Role { get; set; } = null!;
+    public Role Role { get; set; }
     public Guid PermissionId { get; set; }
-    public Permission Permission { get; set; } = null!;
+    public Permission Permission { get; set; }
 }
 
 public class UserRole
 {
     public Guid UserId { get; set; }
-    public User User { get; set; } = null!;
+    public User User { get; set; }
     public Guid RoleId { get; set; }
-    public Role Role { get; set; } = null!;
+    public Role Role { get; set; }
     public DateTimeOffset AssignedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public string? AssignedBy { get; set; }
 }
@@ -55,7 +57,7 @@ public class UserRole
 public class UserScope : SoftDeletableEntity
 {
     public Guid UserId { get; set; }
-    public User User { get; set; } = null!;
+    public User User { get; set; }
     public ScopeType ScopeType { get; set; }
     public Guid? RegionId { get; set; }
     public Region? Region { get; set; }
@@ -65,6 +67,8 @@ public class UserScope : SoftDeletableEntity
     public FacilityUnit? FacilityUnit { get; set; }
     public bool IsActive { get; set; } = true;
 }
+
+#pragma warning restore CS8618
 
 public static class PermissionCodes
 {
@@ -165,6 +169,8 @@ public static class PermissionCodes
     public const string FormsViewSensitiveResponses = "Forms.ViewSensitiveResponses";
     public const string FormsAnalyze = "Forms.Analyze";
     public const string FormsExport = "Forms.Export";
+    public const string FormsViewComplianceDashboard = "Forms.ViewComplianceDashboard";
+    public const string FormsExportComplianceDashboard = "Forms.ExportComplianceDashboard";
     public const string FormsCloneVersion = "Forms.CloneVersion";
     public const string FormsViewVersionHistory = "Forms.ViewVersionHistory";
     public const string FormsManageTemplates = "Forms.ManageTemplates";
