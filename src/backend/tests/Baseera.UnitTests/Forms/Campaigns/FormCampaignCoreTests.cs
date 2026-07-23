@@ -494,6 +494,13 @@ public sealed class BusinessCalendarTests
     {
         public virtual IQueryable<OrganizationBusinessCalendarDate> OrganizationBusinessCalendarDates =>
             Enumerable.Empty<OrganizationBusinessCalendarDate>().AsQueryable();
+        public IQueryable<FormCampaignResponsePolicy> FormCampaignResponsePolicies => Empty<FormCampaignResponsePolicy>();
+        public IQueryable<FormResponse> FormResponses => Empty<FormResponse>();
+        public IQueryable<FormResponseSubmission> FormResponseSubmissions => Empty<FormResponseSubmission>();
+        public IQueryable<FormResponseReviewDecision> FormResponseReviewDecisions => Empty<FormResponseReviewDecision>();
+        public IQueryable<FormResponseReviewComment> FormResponseReviewComments => Empty<FormResponseReviewComment>();
+        public IQueryable<FormResponseMutation> FormResponseMutations => Empty<FormResponseMutation>();
+        public IQueryable<FormResponseHistory> FormResponseHistories => Empty<FormResponseHistory>();
 
         public IQueryable<Domain.Organization.Organization> Organizations => Empty<Domain.Organization.Organization>();
         public IQueryable<Domain.Organization.Region> Regions => Empty<Domain.Organization.Region>();
