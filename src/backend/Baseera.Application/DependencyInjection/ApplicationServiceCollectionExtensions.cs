@@ -53,6 +53,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IBusinessCalendar, BusinessCalendar>();
         services.AddScoped<IFormTargetResolver, FormTargetResolver>();
         services.AddScoped<IFormCycleGenerationService, FormCycleGenerationService>();
+        services.AddScoped<IFormCampaignAccessCoordinator, FormCampaignAccessCoordinator>();
+        services.AddScoped<IFormCampaignScheduleCoordinator, FormCampaignScheduleCoordinator>();
         services.AddScoped<IFormCampaignService, FormCampaignService>();
         services.AddScoped<IFormCampaignScheduler, FormCampaignScheduler>();
         services.AddScoped<ICorrectiveActionScopeService, CorrectiveActionScopeService>();

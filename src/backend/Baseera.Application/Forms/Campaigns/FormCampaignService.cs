@@ -32,127 +32,38 @@ public interface IFormCampaignService
 
 public sealed class FormCampaignService(
     IBaseeraDbContext db,
-    ICurrentUser currentUser,
-    IFormScopeService formScope,
-    IFormEffectiveAccessService effectiveAccess,
-    IOrganizationalScopeService orgScope,
+    IFormCampaignAccessCoordinator access,
+    IFormCampaignScheduleCoordinator schedule,
     IFormTargetResolver targetResolver,
-    IFormRecurrenceCalculator recurrence,
-    IFormTimeZoneResolver timeZones,
-    IFormCycleGenerationService cycleGeneration,
-    IAuditService audit,
-    TimeProvider timeProvider) : IFormCampaignService
+    IAuditService audit) : IFormCampaignService
 {
+    private const string CampaignNotFoundMessage = "الحملة غير موجودة.";
+
     public async Task<PagedResult<FormCampaignListItemDto>> ListAsync(
         PagedQuery query,
         FormCampaignStatus? status,
         Guid? formDefinitionId,
         CancellationToken cancellationToken = default)
     {
-        EnsureAnyViewPermission();
+        access.EnsureAnyViewPermission();
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
-        var scopedForms = await formScope.FilterQueryableAsync(db.FormDefinitions.AsNoTracking(), cancellationToken);
-        var scopedFormIds = scopedForms.Select(f => f.Id);
-
-        var q = db.FormCampaigns.AsNoTracking()
-            .Include(c => c.FormDefinition)
-            .Include(c => c.FormVersion)
-            .Where(c => scopedFormIds.Contains(c.FormDefinitionId));
-
-        if (status is not null)
-        {
-            q = q.Where(c => c.Status == status);
-        }
-
-        if (formDefinitionId is not null)
-        {
-            q = q.Where(c => c.FormDefinitionId == formDefinitionId);
-        }
-
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var term = query.Search.Trim();
-            q = q.Where(c => c.Code.Contains(term)
-                || c.NameAr.Contains(term)
-                || (c.NameEn != null && c.NameEn.Contains(term)));
-        }
-
-        var canViewSensitiveViaRole = FormAccessHelper.CanViewSensitive(currentUser)
-            || currentUser.HasPermission(PermissionCodes.FormsMonitorHeadquarters)
-            || currentUser.HasPermission(PermissionCodes.AuditView);
-
-        if (!canViewSensitiveViaRole)
-        {
-            q = q.Where(c => c.FormDefinition.Classification < ClassificationLevel.Confidential);
-        }
-
-        var candidateFormIds = await q.Select(c => c.FormDefinitionId).Distinct().ToListAsync(cancellationToken);
-        var allowedFormIds = new HashSet<Guid>();
-        if (candidateFormIds.Count > 0 && currentUser.UserId is { } listUserId)
-        {
-            var roleIds = await db.UserRoles.AsNoTracking()
-                .Where(r => r.UserId == listUserId)
-                .Select(r => r.RoleId)
-                .ToListAsync(cancellationToken);
-            var grantsByFormId = await db.FormAccessGrants.AsNoTracking()
-                .Where(g => candidateFormIds.Contains(g.FormDefinitionId))
-                .GroupBy(g => g.FormDefinitionId)
-                .ToDictionaryAsync(g => g.Key, g => g.ToList(), cancellationToken);
-            var forms = await db.FormDefinitions.AsNoTracking()
-                .Where(f => candidateFormIds.Contains(f.Id))
-                .ToListAsync(cancellationToken);
-            var now = timeProvider.GetUtcNow();
-
-            foreach (var form in forms)
-            {
-                grantsByFormId.TryGetValue(form.Id, out var grants);
-                var decision = FormGrantResolver.ResolveEffectiveGrant(
-                    grants ?? [],
-                    FormAccessCapability.View,
-                    listUserId,
-                    roleIds,
-                    form,
-                    now);
-                if (decision is not false)
-                {
-                    allowedFormIds.Add(form.Id);
-                }
-            }
-        }
-
-        q = q.Where(c => allowedFormIds.Contains(c.FormDefinitionId));
-
+        var q = await BuildVisibleCampaignQueryAsync(status, formDefinitionId, query.Search, cancellationToken);
         var total = await q.CountAsync(cancellationToken);
         var items = await q.OrderByDescending(c => c.CreatedAtUtc)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        var campaignIds = items.Select(i => i.Id).ToList();
-        var cycleCounts = campaignIds.Count == 0
-            ? []
-            : await db.FormCycles.AsNoTracking()
-                .Where(c => campaignIds.Contains(c.CampaignId))
-                .GroupBy(c => c.CampaignId)
-                .Select(g => new { CampaignId = g.Key, Count = g.Count(), Last = g.Max(x => (DateTimeOffset?)x.GeneratedAtUtc) })
-                .ToListAsync(cancellationToken);
-        var countMap = cycleCounts.ToDictionary(x => x.CampaignId, x => x);
-
-        var publishCapabilityByFormId = await ResolvePublishCapabilityByFormAsync(items, cancellationToken);
-
-        var dtos = new List<FormCampaignListItemDto>();
-        foreach (var c in items)
-        {
-            countMap.TryGetValue(c.Id, out var stats);
-            dtos.Add(new FormCampaignListItemDto(
-                c.Id, c.Code, c.NameAr, c.NameEn, c.FormDefinitionId, c.FormDefinition.Code, c.FormDefinition.NameAr,
-                c.FormVersionId, c.FormVersion.VersionNumber, c.Status, c.RecurrenceKind, c.FirstOpenAtLocal,
-                c.NextOccurrenceUtc, stats?.Count ?? 0, stats?.Last,
-                await BuildAllowedActionsAsync(c, cancellationToken, publishCapabilityByFormId),
-                Convert.ToBase64String(c.RowVersion)));
-        }
+        var countMap = await LoadCycleStatisticsAsync(items.Select(i => i.Id).ToList(), cancellationToken);
+        var draftForms = items
+            .Where(c => c.Status == FormCampaignStatus.Draft)
+            .GroupBy(c => c.FormDefinitionId)
+            .Select(g => g.First().FormDefinition)
+            .ToList();
+        var publishCapabilityByFormId = await access.ResolvePublishCapabilitiesAsync(draftForms, cancellationToken);
+        var dtos = MapCampaignListItems(items, countMap, publishCapabilityByFormId);
 
         return new PagedResult<FormCampaignListItemDto>
         {
@@ -171,21 +82,18 @@ public sealed class FormCampaignService(
 
     public async Task<FormCampaignDetailDto> CreateAsync(CreateFormCampaignRequest request, CancellationToken cancellationToken = default)
     {
-        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsManageCampaigns);
+        access.EnsurePermission(PermissionCodes.FormsManageCampaigns);
         ValidateSchedule(request.Schedule);
         ValidateTargets(request.Targets, request.Exclusions);
 
-        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, request.FormDefinitionId, cancellationToken: cancellationToken);
+        var form = await access.LoadInScopeFormAsync(request.FormDefinitionId, cancellationToken);
         if (form.Status == FormDefinitionStatus.Archived)
         {
             throw new InvalidOperationException("لا يمكن إنشاء حملة لنموذج مؤرشف.");
         }
 
-        await effectiveAccess.EnsureCapabilityAsync(form, FormAccessCapability.View, cancellationToken);
-        if (FormAccessHelper.RequiresSensitive(form.Classification) && !FormAccessHelper.CanViewSensitive(currentUser))
-        {
-            throw new KeyNotFoundException("النموذج غير موجود.");
-        }
+        await access.EnsureViewCapabilityAsync(form, cancellationToken);
+        access.EnsureCanViewSensitiveForm(form);
 
         var version = await db.FormVersions.Include(v => v.Snapshot)
             .FirstOrDefaultAsync(v => v.Id == request.FormVersionId && v.FormDefinitionId == form.Id, cancellationToken)
@@ -196,9 +104,9 @@ public sealed class FormCampaignService(
         }
 
         var orgId = await ResolveOrganizationIdAsync(form, cancellationToken);
-        _ = timeZones.Resolve(request.TimeZoneId ?? FormTimeZoneResolver.DefaultTimeZoneId);
-        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
-        var now = timeProvider.GetUtcNow();
+        schedule.ValidateTimeZone(request.TimeZoneId);
+        var userId = access.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
+        var now = schedule.GetUtcNow();
 
         var campaign = new FormCampaign
         {
@@ -215,7 +123,7 @@ public sealed class FormCampaignService(
             Priority = request.Priority,
             TimeZoneId = string.IsNullOrWhiteSpace(request.TimeZoneId) ? FormTimeZoneResolver.DefaultTimeZoneId : request.TimeZoneId.Trim(),
             RecurrenceKind = request.Schedule.RecurrenceKind,
-            RecurrenceConfigurationJson = recurrence.SerializeSchedule(request.Schedule),
+            RecurrenceConfigurationJson = schedule.SerializeSchedule(request.Schedule),
             FirstOpenAtLocal = request.Schedule.FirstOpenAtLocal,
             ResponseWindowMinutes = request.Schedule.ResponseWindowMinutes,
             GracePeriodMinutes = request.Schedule.GracePeriodMinutes,
@@ -243,7 +151,7 @@ public sealed class FormCampaignService(
 
     public async Task<FormCampaignDetailDto> UpdateAsync(Guid campaignId, UpdateFormCampaignRequest request, CancellationToken cancellationToken = default)
     {
-        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsManageCampaigns);
+        access.EnsurePermission(PermissionCodes.FormsManageCampaigns);
         ValidateSchedule(request.Schedule);
         ValidateTargets(request.Targets, request.Exclusions);
 
@@ -254,18 +162,18 @@ public sealed class FormCampaignService(
         }
 
         FormAccessHelper.EnsureRowVersion(campaign.RowVersion, request.RowVersion);
-        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, campaign.FormDefinitionId, cancellationToken: cancellationToken);
-        await effectiveAccess.EnsureCapabilityAsync(form, FormAccessCapability.View, cancellationToken);
+        var form = await access.LoadInScopeFormAsync(campaign.FormDefinitionId, cancellationToken);
+        await access.EnsureViewCapabilityAsync(form, cancellationToken);
 
-        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
-        var now = timeProvider.GetUtcNow();
+        var userId = access.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
+        var now = schedule.GetUtcNow();
         campaign.NameAr = request.NameAr.Trim();
         campaign.NameEn = string.IsNullOrWhiteSpace(request.NameEn) ? null : request.NameEn.Trim();
         campaign.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         campaign.Priority = request.Priority;
         campaign.TimeZoneId = string.IsNullOrWhiteSpace(request.TimeZoneId) ? FormTimeZoneResolver.DefaultTimeZoneId : request.TimeZoneId.Trim();
         campaign.RecurrenceKind = request.Schedule.RecurrenceKind;
-        campaign.RecurrenceConfigurationJson = recurrence.SerializeSchedule(request.Schedule);
+        campaign.RecurrenceConfigurationJson = schedule.SerializeSchedule(request.Schedule);
         campaign.FirstOpenAtLocal = request.Schedule.FirstOpenAtLocal;
         campaign.ResponseWindowMinutes = request.Schedule.ResponseWindowMinutes;
         campaign.GracePeriodMinutes = request.Schedule.GracePeriodMinutes;
@@ -289,9 +197,9 @@ public sealed class FormCampaignService(
 
     public async Task<FormCampaignDetailDto> CloneAsync(Guid campaignId, CancellationToken cancellationToken = default)
     {
-        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsManageCampaigns);
+        access.EnsurePermission(PermissionCodes.FormsManageCampaigns);
         var source = await LoadVisibleAsync(campaignId, cancellationToken);
-        var schedule = MapSchedule(source);
+        var mappedSchedule = schedule.MapSchedule(source);
         var targets = source.TargetRules.Select(r => FormTargetResolver.DeserializeTarget(r.RuleType, r.ConfigurationJson)).ToList();
         var exclusions = source.Exclusions.Select(e => new FormCampaignExclusionRequest(e.FacilityId, e.Reason)).ToList();
         var created = await CreateAsync(new CreateFormCampaignRequest(
@@ -303,7 +211,7 @@ public sealed class FormCampaignService(
             source.Description,
             source.Priority,
             source.TimeZoneId,
-            schedule,
+            mappedSchedule,
             targets,
             exclusions), cancellationToken);
 
@@ -320,7 +228,7 @@ public sealed class FormCampaignService(
 
     public async Task<FormTargetPreviewDto> PreviewTargetsAsync(Guid campaignId, CancellationToken cancellationToken = default)
     {
-        EnsurePreviewPermission();
+        access.EnsurePreviewPermission();
         var campaign = await LoadVisibleAsync(campaignId, cancellationToken);
         var targets = campaign.TargetRules.Select(r => FormTargetResolver.DeserializeTarget(r.RuleType, r.ConfigurationJson)).ToList();
         var exclusions = campaign.Exclusions.Select(e => new FormCampaignExclusionRequest(e.FacilityId, e.Reason)).ToList();
@@ -342,12 +250,12 @@ public sealed class FormCampaignService(
         IReadOnlyList<FormCampaignExclusionRequest>? exclusions,
         CancellationToken cancellationToken = default)
     {
-        EnsurePreviewPermission();
+        access.EnsurePreviewPermission();
         var resolution = await targetResolver.ResolveAsync(organizationId, targets, exclusions ?? [], cancellationToken);
         var sample = resolution.Included.Take(50).Select(x => new FormTargetPreviewFacilityDto(
             x.FacilityId, x.FacilityCode, x.FacilityNameAr, x.RegionId, x.RegionNameAr, x.FacilityType)).ToList();
         return new FormTargetPreviewDto(
-            timeProvider.GetUtcNow(),
+            schedule.GetUtcNow(),
             resolution.Included.Count + resolution.Excluded.Count,
             resolution.Excluded.Count,
             resolution.Included.Count,
@@ -364,7 +272,7 @@ public sealed class FormCampaignService(
 
     public async Task<FormCampaignDetailDto> PublishAsync(Guid campaignId, PublishFormCampaignRequest request, CancellationToken cancellationToken = default)
     {
-        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsPublish);
+        access.EnsurePermission(PermissionCodes.FormsPublish);
         var campaign = await LoadTrackedAsync(campaignId, cancellationToken);
         FormAccessHelper.EnsureRowVersion(campaign.RowVersion, request.RowVersion);
         if (campaign.Status != FormCampaignStatus.Draft)
@@ -372,13 +280,13 @@ public sealed class FormCampaignService(
             throw new InvalidOperationException("يمكن نشر المسودات فقط.");
         }
 
-        var form = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, campaign.FormDefinitionId, cancellationToken: cancellationToken);
+        var form = await access.LoadInScopeFormAsync(campaign.FormDefinitionId, cancellationToken);
         if (form.Status == FormDefinitionStatus.Archived)
         {
             throw new InvalidOperationException("لا يمكن نشر حملة لنموذج مؤرشف.");
         }
 
-        await effectiveAccess.EnsureCapabilityAsync(form, FormAccessCapability.Publish, cancellationToken);
+        await access.EnsurePublishCapabilityAsync(form, cancellationToken);
         var version = await db.FormVersions.Include(v => v.Snapshot)
             .FirstAsync(v => v.Id == campaign.FormVersionId, cancellationToken);
         if (version.Status != FormVersionStatus.Locked || version.Snapshot is null)
@@ -389,11 +297,11 @@ public sealed class FormCampaignService(
         campaign.FormSchemaSnapshotId = version.Snapshot.Id;
         campaign.SchemaHash = version.Snapshot.SchemaHash;
 
-        var schedule = MapSchedule(campaign);
-        var firstLocal = schedule.FirstOpenAtLocal;
-        var firstUtc = timeZones.ToUtc(firstLocal, campaign.TimeZoneId);
-        var now = timeProvider.GetUtcNow();
-        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
+        var mappedSchedule = schedule.MapSchedule(campaign);
+        var firstLocal = mappedSchedule.FirstOpenAtLocal;
+        var firstUtc = schedule.ToUtc(firstLocal, campaign.TimeZoneId);
+        var now = schedule.GetUtcNow();
+        var userId = access.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
 
         var targetStatus = firstUtc <= now ? FormCampaignStatus.Active : FormCampaignStatus.Scheduled;
         FormCampaignStateMachine.EnsureCanTransition(campaign.Status, targetStatus);
@@ -407,15 +315,10 @@ public sealed class FormCampaignService(
 
         if (firstUtc <= now)
         {
-            await cycleGeneration.TryGenerateOccurrenceAsync(campaign, firstLocal, currentUser.DisplayName ?? "publisher", cancellationToken);
-            var next = recurrence.ComputeNextAfter(schedule, firstLocal);
+            await schedule.GenerateOccurrenceAsync(campaign, firstLocal, access.DisplayName ?? "publisher", cancellationToken);
+            var next = schedule.ComputeNextAfter(mappedSchedule, firstLocal, campaign.TimeZoneId);
             campaign.LastGeneratedOccurrenceUtc = firstUtc;
-            campaign.NextOccurrenceUtc = next is null ? null : timeZones.ToUtc(next.Value, campaign.TimeZoneId);
-            if (campaign.RecurrenceKind == FormRecurrenceKind.Once)
-            {
-                campaign.NextOccurrenceUtc = null;
-            }
-
+            campaign.NextOccurrenceUtc = campaign.RecurrenceKind == FormRecurrenceKind.Once ? null : next;
             await db.SaveChangesAsync(cancellationToken);
         }
 
@@ -437,7 +340,7 @@ public sealed class FormCampaignService(
     public Task<FormCampaignDetailDto> ResumeAsync(Guid campaignId, FormCampaignTransitionRequest request, CancellationToken cancellationToken = default) =>
         db.ExecuteInTransactionAsync(async ct =>
         {
-            FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsPauseCampaign);
+            access.EnsurePermission(PermissionCodes.FormsPauseCampaign);
             var campaign = await LoadTrackedAsync(campaignId, ct);
             FormAccessHelper.EnsureRowVersion(campaign.RowVersion, request.RowVersion);
 
@@ -446,12 +349,12 @@ public sealed class FormCampaignService(
                 throw new InvalidOperationException("لا يمكن استئناف حملة مكتملة أو ملغاة.");
             }
 
-            var now = timeProvider.GetUtcNow();
-            var next = await ResolveNextOccurrenceForResumeAsync(campaign, ct);
+            var now = schedule.GetUtcNow();
+            var next = await schedule.ResolveNextOccurrenceForResumeAsync(campaign, ct);
             campaign.PausedAtUtc = null;
             campaign.PausedByUserId = null;
             campaign.PauseReason = null;
-            campaign.UpdatedByUserId = currentUser.UserId;
+            campaign.UpdatedByUserId = access.UserId;
             campaign.UpdatedAtUtc = now;
 
             if (next is null)
@@ -527,16 +430,16 @@ public sealed class FormCampaignService(
 
     public async Task<PagedResult<FacilityAssignmentDto>> ListAssignmentsAsync(Guid campaignId, Guid cycleId, PagedQuery query, CancellationToken cancellationToken = default)
     {
-        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsViewCampaignAssignments);
+        access.EnsurePermission(PermissionCodes.FormsViewCampaignAssignments);
         _ = await LoadVisibleAsync(campaignId, cancellationToken);
         _ = await db.FormCycles.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cycleId && c.CampaignId == campaignId, cancellationToken)
             ?? throw new KeyNotFoundException("الدورة غير موجودة.");
 
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
-        var q = orgScope.FilterFacilities(db.Facilities.AsNoTracking())
-            .Select(f => f.Id);
-        var scopedFacilityIds = await q.ToListAsync(cancellationToken);
+        var scopedFacilityIds = await access.FilterFacilities(db.Facilities.AsNoTracking())
+            .Select(f => f.Id)
+            .ToListAsync(cancellationToken);
 
         var assignments = db.FormFacilityAssignments.AsNoTracking()
             .Where(a => a.CycleId == cycleId && a.CampaignId == campaignId)
@@ -555,10 +458,10 @@ public sealed class FormCampaignService(
 
     public async Task<PagedResult<FormTargetPreviewFacilityDto>> ListTargetOptionRegionsAsync(PagedQuery query, CancellationToken cancellationToken = default)
     {
-        EnsurePreviewPermission();
+        access.EnsurePreviewPermission();
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
-        var regions = orgScope.FilterRegions(db.Regions.AsNoTracking().Where(r => r.IsActive));
+        var regions = access.FilterRegions(db.Regions.AsNoTracking().Where(r => r.IsActive));
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim();
@@ -575,10 +478,10 @@ public sealed class FormCampaignService(
 
     public async Task<PagedResult<FormTargetPreviewFacilityDto>> ListTargetOptionFacilitiesAsync(Guid? regionId, PagedQuery query, CancellationToken cancellationToken = default)
     {
-        EnsurePreviewPermission();
+        access.EnsurePreviewPermission();
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
-        var facilities = orgScope.FilterFacilities(db.Facilities.AsNoTracking().Where(f => f.IsActive));
+        var facilities = access.FilterFacilities(db.Facilities.AsNoTracking().Where(f => f.IsActive));
         if (regionId is { } rid)
         {
             facilities = facilities.Where(f => f.RegionId == rid);
@@ -599,15 +502,113 @@ public sealed class FormCampaignService(
     }
 
     public Task<IReadOnlyList<DateTimeOffset>> PreviewUpcomingAsync(
-        FormCampaignScheduleRequest schedule,
+        FormCampaignScheduleRequest scheduleRequest,
         string? timeZoneId,
         int count = 10,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ValidateSchedule(schedule);
-        _ = timeZones.Resolve(timeZoneId ?? FormTimeZoneResolver.DefaultTimeZoneId);
-        return Task.FromResult(recurrence.EnumerateUpcoming(schedule, schedule.FirstOpenAtLocal, Math.Clamp(count, 1, 20)));
+        ValidateSchedule(scheduleRequest);
+        schedule.ValidateTimeZone(timeZoneId);
+        return Task.FromResult(schedule.PreviewUpcoming(scheduleRequest, count));
+    }
+
+    private async Task<IQueryable<FormCampaign>> BuildVisibleCampaignQueryAsync(
+        FormCampaignStatus? status,
+        Guid? formDefinitionId,
+        string? search,
+        CancellationToken cancellationToken)
+    {
+        var scopedForms = await access.FilterScopedFormsAsync(cancellationToken);
+        var scopedFormIds = scopedForms.Select(f => f.Id);
+
+        var q = db.FormCampaigns.AsNoTracking()
+            .Include(c => c.FormDefinition)
+            .Include(c => c.FormVersion)
+            .Where(c => scopedFormIds.Contains(c.FormDefinitionId));
+
+        q = ApplyCampaignFilters(q, status, formDefinitionId, search);
+
+        if (!access.CanViewSensitiveViaRole)
+        {
+            q = q.Where(c => c.FormDefinition.Classification < ClassificationLevel.Confidential);
+        }
+
+        var allowedFormIds = await ResolveViewableFormIdsAsync(q, cancellationToken);
+        return q.Where(c => allowedFormIds.Contains(c.FormDefinitionId));
+    }
+
+    private static IQueryable<FormCampaign> ApplyCampaignFilters(
+        IQueryable<FormCampaign> query,
+        FormCampaignStatus? status,
+        Guid? formDefinitionId,
+        string? search)
+    {
+        if (status is not null)
+        {
+            query = query.Where(c => c.Status == status);
+        }
+
+        if (formDefinitionId is not null)
+        {
+            query = query.Where(c => c.FormDefinitionId == formDefinitionId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(c => c.Code.Contains(term)
+                || c.NameAr.Contains(term)
+                || (c.NameEn != null && c.NameEn.Contains(term)));
+        }
+
+        return query;
+    }
+
+    private async Task<HashSet<Guid>> ResolveViewableFormIdsAsync(
+        IQueryable<FormCampaign> query,
+        CancellationToken cancellationToken)
+    {
+        var candidateFormIds = await query.Select(c => c.FormDefinitionId).Distinct().ToListAsync(cancellationToken);
+        var viewCapabilities = await access.ResolveViewCapabilitiesAsync(candidateFormIds, cancellationToken);
+        return viewCapabilities.Where(x => x.Value).Select(x => x.Key).ToHashSet();
+    }
+
+    private async Task<Dictionary<Guid, (int Count, DateTimeOffset? Last)>> LoadCycleStatisticsAsync(
+        IReadOnlyList<Guid> campaignIds,
+        CancellationToken cancellationToken)
+    {
+        if (campaignIds.Count == 0)
+        {
+            return [];
+        }
+
+        var cycleCounts = await db.FormCycles.AsNoTracking()
+            .Where(c => campaignIds.Contains(c.CampaignId))
+            .GroupBy(c => c.CampaignId)
+            .Select(g => new { CampaignId = g.Key, Count = g.Count(), Last = g.Max(x => (DateTimeOffset?)x.GeneratedAtUtc) })
+            .ToListAsync(cancellationToken);
+        return cycleCounts.ToDictionary(x => x.CampaignId, x => (x.Count, x.Last));
+    }
+
+    private List<FormCampaignListItemDto> MapCampaignListItems(
+        IReadOnlyList<FormCampaign> items,
+        IReadOnlyDictionary<Guid, (int Count, DateTimeOffset? Last)> countMap,
+        IReadOnlyDictionary<Guid, bool> publishCapabilityByFormId)
+    {
+        var dtos = new List<FormCampaignListItemDto>(items.Count);
+        foreach (var c in items)
+        {
+            countMap.TryGetValue(c.Id, out var stats);
+            dtos.Add(new FormCampaignListItemDto(
+                c.Id, c.Code, c.NameAr, c.NameEn, c.FormDefinitionId, c.FormDefinition.Code, c.FormDefinition.NameAr,
+                c.FormVersionId, c.FormVersion.VersionNumber, c.Status, c.RecurrenceKind, c.FirstOpenAtLocal,
+                c.NextOccurrenceUtc, stats.Count, stats.Last,
+                BuildAllowedActions(c, publishCapabilityByFormId),
+                Convert.ToBase64String(c.RowVersion)));
+        }
+
+        return dtos;
     }
 
     private async Task<FormCampaignDetailDto> TransitionAsync(
@@ -619,7 +620,7 @@ public sealed class FormCampaignService(
         CancellationToken cancellationToken,
         bool requireReason = false)
     {
-        FormAccessHelper.EnsurePermission(currentUser, permission);
+        access.EnsurePermission(permission);
         if (requireReason && string.IsNullOrWhiteSpace(request.Reason))
         {
             throw new InvalidOperationException("السبب مطلوب.");
@@ -628,8 +629,8 @@ public sealed class FormCampaignService(
         var campaign = await LoadTrackedAsync(campaignId, cancellationToken);
         FormAccessHelper.EnsureRowVersion(campaign.RowVersion, request.RowVersion);
         FormCampaignStateMachine.EnsureCanTransition(campaign.Status, to);
-        var now = timeProvider.GetUtcNow();
-        var userId = currentUser.UserId;
+        var now = schedule.GetUtcNow();
+        var userId = access.UserId;
         campaign.Status = to;
         campaign.UpdatedAtUtc = now;
         campaign.UpdatedByUserId = userId;
@@ -778,10 +779,10 @@ public sealed class FormCampaignService(
             .Include(c => c.TargetRules)
             .Include(c => c.Exclusions)
             .FirstOrDefaultAsync(c => c.Id == campaignId, cancellationToken)
-            ?? throw new KeyNotFoundException("الحملة غير موجودة.");
-        if (!await CanViewCampaignAsync(campaign, cancellationToken))
+            ?? throw new KeyNotFoundException(CampaignNotFoundMessage);
+        if (!await access.CanViewCampaignAsync(campaign, cancellationToken))
         {
-            throw new KeyNotFoundException("الحملة غير موجودة.");
+            throw new KeyNotFoundException(CampaignNotFoundMessage);
         }
 
         return campaign;
@@ -794,123 +795,53 @@ public sealed class FormCampaignService(
             .Include(c => c.TargetRules)
             .Include(c => c.Exclusions)
             .FirstOrDefaultAsync(c => c.Id == campaignId, cancellationToken)
-            ?? throw new KeyNotFoundException("الحملة غير موجودة.");
-        if (!await CanViewCampaignAsync(campaign, cancellationToken))
+            ?? throw new KeyNotFoundException(CampaignNotFoundMessage);
+        if (!await access.CanViewCampaignAsync(campaign, cancellationToken))
         {
-            throw new KeyNotFoundException("الحملة غير موجودة.");
+            throw new KeyNotFoundException(CampaignNotFoundMessage);
         }
 
         return campaign;
     }
 
-    private async Task<bool> CanViewCampaignAsync(FormCampaign campaign, CancellationToken cancellationToken)
-    {
-        if (!formScope.CanAccess(campaign.FormDefinition))
-        {
-            return false;
-        }
-
-        if (!await effectiveAccess.HasCapabilityAsync(campaign.FormDefinition, FormAccessCapability.View, cancellationToken))
-        {
-            return false;
-        }
-
-        if (FormAccessHelper.RequiresSensitive(campaign.FormDefinition.Classification)
-            && !FormAccessHelper.CanViewSensitive(currentUser)
-            && !currentUser.HasPermission(PermissionCodes.FormsMonitorHeadquarters)
-            && !currentUser.HasPermission(PermissionCodes.AuditView))
-        {
-            return false;
-        }
-
-        return currentUser.HasPermission(PermissionCodes.FormsView)
-            || currentUser.HasPermission(PermissionCodes.FormsPublish)
-            || currentUser.HasPermission(PermissionCodes.FormsManageCampaigns)
-            || currentUser.HasPermission(PermissionCodes.FormsMonitorRegion)
-            || currentUser.HasPermission(PermissionCodes.FormsMonitorHeadquarters)
-            || currentUser.HasPermission(PermissionCodes.AuditView);
-    }
-
-    private void EnsureAnyViewPermission()
-    {
-        if (!(currentUser.HasPermission(PermissionCodes.FormsView)
-            || currentUser.HasPermission(PermissionCodes.FormsPublish)
-            || currentUser.HasPermission(PermissionCodes.FormsManageCampaigns)
-            || currentUser.HasPermission(PermissionCodes.FormsMonitorRegion)
-            || currentUser.HasPermission(PermissionCodes.FormsMonitorHeadquarters)
-            || currentUser.HasPermission(PermissionCodes.AuditView)))
-        {
-            throw new UnauthorizedAccessException("ليست لديك صلاحية عرض الحملات.");
-        }
-    }
-
-    private void EnsurePreviewPermission()
-    {
-        if (!(currentUser.HasPermission(PermissionCodes.FormsPreviewTargets)
-            || currentUser.HasPermission(PermissionCodes.FormsPublish)
-            || currentUser.HasPermission(PermissionCodes.FormsManageCampaigns)))
-        {
-            throw new UnauthorizedAccessException("ليست لديك صلاحية معاينة الاستهداف.");
-        }
-    }
-
-    private async Task<IReadOnlyDictionary<Guid, bool>> ResolvePublishCapabilityByFormAsync(
-        IReadOnlyList<FormCampaign> pageItems,
-        CancellationToken cancellationToken)
-    {
-        if (!currentUser.HasPermission(PermissionCodes.FormsPublish) || pageItems.Count == 0)
-        {
-            return new Dictionary<Guid, bool>();
-        }
-
-        var draftForms = pageItems
-            .Where(c => c.Status == FormCampaignStatus.Draft)
-            .GroupBy(c => c.FormDefinitionId)
-            .Select(g => g.First().FormDefinition)
-            .ToList();
-
-        var map = new Dictionary<Guid, bool>(draftForms.Count);
-        foreach (var form in draftForms)
-        {
-            map[form.Id] = await effectiveAccess.HasCapabilityAsync(
-                form,
-                FormAccessCapability.Publish,
-                cancellationToken);
-        }
-
-        return map;
-    }
-
-    private async Task<IReadOnlyList<string>> BuildAllowedActionsAsync(
+    private IReadOnlyList<string> BuildAllowedActions(
         FormCampaign campaign,
-        CancellationToken cancellationToken,
         IReadOnlyDictionary<Guid, bool>? publishCapabilityByFormId = null)
     {
         var hasPublishCapabilityOnForm = false;
-        if (campaign.Status == FormCampaignStatus.Draft
-            && currentUser.HasPermission(PermissionCodes.FormsPublish))
+        if (campaign.Status == FormCampaignStatus.Draft && access.HasPermission(PermissionCodes.FormsPublish))
         {
-            if (publishCapabilityByFormId is not null)
-            {
-                hasPublishCapabilityOnForm = publishCapabilityByFormId.GetValueOrDefault(campaign.FormDefinitionId);
-            }
-            else
-            {
-                hasPublishCapabilityOnForm = await effectiveAccess.HasCapabilityAsync(
-                    campaign.FormDefinition,
-                    FormAccessCapability.Publish,
-                    cancellationToken);
-            }
+            hasPublishCapabilityOnForm = publishCapabilityByFormId?.GetValueOrDefault(campaign.FormDefinitionId) ?? false;
         }
 
         return FormCampaignAllowedActions.Build(
             campaign.Status,
-            currentUser.HasPermission(PermissionCodes.FormsManageCampaigns),
-            currentUser.HasPermission(PermissionCodes.FormsPublish),
+            access.HasPermission(PermissionCodes.FormsManageCampaigns),
+            access.HasPermission(PermissionCodes.FormsPublish),
             hasPublishCapabilityOnForm,
-            currentUser.HasPermission(PermissionCodes.FormsPauseCampaign),
-            currentUser.HasPermission(PermissionCodes.FormsCancelCampaign),
-            currentUser.HasPermission(PermissionCodes.FormsViewCampaignAssignments));
+            access.HasPermission(PermissionCodes.FormsPauseCampaign),
+            access.HasPermission(PermissionCodes.FormsCancelCampaign),
+            access.HasPermission(PermissionCodes.FormsViewCampaignAssignments));
+    }
+
+    private async Task<IReadOnlyList<string>> BuildAllowedActionsAsync(
+        FormCampaign campaign,
+        CancellationToken cancellationToken)
+    {
+        var hasPublishCapabilityOnForm = false;
+        if (campaign.Status == FormCampaignStatus.Draft && access.HasPermission(PermissionCodes.FormsPublish))
+        {
+            hasPublishCapabilityOnForm = await access.HasPublishCapabilityAsync(campaign.FormDefinition, cancellationToken);
+        }
+
+        return FormCampaignAllowedActions.Build(
+            campaign.Status,
+            access.HasPermission(PermissionCodes.FormsManageCampaigns),
+            access.HasPermission(PermissionCodes.FormsPublish),
+            hasPublishCapabilityOnForm,
+            access.HasPermission(PermissionCodes.FormsPauseCampaign),
+            access.HasPermission(PermissionCodes.FormsCancelCampaign),
+            access.HasPermission(PermissionCodes.FormsViewCampaignAssignments));
     }
 
     private async Task<FormCampaignDetailDto> MapDetailAsync(FormCampaign campaign, CancellationToken cancellationToken)
@@ -940,7 +871,7 @@ public sealed class FormCampaignService(
             campaign.Priority,
             campaign.TimeZoneId,
             campaign.RecurrenceKind,
-            MapSchedule(campaign),
+            schedule.MapSchedule(campaign),
             campaign.TargetRules.Select(r => FormTargetResolver.DeserializeTarget(r.RuleType, r.ConfigurationJson)).ToList(),
             campaign.Exclusions.Select(e => new FormCampaignExclusionDto(
                 e.FacilityId,
@@ -962,74 +893,43 @@ public sealed class FormCampaignService(
             Convert.ToBase64String(campaign.RowVersion));
     }
 
-    private FormCampaignScheduleRequest MapSchedule(FormCampaign campaign) =>
-        recurrence.DeserializeSchedule(
-            campaign.RecurrenceKind,
-            campaign.RecurrenceConfigurationJson,
-            campaign.FirstOpenAtLocal,
-            campaign.ResponseWindowMinutes,
-            campaign.GracePeriodMinutes,
-            campaign.CloseAfterMinutes,
-            campaign.BusinessDayAdjustment);
-
-    private static void ValidateSchedule(FormCampaignScheduleRequest schedule)
+    private static void ValidateSchedule(FormCampaignScheduleRequest scheduleRequest)
     {
-        if (schedule.ResponseWindowMinutes <= 0)
+        if (scheduleRequest.ResponseWindowMinutes <= 0)
         {
             throw new InvalidOperationException("نافذة الاستجابة يجب أن تكون أكبر من صفر.");
         }
 
-        if (schedule.GracePeriodMinutes < 0 || schedule.CloseAfterMinutes < 0)
+        if (scheduleRequest.GracePeriodMinutes < 0 || scheduleRequest.CloseAfterMinutes < 0)
         {
             throw new InvalidOperationException("المهل الزمنية غير صالحة.");
         }
 
-        if (schedule.UntilLocal is { } until && until < schedule.FirstOpenAtLocal)
+        if (scheduleRequest.UntilLocal is { } until && until < scheduleRequest.FirstOpenAtLocal)
         {
             throw new InvalidOperationException("تاريخ النهاية يجب أن يكون بعد البداية.");
         }
 
-        if (schedule.MaxOccurrences is { } max && (max < 1 || max > FormRecurrenceCalculator.MaxOccurrences))
+        if (scheduleRequest.MaxOccurrences is { } max && (max < 1 || max > FormRecurrenceCalculator.MaxOccurrences))
         {
             throw new InvalidOperationException("عدد مرات التكرار خارج الحد المسموح.");
         }
 
-        if (schedule.RecurrenceKind == FormRecurrenceKind.CustomDates)
+        if (scheduleRequest.RecurrenceKind == FormRecurrenceKind.CustomDates)
         {
-            var dates = schedule.CustomDatesLocal ?? [];
+            var dates = scheduleRequest.CustomDatesLocal ?? [];
             if (dates.Count == 0)
             {
                 throw new InvalidOperationException("قائمة التواريخ المخصصة فارغة.");
             }
 
             var distinctCount = dates.Distinct().Count();
-            // Limit applies to distinct dates after Distinct (duplicates in the raw list are allowed).
             if (distinctCount > FormRecurrenceCalculator.MaxCustomDates)
             {
                 throw new InvalidOperationException(
                     $"عدد التواريخ المخصصة يتجاوز الحد الأقصى ({FormRecurrenceCalculator.MaxCustomDates}).");
             }
         }
-    }
-
-    private async Task<DateTimeOffset?> ResolveNextOccurrenceForResumeAsync(
-        FormCampaign campaign,
-        CancellationToken cancellationToken)
-    {
-        var schedule = MapSchedule(campaign);
-
-        if (schedule.RecurrenceKind == FormRecurrenceKind.Once)
-        {
-            var hasCycle = await db.FormCycles.AsNoTracking()
-                .AnyAsync(c => c.CampaignId == campaign.Id, cancellationToken);
-            return hasCycle ? null : timeZones.ToUtc(schedule.FirstOpenAtLocal, campaign.TimeZoneId);
-        }
-
-        var cursorLocal = campaign.LastGeneratedOccurrenceUtc is { } lastUtc
-            ? timeZones.ToLocal(lastUtc, campaign.TimeZoneId).AddMinutes(1)
-            : schedule.FirstOpenAtLocal;
-        var upcoming = recurrence.EnumerateUpcoming(schedule, cursorLocal, 1);
-        return upcoming.Count == 0 ? null : timeZones.ToUtc(upcoming[0], campaign.TimeZoneId);
     }
 
     private static void ValidateTargets(
@@ -1041,12 +941,9 @@ public sealed class FormCampaignService(
             throw new InvalidOperationException("يجب تحديد قاعدة استهداف واحدة على الأقل.");
         }
 
-        foreach (var exclusion in exclusions ?? [])
+        if ((exclusions ?? []).Any(e => string.IsNullOrWhiteSpace(e.Reason)))
         {
-            if (string.IsNullOrWhiteSpace(exclusion.Reason))
-            {
-                throw new InvalidOperationException("سبب الاستثناء مطلوب.");
-            }
+            throw new InvalidOperationException("سبب الاستثناء مطلوب.");
         }
     }
 }
