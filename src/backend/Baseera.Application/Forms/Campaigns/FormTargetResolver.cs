@@ -41,7 +41,7 @@ public sealed class FormTargetResolver(
         foreach (var rule in targets)
         {
             var query = scope.FilterFacilities(
-                db.Facilities.AsNoTracking().Where(f => f.Region.OrganizationId == organizationId && f.IsActive));
+                db.Facilities.AsNoTracking().Where(f => f.Region.OrganizationId == organizationId));
 
             query = rule.RuleType switch
             {

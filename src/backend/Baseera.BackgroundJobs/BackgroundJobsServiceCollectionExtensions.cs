@@ -12,7 +12,15 @@ public static class BackgroundJobsServiceCollectionExtensions
     public static IServiceCollection AddBaseeraBackgroundJobs(this IServiceCollection services)
     {
         services.AddOptions<EscalationProcessingOptions>().BindConfiguration("Escalations");
-        services.AddOptions<FormCampaignSchedulerHostOptions>().BindConfiguration("FormCampaigns:Scheduler");
+        services
+            .AddOptions<FormCampaignSchedulerHostOptions>()
+            .BindConfiguration("FormCampaigns:Scheduler")
+            .Validate(x => x.MaxCatchUpOccurrencesPerRun > 0, "MaxCatchUpOccurrencesPerRun must be greater than zero.")
+            .Validate(x => x.BatchSize > 0, "BatchSize must be greater than zero.")
+            .Validate(x => x.IntervalSeconds > 0, "IntervalSeconds must be greater than zero.")
+            .Validate(x => x.MaximumAttempts > 0, "MaximumAttempts must be greater than zero.")
+            .Validate(x => x.RetryBaseSeconds > 0, "RetryBaseSeconds must be greater than zero.")
+            .ValidateOnStart();
         services.AddHostedService<EscalationProcessingJob>();
         services.AddHostedService<FormCampaignSchedulerService>();
         return services;
