@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FormCompliancePage } from './FormCompliancePage'
 
@@ -63,7 +63,12 @@ function renderPage(route = '/form-compliance') {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[route]}>
-        <FormCompliancePage />
+        <Routes>
+          <Route path="/form-compliance" element={<FormCompliancePage />} />
+          <Route path="/form-compliance/regions/:regionId" element={<FormCompliancePage />} />
+          <Route path="/form-compliance/facilities/:facilityId" element={<FormCompliancePage />} />
+          <Route path="/form-compliance/cycles/:cycleId" element={<FormCompliancePage />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -72,6 +77,10 @@ function renderPage(route = '/form-compliance') {
 describe('FormCompliancePage', () => {
   beforeEach(() => {
     canExport.value = false
+    Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:csv'), configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), configurable: true })
+    listRegions.mockResolvedValue({ items: [{ id: 'r1', code: 'R1', nameAr: 'منطقة الاختبار' }], page: 1, pageSize: 50, totalCount: 1 })
+    listFacilities.mockResolvedValue({ items: [], page: 1, pageSize: 50, totalCount: 0 })
     summary.mockResolvedValue({
       targetedAssignmentCount: 2,
       distinctFacilityCount: 1,
@@ -98,7 +107,26 @@ describe('FormCompliancePage', () => {
       statusReconciliationValid: true,
       generatedAtUtc: '2026-07-23T10:00:00Z',
     })
-    regions.mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0 })
+    regions.mockResolvedValue({
+      items: [{
+        regionIdAtAssignment: 'r1',
+        regionNameAtAssignment: 'منطقة الاختبار',
+        targetedAssignmentCount: 3,
+        unavailableAssignmentCount: 1,
+        eligibleAssignmentCount: 2,
+        completedCount: 1,
+        remainingCount: 1,
+        completionRate: 50,
+        overdueCount: 1,
+        notStartedCount: 1,
+        returnedCount: 0,
+        averageCompletionMinutes: 60,
+        rank: 1,
+      }],
+      page: 1,
+      pageSize: 20,
+      totalCount: 45,
+    })
     facilities.mockResolvedValue({
       items: [{
         facilityId: 'f1',
@@ -121,7 +149,7 @@ describe('FormCompliancePage', () => {
       pageSize: 20,
       totalCount: 1,
     })
-    cycles.mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0 })
+    cycles.mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 25 })
     pending.mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0 })
     trend.mockResolvedValue([])
     exportCsv.mockResolvedValue({ blob: new Blob(['x']), fileName: 'x.csv' })
@@ -129,6 +157,7 @@ describe('FormCompliancePage', () => {
 
   afterEach(() => {
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   it('renders summary cards and uses dash for zero denominator', async () => {
@@ -154,13 +183,69 @@ describe('FormCompliancePage', () => {
   })
 
   it('updates URL filters from search input', async () => {
-    const user = userEvent.setup()
     renderPage()
 
     const search = await screen.findByLabelText('بحث')
-    await user.type(search, 'اختبار')
+    fireEvent.change(search, { target: { value: 'اختبار' } })
+    expect(summary).not.toHaveBeenLastCalledWith(expect.objectContaining({ search: expect.stringContaining('اختبار') }))
     await waitFor(() => {
       expect(summary).toHaveBeenLastCalledWith(expect.objectContaining({ search: expect.stringContaining('اختبار') }))
     })
+  })
+
+  it('passes independent pagination to regions without changing facilities page', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('منطقة الاختبار')
+    await user.click(screen.getAllByRole('button', { name: 'التالي' })[0])
+
+    await waitFor(() => {
+      expect(regions).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, pageSize: 20 }))
+    })
+    expect(facilities).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 20 }))
+    expect(screen.getByText(/عرض ٢١–٤٠ من إجمالي ٤٥/)).toBeInTheDocument()
+  })
+
+  it('changes page size for a single table and resets that table page', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByText('منطقة الاختبار')
+    await user.selectOptions(screen.getByLabelText('عدد صفوف المناطق'), '50')
+
+    await waitFor(() => {
+      expect(regions).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 50 }))
+    })
+  })
+
+  it('exports each compliance section with the matching view', async () => {
+    canExport.value = true
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'تصدير المناطق' }))
+    await user.click(screen.getByRole('button', { name: 'تصدير المواقع' }))
+    await user.click(screen.getByRole('button', { name: 'تصدير الدورات' }))
+    await user.click(screen.getByRole('button', { name: 'تصدير المتبقي' }))
+
+    expect(exportCsv).toHaveBeenCalledWith(expect.objectContaining({ view: 0 }))
+    expect(exportCsv).toHaveBeenCalledWith(expect.objectContaining({ view: 1 }))
+    expect(exportCsv).toHaveBeenCalledWith(expect.objectContaining({ view: 2 }))
+    expect(exportCsv).toHaveBeenCalledWith(expect.objectContaining({ view: 3 }))
+  })
+
+  it('keeps explicit route clear from restoring region default', async () => {
+    const user = userEvent.setup()
+    renderPage('/form-compliance/regions/r1')
+
+    await screen.findByText('منطقة الاختبار')
+    expect(screen.getByLabelText('المنطقة')).toHaveValue('r1')
+    await user.selectOptions(screen.getByLabelText('المنطقة'), '')
+
+    await waitFor(() => {
+      expect(summary).toHaveBeenLastCalledWith(expect.not.objectContaining({ regionId: 'r1' }))
+    })
+    expect(screen.getByLabelText('المنطقة')).toHaveValue('')
   })
 })

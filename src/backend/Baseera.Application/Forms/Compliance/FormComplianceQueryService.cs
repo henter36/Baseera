@@ -21,16 +21,17 @@ public sealed class FormComplianceQueryService(
     ILogger<FormComplianceQueryService> logger) : IFormComplianceQueryService
 {
     private const int ExportLimit = 50000;
+    private static readonly TimeSpan ReportingOffset = TimeZones.ToSaudi(DateTimeOffset.UnixEpoch).Offset;
 
     public async Task<FormComplianceSummaryDto> GetSummaryAsync(
         FormComplianceQuery query,
         CancellationToken cancellationToken = default)
     {
         EnsureViewPermission();
-        var normalized = Normalize(query);
+        var normalized = Normalize(query, isExport: false);
         await EnsureExplicitScopeFiltersAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow();
-        var aggregate = await AggregateAsync(BuildFilteredSource(normalized, nowUtc), nowUtc, cancellationToken);
+        var aggregate = await AggregateAsync(BuildFilteredSource(normalized, nowUtc), cancellationToken);
         var statusTotal = aggregate.NotStartedCount + aggregate.DraftCount + aggregate.SubmittedCount
             + aggregate.UnderReviewCount + aggregate.ReturnedCount + aggregate.ApprovedCount
             + aggregate.RejectedCount + aggregate.ClosedCount;
@@ -76,12 +77,18 @@ public sealed class FormComplianceQueryService(
     public async Task<PagedResult<FormComplianceRegionRowDto>> GetRegionsAsync(
         FormComplianceQuery query,
         CancellationToken cancellationToken = default)
+        => await GetRegionsPageAsync(query, isExport: false, cancellationToken);
+
+    private async Task<PagedResult<FormComplianceRegionRowDto>> GetRegionsPageAsync(
+        FormComplianceQuery query,
+        bool isExport,
+        CancellationToken cancellationToken)
     {
         EnsureViewPermission();
-        var normalized = Normalize(query);
+        var normalized = Normalize(query, isExport);
         await EnsureExplicitScopeFiltersAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow();
-        var rows = BuildFilteredSource(normalized, nowUtc).Where(r => r.IsAvailable);
+        var rows = BuildFilteredSource(normalized, nowUtc);
         var grouped = rows
             .GroupBy(r => new { r.RegionIdAtAssignment, r.RegionNameAtAssignment })
             .Select(g => new
@@ -89,13 +96,15 @@ public sealed class FormComplianceQueryService(
                 g.Key.RegionIdAtAssignment,
                 g.Key.RegionNameAtAssignment,
                 Targeted = g.Count(),
-                Eligible = g.Count(),
-                Completed = g.Count(r => r.IsCompleted),
-                Overdue = g.Count(r => r.IsOverdue),
-                NotStarted = g.Count(r => r.ResponseStatus == null),
-                Returned = g.Count(r => r.ResponseStatus == FormResponseStatus.Returned),
-                AverageMinutes = g.Where(r => r.IsCompleted && r.CompletionAtUtc != null && r.CompletionAtUtc >= r.OpenAtUtc)
-                    .Average(r => (double?)(r.CompletionAtUtc!.Value - r.OpenAtUtc).TotalMinutes)
+                Eligible = g.Count(r => r.IsAvailable),
+                Unavailable = g.Count(r => !r.IsAvailable),
+                Completed = g.Count(r => r.IsAvailable && r.IsCompleted),
+                Overdue = g.Count(r => r.IsAvailable && r.IsOverdue),
+                NotStarted = g.Count(r => r.IsAvailable && r.ResponseStatus == null),
+                Returned = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.Returned),
+                AverageMinutes = g
+                    .Where(r => r.IsAvailable && r.IsCompleted && r.CompletionAtUtc.HasValue && r.CompletionAtUtc.GetValueOrDefault() >= r.OpenAtUtc)
+                    .Average(r => (double?)(r.CompletionAtUtc.GetValueOrDefault() - r.OpenAtUtc).TotalMinutes)
             });
         var ordered = grouped
             .OrderBy(r => r.Eligible == 0 ? 101m : decimal.Divide(r.Completed * 100m, r.Eligible))
@@ -104,28 +113,36 @@ public sealed class FormComplianceQueryService(
         var total = await ordered.CountAsync(cancellationToken);
         var page = ToPage(normalized);
         var items = await ordered.Skip((page.Page - 1) * page.PageSize).Take(page.PageSize).ToListAsync(cancellationToken);
-        return Page(items.Select((r, i) => new FormComplianceRegionRowDto(
-            r.RegionIdAtAssignment,
-            r.RegionNameAtAssignment,
-            r.Targeted,
-            0,
-            r.Eligible,
-            r.Completed,
-            FormComplianceRates.Remaining(r.Eligible, r.Completed),
-            FormComplianceRates.Rate(r.Completed, r.Eligible),
-            r.Overdue,
-            r.NotStarted,
-            r.Returned,
-            r.AverageMinutes,
-            ((page.Page - 1) * page.PageSize) + i + 1)).ToList(), page, total);
+        return Page(items.Select((r, i) => new FormComplianceRegionRowDto
+        {
+            RegionIdAtAssignment = r.RegionIdAtAssignment,
+            RegionNameAtAssignment = r.RegionNameAtAssignment,
+            TargetedAssignmentCount = r.Targeted,
+            UnavailableAssignmentCount = r.Unavailable,
+            EligibleAssignmentCount = r.Eligible,
+            CompletedCount = r.Completed,
+            RemainingCount = FormComplianceRates.Remaining(r.Eligible, r.Completed),
+            CompletionRate = FormComplianceRates.Rate(r.Completed, r.Eligible),
+            OverdueCount = r.Overdue,
+            NotStartedCount = r.NotStarted,
+            ReturnedCount = r.Returned,
+            AverageCompletionMinutes = r.AverageMinutes,
+            Rank = ((page.Page - 1) * page.PageSize) + i + 1
+        }).ToList(), page, total);
     }
 
     public async Task<PagedResult<FormComplianceFacilityRowDto>> GetFacilitiesAsync(
         FormComplianceQuery query,
         CancellationToken cancellationToken = default)
+        => await GetFacilitiesPageAsync(query, isExport: false, cancellationToken);
+
+    private async Task<PagedResult<FormComplianceFacilityRowDto>> GetFacilitiesPageAsync(
+        FormComplianceQuery query,
+        bool isExport,
+        CancellationToken cancellationToken)
     {
         EnsureViewPermission();
-        var normalized = Normalize(query);
+        var normalized = Normalize(query, isExport);
         await EnsureExplicitScopeFiltersAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow();
         var rows = BuildFilteredSource(normalized, nowUtc).Where(r => r.IsAvailable);
@@ -148,11 +165,13 @@ public sealed class FormComplianceQueryService(
             Completed = g.Count(r => r.IsCompleted),
             Overdue = g.Count(r => r.IsOverdue),
             LatestDue = g.Max(r => (DateTimeOffset?)r.EffectiveDueAtUtc),
-            ResponsibleUserId = g.OrderByDescending(r => r.LastSavedAtUtc ?? r.SubmittedAtUtc)
-                .Select(r => r.LastSavedByUserId ?? r.SubmittedByUserId)
-                .FirstOrDefault(),
-            ResponsibleUserName = g.OrderByDescending(r => r.LastSavedAtUtc ?? r.SubmittedAtUtc)
-                .Select(r => r.LastSavedByUserName ?? r.SubmittedByUserName)
+            Responsible = g.OrderByDescending(r => r.LastSavedAtUtc ?? r.SubmittedAtUtc ?? DateTimeOffset.MinValue)
+                .ThenByDescending(r => r.ResponseId ?? r.AssignmentId)
+                .Select(r => new
+                {
+                    Id = r.LastSavedByUserId ?? r.SubmittedByUserId,
+                    Name = r.LastSavedByUserId != null ? r.LastSavedByUserName : r.SubmittedByUserName
+                })
                 .FirstOrDefault()
         });
         var ordered = normalized.Sort?.Trim().Equals("overdue", StringComparison.OrdinalIgnoreCase) == true
@@ -161,30 +180,38 @@ public sealed class FormComplianceQueryService(
         var page = ToPage(normalized);
         var total = await ordered.CountAsync(cancellationToken);
         var items = await ordered.Skip((page.Page - 1) * page.PageSize).Take(page.PageSize).ToListAsync(cancellationToken);
-        return Page(items.Select(r => new FormComplianceFacilityRowDto(
-            r.FacilityId,
-            r.FacilityCodeAtAssignment,
-            r.FacilityNameAtAssignment,
-            r.RegionIdAtAssignment,
-            r.RegionNameAtAssignment,
-            r.CycleCount,
-            r.Eligible,
-            r.Completed,
-            FormComplianceRates.Remaining(r.Eligible, r.Completed),
-            FormComplianceRates.Rate(r.Completed, r.Eligible),
-            r.Overdue,
-            r.LatestDue,
-            r.ResponsibleUserId,
-            r.ResponsibleUserName,
-            ["open-response", "open-review", "view-history"])).ToList(), page, total);
+        return Page(items.Select(r => new FormComplianceFacilityRowDto
+        {
+            FacilityId = r.FacilityId,
+            FacilityCodeAtAssignment = r.FacilityCodeAtAssignment,
+            FacilityNameAtAssignment = r.FacilityNameAtAssignment,
+            RegionIdAtAssignment = r.RegionIdAtAssignment,
+            RegionNameAtAssignment = r.RegionNameAtAssignment,
+            CycleCount = r.CycleCount,
+            EligibleAssignmentCount = r.Eligible,
+            CompletedCount = r.Completed,
+            RemainingCount = FormComplianceRates.Remaining(r.Eligible, r.Completed),
+            CompletionRate = FormComplianceRates.Rate(r.Completed, r.Eligible),
+            OverdueCount = r.Overdue,
+            LatestEffectiveDueAtUtc = r.LatestDue,
+            ResponsibleUserId = r.Responsible == null ? null : r.Responsible.Id,
+            ResponsibleUserName = r.Responsible == null ? null : r.Responsible.Name,
+            AllowedActions = ["open-response", "open-review", "view-history"]
+        }).ToList(), page, total);
     }
 
     public async Task<PagedResult<FormComplianceCycleRowDto>> GetCyclesAsync(
         FormComplianceQuery query,
         CancellationToken cancellationToken = default)
+        => await GetCyclesPageAsync(query, isExport: false, cancellationToken);
+
+    private async Task<PagedResult<FormComplianceCycleRowDto>> GetCyclesPageAsync(
+        FormComplianceQuery query,
+        bool isExport,
+        CancellationToken cancellationToken)
     {
         EnsureViewPermission();
-        var normalized = Normalize(query);
+        var normalized = Normalize(query, isExport);
         await EnsureExplicitScopeFiltersAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow();
         var rows = BuildFilteredSource(normalized, nowUtc);
@@ -220,49 +247,61 @@ public sealed class FormComplianceQueryService(
             Eligible = g.Count(r => r.IsAvailable),
             Completed = g.Count(r => r.IsAvailable && r.IsCompleted),
             Overdue = g.Count(r => r.IsAvailable && r.IsOverdue),
-            AverageMinutes = g.Where(r => r.IsAvailable && r.IsCompleted && r.CompletionAtUtc != null && r.CompletionAtUtc >= r.OpenAtUtc)
-                .Average(r => (double?)(r.CompletionAtUtc!.Value - r.OpenAtUtc).TotalMinutes)
+            AverageMinutes = g
+                .Where(r => r.IsAvailable && r.IsCompleted && r.CompletionAtUtc.HasValue && r.CompletionAtUtc.GetValueOrDefault() >= r.OpenAtUtc)
+                .Average(r => (double?)(r.CompletionAtUtc.GetValueOrDefault() - r.OpenAtUtc).TotalMinutes)
         }).OrderByDescending(r => r.ScheduledOccurrenceUtc).ThenBy(r => r.CampaignNameAr);
         var page = ToPage(normalized);
         var total = await grouped.CountAsync(cancellationToken);
         var items = await grouped.Skip((page.Page - 1) * page.PageSize).Take(page.PageSize).ToListAsync(cancellationToken);
-        var cycleIds = items.Select(i => i.CycleId).ToHashSet();
-        var previousRates = await LoadPreviousCycleRatesAsync(rows, cycleIds, cancellationToken);
+        var lookups = items
+            .Select(i => new PreviousCycleLookup(i.CycleId, i.CampaignId, i.SequenceNumber - 1))
+            .Where(i => i.PreviousSequenceNumber > 0)
+            .ToList();
+        var previousRates = await LoadPreviousCycleRatesAsync(rows, lookups, cancellationToken);
         return Page(items.Select(r =>
         {
             var rate = FormComplianceRates.Rate(r.Completed, r.Eligible);
             previousRates.TryGetValue(r.CycleId, out var previousRate);
-            return new FormComplianceCycleRowDto(
-                r.CycleId,
-                r.CampaignId,
-                r.CampaignCode,
-                r.CampaignNameAr,
-                r.SequenceNumber,
-                r.OccurrenceKey,
-                r.ScheduledOccurrenceUtc,
-                r.OpenAtUtc,
-                r.DueAtUtc,
-                r.CloseAtUtc,
-                r.CycleStatus,
-                r.CompletionBasis,
-                r.Targeted,
-                r.Eligible,
-                r.Completed,
-                FormComplianceRates.Remaining(r.Eligible, r.Completed),
-                rate,
-                r.Overdue,
-                r.AverageMinutes,
-                previousRate,
-                rate.HasValue && previousRate.HasValue ? rate.Value - previousRate.Value : null);
+            return new FormComplianceCycleRowDto
+            {
+                CycleId = r.CycleId,
+                CampaignId = r.CampaignId,
+                CampaignCode = r.CampaignCode,
+                CampaignNameAr = r.CampaignNameAr,
+                SequenceNumber = r.SequenceNumber,
+                OccurrenceKey = r.OccurrenceKey,
+                ScheduledOccurrenceUtc = r.ScheduledOccurrenceUtc,
+                OpenAtUtc = r.OpenAtUtc,
+                DueAtUtc = r.DueAtUtc,
+                CloseAtUtc = r.CloseAtUtc,
+                CycleStatus = r.CycleStatus,
+                CompletionBasis = r.CompletionBasis,
+                TargetedAssignmentCount = r.Targeted,
+                EligibleAssignmentCount = r.Eligible,
+                CompletedCount = r.Completed,
+                RemainingCount = FormComplianceRates.Remaining(r.Eligible, r.Completed),
+                CompletionRate = rate,
+                OverdueCount = r.Overdue,
+                AverageCompletionMinutes = r.AverageMinutes,
+                PreviousCycleCompletionRate = previousRate,
+                CompletionRateDelta = rate.HasValue && previousRate.HasValue ? rate.Value - previousRate.Value : null
+            };
         }).ToList(), page, total);
     }
 
     public async Task<PagedResult<FormCompliancePendingItemDto>> GetPendingAsync(
         FormComplianceQuery query,
         CancellationToken cancellationToken = default)
+        => await GetPendingPageAsync(query, isExport: false, cancellationToken);
+
+    private async Task<PagedResult<FormCompliancePendingItemDto>> GetPendingPageAsync(
+        FormComplianceQuery query,
+        bool isExport,
+        CancellationToken cancellationToken)
     {
         EnsureViewPermission();
-        var normalized = Normalize(query with { IsCompleted = false, IsAvailable = true });
+        var normalized = Normalize(query with { IsCompleted = false, IsAvailable = true }, isExport);
         await EnsureExplicitScopeFiltersAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow();
         var rows = BuildFilteredSource(normalized, nowUtc)
@@ -272,28 +311,30 @@ public sealed class FormComplianceQueryService(
         var page = ToPage(normalized);
         var total = await rows.CountAsync(cancellationToken);
         var items = await rows.Skip((page.Page - 1) * page.PageSize).Take(page.PageSize).ToListAsync(cancellationToken);
-        return Page(items.Select(r => new FormCompliancePendingItemDto(
-            r.AssignmentId,
-            r.CampaignId,
-            r.CampaignNameAr,
-            r.CycleId,
-            r.OccurrenceKey,
-            r.FacilityId,
-            r.FacilityNameAtAssignment,
-            r.RegionIdAtAssignment,
-            r.RegionNameAtAssignment,
-            r.ResponseId,
-            r.ResponseStatus,
-            FormResponseWorkStatusResolver.Resolve(r.ResponseStatus, r.IsOverdue),
-            r.IsOverdue,
-            r.OpenAtUtc,
-            r.EffectiveDueAtUtc,
-            r.IsOverdue ? Math.Max(0, (int)Math.Floor((nowUtc - r.EffectiveDueAtUtc).TotalDays)) : null,
-            r.LastSavedAtUtc,
-            r.SubmittedAtUtc,
-            r.LastSavedByUserId ?? r.SubmittedByUserId,
-            r.LastSavedByUserName ?? r.SubmittedByUserName,
-            ["open-response", "open-review", "view-history"])).ToList(), page, total);
+        return Page(items.Select(r => new FormCompliancePendingItemDto
+        {
+            AssignmentId = r.AssignmentId,
+            CampaignId = r.CampaignId,
+            CampaignNameAr = r.CampaignNameAr,
+            CycleId = r.CycleId,
+            OccurrenceKey = r.OccurrenceKey,
+            FacilityId = r.FacilityId,
+            FacilityNameAtAssignment = r.FacilityNameAtAssignment,
+            RegionIdAtAssignment = r.RegionIdAtAssignment,
+            RegionNameAtAssignment = r.RegionNameAtAssignment,
+            ResponseId = r.ResponseId,
+            ResponseStatus = r.ResponseStatus,
+            WorkStatus = FormResponseWorkStatusResolver.Resolve(r.ResponseStatus, r.IsOverdue),
+            IsOverdue = r.IsOverdue,
+            OpenAtUtc = r.OpenAtUtc,
+            EffectiveDueAtUtc = r.EffectiveDueAtUtc,
+            DaysOverdue = r.IsOverdue ? Math.Max(0, (int)Math.Floor((nowUtc - r.EffectiveDueAtUtc).TotalDays)) : null,
+            LastSavedAtUtc = r.LastSavedAtUtc,
+            SubmittedAtUtc = r.SubmittedAtUtc,
+            ResponsibleUserId = r.LastSavedByUserId ?? r.SubmittedByUserId,
+            ResponsibleUserName = r.LastSavedByUserName ?? r.SubmittedByUserName,
+            AllowedActions = ["open-response", "open-review", "view-history"]
+        }).ToList(), page, total);
     }
 
     public async Task<IReadOnlyList<FormComplianceTrendPointDto>> GetTrendAsync(
@@ -302,7 +343,7 @@ public sealed class FormComplianceQueryService(
     {
         EnsureViewPermission();
         var groupBy = query.GroupBy ?? FormComplianceTrendGroupBy.Cycle;
-        var normalized = Normalize(query);
+        var normalized = Normalize(query, isExport: false);
         await EnsureExplicitScopeFiltersAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow();
         var rows = BuildFilteredSource(normalized, nowUtc).Where(r => r.IsAvailable);
@@ -321,15 +362,11 @@ public sealed class FormComplianceQueryService(
         var csv = new StringBuilder("\uFEFF");
         var rowCount = view switch
         {
+            FormComplianceExportView.Regions => await AppendRegionCsvAsync(csv, withLimit, cancellationToken),
             FormComplianceExportView.Cycles => await AppendCycleCsvAsync(csv, withLimit, cancellationToken),
             FormComplianceExportView.Pending => await AppendPendingCsvAsync(csv, withLimit, cancellationToken),
             _ => await AppendFacilityCsvAsync(csv, withLimit, cancellationToken)
         };
-        if (rowCount >= ExportLimit)
-        {
-            throw new InvalidOperationException("EXPORT_ROW_LIMIT_EXCEEDED: تجاوز التصدير 50,000 صف. يرجى تضييق الفلاتر.");
-        }
-
         await audit.WriteAsync(new AuditEntry
         {
             Action = "FormComplianceExported",
@@ -354,117 +391,199 @@ public sealed class FormComplianceQueryService(
 
     private IQueryable<FormComplianceSourceRow> BuildFilteredSource(FormComplianceQuery query, DateTimeOffset nowUtc)
     {
-        var facilityIds = orgScope.FilterFacilities(db.Facilities).Select(f => f.Id);
-        var source = db.FormFacilityAssignments
-            .AsNoTracking()
-            .Where(a => facilityIds.Contains(a.FacilityId))
-            .SelectMany(
-                a => db.FormResponses.Where(r => r.AssignmentId == a.Id).DefaultIfEmpty(),
-                (a, response) => new { Assignment = a, Response = response })
-            .Select(x => new FormComplianceSourceRow
-            {
-                AssignmentId = x.Assignment.Id,
-                CampaignId = x.Assignment.CampaignId,
-                FormDefinitionId = x.Assignment.Campaign.FormDefinitionId,
-                CycleId = x.Assignment.CycleId,
-                FacilityId = x.Assignment.FacilityId,
-                RegionIdAtAssignment = x.Assignment.RegionIdAtAssignment,
-                FacilityCodeAtAssignment = x.Assignment.FacilityCodeAtAssignment,
-                FacilityNameAtAssignment = x.Assignment.FacilityNameArAtAssignment,
-                RegionNameAtAssignment = x.Assignment.RegionNameArAtAssignment,
-                CampaignCode = x.Assignment.Campaign.Code,
-                CampaignNameAr = x.Assignment.Campaign.NameAr,
-                IsAvailable = x.Assignment.IsAvailable,
-                UnavailableReason = x.Assignment.UnavailableReason,
-                CycleStatus = x.Assignment.Cycle.Status,
-                CompletionBasis = x.Assignment.Campaign.ResponsePolicy == null
-                    ? FormCompletionBasis.Submitted
-                    : x.Assignment.Campaign.ResponsePolicy.CompletionBasis,
-                ResponseStatus = x.Response == null ? null : x.Response.Status,
-                ResponseId = x.Response == null ? null : x.Response.Id,
-                OpenAtUtc = x.Assignment.Cycle.OpenAtUtc,
-                DueAtUtc = x.Assignment.Cycle.DueAtUtc,
-                CloseAtUtc = x.Assignment.Cycle.CloseAtUtc,
-                ScheduledOccurrenceUtc = x.Assignment.Cycle.ScheduledOccurrenceUtc,
-                SequenceNumber = x.Assignment.Cycle.SequenceNumber,
-                OccurrenceKey = x.Assignment.Cycle.OccurrenceKey,
-                EffectiveDueAtUtc = x.Response != null && x.Response.DueAtUtcOverride != null
-                    ? x.Response.DueAtUtcOverride.Value
-                    : x.Assignment.Cycle.DueAtUtc,
-                CompletionAtUtc = (x.Assignment.Campaign.ResponsePolicy == null
-                        || x.Assignment.Campaign.ResponsePolicy.CompletionBasis == FormCompletionBasis.Submitted)
-                    ? (x.Response == null ? null : x.Response.SubmittedAtUtc)
-                    : (x.Response == null ? null : x.Response.ApprovedAtUtc),
-                LastSavedAtUtc = x.Response == null ? null : x.Response.LastSavedAtUtc,
-                SubmittedAtUtc = x.Response == null ? null : x.Response.SubmittedAtUtc,
-                LastSavedByUserId = x.Response == null ? null : x.Response.LastSavedByUserId,
-                SubmittedByUserId = x.Response == null ? null : x.Response.SubmittedByUserId,
-                LastSavedByUserName = x.Response != null && x.Response.LastSavedByUser != null ? x.Response.LastSavedByUser.DisplayNameAr : null,
-                SubmittedByUserName = x.Response != null && x.Response.SubmittedByUser != null ? x.Response.SubmittedByUser.DisplayNameAr : null,
-                IsCompleted = x.Response != null
-                    && ((x.Assignment.Campaign.ResponsePolicy == null
-                            || x.Assignment.Campaign.ResponsePolicy.CompletionBasis == FormCompletionBasis.Submitted)
-                        && (x.Response.Status == FormResponseStatus.Submitted
-                            || x.Response.Status == FormResponseStatus.UnderReview
-                            || x.Response.Status == FormResponseStatus.Approved
-                            || x.Response.Status == FormResponseStatus.Closed)
-                        || (x.Assignment.Campaign.ResponsePolicy != null
-                            && x.Assignment.Campaign.ResponsePolicy.CompletionBasis == FormCompletionBasis.Approved
-                            && (x.Response.Status == FormResponseStatus.Approved
-                                || x.Response.Status == FormResponseStatus.Closed))),
-                IsOverdue = x.Response != null
-                    ? !(((x.Assignment.Campaign.ResponsePolicy == null
-                                || x.Assignment.Campaign.ResponsePolicy.CompletionBasis == FormCompletionBasis.Submitted)
-                            && (x.Response.Status == FormResponseStatus.Submitted
-                                || x.Response.Status == FormResponseStatus.UnderReview
-                                || x.Response.Status == FormResponseStatus.Approved
-                                || x.Response.Status == FormResponseStatus.Closed))
-                        || (x.Assignment.Campaign.ResponsePolicy != null
-                            && x.Assignment.Campaign.ResponsePolicy.CompletionBasis == FormCompletionBasis.Approved
-                            && (x.Response.Status == FormResponseStatus.Approved
-                                || x.Response.Status == FormResponseStatus.Closed)))
-                        && nowUtc > (x.Response.DueAtUtcOverride ?? x.Assignment.Cycle.DueAtUtc)
-                    : nowUtc > x.Assignment.Cycle.DueAtUtc
-            });
-
-        return ApplyFilters(source, query);
+        var assignments = BuildScopedAssignmentsQuery();
+        var filteredAssignments = ApplyAssignmentFilters(assignments, query);
+        var baseRows = BuildBaseComplianceProjection(filteredAssignments);
+        var calculatedRows = BuildCalculatedComplianceProjection(baseRows, nowUtc);
+        return ApplyCalculatedFilters(calculatedRows, query);
     }
 
-    private static IQueryable<FormComplianceSourceRow> ApplyFilters(
-        IQueryable<FormComplianceSourceRow> source,
+    private IQueryable<FormFacilityAssignment> BuildScopedAssignmentsQuery()
+    {
+        var facilityIds = orgScope.FilterFacilities(db.Facilities).Select(f => f.Id);
+        return db.FormFacilityAssignments
+            .AsNoTracking()
+            .Where(a => facilityIds.Contains(a.FacilityId));
+    }
+
+    private static IQueryable<FormFacilityAssignment> ApplyAssignmentFilters(
+        IQueryable<FormFacilityAssignment> source,
         FormComplianceQuery query)
     {
-        if (query.FromUtc.HasValue) source = source.Where(r => r.ScheduledOccurrenceUtc >= query.FromUtc.Value);
-        if (query.ToUtc.HasValue) source = source.Where(r => r.ScheduledOccurrenceUtc <= query.ToUtc.Value);
-        if (query.FormDefinitionId.HasValue) source = source.Where(r => r.FormDefinitionId == query.FormDefinitionId);
+        source = ApplyAssignmentDateFilters(source, query);
+        source = ApplyAssignmentIdentityFilters(source, query);
+        source = ApplyAssignmentStatusFilters(source, query);
+        return ApplyAssignmentSearchFilter(source, query);
+    }
+
+    private static IQueryable<FormFacilityAssignment> ApplyAssignmentDateFilters(
+        IQueryable<FormFacilityAssignment> source,
+        FormComplianceQuery query)
+    {
+        if (query.FromUtc.HasValue) source = source.Where(r => r.Cycle.ScheduledOccurrenceUtc >= query.FromUtc.Value);
+        if (query.ToUtc.HasValue) source = source.Where(r => r.Cycle.ScheduledOccurrenceUtc <= query.ToUtc.Value);
+        return source;
+    }
+
+    private static IQueryable<FormFacilityAssignment> ApplyAssignmentIdentityFilters(
+        IQueryable<FormFacilityAssignment> source,
+        FormComplianceQuery query)
+    {
+        if (query.FormDefinitionId.HasValue) source = source.Where(r => r.Campaign.FormDefinitionId == query.FormDefinitionId);
         if (query.CampaignId.HasValue) source = source.Where(r => r.CampaignId == query.CampaignId);
         if (query.CycleId.HasValue) source = source.Where(r => r.CycleId == query.CycleId);
         if (query.RegionId.HasValue) source = source.Where(r => r.RegionIdAtAssignment == query.RegionId);
         if (query.FacilityId.HasValue) source = source.Where(r => r.FacilityId == query.FacilityId);
-        if (query.CycleStatus.HasValue) source = source.Where(r => r.CycleStatus == query.CycleStatus);
-        else source = source.Where(r => r.CycleStatus != FormCycleStatus.Cancelled);
-        if (query.CompletionBasis.HasValue) source = source.Where(r => r.CompletionBasis == query.CompletionBasis);
-        if (query.ResponseStatus.HasValue) source = source.Where(r => r.ResponseStatus == query.ResponseStatus);
-        if (query.IsCompleted.HasValue) source = source.Where(r => r.IsCompleted == query.IsCompleted);
-        if (query.IsOverdue.HasValue) source = source.Where(r => r.IsOverdue == query.IsOverdue);
-        if (query.IsAvailable.HasValue) source = source.Where(r => r.IsAvailable == query.IsAvailable);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var term = query.Search.Trim();
-            source = source.Where(r =>
-                r.CampaignNameAr.Contains(term)
-                || r.CampaignCode.Contains(term)
-                || r.FacilityNameAtAssignment.Contains(term)
-                || r.FacilityCodeAtAssignment.Contains(term)
-                || r.RegionNameAtAssignment.Contains(term));
-        }
-
         return source;
     }
 
-    private async Task<FormComplianceMetricAggregate> AggregateAsync(
+    private static IQueryable<FormFacilityAssignment> ApplyAssignmentStatusFilters(
+        IQueryable<FormFacilityAssignment> source,
+        FormComplianceQuery query)
+    {
+        source = query.CycleStatus.HasValue
+            ? source.Where(r => r.Cycle.Status == query.CycleStatus)
+            : source.Where(r => r.Cycle.Status != FormCycleStatus.Cancelled);
+        if (query.CompletionBasis.HasValue)
+        {
+            source = source.Where(r =>
+                (r.Campaign.ResponsePolicy == null ? FormCompletionBasis.Submitted : r.Campaign.ResponsePolicy.CompletionBasis)
+                == query.CompletionBasis);
+        }
+
+        if (query.IsAvailable.HasValue) source = source.Where(r => r.IsAvailable == query.IsAvailable);
+        return source;
+    }
+
+    private static IQueryable<FormFacilityAssignment> ApplyAssignmentSearchFilter(
+        IQueryable<FormFacilityAssignment> source,
+        FormComplianceQuery query)
+    {
+        if (string.IsNullOrWhiteSpace(query.Search))
+        {
+            return source;
+        }
+
+        var term = query.Search.Trim();
+        return source.Where(r =>
+            r.Campaign.NameAr.Contains(term)
+            || r.Campaign.Code.Contains(term)
+            || r.FacilityNameArAtAssignment.Contains(term)
+            || r.FacilityCodeAtAssignment.Contains(term)
+            || r.RegionNameArAtAssignment.Contains(term));
+    }
+
+    private IQueryable<FormComplianceBaseRow> BuildBaseComplianceProjection(
+        IQueryable<FormFacilityAssignment> assignments) =>
+        assignments.LeftJoin(
+            db.FormResponses,
+            assignment => assignment.Id,
+            response => response.AssignmentId,
+            (assignment, response) => new FormComplianceBaseRow
+            {
+                AssignmentId = assignment.Id,
+                CampaignId = assignment.CampaignId,
+                FormDefinitionId = assignment.Campaign.FormDefinitionId,
+                CycleId = assignment.CycleId,
+                FacilityId = assignment.FacilityId,
+                RegionIdAtAssignment = assignment.RegionIdAtAssignment,
+                FacilityCodeAtAssignment = assignment.FacilityCodeAtAssignment,
+                FacilityNameAtAssignment = assignment.FacilityNameArAtAssignment,
+                RegionNameAtAssignment = assignment.RegionNameArAtAssignment,
+                CampaignCode = assignment.Campaign.Code,
+                CampaignNameAr = assignment.Campaign.NameAr,
+                IsAvailable = assignment.IsAvailable,
+                UnavailableReason = assignment.UnavailableReason,
+                CycleStatus = assignment.Cycle.Status,
+                CompletionBasis = assignment.Campaign.ResponsePolicy == null
+                    ? FormCompletionBasis.Submitted
+                    : assignment.Campaign.ResponsePolicy.CompletionBasis,
+                ResponseStatus = response == null ? null : response.Status,
+                ResponseId = response == null ? null : response.Id,
+                OpenAtUtc = assignment.Cycle.OpenAtUtc,
+                DueAtUtc = assignment.Cycle.DueAtUtc,
+                CloseAtUtc = assignment.Cycle.CloseAtUtc,
+                ScheduledOccurrenceUtc = assignment.Cycle.ScheduledOccurrenceUtc,
+                SequenceNumber = assignment.Cycle.SequenceNumber,
+                OccurrenceKey = assignment.Cycle.OccurrenceKey,
+                EffectiveDueAtUtc = response != null && response.DueAtUtcOverride != null
+                    ? response.DueAtUtcOverride.Value
+                    : assignment.Cycle.DueAtUtc,
+                SubmittedAtUtc = response == null ? null : response.SubmittedAtUtc,
+                ApprovedAtUtc = response == null ? null : response.ApprovedAtUtc,
+                LastSavedAtUtc = response == null ? null : response.LastSavedAtUtc,
+                LastSavedByUserId = response == null ? null : response.LastSavedByUserId,
+                SubmittedByUserId = response == null ? null : response.SubmittedByUserId,
+                LastSavedByUserName = response != null && response.LastSavedByUser != null ? response.LastSavedByUser.DisplayNameAr : null,
+                SubmittedByUserName = response != null && response.SubmittedByUser != null ? response.SubmittedByUser.DisplayNameAr : null
+            });
+
+    private static IQueryable<FormComplianceSourceRow> BuildCalculatedComplianceProjection(
+        IQueryable<FormComplianceBaseRow> source,
+        DateTimeOffset nowUtc) =>
+        source.Select(r => new FormComplianceSourceRow
+        {
+            AssignmentId = r.AssignmentId,
+            CampaignId = r.CampaignId,
+            FormDefinitionId = r.FormDefinitionId,
+            CycleId = r.CycleId,
+            FacilityId = r.FacilityId,
+            RegionIdAtAssignment = r.RegionIdAtAssignment,
+            FacilityCodeAtAssignment = r.FacilityCodeAtAssignment,
+            FacilityNameAtAssignment = r.FacilityNameAtAssignment,
+            RegionNameAtAssignment = r.RegionNameAtAssignment,
+            CampaignCode = r.CampaignCode,
+            CampaignNameAr = r.CampaignNameAr,
+            IsAvailable = r.IsAvailable,
+            UnavailableReason = r.UnavailableReason,
+            CycleStatus = r.CycleStatus,
+            CompletionBasis = r.CompletionBasis,
+            ResponseStatus = r.ResponseStatus,
+            ResponseId = r.ResponseId,
+            OpenAtUtc = r.OpenAtUtc,
+            DueAtUtc = r.DueAtUtc,
+            CloseAtUtc = r.CloseAtUtc,
+            ScheduledOccurrenceUtc = r.ScheduledOccurrenceUtc,
+            SequenceNumber = r.SequenceNumber,
+            OccurrenceKey = r.OccurrenceKey,
+            EffectiveDueAtUtc = r.EffectiveDueAtUtc,
+            CompletionAtUtc = r.CompletionBasis == FormCompletionBasis.Submitted ? r.SubmittedAtUtc : r.ApprovedAtUtc,
+            LastSavedAtUtc = r.LastSavedAtUtc,
+            SubmittedAtUtc = r.SubmittedAtUtc,
+            LastSavedByUserId = r.LastSavedByUserId,
+            SubmittedByUserId = r.SubmittedByUserId,
+            LastSavedByUserName = r.LastSavedByUserName,
+            SubmittedByUserName = r.SubmittedByUserName,
+            IsCompleted = r.CompletionBasis == FormCompletionBasis.Submitted
+                ? r.ResponseStatus == FormResponseStatus.Submitted
+                    || r.ResponseStatus == FormResponseStatus.UnderReview
+                    || r.ResponseStatus == FormResponseStatus.Approved
+                    || r.ResponseStatus == FormResponseStatus.Closed
+                : r.ResponseStatus == FormResponseStatus.Approved
+                    || r.ResponseStatus == FormResponseStatus.Closed,
+            IsOverdue = r.IsAvailable
+                && !(r.CompletionBasis == FormCompletionBasis.Submitted
+                    ? r.ResponseStatus == FormResponseStatus.Submitted
+                        || r.ResponseStatus == FormResponseStatus.UnderReview
+                        || r.ResponseStatus == FormResponseStatus.Approved
+                        || r.ResponseStatus == FormResponseStatus.Closed
+                    : r.ResponseStatus == FormResponseStatus.Approved
+                        || r.ResponseStatus == FormResponseStatus.Closed)
+                && nowUtc > r.EffectiveDueAtUtc
+        });
+
+    private static IQueryable<FormComplianceSourceRow> ApplyCalculatedFilters(
+        IQueryable<FormComplianceSourceRow> source,
+        FormComplianceQuery query)
+    {
+        if (query.ResponseStatus.HasValue) source = source.Where(r => r.ResponseStatus == query.ResponseStatus);
+        if (query.IsCompleted.HasValue) source = source.Where(r => r.IsCompleted == query.IsCompleted);
+        if (query.IsOverdue.HasValue) source = source.Where(r => r.IsOverdue == query.IsOverdue);
+        return source;
+    }
+
+    private static async Task<FormComplianceMetricAggregate> AggregateAsync(
         IQueryable<FormComplianceSourceRow> rows,
-        DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
         var targeted = await rows.CountAsync(cancellationToken);
@@ -492,7 +611,7 @@ public sealed class FormComplianceQueryService(
             await eligibleRows.CountAsync(r => r.IsOverdue, cancellationToken),
             await completionRows.CountAsync(r => r.CompletionAtUtc != null && r.CompletionAtUtc <= r.EffectiveDueAtUtc, cancellationToken),
             await completionRows.CountAsync(r => r.CompletionAtUtc != null && r.CompletionAtUtc > r.EffectiveDueAtUtc, cancellationToken),
-            await validDurations.AverageAsync(r => (double?)(r.CompletionAtUtc!.Value - r.OpenAtUtc).TotalMinutes, cancellationToken),
+            await validDurations.AverageAsync(r => (double?)(r.CompletionAtUtc.GetValueOrDefault() - r.OpenAtUtc).TotalMinutes, cancellationToken),
             await completionRows.CountAsync(r => r.CompletionAtUtc == null, cancellationToken),
             await completionRows.CountAsync(r => r.CompletionAtUtc != null && r.CompletionAtUtc < r.OpenAtUtc, cancellationToken));
     }
@@ -509,21 +628,23 @@ public sealed class FormComplianceQueryService(
                 Completed = g.Count(r => r.IsCompleted),
                 Overdue = g.Count(r => r.IsOverdue),
                 AverageMinutes = g.Where(r => r.IsCompleted && r.CompletionAtUtc != null && r.CompletionAtUtc >= r.OpenAtUtc)
-                    .Average(r => (double?)(r.CompletionAtUtc!.Value - r.OpenAtUtc).TotalMinutes)
+                    .Average(r => (double?)(r.CompletionAtUtc.GetValueOrDefault() - r.OpenAtUtc).TotalMinutes)
             })
             .OrderBy(r => r.ScheduledOccurrenceUtc)
             .ToListAsync(cancellationToken);
-        return data.Select(r => new FormComplianceTrendPointDto(
-            r.ScheduledOccurrenceUtc,
-            null,
-            r.Eligible,
-            r.Completed,
-            FormComplianceRates.Rate(r.Completed, r.Eligible),
-            r.Overdue,
-            r.AverageMinutes,
-            null,
-            null,
-            null)).ToList();
+        return data.Select(r => new FormComplianceTrendPointDto
+        {
+            OccurrenceUtc = r.ScheduledOccurrenceUtc,
+            DateLocal = null,
+            EligibleAssignmentCount = r.Eligible,
+            CompletedCount = r.Completed,
+            CompletionRate = FormComplianceRates.Rate(r.Completed, r.Eligible),
+            OverdueCount = r.Overdue,
+            AverageCompletionMinutes = r.AverageMinutes,
+            CompletedThatDay = null,
+            CumulativeCompleted = null,
+            CumulativeCompletionRate = null
+        }).ToList();
     }
 
     private async Task<IReadOnlyList<FormComplianceTrendPointDto>> BuildDayTrendAsync(
@@ -532,7 +653,7 @@ public sealed class FormComplianceQueryService(
     {
         var eligible = await rows.CountAsync(cancellationToken);
         var daily = await rows.Where(r => r.IsCompleted && r.CompletionAtUtc != null)
-            .GroupBy(r => r.CompletionAtUtc!.Value.AddHours(3).Date)
+            .GroupBy(r => r.CompletionAtUtc.GetValueOrDefault().Add(ReportingOffset).Date)
             .Select(g => new { Date = g.Key, Count = g.Count() })
             .OrderBy(r => r.Date)
             .ToListAsync(cancellationToken);
@@ -540,37 +661,64 @@ public sealed class FormComplianceQueryService(
         return daily.Select(r =>
         {
             cumulative += r.Count;
-            return new FormComplianceTrendPointDto(
-                null,
-                DateOnly.FromDateTime(r.Date),
-                eligible,
-                cumulative,
-                FormComplianceRates.Rate(cumulative, eligible),
-                0,
-                null,
-                r.Count,
-                cumulative,
-                FormComplianceRates.Rate(cumulative, eligible));
+            return new FormComplianceTrendPointDto
+            {
+                OccurrenceUtc = null,
+                DateLocal = DateOnly.FromDateTime(r.Date),
+                EligibleAssignmentCount = eligible,
+                CompletedCount = cumulative,
+                CompletionRate = FormComplianceRates.Rate(cumulative, eligible),
+                OverdueCount = 0,
+                AverageCompletionMinutes = null,
+                CompletedThatDay = r.Count,
+                CumulativeCompleted = cumulative,
+                CumulativeCompletionRate = FormComplianceRates.Rate(cumulative, eligible)
+            };
         }).ToList();
     }
 
-    private async Task<Dictionary<Guid, decimal?>> LoadPreviousCycleRatesAsync(
+    private static async Task<IReadOnlyDictionary<Guid, decimal?>> LoadPreviousCycleRatesAsync(
         IQueryable<FormComplianceSourceRow> scopedRows,
-        HashSet<Guid> cycleIds,
+        IReadOnlyCollection<PreviousCycleLookup> lookups,
         CancellationToken cancellationToken)
     {
-        var current = await scopedRows
-            .Where(r => cycleIds.Contains(r.CycleId))
-            .Select(r => new { r.CycleId, r.CampaignId, r.SequenceNumber })
+        var result = lookups.ToDictionary(i => i.CurrentCycleId, _ => (decimal?)null);
+        if (lookups.Count == 0)
+        {
+            return result;
+        }
+
+        var campaignIds = lookups.Select(i => i.CampaignId).Distinct().ToHashSet();
+        var previousSequences = lookups.Select(i => i.PreviousSequenceNumber).Distinct().ToHashSet();
+        var previousCycles = await scopedRows
+            .Where(r => campaignIds.Contains(r.CampaignId) && previousSequences.Contains(r.SequenceNumber))
+            .Select(r => new { r.CampaignId, r.SequenceNumber, r.CycleId })
             .Distinct()
             .ToListAsync(cancellationToken);
-        var result = new Dictionary<Guid, decimal?>();
-        foreach (var row in current)
+
+        var previousCycleIds = previousCycles.Select(r => r.CycleId).Distinct().ToHashSet();
+        var grouped = await scopedRows
+            .Where(r => previousCycleIds.Contains(r.CycleId))
+            .GroupBy(r => r.CycleId)
+            .Select(g => new
+            {
+                CycleId = g.Key,
+                Eligible = g.Count(r => r.IsAvailable),
+                Completed = g.Count(r => r.IsAvailable && r.IsCompleted)
+            })
+            .ToListAsync(cancellationToken);
+        var rates = grouped.ToDictionary(
+            r => r.CycleId,
+            r => FormComplianceRates.Rate(r.Completed, r.Eligible));
+        foreach (var lookup in lookups)
         {
-            var previous = scopedRows.Where(r => r.CampaignId == row.CampaignId && r.SequenceNumber == row.SequenceNumber - 1 && r.IsAvailable);
-            var eligible = await previous.CountAsync(cancellationToken);
-            var completed = await previous.CountAsync(r => r.IsCompleted, cancellationToken);
-            result[row.CycleId] = FormComplianceRates.Rate(completed, eligible);
+            var previousCycle = previousCycles.FirstOrDefault(r =>
+                r.CampaignId == lookup.CampaignId &&
+                r.SequenceNumber == lookup.PreviousSequenceNumber);
+            if (previousCycle is not null && rates.TryGetValue(previousCycle.CycleId, out var rate))
+            {
+                result[lookup.CurrentCycleId] = rate;
+            }
         }
 
         return result;
@@ -582,12 +730,32 @@ public sealed class FormComplianceQueryService(
         CancellationToken cancellationToken)
     {
         csv.AppendLine("رمز الموقع,الموقع,المنطقة,الدورات,المؤهل,المكتمل,المتبقي,نسبة الالتزام,المتأخر,آخر موعد,المسؤول");
-        var page = await GetFacilitiesAsync(query, cancellationToken);
+        var page = await GetFacilitiesPageAsync(query, isExport: true, cancellationToken);
+        EnsureExportRowCount(page.TotalCount);
         foreach (var row in page.Items)
         {
             AppendCsv(csv, row.FacilityCodeAtAssignment, row.FacilityNameAtAssignment, row.RegionNameAtAssignment,
                 row.CycleCount, row.EligibleAssignmentCount, row.CompletedCount, row.RemainingCount,
                 row.CompletionRate, row.OverdueCount, row.LatestEffectiveDueAtUtc, row.ResponsibleUserName ?? "غير محدد");
+        }
+
+        return page.Items.Count;
+    }
+
+    private async Task<int> AppendRegionCsvAsync(
+        StringBuilder csv,
+        FormComplianceQuery query,
+        CancellationToken cancellationToken)
+    {
+        csv.AppendLine("المنطقة,المستهدف,غير المتاح,المؤهل,المكتمل,المتبقي,نسبة الالتزام,المتأخر,لم يبدأ,المعاد,متوسط زمن الإكمال,الترتيب");
+        var page = await GetRegionsPageAsync(query, isExport: true, cancellationToken);
+        EnsureExportRowCount(page.TotalCount);
+        foreach (var row in page.Items)
+        {
+            AppendCsv(csv, row.RegionNameAtAssignment, row.TargetedAssignmentCount,
+                row.UnavailableAssignmentCount, row.EligibleAssignmentCount, row.CompletedCount,
+                row.RemainingCount, row.CompletionRate, row.OverdueCount, row.NotStartedCount,
+                row.ReturnedCount, row.AverageCompletionMinutes, row.Rank);
         }
 
         return page.Items.Count;
@@ -599,7 +767,8 @@ public sealed class FormComplianceQueryService(
         CancellationToken cancellationToken)
     {
         csv.AppendLine("رمز الحملة,الحملة,الدورة,تاريخ الفتح,تاريخ الاستحقاق,الحالة,سياسة الإكمال,المستهدف,المؤهل,المكتمل,المتبقي,نسبة الالتزام,المتأخر");
-        var page = await GetCyclesAsync(query, cancellationToken);
+        var page = await GetCyclesPageAsync(query, isExport: true, cancellationToken);
+        EnsureExportRowCount(page.TotalCount);
         foreach (var row in page.Items)
         {
             AppendCsv(csv, row.CampaignCode, row.CampaignNameAr, row.OccurrenceKey, row.OpenAtUtc,
@@ -616,7 +785,8 @@ public sealed class FormComplianceQueryService(
         CancellationToken cancellationToken)
     {
         csv.AppendLine("الموقع,المنطقة,الحملة,الدورة,الحالة,الموعد,أيام التأخر,آخر حفظ,المسؤول");
-        var page = await GetPendingAsync(query, cancellationToken);
+        var page = await GetPendingPageAsync(query, isExport: true, cancellationToken);
+        EnsureExportRowCount(page.TotalCount);
         foreach (var row in page.Items)
         {
             AppendCsv(csv, row.FacilityNameAtAssignment, row.RegionNameAtAssignment, row.CampaignNameAr,
@@ -627,6 +797,14 @@ public sealed class FormComplianceQueryService(
         return page.Items.Count;
     }
 
+    private static void EnsureExportRowCount(int totalCount)
+    {
+        if (totalCount > ExportLimit)
+        {
+            throw new InvalidOperationException("EXPORT_ROW_LIMIT_EXCEEDED: تجاوز التصدير 50,000 صف. يرجى تضييق الفلاتر.");
+        }
+    }
+
     private static void AppendCsv(StringBuilder csv, params object?[] values)
     {
         csv.AppendLine(string.Join(",", values.Select(EscapeCsv)));
@@ -634,7 +812,7 @@ public sealed class FormComplianceQueryService(
 
     private static string EscapeCsv(object? value)
     {
-        var text = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+        var text = Convert.ToString(ToCsvValue(value), CultureInfo.InvariantCulture) ?? string.Empty;
         if (text.Length > 0 && "=+-@".Contains(text[0], StringComparison.Ordinal))
         {
             text = "'" + text;
@@ -642,6 +820,13 @@ public sealed class FormComplianceQueryService(
 
         return "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
+
+    private static object? ToCsvValue(object? value) =>
+        value switch
+        {
+            DateTimeOffset dateTime => TimeZones.ToSaudi(dateTime).ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture),
+            _ => value
+        };
 
     private static string HashFilters(FormComplianceQuery query)
     {
@@ -669,7 +854,7 @@ public sealed class FormComplianceQueryService(
         }
     }
 
-    private static FormComplianceQuery Normalize(FormComplianceQuery query)
+    private static FormComplianceQuery Normalize(FormComplianceQuery query, bool isExport)
     {
         if (query.FromUtc.HasValue && query.ToUtc.HasValue && query.FromUtc.Value > query.ToUtc.Value)
         {
@@ -678,7 +863,7 @@ public sealed class FormComplianceQueryService(
 
         var page = Math.Max(1, query.Page ?? 1);
         var rawSize = query.PageSize ?? 20;
-        var maxPageSize = query.View.HasValue ? ExportLimit : 100;
+        var maxPageSize = isExport ? ExportLimit : 100;
         return query with
         {
             Page = page,

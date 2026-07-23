@@ -11,9 +11,10 @@ public enum FormComplianceTrendGroupBy
 
 public enum FormComplianceExportView
 {
-    Facilities = 0,
-    Cycles = 1,
-    Pending = 2
+    Regions = 0,
+    Facilities = 1,
+    Cycles = 2,
+    Pending = 3
 }
 
 public sealed record FormComplianceQuery
@@ -67,95 +68,105 @@ public sealed record FormComplianceSummaryDto
     public required DateTimeOffset GeneratedAtUtc { get; init; }
 }
 
-public sealed record FormComplianceRegionRowDto(
-    Guid RegionIdAtAssignment,
-    string RegionNameAtAssignment,
-    int TargetedAssignmentCount,
-    int UnavailableAssignmentCount,
-    int EligibleAssignmentCount,
-    int CompletedCount,
-    int RemainingCount,
-    decimal? CompletionRate,
-    int OverdueCount,
-    int NotStartedCount,
-    int ReturnedCount,
-    double? AverageCompletionMinutes,
-    int Rank);
+public sealed record FormComplianceRegionRowDto
+{
+    public required Guid RegionIdAtAssignment { get; init; }
+    public required string RegionNameAtAssignment { get; init; }
+    public required int TargetedAssignmentCount { get; init; }
+    public required int UnavailableAssignmentCount { get; init; }
+    public required int EligibleAssignmentCount { get; init; }
+    public required int CompletedCount { get; init; }
+    public required int RemainingCount { get; init; }
+    public required decimal? CompletionRate { get; init; }
+    public required int OverdueCount { get; init; }
+    public required int NotStartedCount { get; init; }
+    public required int ReturnedCount { get; init; }
+    public required double? AverageCompletionMinutes { get; init; }
+    public required int Rank { get; init; }
+}
 
-public sealed record FormComplianceFacilityRowDto(
-    Guid FacilityId,
-    string FacilityCodeAtAssignment,
-    string FacilityNameAtAssignment,
-    Guid RegionIdAtAssignment,
-    string RegionNameAtAssignment,
-    int CycleCount,
-    int EligibleAssignmentCount,
-    int CompletedCount,
-    int RemainingCount,
-    decimal? CompletionRate,
-    int OverdueCount,
-    DateTimeOffset? LatestEffectiveDueAtUtc,
-    Guid? ResponsibleUserId,
-    string? ResponsibleUserName,
-    IReadOnlyList<string> AllowedActions);
+public sealed record FormComplianceFacilityRowDto
+{
+    public required Guid FacilityId { get; init; }
+    public required string FacilityCodeAtAssignment { get; init; }
+    public required string FacilityNameAtAssignment { get; init; }
+    public required Guid RegionIdAtAssignment { get; init; }
+    public required string RegionNameAtAssignment { get; init; }
+    public required int CycleCount { get; init; }
+    public required int EligibleAssignmentCount { get; init; }
+    public required int CompletedCount { get; init; }
+    public required int RemainingCount { get; init; }
+    public required decimal? CompletionRate { get; init; }
+    public required int OverdueCount { get; init; }
+    public required DateTimeOffset? LatestEffectiveDueAtUtc { get; init; }
+    public required Guid? ResponsibleUserId { get; init; }
+    public required string? ResponsibleUserName { get; init; }
+    public required IReadOnlyList<string> AllowedActions { get; init; }
+}
 
-public sealed record FormComplianceCycleRowDto(
-    Guid CycleId,
-    Guid CampaignId,
-    string CampaignCode,
-    string CampaignNameAr,
-    int SequenceNumber,
-    string OccurrenceKey,
-    DateTimeOffset ScheduledOccurrenceUtc,
-    DateTimeOffset OpenAtUtc,
-    DateTimeOffset DueAtUtc,
-    DateTimeOffset CloseAtUtc,
-    FormCycleStatus CycleStatus,
-    FormCompletionBasis CompletionBasis,
-    int TargetedAssignmentCount,
-    int EligibleAssignmentCount,
-    int CompletedCount,
-    int RemainingCount,
-    decimal? CompletionRate,
-    int OverdueCount,
-    double? AverageCompletionMinutes,
-    decimal? PreviousCycleCompletionRate,
-    decimal? CompletionRateDelta);
+public sealed record FormComplianceCycleRowDto
+{
+    public required Guid CycleId { get; init; }
+    public required Guid CampaignId { get; init; }
+    public required string CampaignCode { get; init; }
+    public required string CampaignNameAr { get; init; }
+    public required int SequenceNumber { get; init; }
+    public required string OccurrenceKey { get; init; }
+    public required DateTimeOffset ScheduledOccurrenceUtc { get; init; }
+    public required DateTimeOffset OpenAtUtc { get; init; }
+    public required DateTimeOffset DueAtUtc { get; init; }
+    public required DateTimeOffset CloseAtUtc { get; init; }
+    public required FormCycleStatus CycleStatus { get; init; }
+    public required FormCompletionBasis CompletionBasis { get; init; }
+    public required int TargetedAssignmentCount { get; init; }
+    public required int EligibleAssignmentCount { get; init; }
+    public required int CompletedCount { get; init; }
+    public required int RemainingCount { get; init; }
+    public required decimal? CompletionRate { get; init; }
+    public required int OverdueCount { get; init; }
+    public required double? AverageCompletionMinutes { get; init; }
+    public required decimal? PreviousCycleCompletionRate { get; init; }
+    public required decimal? CompletionRateDelta { get; init; }
+}
 
-public sealed record FormCompliancePendingItemDto(
-    Guid AssignmentId,
-    Guid CampaignId,
-    string CampaignNameAr,
-    Guid CycleId,
-    string OccurrenceKey,
-    Guid FacilityId,
-    string FacilityNameAtAssignment,
-    Guid RegionIdAtAssignment,
-    string RegionNameAtAssignment,
-    Guid? ResponseId,
-    FormResponseStatus? ResponseStatus,
-    FormAssignmentWorkStatus WorkStatus,
-    bool IsOverdue,
-    DateTimeOffset OpenAtUtc,
-    DateTimeOffset EffectiveDueAtUtc,
-    int? DaysOverdue,
-    DateTimeOffset? LastSavedAtUtc,
-    DateTimeOffset? SubmittedAtUtc,
-    Guid? ResponsibleUserId,
-    string? ResponsibleUserName,
-    IReadOnlyList<string> AllowedActions);
+public sealed record FormCompliancePendingItemDto
+{
+    public required Guid AssignmentId { get; init; }
+    public required Guid CampaignId { get; init; }
+    public required string CampaignNameAr { get; init; }
+    public required Guid CycleId { get; init; }
+    public required string OccurrenceKey { get; init; }
+    public required Guid FacilityId { get; init; }
+    public required string FacilityNameAtAssignment { get; init; }
+    public required Guid RegionIdAtAssignment { get; init; }
+    public required string RegionNameAtAssignment { get; init; }
+    public required Guid? ResponseId { get; init; }
+    public required FormResponseStatus? ResponseStatus { get; init; }
+    public required FormAssignmentWorkStatus WorkStatus { get; init; }
+    public required bool IsOverdue { get; init; }
+    public required DateTimeOffset OpenAtUtc { get; init; }
+    public required DateTimeOffset EffectiveDueAtUtc { get; init; }
+    public required int? DaysOverdue { get; init; }
+    public required DateTimeOffset? LastSavedAtUtc { get; init; }
+    public required DateTimeOffset? SubmittedAtUtc { get; init; }
+    public required Guid? ResponsibleUserId { get; init; }
+    public required string? ResponsibleUserName { get; init; }
+    public required IReadOnlyList<string> AllowedActions { get; init; }
+}
 
-public sealed record FormComplianceTrendPointDto(
-    DateTimeOffset? OccurrenceUtc,
-    DateOnly? DateLocal,
-    int EligibleAssignmentCount,
-    int CompletedCount,
-    decimal? CompletionRate,
-    int OverdueCount,
-    double? AverageCompletionMinutes,
-    int? CompletedThatDay,
-    int? CumulativeCompleted,
-    decimal? CumulativeCompletionRate);
+public sealed record FormComplianceTrendPointDto
+{
+    public required DateTimeOffset? OccurrenceUtc { get; init; }
+    public required DateOnly? DateLocal { get; init; }
+    public required int EligibleAssignmentCount { get; init; }
+    public required int CompletedCount { get; init; }
+    public required decimal? CompletionRate { get; init; }
+    public required int OverdueCount { get; init; }
+    public required double? AverageCompletionMinutes { get; init; }
+    public required int? CompletedThatDay { get; init; }
+    public required int? CumulativeCompleted { get; init; }
+    public required decimal? CumulativeCompletionRate { get; init; }
+}
 
 public sealed record FormComplianceExportResult(
     string FileName,
