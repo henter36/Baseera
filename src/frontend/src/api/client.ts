@@ -1025,6 +1025,161 @@ export type FormTemplateListItem = {
   createdAtUtc: string
 }
 
+export type FormCampaignScheduleRequest = {
+  recurrenceKind: number
+  firstOpenAtLocal: string
+  responseWindowMinutes: number
+  gracePeriodMinutes: number
+  closeAfterMinutes: number
+  businessDayAdjustment: number
+  intervalDays?: number | null
+  intervalWeeks?: number | null
+  weekDays?: number[] | null
+  dayOfMonth?: number | null
+  missingDayPolicy?: number | null
+  untilLocal?: string | null
+  maxOccurrences?: number | null
+  customDatesLocal?: string[] | null
+}
+
+export type FormCampaignTargetRequest = {
+  ruleType: number
+  regionIds?: string[] | null
+  facilityIds?: string[] | null
+  dynamicCriteria?: { regionIds?: string[] | null; facilityTypes?: string[] | null; isActive?: boolean | null } | null
+}
+
+export type FormCampaignExclusionRequest = { facilityId: string; reason: string }
+
+export type CreateFormCampaignRequest = {
+  formDefinitionId: string
+  formVersionId: string
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  description?: string | null
+  priority: number
+  timeZoneId?: string | null
+  schedule: FormCampaignScheduleRequest
+  targets: FormCampaignTargetRequest[]
+  exclusions?: FormCampaignExclusionRequest[] | null
+}
+
+export type UpdateFormCampaignRequest = {
+  nameAr: string
+  nameEn?: string | null
+  description?: string | null
+  priority: number
+  timeZoneId?: string | null
+  schedule: FormCampaignScheduleRequest
+  targets: FormCampaignTargetRequest[]
+  exclusions?: FormCampaignExclusionRequest[] | null
+  rowVersion: string
+}
+
+export type FormCampaignListItem = {
+  id: string
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  formDefinitionId: string
+  formCode: string
+  formNameAr: string
+  formVersionId: string
+  versionNumber: number
+  status: number
+  recurrenceKind: number
+  firstOpenAtLocal: string
+  nextOccurrenceUtc?: string | null
+  cycleCount: number
+  lastCycleAtUtc?: string | null
+  allowedActions: string[]
+  rowVersion: string
+}
+
+export type FormCampaignDetail = FormCampaignListItem & {
+  organizationId: string
+  formSchemaSnapshotId: string
+  schemaHash: string
+  description?: string | null
+  priority: number
+  timeZoneId: string
+  schedule: FormCampaignScheduleRequest
+  targets: FormCampaignTargetRequest[]
+  exclusions: Array<{ facilityId: string; facilityCode: string; facilityNameAr: string; reason: string }>
+  publishedAtUtc?: string | null
+  pausedAtUtc?: string | null
+  pauseReason?: string | null
+  cancelledAtUtc?: string | null
+  cancellationReason?: string | null
+  closedAtUtc?: string | null
+  createdAtUtc: string
+}
+
+export type FormTargetPreviewFacility = {
+  facilityId: string
+  code: string
+  nameAr: string
+  regionId: string
+  regionNameAr: string
+  facilityType?: string | null
+}
+
+export type FormTargetPreview = {
+  asOfUtc: string
+  totalMatched: number
+  totalExcluded: number
+  finalTargetCount: number
+  breakdownByRegion: Record<string, number>
+  breakdownByFacilityType: Record<string, number>
+  includedFacilityIds: string[]
+  exclusions: Array<{ facilityId: string; reason: string }>
+  sample: FormTargetPreviewFacility[]
+  targetingFingerprint: string
+  warnings: string[]
+  invalidTargets: string[]
+  unavailableFacilities: string[]
+}
+
+export type FormCycleListItem = {
+  id: string
+  sequenceNumber: number
+  occurrenceKey: string
+  status: number
+  scheduledOccurrenceLocal: string
+  openAtUtc: string
+  dueAtUtc: string
+  closeAtUtc: string
+  assignedFacilityCount: number
+  targetSnapshotHash: string
+}
+
+export type FormCycleDetail = FormCycleListItem & {
+  campaignId: string
+  scheduledOccurrenceUtc: string
+  graceEndsAtUtc: string
+  timeZoneId: string
+  formVersionId: string
+  formSchemaSnapshotId: string
+  schemaHash: string
+  generatedAtUtc: string
+  generatedBy: string
+}
+
+export type FacilityAssignment = {
+  id: string
+  facilityId: string
+  regionIdAtAssignment: string
+  facilityCodeAtAssignment: string
+  facilityNameArAtAssignment: string
+  regionNameArAtAssignment: string
+  facilityTypeAtAssignment?: string | null
+  targetRuleType: number
+  assignedAtUtc: string
+  isAvailable: boolean
+  unavailableReason?: string | null
+}
+
 export type SaveFormSchemaRequest = {
   schemaJson: string
   rowVersion: string
@@ -1600,5 +1755,37 @@ export const api = {
     create: (body: CreateFormTemplateRequest) => postJson<FormTemplateListItem>('/api/v1/form-templates', body),
     createForm: (templateId: string, body: CreateFormFromTemplateRequest) =>
       postJson<FormDetail>(`/api/v1/form-templates/${templateId}/create-form`, body),
+  },
+
+  formCampaigns: {
+    list: (filters: { page?: number; pageSize?: number; search?: string; status?: number; formDefinitionId?: string } = {}) =>
+      request<Paged<FormCampaignListItem>>(`/api/v1/form-campaigns?${buildSimpleQuery(filters)}`),
+    get: (id: string) => request<FormCampaignDetail>(`/api/v1/form-campaigns/${id}`),
+    create: (body: CreateFormCampaignRequest) => postJson<FormCampaignDetail>('/api/v1/form-campaigns', body),
+    update: (id: string, body: UpdateFormCampaignRequest) => putJson<FormCampaignDetail>(`/api/v1/form-campaigns/${id}`, body),
+    clone: (id: string) => postJson<FormCampaignDetail>(`/api/v1/form-campaigns/${id}/clone`, {}),
+    previewTargets: (id: string) => postJson<FormTargetPreview>(`/api/v1/form-campaigns/${id}/target-preview`, {}),
+    publish: (id: string, body: { rowVersion: string }) =>
+      postJson<FormCampaignDetail>(`/api/v1/form-campaigns/${id}/publish`, body),
+    pause: (id: string, body: { rowVersion: string; reason?: string }) =>
+      postJson<FormCampaignDetail>(`/api/v1/form-campaigns/${id}/pause`, body),
+    resume: (id: string, body: { rowVersion: string; reason?: string }) =>
+      postJson<FormCampaignDetail>(`/api/v1/form-campaigns/${id}/resume`, body),
+    cancel: (id: string, body: { rowVersion: string; reason?: string }) =>
+      postJson<FormCampaignDetail>(`/api/v1/form-campaigns/${id}/cancel`, body),
+    complete: (id: string, body: { rowVersion: string; reason?: string }) =>
+      postJson<FormCampaignDetail>(`/api/v1/form-campaigns/${id}/complete`, body),
+    cycles: (campaignId: string, filters: { page?: number; pageSize?: number } = {}) =>
+      request<Paged<FormCycleListItem>>(`/api/v1/form-campaigns/${campaignId}/cycles?${buildSimpleQuery(filters)}`),
+    cycle: (campaignId: string, cycleId: string) =>
+      request<FormCycleDetail>(`/api/v1/form-campaigns/${campaignId}/cycles/${cycleId}`),
+    assignments: (campaignId: string, cycleId: string, filters: { page?: number; pageSize?: number } = {}) =>
+      request<Paged<FacilityAssignment>>(`/api/v1/form-campaigns/${campaignId}/cycles/${cycleId}/assignments?${buildSimpleQuery(filters)}`),
+    targetRegions: (filters: { page?: number; pageSize?: number; search?: string } = {}) =>
+      request<Paged<FormTargetPreviewFacility>>(`/api/v1/form-campaigns/target-options/regions?${buildSimpleQuery(filters)}`),
+    targetFacilities: (filters: { page?: number; pageSize?: number; search?: string; regionId?: string } = {}) =>
+      request<Paged<FormTargetPreviewFacility>>(`/api/v1/form-campaigns/target-options/facilities?${buildSimpleQuery(filters)}`),
+    schedulePreview: (body: FormCampaignScheduleRequest, timeZoneId?: string) =>
+      postJson<string[]>(`/api/v1/form-campaigns/schedule-preview?${buildSimpleQuery({ timeZoneId })}`, body),
   },
 }

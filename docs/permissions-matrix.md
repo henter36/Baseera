@@ -237,3 +237,8 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 | Forms.CloneVersion | Clone a form version |
 | Forms.ViewVersionHistory | View version history |
 | Forms.ManageTemplates | Create templates / forms from templates |
+
+
+## Phase C.3 campaign permissions
+
+`Forms.ManageCampaigns`, `Forms.PreviewTargets`, `Forms.PauseCampaign`, `Forms.CancelCampaign`, `Forms.ViewCampaignAssignments` (+ wired `Forms.Publish`). FormResponse permissions remain for #48.

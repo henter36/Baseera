@@ -319,7 +319,9 @@ public static class DatabaseInitializer
             PermissionCodes.FormsSubmitForReview,
             PermissionCodes.FormsCloneVersion,
             PermissionCodes.FormsViewVersionHistory,
-            PermissionCodes.FormsManageTemplates
+            PermissionCodes.FormsManageTemplates,
+            PermissionCodes.FormsManageCampaigns,
+            PermissionCodes.FormsPreviewTargets
         ];
         string[] formsReviewer =
         [
@@ -334,15 +336,30 @@ public static class DatabaseInitializer
             PermissionCodes.FormsApprove,
             PermissionCodes.FormsReject
         ];
-        string[] formsPublisher = [PermissionCodes.FormsView, PermissionCodes.FormsPublish];
-        string[] formsRegionalMonitor = [PermissionCodes.FormsView, PermissionCodes.FormsMonitorRegion];
+        string[] formsPublisher =
+        [
+            PermissionCodes.FormsView,
+            PermissionCodes.FormsPublish,
+            PermissionCodes.FormsPreviewTargets,
+            PermissionCodes.FormsPauseCampaign,
+            PermissionCodes.FormsCancelCampaign,
+            PermissionCodes.FormsViewCampaignAssignments,
+            PermissionCodes.FormsManageCampaigns
+        ];
+        string[] formsRegionalMonitor =
+        [
+            PermissionCodes.FormsView,
+            PermissionCodes.FormsMonitorRegion,
+            PermissionCodes.FormsViewCampaignAssignments
+        ];
         string[] formsHqMonitor =
         [
             PermissionCodes.FormsView,
-            PermissionCodes.FormsMonitorHeadquarters
+            PermissionCodes.FormsMonitorHeadquarters,
+            PermissionCodes.FormsViewCampaignAssignments
         ];
         string[] formsAnalyst = [PermissionCodes.FormsView, PermissionCodes.FormsAnalyze];
-        string[] formsAuditorView = [PermissionCodes.FormsView];
+        string[] formsAuditorView = [PermissionCodes.FormsView, PermissionCodes.FormsViewCampaignAssignments];
 
         var formDesigner = roles.First(r => r.Code == RoleCodes.FormDesigner);
         Grant(formDesigner, formsDesigner);
@@ -824,6 +841,11 @@ public static class DatabaseInitializer
             (PermissionCodes.FormsCloneVersion, "استنساخ إصدار نموذج", FormsModule),
             (PermissionCodes.FormsViewVersionHistory, "عرض سجل إصدارات النموذج", FormsModule),
             (PermissionCodes.FormsManageTemplates, "إدارة قوالب النماذج", FormsModule),
+            (PermissionCodes.FormsManageCampaigns, "إدارة حملات النماذج", FormsModule),
+            (PermissionCodes.FormsPreviewTargets, "معاينة استهداف حملات النماذج", FormsModule),
+            (PermissionCodes.FormsPauseCampaign, "إيقاف/استئناف حملات النماذج", FormsModule),
+            (PermissionCodes.FormsCancelCampaign, "إلغاء حملات النماذج", FormsModule),
+            (PermissionCodes.FormsViewCampaignAssignments, "عرض تعيينات دورات النماذج", FormsModule),
             (PermissionCodes.ProjectsApprove, "اعتماد مشروع", "Projects"),
             (PermissionCodes.StrategyManage, "إدارة الاستراتيجية", "Strategy"),
             (PermissionCodes.ReportsExportSensitive, "تصدير تقارير حساسة", "Reports"),

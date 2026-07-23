@@ -69,9 +69,17 @@ public interface IBaseeraDbContext
     IQueryable<FormTemplate> FormTemplates { get; }
     IQueryable<FormTemplate> FormTemplatesIncludingDeleted { get; }
     IQueryable<FormDefinitionVersionCounter> FormDefinitionVersionCounters { get; }
+    IQueryable<FormCampaign> FormCampaigns { get; }
+    IQueryable<FormCampaign> FormCampaignsIncludingDeleted { get; }
+    IQueryable<FormTargetRule> FormTargetRules { get; }
+    IQueryable<FormCampaignExclusion> FormCampaignExclusions { get; }
+    IQueryable<FormCycle> FormCycles { get; }
+    IQueryable<FormFacilityAssignment> FormFacilityAssignments { get; }
+    IQueryable<OrganizationBusinessCalendarDate> OrganizationBusinessCalendarDates { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
+    void Remove<TEntity>(TEntity entity) where TEntity : class;
     void Detach<TEntity>(TEntity entity) where TEntity : class;
     void ClearChanges();
     Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default);

@@ -4,6 +4,7 @@ using Baseera.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Baseera.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(BaseeraDbContext))]
-    partial class BaseeraDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260722195109_PhaseC3FormPublishingScheduler")]
+    partial class PhaseC3FormPublishingScheduler
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1622,8 +1625,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasIndex("FacilityId");
 
                     b.HasIndex("RegionIdAtAssignment");
-
-                    b.HasIndex("CampaignId", "CycleId");
 
                     b.HasIndex("CycleId", "FacilityId")
                         .IsUnique();
@@ -4324,16 +4325,15 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
-                        .WithMany()
-                        .HasForeignKey("FacilityId")
+                    b.HasOne("Baseera.Domain.Forms.FormCycle", "Cycle")
+                        .WithMany("Assignments")
+                        .HasForeignKey("CycleId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Baseera.Domain.Forms.FormCycle", "Cycle")
-                        .WithMany("Assignments")
-                        .HasForeignKey("CampaignId", "CycleId")
-                        .HasPrincipalKey("CampaignId", "Id")
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 

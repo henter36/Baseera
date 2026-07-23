@@ -9,11 +9,13 @@ using Baseera.Application.CorrectiveActions;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Forms;
+using Baseera.Application.Forms.Campaigns;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
+using Baseera.Domain.Forms;
 using Baseera.Domain.Notes;
 using FluentValidation;
 
@@ -152,6 +154,7 @@ public static class ApiEndpoints
         MapOperationalDashboardEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
+        MapFormCampaignEndpoints(api);
 
         return api;
     }
@@ -439,6 +442,162 @@ public static class ApiEndpoints
             var created = await service.CreateFormFromTemplateAsync(templateId, request, ct);
             return Results.Created($"/api/v1/forms/{created.Id}", created);
         }).RequireAuthorization(AuthPolicies.FormsManageTemplates);
+    }
+
+    private static void MapFormCampaignEndpoints(RouteGroupBuilder api)
+    {
+        var campaigns = api.MapGroup("/form-campaigns");
+
+        campaigns.MapGet("/", async (
+            int? page, int? pageSize, string? search, FormCampaignStatus? status, Guid? formDefinitionId,
+            IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAsync(new PagedQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 20,
+                Search = search
+            }, status, formDefinitionId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        campaigns.MapGet("/target-options/regions", async (
+            int? page, int? pageSize, string? search, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.ListTargetOptionRegionsAsync(new PagedQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 50,
+                Search = search
+            }, ct)))
+            .RequireAuthorization(AuthPolicies.FormsPreviewTargets);
+
+        campaigns.MapGet("/target-options/facilities", async (
+            int? page, int? pageSize, string? search, Guid? regionId, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.ListTargetOptionFacilitiesAsync(regionId, new PagedQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 50,
+                Search = search
+            }, ct)))
+            .RequireAuthorization(AuthPolicies.FormsPreviewTargets);
+
+        campaigns.MapPost("/schedule-preview", async (
+            FormCampaignScheduleRequest request,
+            string? timeZoneId,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.PreviewUpcomingAsync(request, timeZoneId, 10, ct)))
+            .RequireAuthorization(AuthPolicies.FormsManageCampaigns);
+
+        campaigns.MapGet("/{campaignId:guid}", async (Guid campaignId, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAsync(campaignId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        campaigns.MapPost("/", async (
+            CreateFormCampaignRequest request,
+            IValidator<CreateFormCampaignRequest> validator,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateAsync(request, ct);
+            return Results.Created($"/api/v1/form-campaigns/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsManageCampaigns);
+
+        campaigns.MapPut("/{campaignId:guid}", async (
+            Guid campaignId,
+            UpdateFormCampaignRequest request,
+            IValidator<UpdateFormCampaignRequest> validator,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.UpdateAsync(campaignId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsManageCampaigns);
+
+        campaigns.MapPost("/{campaignId:guid}/clone", async (Guid campaignId, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.CloneAsync(campaignId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsManageCampaigns);
+
+        campaigns.MapPost("/{campaignId:guid}/target-preview", async (Guid campaignId, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.PreviewTargetsAsync(campaignId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsPreviewTargets);
+
+        campaigns.MapPost("/{campaignId:guid}/publish", async (
+            Guid campaignId,
+            PublishFormCampaignRequest request,
+            IValidator<PublishFormCampaignRequest> validator,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.PublishAsync(campaignId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsPublish);
+
+        campaigns.MapPost("/{campaignId:guid}/pause", async (
+            Guid campaignId,
+            FormCampaignTransitionRequest request,
+            IValidator<FormCampaignTransitionRequest> validator,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.PauseAsync(campaignId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsPauseCampaign);
+
+        campaigns.MapPost("/{campaignId:guid}/resume", async (
+            Guid campaignId,
+            FormCampaignTransitionRequest request,
+            IValidator<FormCampaignTransitionRequest> validator,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.ResumeAsync(campaignId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsPauseCampaign);
+
+        campaigns.MapPost("/{campaignId:guid}/cancel", async (
+            Guid campaignId,
+            FormCampaignTransitionRequest request,
+            IValidator<FormCampaignTransitionRequest> validator,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.CancelAsync(campaignId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsCancelCampaign);
+
+        campaigns.MapPost("/{campaignId:guid}/complete", async (
+            Guid campaignId,
+            FormCampaignTransitionRequest request,
+            IValidator<FormCampaignTransitionRequest> validator,
+            IFormCampaignService service,
+            CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await service.CompleteAsync(campaignId, request, ct));
+        }).RequireAuthorization(AuthPolicies.FormsPublish);
+
+        campaigns.MapGet("/{campaignId:guid}/cycles", async (
+            Guid campaignId, int? page, int? pageSize, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.ListCyclesAsync(campaignId, new PagedQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 20
+            }, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        campaigns.MapGet("/{campaignId:guid}/cycles/{cycleId:guid}", async (
+            Guid campaignId, Guid cycleId, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.GetCycleAsync(campaignId, cycleId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        campaigns.MapGet("/{campaignId:guid}/cycles/{cycleId:guid}/assignments", async (
+            Guid campaignId, Guid cycleId, int? page, int? pageSize, IFormCampaignService service, CancellationToken ct) =>
+            Results.Ok(await service.ListAssignmentsAsync(campaignId, cycleId, new PagedQuery
+            {
+                Page = page ?? 1,
+                PageSize = pageSize ?? 50
+            }, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewCampaignAssignments);
     }
 
     private static void MapOperationalDashboardEndpoints(RouteGroupBuilder api)
