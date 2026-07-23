@@ -36,26 +36,34 @@ public class Permission : EntityBase
 
 public class RolePermission
 {
+    private Role? _role;
+    private Permission? _permission;
+
     public Guid RoleId { get; set; }
-    public Role Role { get; set; } = null!;
+    public Role Role { get => _role ?? throw new InvalidOperationException("Role navigation has not been loaded."); set => _role = value; }
     public Guid PermissionId { get; set; }
-    public Permission Permission { get; set; } = null!;
+    public Permission Permission { get => _permission ?? throw new InvalidOperationException("Permission navigation has not been loaded."); set => _permission = value; }
 }
 
 public class UserRole
 {
+    private User? _user;
+    private Role? _role;
+
     public Guid UserId { get; set; }
-    public User User { get; set; } = null!;
+    public User User { get => _user ?? throw new InvalidOperationException("User navigation has not been loaded."); set => _user = value; }
     public Guid RoleId { get; set; }
-    public Role Role { get; set; } = null!;
+    public Role Role { get => _role ?? throw new InvalidOperationException("Role navigation has not been loaded."); set => _role = value; }
     public DateTimeOffset AssignedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public string? AssignedBy { get; set; }
 }
 
 public class UserScope : SoftDeletableEntity
 {
+    private User? _user;
+
     public Guid UserId { get; set; }
-    public User User { get; set; } = null!;
+    public User User { get => _user ?? throw new InvalidOperationException("User navigation has not been loaded."); set => _user = value; }
     public ScopeType ScopeType { get; set; }
     public Guid? RegionId { get; set; }
     public Region? Region { get; set; }

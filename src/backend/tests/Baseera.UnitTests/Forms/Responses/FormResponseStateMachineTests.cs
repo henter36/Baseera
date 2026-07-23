@@ -65,8 +65,11 @@ public sealed class FormResponseCompletionEvaluatorTests
     [InlineData(FormCompletionBasis.Submitted, FormResponseStatus.Rejected, false)]
     [InlineData(FormCompletionBasis.Approved, FormResponseStatus.Approved, true)]
     [InlineData(FormCompletionBasis.Approved, FormResponseStatus.Closed, true)]
+    [InlineData(FormCompletionBasis.Approved, FormResponseStatus.Draft, false)]
     [InlineData(FormCompletionBasis.Approved, FormResponseStatus.Submitted, false)]
     [InlineData(FormCompletionBasis.Approved, FormResponseStatus.UnderReview, false)]
+    [InlineData(FormCompletionBasis.Approved, FormResponseStatus.Returned, false)]
+    [InlineData(FormCompletionBasis.Approved, FormResponseStatus.Rejected, false)]
     public void IsCompleted_by_basis(FormCompletionBasis basis, FormResponseStatus status, bool expected)
     {
         Assert.Equal(expected, _sut.IsCompleted(basis, status));
