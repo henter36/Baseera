@@ -185,7 +185,7 @@ The frontend only renders returned `allowedActions` and existing permissions; it
 - Collapsed list: `56px`.
 - Card: `min-height: 96px`, `max-height: 132px`, padding `12px`, gap `8px`.
 - Filter bar: `44px` controls, wrapping on tablet.
-- Detail header: sticky top inside workspace, `120-170px` depending badges.
+- Detail header: sticky top inside workspace, `120-170px` depending on badges.
 - Mobile: list first; selecting a note hides list and shows detail full width with a back button.
 
 ### Baseera Components Reused

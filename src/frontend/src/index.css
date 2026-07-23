@@ -218,6 +218,7 @@ th, td {
 
 .field-hint {
   color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .observation-workspace {
@@ -683,10 +684,6 @@ th, td {
     min-width: auto;
     width: auto;
   }
-}
-
-.field-hint {
-  font-size: 0.78rem;
 }
 
 .form-actions {

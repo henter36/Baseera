@@ -249,8 +249,19 @@ export type NoteWorkspaceTimelineEntry = {
   descriptionAr?: string | null
   actorDisplayName?: string | null
   occurredAtUtc: string
-  tone: string
+  tone: 'danger' | 'ok' | 'info' | 'muted' | 'warn'
 }
+
+export type NoteWorkspaceAllowedAction =
+  | 'SUBMIT'
+  | 'ASSIGN'
+  | 'REASSIGN'
+  | 'START_WORK'
+  | 'ADD_ACTION'
+  | 'REQUEST_VERIFICATION'
+  | 'REJECT_VERIFICATION'
+  | 'REOPEN'
+  | 'CANCEL'
 
 export type NoteWorkspaceResource = {
   id: string
@@ -289,7 +300,7 @@ export type NoteWorkspaceList = {
 
 export type NoteWorkspaceDetail = {
   note: NoteDetail
-  allowedActions: string[]
+  allowedActions: NoteWorkspaceAllowedAction[]
   summary: NoteWorkspaceSummary
   assignments: NoteAssignment[]
   correctiveActions: Paged<CorrectiveActionListItem>

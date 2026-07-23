@@ -6,6 +6,7 @@ import {
   ApiError,
   type NoteListFilters,
   type NoteListItem,
+  type NoteWorkspaceAllowedAction,
   type NoteWorkspaceDetail,
 } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
@@ -22,21 +23,26 @@ const DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
   minute: '2-digit',
 })
 
-const ACTION_LABELS: Record<string, string> = {
+const ACTION_LABELS: Record<NoteWorkspaceAllowedAction, string> = {
   SUBMIT: 'فتح الملاحظة',
   ASSIGN: 'إسناد',
   REASSIGN: 'إعادة إسناد',
   START_WORK: 'بدء المعالجة',
   ADD_ACTION: 'إضافة إجراء',
-  REQUEST_RESOURCE: 'طلب مورد',
   REQUEST_VERIFICATION: 'طلب تحقق',
   REJECT_VERIFICATION: 'رفض التحقق',
-  APPROVE_CLOSURE: 'اعتماد الإغلاق',
   REOPEN: 'إعادة فتح',
   CANCEL: 'إلغاء',
-  ESCALATE: 'تصعيد',
-  UPLOAD_ATTACHMENT: 'إرفاق',
 }
+
+const INLINE_ACTIONS = new Set<NoteWorkspaceAllowedAction>([
+  'SUBMIT',
+  'START_WORK',
+  'REQUEST_VERIFICATION',
+  'REJECT_VERIFICATION',
+  'REOPEN',
+  'CANCEL',
+])
 
 const TABS = [
   ['summary', 'الملخص'],
@@ -101,7 +107,7 @@ export function ObservationWorkspacePage() {
   useEffect(() => {
     const next = new URLSearchParams()
     Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== '' && value !== false) next.set(key, String(value))
+      appendFilterParam(next, key, value)
     })
     if (selectedId) next.set('noteId', selectedId)
     setSearchParams(next, { replace: true })
@@ -227,7 +233,8 @@ export function ObservationWorkspacePage() {
   )
 }
 
-function ObservationCard({ note, selected, onSelect }: { note: NoteListItem; selected: boolean; onSelect: () => void }) {
+function ObservationCard({ note, selected, onSelect }: Readonly<{ note: NoteListItem; selected: boolean; onSelect: () => void }>) {
+  const locationLabel = noteLocationLabel(note)
   return (
     <button
       type="button"
@@ -243,7 +250,7 @@ function ObservationCard({ note, selected, onSelect }: { note: NoteListItem; sel
       </div>
       <div className="observation-card-title">{note.title}</div>
       <div className="observation-card-meta">
-        <span>{note.facilityId ? `سجن ${shortId(note.facilityId)}` : note.regionId ? `منطقة ${shortId(note.regionId)}` : 'نطاق عام'}</span>
+        <span>{locationLabel}</span>
         <span>{note.currentAssigneeDisplay || 'بلا مالك'}</span>
         <span>{note.dueAtUtc ? `استحقاق ${formatDate(note.dueAtUtc)}` : 'دون استحقاق'}</span>
         <span>تحديث {formatDate(note.createdAtUtc)}</span>
@@ -257,12 +264,12 @@ function WorkspaceDetail({
   activeTab,
   onTabChange,
   onBack,
-}: {
+}: Readonly<{
   data: NoteWorkspaceDetail
   activeTab: (typeof TABS)[number][0]
   onTabChange: (tab: (typeof TABS)[number][0]) => void
   onBack: () => void
-}) {
+}>) {
   return (
     <article className="workspace-detail">
       <button type="button" className="secondary mobile-back" onClick={onBack}>رجوع إلى القائمة</button>
@@ -311,19 +318,19 @@ function WorkspaceDetail({
   )
 }
 
-function ActionBar({ data }: { data: NoteWorkspaceDetail }) {
+function ActionBar({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
-  const [activeAction, setActiveAction] = useState('')
+  const [activeAction, setActiveAction] = useState<NoteWorkspaceAllowedAction | ''>('')
   const runAction = useMutation({
-    mutationFn: async (action: string) => {
+    mutationFn: async (action: NoteWorkspaceAllowedAction) => {
       if (action === 'SUBMIT') return api.notes.submit(data.note.id, { reason, rowVersion: data.note.rowVersion })
       if (action === 'START_WORK') return api.notes.startWork(data.note.id, { reason, rowVersion: data.note.rowVersion })
       if (action === 'REQUEST_VERIFICATION') return api.notes.submitForVerification(data.note.id, { reason, rowVersion: data.note.rowVersion })
       if (action === 'REJECT_VERIFICATION') return api.notes.returnForRework(data.note.id, { reason, rowVersion: data.note.rowVersion })
       if (action === 'REOPEN') return api.notes.reopen(data.note.id, { reason, rowVersion: data.note.rowVersion })
       if (action === 'CANCEL') return api.notes.cancel(data.note.id, { reason, rowVersion: data.note.rowVersion })
-      throw new Error('هذا الإجراء يحتاج نموذجًا تفصيليًا.')
+      throw new Error('هذا الإجراء غير مدعوم كعملية فورية.')
     },
     onSuccess: async () => {
       setReason('')
@@ -332,15 +339,14 @@ function ActionBar({ data }: { data: NoteWorkspaceDetail }) {
       await queryClient.invalidateQueries({ queryKey: ['notes-workspace-detail', data.note.id] })
     },
   })
-  const inlineActions = data.allowedActions.filter((action) => ['SUBMIT', 'START_WORK', 'REQUEST_VERIFICATION', 'REJECT_VERIFICATION', 'REOPEN', 'CANCEL'].includes(action))
 
   return (
     <div className="workspace-actionbar">
       {data.allowedActions.map((action) => {
         if (action === 'ADD_ACTION') return <Link key={action} to={`/notes/${data.note.id}/corrective-actions/new`}><button type="button" className="secondary">{ACTION_LABELS[action]}</button></Link>
         if (action === 'ASSIGN' || action === 'REASSIGN') return <Link key={action} to={`/notes/${data.note.id}`}><button type="button" className="secondary">{ACTION_LABELS[action]}</button></Link>
-        if (inlineActions.includes(action)) return <button key={action} type="button" className={activeAction === action ? undefined : 'secondary'} onClick={() => setActiveAction(action)}>{ACTION_LABELS[action]}</button>
-        return <button key={action} type="button" className="secondary" disabled title="يتطلب نموذجًا مخصصًا">{ACTION_LABELS[action] ?? action}</button>
+        if (INLINE_ACTIONS.has(action)) return <button key={action} type="button" className={activeAction === action ? undefined : 'secondary'} onClick={() => setActiveAction(action)}>{ACTION_LABELS[action]}</button>
+        return <button key={action} type="button" className="secondary" disabled title="يتطلب نموذجًا مخصصًا">{ACTION_LABELS[action]}</button>
       })}
       {activeAction && (
         <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); runAction.mutate(activeAction) }}>
@@ -354,16 +360,18 @@ function ActionBar({ data }: { data: NoteWorkspaceDetail }) {
   )
 }
 
-function SummaryTab({ data }: { data: NoteWorkspaceDetail }) {
+function SummaryTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
+  const locationLabel = noteLocationLabel(data.note)
+  const ownerLabel = data.note.currentAssignment?.assignedToUserDisplayName || data.note.currentAssignment?.assignedToDepartmentName || '—'
   return (
     <div className="workspace-summary-grid">
       <div className="summary-description"><span className="muted">الوصف</span><p>{data.note.description}</p></div>
       <Metric label="المصدر" value={data.note.sourceAr} />
       <Metric label="التصنيف" value={data.note.noteTypeNameAr} />
       <Metric label="الأثر" value={data.note.severityAr} />
-      <Metric label="الموقع/المنطقة" value={data.note.facilityId ? shortId(data.note.facilityId) : data.note.regionId ? shortId(data.note.regionId) : 'عام'} />
+      <Metric label="الموقع/المنطقة" value={locationLabel} />
       <Metric label="المبلّغ" value={data.note.reportedByDisplayName || '—'} />
-      <Metric label="المالك" value={data.note.currentAssignment?.assignedToUserDisplayName || data.note.currentAssignment?.assignedToDepartmentName || '—'} />
+      <Metric label="المالك" value={ownerLabel} />
       <Metric label="الحالة" value={data.note.statusAr} />
       <Metric label="آخر إجراء" value={data.timeline[0]?.titleAr || '—'} />
       <Metric label="تاريخ الإنشاء" value={formatDate(data.note.createdAtUtc)} />
@@ -373,7 +381,7 @@ function SummaryTab({ data }: { data: NoteWorkspaceDetail }) {
   )
 }
 
-function ActionsTab({ data }: { data: NoteWorkspaceDetail }) {
+function ActionsTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   if (data.correctiveActions.items.length === 0) return <div className="empty">لا توجد إجراءات مستقلة مرتبطة بهذه الملاحظة.</div>
   return <div className="workspace-stack">{data.correctiveActions.items.map((action) => (
     <div key={action.id} className="workspace-row-card">
@@ -385,7 +393,7 @@ function ActionsTab({ data }: { data: NoteWorkspaceDetail }) {
   ))}</div>
 }
 
-function AssignmentsTab({ data }: { data: NoteWorkspaceDetail }) {
+function AssignmentsTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   if (data.assignments.length === 0) return <div className="empty">لا توجد تكليفات مسجلة.</div>
   return <div className="workspace-stack">{data.assignments.map((assignment) => (
     <div key={assignment.id} className="workspace-row-card">
@@ -397,17 +405,18 @@ function AssignmentsTab({ data }: { data: NoteWorkspaceDetail }) {
   ))}</div>
 }
 
-function VerificationTab({ data }: { data: NoteWorkspaceDetail }) {
+function VerificationTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
+  const verificationStatus = verificationStatusLabel(data)
   return (
     <div className="workspace-stack">
-      <Metric label="حالة التحقق" value={data.summary.waitingVerification ? 'بانتظار التحقق' : data.note.closedAtUtc ? 'مغلق بعد التحقق' : 'غير مطلوب حاليًا'} />
+      <Metric label="حالة التحقق" value={verificationStatus} />
       <Metric label="فصل الواجبات" value={data.note.severity >= 3 ? 'مفعل للملاحظات الحرجة في الخادم' : 'حسب السياسة'} />
       <Metric label="ملخص الإغلاق" value={data.note.closureSummary || '—'} />
     </div>
   )
 }
 
-function AttachmentsTab({ data }: { data: NoteWorkspaceDetail }) {
+function AttachmentsTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   if (data.attachments.length === 0) return <div className="empty">لا توجد مرفقات.</div>
   return <div className="workspace-stack">{data.attachments.map((attachment) => (
     <div key={attachment.id} className="workspace-row-card">
@@ -419,7 +428,7 @@ function AttachmentsTab({ data }: { data: NoteWorkspaceDetail }) {
   ))}</div>
 }
 
-function TimelineTab({ data }: { data: NoteWorkspaceDetail }) {
+function TimelineTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   return <ol className="workspace-timeline">{data.timeline.map((entry) => (
     <li key={`${entry.type}-${entry.id}`} data-tone={entry.tone}>
       <strong>{entry.titleAr}</strong>
@@ -429,7 +438,7 @@ function TimelineTab({ data }: { data: NoteWorkspaceDetail }) {
   ))}</ol>
 }
 
-function EmptyOperationalTab({ title, text }: { title: string; text: string }) {
+function EmptyOperationalTab({ title, text }: Readonly<{ title: string; text: string }>) {
   return <div className="empty"><strong>{title}</strong><p>{text}</p></div>
 }
 
@@ -437,7 +446,7 @@ function NoSelection() {
   return <div className="workspace-no-selection"><strong>اختر ملاحظة</strong><p className="muted">ستظهر الإجراءات والتكليفات والتحقق والـTimeline هنا دون مغادرة الصفحة.</p></div>
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value }: Readonly<{ label: string; value: string }>) {
   return <div className="metric"><span className="muted">{label}</span><strong>{value}</strong></div>
 }
 
@@ -447,4 +456,34 @@ function formatDate(value: string) {
 
 function shortId(value: string) {
   return value.slice(0, 8)
+}
+
+function appendFilterParam(params: URLSearchParams, key: string, value: string | number | boolean | undefined) {
+  if (value !== undefined && value !== '' && value !== false) {
+    params.set(key, String(value))
+  }
+}
+
+function noteLocationLabel(note: Pick<NoteListItem, 'facilityId' | 'regionId'>) {
+  if (note.facilityId) {
+    return `سجن ${shortId(note.facilityId)}`
+  }
+
+  if (note.regionId) {
+    return `منطقة ${shortId(note.regionId)}`
+  }
+
+  return 'نطاق عام'
+}
+
+function verificationStatusLabel(data: NoteWorkspaceDetail) {
+  if (data.summary.waitingVerification) {
+    return 'بانتظار التحقق'
+  }
+
+  if (data.note.closedAtUtc) {
+    return 'مغلق بعد التحقق'
+  }
+
+  return 'غير مطلوب حاليًا'
 }

@@ -49,7 +49,7 @@ public sealed class NoteWorkspaceQueryService(
             },
             cancellationToken);
         var attachmentRows = await attachments.ListForEntityAsync(nameof(OperationalNote), id, cancellationToken);
-        var timeline = await BuildTimelineAsync(note, history, actionPage.Items, cancellationToken);
+        var timeline = BuildTimeline(note, history, actionPage.Items);
         var openActions = await db.CorrectiveActions.CountAsync(
             action =>
                 action.OperationalNoteId == id &&
@@ -65,7 +65,7 @@ public sealed class NoteWorkspaceQueryService(
                 attachmentRows.Count,
                 note.Status == NoteStatus.InProgress && openActions > 0,
                 note.Status == NoteStatus.PendingVerification,
-                note.Status == NoteStatus.PendingVerification,
+                false,
                 false,
                 ResolveProgress(note.Status, openActions),
                 ResolveBlocker(note, openActions),
@@ -79,11 +79,10 @@ public sealed class NoteWorkspaceQueryService(
             timeline);
     }
 
-    private async Task<IReadOnlyList<NoteWorkspaceTimelineEntryDto>> BuildTimelineAsync(
+    private static IReadOnlyList<NoteWorkspaceTimelineEntryDto> BuildTimeline(
         NoteDetailDto note,
         IReadOnlyList<NoteStatusHistoryDto> history,
-        IReadOnlyList<CorrectiveActionListItemDto> actionItems,
-        CancellationToken cancellationToken)
+        IReadOnlyList<CorrectiveActionListItemDto> actionItems)
     {
         var entries = history.Select(item => new NoteWorkspaceTimelineEntryDto(
             item.Id,
@@ -92,7 +91,7 @@ public sealed class NoteWorkspaceQueryService(
             item.Reason,
             item.ChangedByDisplayName,
             item.ChangedAtUtc,
-            item.ToStatus is NoteStatus.Closed ? "ok" : item.ToStatus is NoteStatus.Cancelled ? "danger" : "muted")).ToList();
+            TimelineToneForStatus(item.ToStatus))).ToList();
 
         entries.Add(new NoteWorkspaceTimelineEntryDto(
             note.Id,
@@ -125,15 +124,26 @@ public sealed class NoteWorkspaceQueryService(
         AddIf(allowed, "REASSIGN", currentUser.HasPermission(PermissionCodes.NotesAssign) && note.CurrentAssignment is not null && !NoteStateMachine.IsTerminalLocked(note.Status));
         AddIf(allowed, "START_WORK", currentUser.HasPermission(PermissionCodes.NotesStartWork) && NoteStateMachine.CanTransition(note.Status, NoteStatus.InProgress));
         AddIf(allowed, "ADD_ACTION", currentUser.HasPermission(PermissionCodes.CorrectiveActionsCreate) && !NoteStateMachine.IsTerminalLocked(note.Status));
-        AddIf(allowed, "REQUEST_RESOURCE", currentUser.HasPermission(PermissionCodes.NotesStartWork) && note.Status == NoteStatus.InProgress);
         AddIf(allowed, "REQUEST_VERIFICATION", currentUser.HasPermission(PermissionCodes.NotesSubmitForVerification) && NoteStateMachine.CanTransition(note.Status, NoteStatus.PendingVerification));
         AddIf(allowed, "REJECT_VERIFICATION", currentUser.HasPermission(PermissionCodes.NotesReturnForRework) && NoteStateMachine.CanTransition(note.Status, NoteStatus.InProgress));
-        AddIf(allowed, "APPROVE_CLOSURE", currentUser.HasPermission(PermissionCodes.NotesVerifyClosure) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Closed));
         AddIf(allowed, "REOPEN", currentUser.HasPermission(PermissionCodes.NotesReopen) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Reopened));
         AddIf(allowed, "CANCEL", currentUser.HasPermission(PermissionCodes.NotesCancel) && !NoteStateMachine.IsTerminalLocked(note.Status));
-        AddIf(allowed, "ESCALATE", currentUser.HasPermission(PermissionCodes.EscalationsManage) && !NoteStateMachine.IsTerminalLocked(note.Status));
-        AddIf(allowed, "UPLOAD_ATTACHMENT", currentUser.HasPermission(PermissionCodes.AttachmentsUpload) && !NoteStateMachine.IsTerminalLocked(note.Status));
         return allowed;
+    }
+
+    private static string TimelineToneForStatus(NoteStatus status)
+    {
+        if (status == NoteStatus.Closed)
+        {
+            return "ok";
+        }
+
+        if (status == NoteStatus.Cancelled)
+        {
+            return "danger";
+        }
+
+        return "muted";
     }
 
     private static void AddIf(List<string> actions, string action, bool condition)
@@ -149,7 +159,7 @@ public sealed class NoteWorkspaceQueryService(
         NoteStatus.Draft => 5,
         NoteStatus.Open => 15,
         NoteStatus.Assigned => 30,
-        NoteStatus.InProgress => openActions > 0 ? 55 : 65,
+        NoteStatus.InProgress => ResolveInProgressProgress(openActions),
         NoteStatus.PendingVerification => 82,
         NoteStatus.Closed => 100,
         NoteStatus.Reopened => 40,
@@ -166,7 +176,7 @@ public sealed class NoteWorkspaceQueryService(
 
         if (note.Status == NoteStatus.PendingVerification)
         {
-            return "بانتظار التحقق أو اعتماد الإغلاق";
+            return "بانتظار التحقق";
         }
 
         if (note.Status == NoteStatus.InProgress && openActions > 0)
@@ -175,5 +185,10 @@ public sealed class NoteWorkspaceQueryService(
         }
 
         return null;
+    }
+
+    private static int ResolveInProgressProgress(int openActions)
+    {
+        return openActions > 0 ? 55 : 65;
     }
 }
