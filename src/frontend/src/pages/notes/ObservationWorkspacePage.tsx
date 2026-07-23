@@ -77,8 +77,14 @@ export function ObservationWorkspacePage() {
   const [listCollapsed, setListCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number][0]>('summary')
   const listScrollRef = useRef<HTMLDivElement | null>(null)
+  const searchDebounceMountedRef = useRef(false)
 
   useEffect(() => {
+    if (!searchDebounceMountedRef.current) {
+      searchDebounceMountedRef.current = true
+      return
+    }
+
     const handle = window.setTimeout(() => {
       setPage(1)
       setDebouncedSearch(searchInput)
@@ -221,6 +227,7 @@ export function ObservationWorkspacePage() {
           )}
           {detailQuery.data && (
             <WorkspaceDetail
+              key={detailQuery.data.note.id}
               data={detailQuery.data}
               activeTab={activeTab}
               onTabChange={setActiveTab}

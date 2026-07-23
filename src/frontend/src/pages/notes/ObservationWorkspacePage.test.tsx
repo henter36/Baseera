@@ -107,11 +107,28 @@ const detail = {
   }],
 }
 
-function renderPage() {
+const secondNote = {
+  ...note,
+  id: '22222222-2222-2222-2222-222222222222',
+  referenceNumber: 'OBS-00000025',
+  title: 'تسرب مياه في غرفة الخدمات',
+  rowVersion: 'rv-2',
+}
+
+const secondDetail = {
+  ...detail,
+  note: {
+    ...detail.note,
+    ...secondNote,
+    description: 'تسرب مياه يحتاج عزل مصدر التغذية.',
+  },
+}
+
+function renderPage(initialEntry = '/') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <ObservationWorkspacePage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -154,5 +171,40 @@ describe('ObservationWorkspacePage', () => {
       const lastCall = workspace.mock.calls.at(-1)?.[0]
       expect(lastCall).toMatchObject({ status: 3, overdueOnly: true })
     })
+  })
+
+  it('preserves deep-linked pagination on initial load', async () => {
+    renderPage('/notes/workspace?page=3&noteId=11111111-1111-1111-1111-111111111111')
+
+    await waitFor(() => {
+      expect(workspace).toHaveBeenCalledWith(expect.objectContaining({ page: 3 }))
+    })
+
+    await new Promise((resolve) => window.setTimeout(resolve, 350))
+
+    expect(workspace.mock.calls.at(-1)?.[0]).toMatchObject({ page: 3 })
+  })
+
+  it('clears inline action state when switching selected notes', async () => {
+    workspace.mockResolvedValue({ notes: { items: [note, secondNote], page: 1, pageSize: 20, totalCount: 2 } })
+    workspaceDetail.mockImplementation(async (id: string) => {
+      if (id === secondNote.id) {
+        return { ...secondDetail, allowedActions: ['CANCEL'] }
+      }
+
+      return { ...detail, allowedActions: ['CANCEL'] }
+    })
+
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: /OBS-00000024/ }))
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+    await userEvent.click(screen.getByRole('button', { name: 'إلغاء' }))
+    await userEvent.type(screen.getByLabelText('سبب الإجراء'), 'سبب تشغيلي واضح')
+
+    await userEvent.click(screen.getByRole('button', { name: /OBS-00000025/ }))
+    await screen.findByRole('heading', { name: 'تسرب مياه في غرفة الخدمات' })
+
+    expect(screen.queryByLabelText('سبب الإجراء')).not.toBeInTheDocument()
   })
 })
