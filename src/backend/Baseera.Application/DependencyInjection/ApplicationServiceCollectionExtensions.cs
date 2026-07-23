@@ -8,6 +8,7 @@ using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Forms;
 using Baseera.Application.Forms.Campaigns;
+using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Forms.Responses;
 using Baseera.Application.Forms.Schema;
 using Baseera.Application.Identity;
@@ -61,6 +62,8 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IFormResponseAccessCoordinator, FormResponseAccessCoordinator>();
         services.AddScoped<IFormResponseAttachmentAccessResolver, FormResponseAttachmentAccessResolver>();
         services.AddScoped<IFormResponseCompletionEvaluator, FormResponseCompletionEvaluator>();
+        services.AddScoped<IFormCompletionTimestampResolver, FormCompletionTimestampResolver>();
+        services.AddScoped<IFormComplianceQueryService, FormComplianceQueryService>();
         services.AddScoped<IFormResponseValidator, FormResponseValidator>();
         services.AddScoped<IFormResponseProjectionService, FormResponseProjectionService>();
         services.AddScoped<IFormResponseService, FormResponseService>();

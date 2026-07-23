@@ -165,6 +165,8 @@ public static class PermissionCodes
     public const string FormsViewSensitiveResponses = "Forms.ViewSensitiveResponses";
     public const string FormsAnalyze = "Forms.Analyze";
     public const string FormsExport = "Forms.Export";
+    public const string FormsViewComplianceDashboard = "Forms.ViewComplianceDashboard";
+    public const string FormsExportComplianceDashboard = "Forms.ExportComplianceDashboard";
     public const string FormsCloneVersion = "Forms.CloneVersion";
     public const string FormsViewVersionHistory = "Forms.ViewVersionHistory";
     public const string FormsManageTemplates = "Forms.ManageTemplates";

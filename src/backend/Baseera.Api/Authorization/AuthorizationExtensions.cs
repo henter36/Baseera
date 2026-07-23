@@ -95,6 +95,8 @@ public static class AuthPolicies
     public const string FormsApproveResponses = PermissionPrefix + PermissionCodes.FormsApproveResponses;
     public const string FormsCloseResponses = PermissionPrefix + PermissionCodes.FormsCloseResponses;
     public const string FormsViewSensitiveResponses = PermissionPrefix + PermissionCodes.FormsViewSensitiveResponses;
+    public const string FormsViewComplianceDashboard = PermissionPrefix + PermissionCodes.FormsViewComplianceDashboard;
+    public const string FormsExportComplianceDashboard = PermissionPrefix + PermissionCodes.FormsExportComplianceDashboard;
     public const string FormsViewResponseDetail = "perm:Forms.ViewResponseDetail";
 }
 
@@ -243,6 +245,8 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.FormsApproveResponses, PermissionCodes.FormsApproveResponses);
             AddPerm(AuthPolicies.FormsCloseResponses, PermissionCodes.FormsCloseResponses);
             AddPerm(AuthPolicies.FormsViewSensitiveResponses, PermissionCodes.FormsViewSensitiveResponses);
+            AddPerm(AuthPolicies.FormsViewComplianceDashboard, PermissionCodes.FormsViewComplianceDashboard);
+            AddPerm(AuthPolicies.FormsExportComplianceDashboard, PermissionCodes.FormsExportComplianceDashboard);
         });
         return services;
     }

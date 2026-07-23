@@ -356,7 +356,8 @@ public static class DatabaseInitializer
             PermissionCodes.FormsViewResponses,
             PermissionCodes.FormsReviewResponses,
             PermissionCodes.FormsApproveResponses,
-            PermissionCodes.FormsCloseResponses
+            PermissionCodes.FormsCloseResponses,
+            PermissionCodes.FormsViewComplianceDashboard
         ];
         string[] formsHqMonitor =
         [
@@ -367,9 +368,17 @@ public static class DatabaseInitializer
             PermissionCodes.FormsReviewResponses,
             PermissionCodes.FormsApproveResponses,
             PermissionCodes.FormsCloseResponses,
-            PermissionCodes.FormsViewSensitiveResponses
+            PermissionCodes.FormsViewSensitiveResponses,
+            PermissionCodes.FormsViewComplianceDashboard,
+            PermissionCodes.FormsExportComplianceDashboard
         ];
-        string[] formsAnalyst = [PermissionCodes.FormsView, PermissionCodes.FormsAnalyze];
+        string[] formsAnalyst =
+        [
+            PermissionCodes.FormsView,
+            PermissionCodes.FormsAnalyze,
+            PermissionCodes.FormsViewComplianceDashboard,
+            PermissionCodes.FormsExportComplianceDashboard
+        ];
         string[] formsAuditorView = [PermissionCodes.FormsView, PermissionCodes.FormsViewCampaignAssignments];
 
         var formDesigner = roles.First(r => r.Code == RoleCodes.FormDesigner);
@@ -857,6 +866,8 @@ public static class DatabaseInitializer
             (PermissionCodes.FormsApproveResponses, "اعتماد ردود النماذج", FormsModule),
             (PermissionCodes.FormsAnalyze, "تحليل النماذج", FormsModule),
             (PermissionCodes.FormsExport, "تصدير النماذج", FormsModule),
+            (PermissionCodes.FormsViewComplianceDashboard, "عرض لوحة التزام النماذج", FormsModule),
+            (PermissionCodes.FormsExportComplianceDashboard, "تصدير لوحة التزام النماذج", FormsModule),
             (PermissionCodes.FormsCloneVersion, "استنساخ إصدار نموذج", FormsModule),
             (PermissionCodes.FormsViewVersionHistory, "عرض سجل إصدارات النموذج", FormsModule),
             (PermissionCodes.FormsManageTemplates, "إدارة قوالب النماذج", FormsModule),
