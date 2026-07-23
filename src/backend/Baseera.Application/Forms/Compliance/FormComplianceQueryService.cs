@@ -332,7 +332,7 @@ public sealed class FormComplianceQueryService(
             LastSavedAtUtc = r.LastSavedAtUtc,
             SubmittedAtUtc = r.SubmittedAtUtc,
             ResponsibleUserId = r.LastSavedByUserId ?? r.SubmittedByUserId,
-            ResponsibleUserName = r.LastSavedByUserName ?? r.SubmittedByUserName,
+            ResponsibleUserName = r.LastSavedByUserId != null ? r.LastSavedByUserName : r.SubmittedByUserName,
             AllowedActions = ["open-response", "open-review", "view-history"]
         }).ToList(), page, total);
     }
@@ -586,34 +586,74 @@ public sealed class FormComplianceQueryService(
         IQueryable<FormComplianceSourceRow> rows,
         CancellationToken cancellationToken)
     {
-        var targeted = await rows.CountAsync(cancellationToken);
         var distinctFacilities = await rows.Select(r => r.FacilityId).Distinct().CountAsync(cancellationToken);
-        var unavailable = await rows.CountAsync(r => !r.IsAvailable, cancellationToken);
-        var eligibleRows = rows.Where(r => r.IsAvailable);
-        var eligible = await eligibleRows.CountAsync(cancellationToken);
-        var completed = await eligibleRows.CountAsync(r => r.IsCompleted, cancellationToken);
-        var completionRows = eligibleRows.Where(r => r.IsCompleted);
-        var validDurations = completionRows.Where(r => r.CompletionAtUtc != null && r.CompletionAtUtc >= r.OpenAtUtc);
+        var aggregate = await rows
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Targeted = g.Count(),
+                Unavailable = g.Count(r => !r.IsAvailable),
+                Eligible = g.Count(r => r.IsAvailable),
+                Completed = g.Count(r => r.IsAvailable && r.IsCompleted),
+                NotStarted = g.Count(r => r.IsAvailable && r.ResponseStatus == null),
+                Draft = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.Draft),
+                Submitted = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.Submitted),
+                UnderReview = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.UnderReview),
+                Returned = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.Returned),
+                Approved = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.Approved),
+                Rejected = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.Rejected),
+                Closed = g.Count(r => r.IsAvailable && r.ResponseStatus == FormResponseStatus.Closed),
+                Overdue = g.Count(r => r.IsAvailable && r.IsOverdue),
+                CompletedOnTime = g.Count(r =>
+                    r.IsAvailable && r.IsCompleted &&
+                    r.CompletionAtUtc != null &&
+                    r.CompletionAtUtc <= r.EffectiveDueAtUtc),
+                CompletedLate = g.Count(r =>
+                    r.IsAvailable && r.IsCompleted &&
+                    r.CompletionAtUtc != null &&
+                    r.CompletionAtUtc > r.EffectiveDueAtUtc),
+                AverageMinutes = g
+                    .Where(r =>
+                        r.IsAvailable && r.IsCompleted &&
+                        r.CompletionAtUtc != null &&
+                        r.CompletionAtUtc >= r.OpenAtUtc)
+                    .Average(r => (double?)(r.CompletionAtUtc.GetValueOrDefault() - r.OpenAtUtc).TotalMinutes),
+                UnknownCompletionTimestamp = g.Count(r =>
+                    r.IsAvailable && r.IsCompleted &&
+                    r.CompletionAtUtc == null),
+                InvalidCompletionDuration = g.Count(r =>
+                    r.IsAvailable && r.IsCompleted &&
+                    r.CompletionAtUtc != null &&
+                    r.CompletionAtUtc < r.OpenAtUtc)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (aggregate is null)
+        {
+            return new FormComplianceMetricAggregate(
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, 0, 0);
+        }
+
         return new FormComplianceMetricAggregate(
-            targeted,
+            aggregate.Targeted,
             distinctFacilities,
-            unavailable,
-            eligible,
-            completed,
-            await eligibleRows.CountAsync(r => r.ResponseStatus == null, cancellationToken),
-            await eligibleRows.CountAsync(r => r.ResponseStatus == FormResponseStatus.Draft, cancellationToken),
-            await eligibleRows.CountAsync(r => r.ResponseStatus == FormResponseStatus.Submitted, cancellationToken),
-            await eligibleRows.CountAsync(r => r.ResponseStatus == FormResponseStatus.UnderReview, cancellationToken),
-            await eligibleRows.CountAsync(r => r.ResponseStatus == FormResponseStatus.Returned, cancellationToken),
-            await eligibleRows.CountAsync(r => r.ResponseStatus == FormResponseStatus.Approved, cancellationToken),
-            await eligibleRows.CountAsync(r => r.ResponseStatus == FormResponseStatus.Rejected, cancellationToken),
-            await eligibleRows.CountAsync(r => r.ResponseStatus == FormResponseStatus.Closed, cancellationToken),
-            await eligibleRows.CountAsync(r => r.IsOverdue, cancellationToken),
-            await completionRows.CountAsync(r => r.CompletionAtUtc != null && r.CompletionAtUtc <= r.EffectiveDueAtUtc, cancellationToken),
-            await completionRows.CountAsync(r => r.CompletionAtUtc != null && r.CompletionAtUtc > r.EffectiveDueAtUtc, cancellationToken),
-            await validDurations.AverageAsync(r => (double?)(r.CompletionAtUtc.GetValueOrDefault() - r.OpenAtUtc).TotalMinutes, cancellationToken),
-            await completionRows.CountAsync(r => r.CompletionAtUtc == null, cancellationToken),
-            await completionRows.CountAsync(r => r.CompletionAtUtc != null && r.CompletionAtUtc < r.OpenAtUtc, cancellationToken));
+            aggregate.Unavailable,
+            aggregate.Eligible,
+            aggregate.Completed,
+            aggregate.NotStarted,
+            aggregate.Draft,
+            aggregate.Submitted,
+            aggregate.UnderReview,
+            aggregate.Returned,
+            aggregate.Approved,
+            aggregate.Rejected,
+            aggregate.Closed,
+            aggregate.Overdue,
+            aggregate.CompletedOnTime,
+            aggregate.CompletedLate,
+            aggregate.AverageMinutes,
+            aggregate.UnknownCompletionTimestamp,
+            aggregate.InvalidCompletionDuration);
     }
 
     private async Task<IReadOnlyList<FormComplianceTrendPointDto>> BuildCycleTrendAsync(
