@@ -1,8 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { useState } from 'react'
-import { api } from '../../api/client'
+import { api, type FormResponseReviewAction } from '../../api/client'
 import { FormAssignmentWorkStatusLabelsAr } from './responseLabels'
+
+function resolveMutationError(error: unknown): string {
+  const status = (error as { status?: number })?.status
+  if (status === 404 || status === 403) return 'لا يمكن تنفيذ الإجراء على هذا الرد.'
+  if (status === 409) return 'تعارض في النسخة. أعد تحميل الصفحة ثم حاول مجددًا.'
+  if (status === 422) return 'تعذر التحقق من الطلب.'
+  if (!navigator.onLine) return 'انقطع الاتصال. حاول مجددًا عند عودة الشبكة.'
+  return 'فشل تنفيذ إجراء المراجعة.'
+}
 
 export function FormResponseReviewsPage() {
   const query = useQuery({
@@ -37,7 +46,9 @@ export function FormResponseReviewsPage() {
                 <td>{FormAssignmentWorkStatusLabelsAr[item.workStatus]}</td>
                 <td>{item.currentReviewLevel}/{item.requiredApprovalLevels}</td>
                 <td>
-                  {item.responseId && <Link to={`/form-responses/${item.responseId}/review`}>مراجعة</Link>}
+                  {item.responseId ? (
+                    <Link to={`/form-responses/${item.responseId}/review`}>مراجعة</Link>
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -55,11 +66,12 @@ export function FormResponseReviewDetailPage() {
     queryKey: ['form-response-review', responseId],
     queryFn: () => api.formResponses.getReview(responseId),
     enabled: Boolean(responseId),
+    refetchOnWindowFocus: false,
   })
   const [reason, setReason] = useState('')
 
   const actionMutation = useMutation({
-    mutationFn: async (action: 'return' | 'approve' | 'reject' | 'close' | 'start') => {
+    mutationFn: async (action: FormResponseReviewAction) => {
       const rowVersion = query.data?.workspace.rowVersion
       if (!rowVersion) throw new Error('missing row version')
       if (action === 'start') await api.formResponses.startReview(responseId, { rowVersion })
@@ -74,7 +86,7 @@ export function FormResponseReviewDetailPage() {
   })
 
   if (query.isLoading) return <p>جاري التحميل…</p>
-  if (query.isError || !query.data) return <p className="error">تعذر فتح المراجعة.</p>
+  if (query.isError || !query.data) return <p className="error" role="alert">تعذر فتح المراجعة.</p>
   const w = query.data.workspace
 
   return (
@@ -88,10 +100,13 @@ export function FormResponseReviewDetailPage() {
         <h2>الإجابات</h2>
         <pre aria-label="إجابات الإرسال">{w.latestSubmission?.canonicalAnswersJson ?? w.draftAnswersJson}</pre>
       </section>
-      <label>
-        السبب
+      <label className="field">
+        <span>السبب</span>
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} aria-label="سبب القرار" />
       </label>
+      {actionMutation.isError && (
+        <p className="error" role="alert">{resolveMutationError(actionMutation.error)}</p>
+      )}
       <div className="actions">
         <button type="button" disabled={actionMutation.isPending} onClick={() => actionMutation.mutate('start')}>بدء المراجعة</button>
         <button type="button" disabled={actionMutation.isPending || !reason.trim()} onClick={() => actionMutation.mutate('return')}>إعادة</button>

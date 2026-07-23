@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MyFormResponsesPage } from './MyFormResponsesPage'
@@ -33,7 +33,7 @@ describe('MyFormResponsesPage', () => {
   it('shows empty state', async () => {
     vi.mocked(api.formResponses.workspace).mockResolvedValue({ items: [], page: 1, pageSize: 50, totalCount: 0 })
     renderPage()
-    await waitFor(() => expect(screen.getByText(/لا توجد استحقاقات/)).toBeInTheDocument())
+    expect(await screen.findByText(/لا توجد استحقاقات/)).toBeInTheDocument()
   })
 
   it('renders workspace rows and RTL tabs', async () => {
@@ -69,7 +69,7 @@ describe('MyFormResponsesPage', () => {
     const { container } = renderPage()
     expect(container.querySelector('.page')).toHaveAttribute('dir', 'rtl')
     expect(screen.getByRole('tablist', { name: 'تصفية الاستحقاقات' })).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByText('حملة أ')).toBeInTheDocument())
+    expect(await screen.findByText('حملة أ')).toBeInTheDocument()
     expect(screen.getByText('مسودة')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'فتح' })).toHaveAttribute('href', '/form-assignments/a1/respond')
   })
@@ -77,6 +77,6 @@ describe('MyFormResponsesPage', () => {
   it('shows error state', async () => {
     vi.mocked(api.formResponses.workspace).mockRejectedValue(new Error('fail'))
     renderPage()
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/تعذر تحميل/))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/تعذر تحميل/)
   })
 })

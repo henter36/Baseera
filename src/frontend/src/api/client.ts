@@ -1052,6 +1052,13 @@ export type FormCampaignTargetRequest = {
 export type FormCampaignExclusionRequest = { facilityId: string; reason: string }
 
 
+export type FormResponseReviewAction =
+  | 'start'
+  | 'return'
+  | 'approve'
+  | 'reject'
+  | 'close'
+
 export type FormCampaignResponsePolicy = {
   completionBasis: number
   reviewMode: number

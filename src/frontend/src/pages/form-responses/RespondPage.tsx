@@ -29,6 +29,8 @@ export function RespondPage() {
     queryKey: ['assignment-response', assignmentId],
     queryFn: () => api.formResponses.getAssignmentResponse(assignmentId),
     enabled: Boolean(assignmentId),
+    refetchOnWindowFocus: false,
+    staleTime: 60_000,
   })
 
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
@@ -40,12 +42,21 @@ export function RespondPage() {
   const debounceRef = useRef<number | null>(null)
   const conflictRef = useRef(false)
 
+  const initializedKey = useRef<string | null>(null)
+  const pendingSaveRef = useRef(false)
+
   useEffect(() => {
     if (!detail.data) return
+    const key = `${detail.data.responseId ?? 'new'}:${detail.data.schemaHash}`
+    const dirty = saveState === 'dirty' || saveState === 'saving' || saveState === 'error' || saveState === 'offline' || saveState === 'conflict' || pendingSaveRef.current
+    if (initializedKey.current === key && dirty) {
+      return
+    }
+    initializedKey.current = key
     setAnswers(parseAnswers(detail.data.draftAnswersJson))
     setDraftVersion(detail.data.draftVersion ?? 0)
     setRowVersion(detail.data.rowVersion ?? null)
-  }, [detail.data])
+  }, [detail.data, saveState])
 
   const schema = useMemo(() => {
     if (!detail.data?.schemaJson) return null
@@ -62,6 +73,7 @@ export function RespondPage() {
       }),
     onMutate: () => setSaveState('saving'),
     onSuccess: (result) => {
+      pendingSaveRef.current = false
       setDraftVersion(result.draftVersion)
       setRowVersion(result.rowVersion)
       setSaveState('saved')
@@ -83,6 +95,7 @@ export function RespondPage() {
   const queueSave = useCallback((next: Record<string, unknown>) => {
     if (conflictRef.current) return
     if (debounceRef.current) window.clearTimeout(debounceRef.current)
+    pendingSaveRef.current = true
     setSaveState('dirty')
     debounceRef.current = window.setTimeout(() => {
       if (!navigator.onLine) {
@@ -145,8 +158,18 @@ export function RespondPage() {
       {saveState === 'conflict' && (
         <div className="error" role="alert">
           تعارض في النسخة. أعد تحميل نسخة الخادم.
-          <button type="button" onClick={() => void detail.refetch().then(() => { conflictRef.current = false; setSaveState('saved') })}>
-            إعادة التحميل
+          <button type="button" onClick={() => void detail.refetch().then((res) => {
+              const data = res.data
+              if (data) {
+                setAnswers(parseAnswers(data.draftAnswersJson))
+                setDraftVersion(data.draftVersion ?? 0)
+                setRowVersion(data.rowVersion ?? null)
+              }
+              conflictRef.current = false
+              pendingSaveRef.current = false
+              setSaveState('saved')
+            })}>
+            تحميل نسخة الخادم
           </button>
         </div>
       )}
@@ -205,9 +228,9 @@ export function RespondPage() {
       ))}
 
       {d.policy.requireSubmissionAcknowledgement && (
-        <label>
+        <label className="field">
           <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-          أقر بصحة البيانات المدخلة
+          <span>أقر بصحة البيانات المدخلة</span>
         </label>
       )}
 

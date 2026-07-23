@@ -44,9 +44,9 @@ export function MyFormResponsesPage() {
 
       {query.isLoading && <p>جاري التحميل…</p>}
       {query.isError && <p className="error" role="alert">تعذر تحميل الاستحقاقات.</p>}
-      {query.data && query.data.items.length === 0 && <p className="muted">لا توجد استحقاقات في هذا التبويب.</p>}
+      {query.data?.items.length === 0 && <p className="muted">لا توجد استحقاقات في هذا التبويب.</p>}
 
-      {query.data && query.data.items.length > 0 && (
+      {(query.data?.items.length ?? 0) > 0 && (
         <div className="table-wrap">
           <table>
             <thead>
@@ -62,7 +62,7 @@ export function MyFormResponsesPage() {
               </tr>
             </thead>
             <tbody>
-              {query.data.items.map((item) => (
+              {query.data?.items.map((item) => (
                 <tr key={item.assignmentId}>
                   <td>{item.campaignNameAr}</td>
                   <td>{item.facilityNameAr}</td>
