@@ -221,6 +221,7 @@ public sealed class AttachmentService(
             "user" => ResolveUserAccessAsync(entityId, cancellationToken),
             "operationalnote" => ResolveOperationalNoteAccessAsync(entityId, cancellationToken),
             "correctiveaction" => ResolveCorrectiveActionAccessAsync(entityId, cancellationToken),
+            "formresponse" => ResolveFormResponseAccessAsync(entityId, cancellationToken),
             _ => throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.")
         };
     }
@@ -242,6 +243,20 @@ public sealed class AttachmentService(
         }
 
         return (true, scope.CanAccess(note));
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveFormResponseAccessAsync(Guid entityId, CancellationToken cancellationToken)
+    {
+        var response = await db.FormResponses.AsNoTracking()
+            .Where(r => r.Id == entityId)
+            .Select(r => new { r.Id, r.FacilityId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (response is null)
+        {
+            return (false, false);
+        }
+
+        return (true, scope.CanAccessFacility(response.FacilityId));
     }
 
     private async Task<(bool Exists, bool InScope)> ResolveOperationalNoteAccessAsync(Guid entityId, CancellationToken cancellationToken)

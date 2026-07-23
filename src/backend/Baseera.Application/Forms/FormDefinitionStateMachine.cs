@@ -76,6 +76,11 @@ public static class FormDisplay
         FormAccessCapability.ViewSensitive => "عرض حساس",
         FormAccessCapability.ManageAccess => "إدارة الوصول",
         FormAccessCapability.ManageRetention => "إدارة الاحتفاظ",
+        FormAccessCapability.Publish => "نشر",
+        FormAccessCapability.Respond => "الرد",
+        FormAccessCapability.ViewResponses => "عرض الردود",
+        FormAccessCapability.ReviewResponses => "مراجعة الردود",
+        FormAccessCapability.ApproveResponses => "اعتماد الردود",
         _ => capability.ToString()
     };
 }

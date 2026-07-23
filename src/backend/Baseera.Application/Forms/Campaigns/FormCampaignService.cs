@@ -1,6 +1,7 @@
 namespace Baseera.Application.Forms.Campaigns;
 
 using Baseera.Application.Abstractions;
+using Baseera.Application.Forms.Responses;
 using Baseera.Application.Common;
 using Baseera.Application.Forms;
 using Baseera.Domain.Attachments;
@@ -134,6 +135,12 @@ public sealed class FormCampaignService(
         };
 
         ApplyTargetsAndExclusions(campaign, request.Targets, request.Exclusions, userId, now);
+        var policyRequest = request.ResponsePolicy ?? new FormCampaignResponsePolicyRequest(
+            FormCompletionBasis.Submitted, FormReviewMode.None, 0, true, true, false, true);
+        FormResponsePolicyRules.Validate(policyRequest);
+        var policy = FormResponsePolicyRules.CreateDefault(campaign.Id);
+        FormResponsePolicyRules.Apply(policy, policyRequest);
+        campaign.ResponsePolicy = policy;
         db.Add(campaign);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -179,6 +186,12 @@ public sealed class FormCampaignService(
         campaign.GracePeriodMinutes = request.Schedule.GracePeriodMinutes;
         campaign.CloseAfterMinutes = request.Schedule.CloseAfterMinutes;
         campaign.BusinessDayAdjustment = request.Schedule.BusinessDayAdjustment;
+        if (request.ResponsePolicy is not null)
+        {
+            campaign.ResponsePolicy ??= FormResponsePolicyRules.CreateDefault(campaign.Id);
+            FormResponsePolicyRules.Apply(campaign.ResponsePolicy, request.ResponsePolicy);
+        }
+
         campaign.UpdatedByUserId = userId;
         campaign.UpdatedAtUtc = now;
         await ReplaceTargetsAsync(campaign.Id, request.Targets, request.Exclusions, userId, now, cancellationToken);
@@ -213,7 +226,15 @@ public sealed class FormCampaignService(
             source.TimeZoneId,
             mappedSchedule,
             targets,
-            exclusions), cancellationToken);
+            exclusions,
+            source.ResponsePolicy is null ? null : new FormCampaignResponsePolicyRequest(
+                source.ResponsePolicy.CompletionBasis,
+                source.ResponsePolicy.ReviewMode,
+                source.ResponsePolicy.RequiredApprovalLevels,
+                source.ResponsePolicy.AllowLateSubmission,
+                source.ResponsePolicy.AllowResubmissionAfterReturn,
+                source.ResponsePolicy.RequireSubmissionAcknowledgement,
+                source.ResponsePolicy.RequireSeparationOfDuties)), cancellationToken);
 
         await audit.WriteAsync(new AuditEntry
         {
@@ -776,6 +797,7 @@ public sealed class FormCampaignService(
         var campaign = await db.FormCampaigns.AsNoTracking()
             .Include(c => c.FormDefinition)
             .Include(c => c.FormVersion)
+            .Include(c => c.ResponsePolicy)
             .Include(c => c.TargetRules)
             .Include(c => c.Exclusions)
             .FirstOrDefaultAsync(c => c.Id == campaignId, cancellationToken)
@@ -792,6 +814,7 @@ public sealed class FormCampaignService(
     {
         var campaign = await db.FormCampaigns
             .Include(c => c.FormDefinition)
+            .Include(c => c.ResponsePolicy)
             .Include(c => c.TargetRules)
             .Include(c => c.Exclusions)
             .FirstOrDefaultAsync(c => c.Id == campaignId, cancellationToken)
@@ -890,6 +913,7 @@ public sealed class FormCampaignService(
             campaign.CreatedAtUtc,
             cycleCount,
             await BuildAllowedActionsAsync(campaign, cancellationToken),
+            FormResponsePolicyRules.ToDto(campaign.ResponsePolicy ?? FormResponsePolicyRules.CreateDefault(campaign.Id)),
             Convert.ToBase64String(campaign.RowVersion));
     }
 
