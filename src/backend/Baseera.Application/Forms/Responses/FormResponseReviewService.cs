@@ -462,8 +462,6 @@ public sealed class FormResponseReviewService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            // EnsureRowVersion already passed. Mid-approve concurrency is a peer writer race;
-            // the winning approve may still be uncommitted, so ApprovalExists can miss it.
             throw ApprovalLevelAlreadyDecided(context.Review.Response);
         }
     }

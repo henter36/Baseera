@@ -1059,6 +1059,12 @@ export type FormResponseReviewAction =
   | 'reject'
   | 'close'
 
+export type QueryParameterValue =
+  | string
+  | number
+  | boolean
+  | undefined
+
 export type FormCampaignResponsePolicy = {
   completionBasis: number
   reviewMode: number
@@ -1493,7 +1499,7 @@ function buildDashboardQuery(filters: DashboardOperationsFilters): string {
   })
 }
 
-function buildSimpleQuery(filters: Record<string, string | number | boolean | undefined>): string {
+function buildSimpleQuery(filters: Record<string, QueryParameterValue>): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined) params.set(key, String(value))
@@ -1875,7 +1881,7 @@ export const api = {
   },
 
   formResponses: {
-    workspace: (filters: Record<string, string | number | boolean | undefined> = {}) =>
+    workspace: (filters: Record<string, QueryParameterValue> = {}) =>
       request<{ items: FormResponseWorkspaceItem[]; page: number; pageSize: number; totalCount: number }>(
         `/api/v1/form-response-workspace?${buildSimpleQuery(filters)}`),
     getAssignmentResponse: (assignmentId: string) =>
@@ -1897,7 +1903,7 @@ export const api = {
       acknowledgementText?: string | null
     }) => postJson<{ responseId: string; submissionId: string; submissionNumber: number; status: number; rowVersion: string }>(
       `/api/v1/form-assignments/${assignmentId}/response/submit`, body),
-    reviews: (filters: Record<string, string | number | boolean | undefined> = {}) =>
+    reviews: (filters: Record<string, QueryParameterValue> = {}) =>
       request<{ items: FormResponseWorkspaceItem[]; page: number; pageSize: number; totalCount: number }>(
         `/api/v1/form-response-reviews?${buildSimpleQuery(filters)}`),
     getReview: (responseId: string) => request<FormResponseReviewDetail>(`/api/v1/form-responses/${responseId}/review`),

@@ -172,7 +172,7 @@ describe('RespondPage', () => {
     })
     fireEvent.blur(input)
 
-    await waitFor(() => expect(screen.getByText('غير محفوظ')).toBeInTheDocument())
+    expect(await screen.findByText('غير محفوظ')).toBeInTheDocument()
     expect(input).not.toHaveValue('يجب ألا يظهر')
   })
 
@@ -242,5 +242,57 @@ describe('RespondPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'إرسال' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/تعارض/)
     expect(screen.queryByText('فشل الإرسال.')).not.toBeInTheDocument()
+  })
+
+  it('does not stringify objects as [object Object] in text inputs', async () => {
+    getAssignmentResponse.mockResolvedValue({
+      ...baseDetail,
+      draftAnswersJson: JSON.stringify({ q1: { nested: true } }),
+    })
+    renderPage()
+    const input = await screen.findByLabelText('سؤال')
+    expect(input).toHaveValue('')
+    expect(input).not.toHaveValue('[object Object]')
+  })
+
+  it('renders number answers as text', async () => {
+    getAssignmentResponse.mockResolvedValue({
+      ...baseDetail,
+      draftAnswersJson: JSON.stringify({ q1: 42 }),
+    })
+    renderPage()
+    expect(await screen.findByLabelText('سؤال')).toHaveValue('42')
+  })
+
+  it('renders null answers as empty text', async () => {
+    getAssignmentResponse.mockResolvedValue({
+      ...baseDetail,
+      draftAnswersJson: JSON.stringify({ q1: null }),
+    })
+    renderPage()
+    expect(await screen.findByLabelText('سؤال')).toHaveValue('')
+  })
+
+  it('keeps composite field values read-only without object stringification', async () => {
+    getAssignmentResponse.mockResolvedValue({
+      ...baseDetail,
+      draftAnswersJson: JSON.stringify({ loc: { lat: 1, lng: 2 } }),
+      schemaJson: JSON.stringify({
+        pages: [{
+          key: 'p1',
+          titleAr: 'صفحة',
+          sections: [{
+            key: 's1',
+            titleAr: 'قسم',
+            fields: [{ key: 'loc', type: 13, labelAr: 'موقع' }],
+          }],
+        }],
+      }),
+    })
+    renderPage()
+    const input = await screen.findByLabelText('موقع')
+    expect(input).toHaveValue('')
+    expect(input).not.toHaveValue('[object Object]')
+    expect(input).toBeDisabled()
   })
 })

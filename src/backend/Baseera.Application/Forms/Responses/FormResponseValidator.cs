@@ -463,18 +463,16 @@ public sealed class FormResponseValidator : IFormResponseValidator
         IReadOnlyDictionary<string, object?> values)
     {
         var visible = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var page in schema.Pages)
+        foreach (var page in schema.Pages.Where(page =>
+                     FormConditionEvaluator.Evaluate(page.VisibilityCondition, values)))
         {
-            if (!FormConditionEvaluator.Evaluate(page.VisibilityCondition, values)) continue;
-            foreach (var section in page.Sections)
+            foreach (var section in page.Sections.Where(section =>
+                         FormConditionEvaluator.Evaluate(section.VisibilityCondition, values)))
             {
-                if (!FormConditionEvaluator.Evaluate(section.VisibilityCondition, values)) continue;
-                foreach (var field in section.Fields)
+                foreach (var field in section.Fields.Where(field =>
+                             FormConditionEvaluator.Evaluate(field.VisibilityCondition, values)))
                 {
-                    if (FormConditionEvaluator.Evaluate(field.VisibilityCondition, values))
-                    {
-                        visible.Add(field.Key);
-                    }
+                    visible.Add(field.Key);
                 }
             }
         }
@@ -488,9 +486,9 @@ public sealed class FormResponseValidator : IFormResponseValidator
         IReadOnlySet<string> visible)
     {
         var required = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var field in fields.Values)
+        foreach (var field in fields.Values.Where(field =>
+                     visible.Contains(field.Key) && !field.IsCalculated && !field.IsReadOnly))
         {
-            if (!visible.Contains(field.Key) || field.IsCalculated || field.IsReadOnly) continue;
             var isRequired = field.IsRequired
                 || (field.RequiredCondition is not null
                     && FormConditionEvaluator.Evaluate(field.RequiredCondition, values));

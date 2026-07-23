@@ -38,8 +38,20 @@ function toYesNoSelectValue(value: unknown): string {
   return ''
 }
 
+function toTextInputValue(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return ''
+}
+
+function isCompositeFieldType(type: number): boolean {
+  return type === 8 || type === 10 || type === 11 || type === 12
+    || type === 13 || type === 14 || type === 15
+}
+
 function applyYesNoChange(
-  answers: Record<string, unknown>,
+  answers: Readonly<Record<string, unknown>>,
   fieldKey: string,
   raw: string,
 ): Record<string, unknown> {
@@ -52,14 +64,14 @@ function applyYesNoChange(
   return { ...answers, [fieldKey]: selection }
 }
 
-type ResponseFieldControlProps = {
+type ResponseFieldControlProps = Readonly<{
   field: SchemaField
   value: unknown
   readOnly: boolean
   redacted: boolean
   onChange: (next: Record<string, unknown>) => void
-  answers: Record<string, unknown>
-}
+  answers: Readonly<Record<string, unknown>>
+}>
 
 function ResponseFieldControl({
   field,
@@ -88,11 +100,22 @@ function ResponseFieldControl({
     )
   }
 
+  if (isCompositeFieldType(field.type)) {
+    return (
+      <input
+        aria-label={field.labelAr}
+        value={typeof value === 'string' ? value : ''}
+        readOnly
+        disabled
+      />
+    )
+  }
+
   return (
     <input
       aria-label={field.labelAr}
       disabled={readOnly}
-      value={value == null ? '' : String(value)}
+      value={toTextInputValue(value)}
       onChange={(e) => onChange({ ...answers, [field.key]: e.target.value })}
     />
   )
