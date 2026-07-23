@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
-import { FormCycleStatusLabelsAr, formatRiyadh } from '../../formCampaigns/campaignLabels'
+import { formatCycleStatusAr, formatRiyadh } from '../../formCampaigns/campaignLabels'
 import { listQueryErrorMessage } from '../../shared/listPageUtils'
 
 export function FormCampaignCyclesPage() {
@@ -35,6 +35,7 @@ export function FormCampaignCyclesPage() {
             <th>الإغلاق</th>
             <th>المواقع</th>
             <th>Target hash</th>
+            <th>الإجراءات</th>
           </tr>
         </thead>
         <tbody>
@@ -42,13 +43,20 @@ export function FormCampaignCyclesPage() {
             <tr key={c.id}>
               <td>{c.sequenceNumber}</td>
               <td>{c.occurrenceKey}</td>
-              <td>{FormCycleStatusLabelsAr[c.status] ?? c.status}</td>
+              <td>{formatCycleStatusAr(c.status)}</td>
               <td>{formatRiyadh(c.openAtUtc)}</td>
               <td>{formatRiyadh(c.dueAtUtc)}</td>
               <td>{formatRiyadh(c.closeAtUtc)}</td>
               <td>{c.assignedFacilityCount}</td>
               <td>{c.targetSnapshotHash.slice(0, 10)}…</td>
-              <td><Link to={`/form-campaigns/${campaignId}/cycles/${c.id}`}>التعيينات</Link></td>
+              <td>
+                <Link
+                  to={`/form-campaigns/${campaignId}/cycles/${c.id}`}
+                  aria-label={`عرض تعيينات الدورة ${c.sequenceNumber}`}
+                >
+                  التعيينات
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -85,20 +93,27 @@ export function FormCampaignCycleDetailPage() {
       </div>
       <div className="detail-grid">
         <div><strong>Occurrence</strong><div>{cycle.data.occurrenceKey}</div></div>
-        <div><strong>الحالة</strong><div>{FormCycleStatusLabelsAr[cycle.data.status]}</div></div>
+        <div><strong>الحالة</strong><div>{formatCycleStatusAr(cycle.data.status)}</div></div>
         <div><strong>Target snapshot</strong><div>{cycle.data.targetSnapshotHash}</div></div>
         <div><strong>Schema hash</strong><div>{cycle.data.schemaHash}</div></div>
         <div><strong>عدد المواقع المجمدة</strong><div>{cycle.data.assignedFacilityCount}</div></div>
       </div>
       <h2>التعيينات المجمدة</h2>
       {!canAssignments && <div className="muted">لا صلاحية لعرض التعيينات.</div>}
-      {canAssignments && (
+      {canAssignments && assignments.isLoading && <div className="loading">جاري تحميل التعيينات…</div>}
+      {canAssignments && assignments.isError && (
+        <div className="error" role="alert">{listQueryErrorMessage(assignments.error, 'ليست لديك صلاحية.', 'تعذر إكمال العملية.')}</div>
+      )}
+      {canAssignments && !assignments.isLoading && !assignments.isError && (assignments.data?.items.length ?? 0) === 0 && (
+        <div className="empty">لا توجد تعيينات.</div>
+      )}
+      {canAssignments && !assignments.isLoading && !assignments.isError && (assignments.data?.items.length ?? 0) > 0 && (
         <table>
           <thead>
             <tr><th>الرمز</th><th>الاسم</th><th>المنطقة</th><th>النوع</th><th>متاح</th></tr>
           </thead>
           <tbody>
-            {(assignments.data?.items ?? []).map((a) => (
+            {assignments.data!.items.map((a) => (
               <tr key={a.id}>
                 <td>{a.facilityCodeAtAssignment}</td>
                 <td>{a.facilityNameArAtAssignment}</td>

@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
-import { FormCampaignStatusLabelsAr, FormRecurrenceKindLabelsAr, formatRiyadh } from '../../formCampaigns/campaignLabels'
+import { FormCampaignStatusLabelsAr, FormRecurrenceKindLabelsAr, formatCycleStatusAr, formatRiyadh } from '../../formCampaigns/campaignLabels'
 import { listQueryErrorMessage } from '../../shared/listPageUtils'
 
 export function FormCampaignsListPage() {
@@ -171,7 +171,7 @@ export function FormCampaignDetailPage() {
             {cycles.data.items.slice(0, 5).map((cycle) => (
               <tr key={cycle.id}>
                 <td>{cycle.sequenceNumber}</td>
-                <td>{cycle.status}</td>
+                <td>{formatCycleStatusAr(cycle.status)}</td>
                 <td>{formatRiyadh(cycle.openAtUtc)}</td>
                 <td>{cycle.assignedFacilityCount}</td>
                 <td><Link to={`/form-campaigns/${c.id}/cycles/${cycle.id}`}>التفاصيل</Link></td>

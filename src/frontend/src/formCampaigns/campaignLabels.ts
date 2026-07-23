@@ -23,6 +23,10 @@ export const FormCycleStatusLabelsAr: Record<number, string> = {
   4: 'ملغاة',
 }
 
+export function formatCycleStatusAr(status: number): string {
+  return FormCycleStatusLabelsAr[status] ?? 'حالة غير معروفة'
+}
+
 export function formatRiyadh(iso?: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { FormCampaignsListPage } from './FormCampaignsListPage'
-import { FormCampaignStatusLabelsAr, FormRecurrenceKindLabelsAr } from '../../formCampaigns/campaignLabels'
+import { FormCampaignStatusLabelsAr, FormRecurrenceKindLabelsAr, formatCycleStatusAr } from '../../formCampaigns/campaignLabels'
 
 vi.mock('../../auth/AuthProvider', () => ({
   usePermission: (code: string) => code === 'Forms.View' || code === 'Forms.ManageCampaigns',
@@ -58,5 +58,9 @@ describe('campaign labels', () => {
   it('covers status and recurrence Arabic labels', () => {
     expect(FormCampaignStatusLabelsAr[0]).toBe('مسودة')
     expect(FormRecurrenceKindLabelsAr[3]).toBe('شهري')
+  })
+
+  it('formatCycleStatusAr returns unknown for unmapped status', () => {
+    expect(formatCycleStatusAr(999)).toBe('حالة غير معروفة')
   })
 })
