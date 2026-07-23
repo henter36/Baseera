@@ -70,7 +70,7 @@ public sealed class FormResponseAttachmentAccessResolver(
             FormResponseAttachmentOperation.Upload or FormResponseAttachmentOperation.DeleteOrReplaceDraft
                 => CanUploadOrReplace(response, isOwner),
             FormResponseAttachmentOperation.List or FormResponseAttachmentOperation.Download
-                => CanRead(response, isOwner, sensitive, canViewSensitive),
+                => CanRead(isOwner, sensitive, canViewSensitive),
             _ => false
         };
 
@@ -94,7 +94,6 @@ public sealed class FormResponseAttachmentAccessResolver(
     }
 
     private bool CanRead(
-        FormResponse response,
         bool isOwner,
         bool sensitive,
         bool canViewSensitive)

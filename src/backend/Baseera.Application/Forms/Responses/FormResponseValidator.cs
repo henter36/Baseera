@@ -150,50 +150,66 @@ public sealed class FormResponseValidator : IFormResponseValidator
         return map;
     }
 
+    private sealed class AnswerParsingContext
+    {
+        public required Dictionary<string, FormFieldSchema> Fields { get; init; }
+        public required List<FormResponseValidationIssueDto> Issues { get; init; }
+        public Dictionary<string, object?> Result { get; } = new(StringComparer.Ordinal);
+        public HashSet<string> Seen { get; } = new(StringComparer.Ordinal);
+        public int KeyCount { get; set; }
+    }
+
     private static Dictionary<string, object?> ParseAnswers(
         JsonElement answers,
         Dictionary<string, FormFieldSchema> fields,
         List<FormResponseValidationIssueDto> issues)
     {
-        var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var count = 0;
+        var context = new AnswerParsingContext { Fields = fields, Issues = issues };
         foreach (var prop in answers.EnumerateObject())
         {
-            count++;
-            if (count > MaxAnswerKeys)
+            if (!TryProcessAnswerProperty(context, prop))
             {
-                issues.Add(Issue("TOO_MANY_KEYS", "$", null, "عدد مفاتيح الإجابات يتجاوز الحد.", ErrorSeverity));
                 break;
             }
-
-            if (!seen.Add(prop.Name))
-            {
-                issues.Add(Issue("DUPLICATE_KEY", prop.Name, prop.Name, "مفتاح إجابة مكرر.", ErrorSeverity));
-                continue;
-            }
-
-            if (!fields.TryGetValue(prop.Name, out var field))
-            {
-                issues.Add(Issue("UNKNOWN_FIELD", prop.Name, prop.Name, "حقل غير موجود في المخطط.", ErrorSeverity));
-                continue;
-            }
-
-            if (field.IsCalculated || field.IsReadOnly)
-            {
-                issues.Add(Issue(
-                    field.IsCalculated ? "CALCULATED_WRITE" : "READONLY_WRITE",
-                    prop.Name,
-                    prop.Name,
-                    "لا يمكن تعديل هذا الحقل من العميل.",
-                    ErrorSeverity));
-                continue;
-            }
-
-            result[prop.Name] = CoerceValue(field, prop.Value, issues);
         }
 
-        return result;
+        return context.Result;
+    }
+
+    private static bool TryProcessAnswerProperty(AnswerParsingContext context, JsonProperty prop)
+    {
+        context.KeyCount++;
+        if (context.KeyCount > MaxAnswerKeys)
+        {
+            context.Issues.Add(Issue("TOO_MANY_KEYS", "$", null, "عدد مفاتيح الإجابات يتجاوز الحد.", ErrorSeverity));
+            return false;
+        }
+
+        if (!context.Seen.Add(prop.Name))
+        {
+            context.Issues.Add(Issue("DUPLICATE_KEY", prop.Name, prop.Name, "مفتاح إجابة مكرر.", ErrorSeverity));
+            return true;
+        }
+
+        if (!context.Fields.TryGetValue(prop.Name, out var field))
+        {
+            context.Issues.Add(Issue("UNKNOWN_FIELD", prop.Name, prop.Name, "حقل غير موجود في المخطط.", ErrorSeverity));
+            return true;
+        }
+
+        if (field.IsCalculated || field.IsReadOnly)
+        {
+            context.Issues.Add(Issue(
+                field.IsCalculated ? "CALCULATED_WRITE" : "READONLY_WRITE",
+                prop.Name,
+                prop.Name,
+                "لا يمكن تعديل هذا الحقل من العميل.",
+                ErrorSeverity));
+            return true;
+        }
+
+        context.Result[prop.Name] = CoerceValue(field, prop.Value, context.Issues);
+        return true;
     }
 
     private static object? CoerceValue(
@@ -205,20 +221,16 @@ public sealed class FormResponseValidator : IFormResponseValidator
         {
             return field.Type switch
             {
-                FormFieldType.ShortText or FormFieldType.LongText => value.ValueKind == JsonValueKind.String
-                    ? value.GetString()
-                    : ThrowType(field.Key),
+                FormFieldType.ShortText or FormFieldType.LongText => ParseNullableString(value, field.Key),
                 FormFieldType.Number or FormFieldType.Percentage => ParseDecimal(value, field.Key),
-                FormFieldType.YesNo => value.ValueKind is JsonValueKind.True or JsonValueKind.False
-                    ? value.GetBoolean()
-                    : ThrowType(field.Key),
+                FormFieldType.YesNo => ParseNullableBoolean(value, field.Key),
                 FormFieldType.Date => ParseDateOnly(value, field.Key),
-                FormFieldType.Time => value.ValueKind == JsonValueKind.String ? value.GetString() : ThrowType(field.Key),
+                FormFieldType.Time => ParseNullableString(value, field.Key),
                 FormFieldType.DateTime => ParseDateTime(value, field.Key),
-                FormFieldType.SingleChoice => value.ValueKind == JsonValueKind.String ? value.GetString() : ThrowType(field.Key),
+                FormFieldType.SingleChoice => ParseNullableString(value, field.Key),
                 FormFieldType.MultipleChoice => ParseStringArray(value, field.Key),
                 FormFieldType.File or FormFieldType.Image or FormFieldType.Signature => ParseGuidArray(value, field.Key),
-                FormFieldType.Location => value.ValueKind == JsonValueKind.Object ? value.GetRawText() : ThrowType(field.Key),
+                FormFieldType.Location => ParseNullableJsonObject(value, field.Key),
                 FormFieldType.OrganizationalReference => ParseGuid(value, field.Key),
                 FormFieldType.RepeatingTable => ParseRepeating(value, field, issues),
                 _ => value.ValueKind == JsonValueKind.Null ? null : value.GetRawText()
@@ -233,6 +245,27 @@ public sealed class FormResponseValidator : IFormResponseValidator
 
     private static object ThrowType(string key) =>
         throw new InvalidCastException(key);
+
+    private static string? ParseNullableString(JsonElement value, string key)
+    {
+        if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+        if (value.ValueKind != JsonValueKind.String) throw new InvalidCastException(key);
+        return value.GetString();
+    }
+
+    private static bool? ParseNullableBoolean(JsonElement value, string key)
+    {
+        if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+        if (value.ValueKind is JsonValueKind.True or JsonValueKind.False) return value.GetBoolean();
+        throw new InvalidCastException(key);
+    }
+
+    private static string? ParseNullableJsonObject(JsonElement value, string key)
+    {
+        if (value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+        if (value.ValueKind != JsonValueKind.Object) throw new InvalidCastException(key);
+        return value.GetRawText();
+    }
 
     private static decimal? ParseDecimal(JsonElement value, string key)
     {
@@ -332,47 +365,88 @@ public sealed class FormResponseValidator : IFormResponseValidator
         var index = 0;
         foreach (var row in value.EnumerateArray())
         {
-            if (row.ValueKind != JsonValueKind.Object)
-            {
-                issues.Add(Issue(TypeMismatchCode, $"{field.Key}[{index}]", field.Key, "صف غير صالح.", ErrorSeverity));
-                index++;
-                continue;
-            }
-
-            var dict = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var prop in row.EnumerateObject())
-            {
-                if (prop.Name == "_rowId")
-                {
-                    var id = prop.Value.GetString() ?? string.Empty;
-                    if (!rowIds.Add(id))
-                    {
-                        issues.Add(Issue("DUPLICATE_ROW", $"{field.Key}[{index}]._rowId", field.Key, "معرّف صف مكرر.", ErrorSeverity));
-                    }
-
-                    dict["_rowId"] = id;
-                    continue;
-                }
-
-                if (!colMap.ContainsKey(prop.Name))
-                {
-                    issues.Add(Issue("UNKNOWN_FIELD", $"{field.Key}[{index}].{prop.Name}", field.Key, "عمود غير معروف.", ErrorSeverity));
-                    continue;
-                }
-
-                dict[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                    ? prop.Value.GetString()
-                    : prop.Value.ValueKind == JsonValueKind.Number && prop.Value.TryGetDecimal(out var d) ? d
-                    : prop.Value.ValueKind is JsonValueKind.True or JsonValueKind.False ? prop.Value.GetBoolean()
-                    : prop.Value.GetRawText();
-            }
-
-            rows.Add(dict);
-            index++;
+            ParseRepeatingRow(row, field, colMap, rowIds, rows, issues, ref index);
         }
 
         return rows;
     }
+
+    private static void ParseRepeatingRow(
+        JsonElement row,
+        FormFieldSchema field,
+        IReadOnlyDictionary<string, FormFieldSchema> colMap,
+        HashSet<string> rowIds,
+        List<Dictionary<string, object?>> rows,
+        List<FormResponseValidationIssueDto> issues,
+        ref int index)
+    {
+        if (row.ValueKind != JsonValueKind.Object)
+        {
+            issues.Add(Issue(TypeMismatchCode, $"{field.Key}[{index}]", field.Key, "صف غير صالح.", ErrorSeverity));
+            index++;
+            return;
+        }
+
+        var dict = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var prop in row.EnumerateObject())
+        {
+            ProcessRepeatingProperty(prop, field, colMap, rowIds, dict, issues, index);
+        }
+
+        rows.Add(dict);
+        index++;
+    }
+
+    private static void ProcessRepeatingProperty(
+        JsonProperty prop,
+        FormFieldSchema field,
+        IReadOnlyDictionary<string, FormFieldSchema> colMap,
+        HashSet<string> rowIds,
+        Dictionary<string, object?> dict,
+        List<FormResponseValidationIssueDto> issues,
+        int index)
+    {
+        if (prop.Name == "_rowId")
+        {
+            if (prop.Value.ValueKind != JsonValueKind.String)
+            {
+                issues.Add(Issue(TypeMismatchCode, $"{field.Key}[{index}]._rowId", field.Key, "نوع القيمة غير مطابق للحقل.", ErrorSeverity));
+                return;
+            }
+
+            var id = prop.Value.GetString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                issues.Add(Issue("INVALID_ROW_ID", $"{field.Key}[{index}]._rowId", field.Key, "معرّف الصف فارغ.", ErrorSeverity));
+                return;
+            }
+
+            if (!rowIds.Add(id))
+            {
+                issues.Add(Issue("DUPLICATE_ROW", $"{field.Key}[{index}]._rowId", field.Key, "معرّف صف مكرر.", ErrorSeverity));
+            }
+
+            dict["_rowId"] = id;
+            return;
+        }
+
+        if (!colMap.ContainsKey(prop.Name))
+        {
+            issues.Add(Issue("UNKNOWN_FIELD", $"{field.Key}[{index}].{prop.Name}", field.Key, "عمود غير معروف.", ErrorSeverity));
+            return;
+        }
+
+        dict[prop.Name] = CoerceRepeatingCellValue(prop.Value);
+    }
+
+    private static object? CoerceRepeatingCellValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => value.GetString(),
+        JsonValueKind.Number when value.TryGetDecimal(out var d) => d,
+        JsonValueKind.True or JsonValueKind.False => value.GetBoolean(),
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        _ => value.GetRawText()
+    };
 
     private static void ApplyCalculated(
         Dictionary<string, FormFieldSchema> fields,
@@ -588,7 +662,7 @@ public sealed class FormResponseValidator : IFormResponseValidator
         if (context.Field.Type == FormFieldType.SingleChoice)
         {
             var selected = value?.ToString() ?? string.Empty;
-            if (!options.Contains(selected) && !(context.Field.Choice?.AllowOther == true))
+            if (!options.Contains(selected) && context.Field.Choice?.AllowOther != true)
             {
                 context.Issues.Add(Issue("INVALID_OPTION", context.Field.Key, context.Field.Key, "خيار غير صالح.", ErrorSeverity));
             }

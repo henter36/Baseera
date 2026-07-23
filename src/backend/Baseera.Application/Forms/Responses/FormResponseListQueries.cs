@@ -120,7 +120,7 @@ internal static class FormResponseListQueries
             && (x.Response.Status == FormResponseStatus.Submitted
                 || x.Response.Status == FormResponseStatus.UnderReview));
 
-    private static IQueryable<WorkspaceRow> FilterWorkspaceCompleted(IQueryable<WorkspaceRow> query) =>
+    private static IQueryable<WorkspaceRow> WhereWorkspaceCompleted(IQueryable<WorkspaceRow> query) =>
         query.Where(x =>
             (x.Policy.CompletionBasis == FormCompletionBasis.Submitted
                 && x.Response != null
@@ -133,9 +133,7 @@ internal static class FormResponseListQueries
                 && (x.Response.Status == FormResponseStatus.Approved
                     || x.Response.Status == FormResponseStatus.Closed)));
 
-    private static IQueryable<WorkspaceRow> FilterWorkspaceOverdue(
-        IQueryable<WorkspaceRow> query,
-        DateTimeOffset nowUtc) =>
+    private static IQueryable<WorkspaceRow> WhereWorkspaceIncomplete(IQueryable<WorkspaceRow> query) =>
         query.Where(x =>
             !((x.Policy.CompletionBasis == FormCompletionBasis.Submitted
                     && x.Response != null
@@ -146,27 +144,25 @@ internal static class FormResponseListQueries
                 || (x.Policy.CompletionBasis == FormCompletionBasis.Approved
                     && x.Response != null
                     && (x.Response.Status == FormResponseStatus.Approved
-                        || x.Response.Status == FormResponseStatus.Closed)))
-            && nowUtc > (x.Response != null && x.Response.DueAtUtcOverride != null
+                        || x.Response.Status == FormResponseStatus.Closed))));
+
+    private static IQueryable<WorkspaceRow> FilterWorkspaceCompleted(IQueryable<WorkspaceRow> query) =>
+        WhereWorkspaceCompleted(query);
+
+    private static IQueryable<WorkspaceRow> FilterWorkspaceOverdue(
+        IQueryable<WorkspaceRow> query,
+        DateTimeOffset nowUtc) =>
+        WhereWorkspaceIncomplete(query).Where(x =>
+            nowUtc > (x.Response != null && x.Response.DueAtUtcOverride != null
                 ? x.Response.DueAtUtcOverride.Value
                 : x.Cycle.DueAtUtc));
 
     private static IQueryable<WorkspaceRow> FilterWorkspaceCurrent(
         IQueryable<WorkspaceRow> query,
         DateTimeOffset nowUtc) =>
-        query.Where(x =>
+        WhereWorkspaceIncomplete(query).Where(x =>
             nowUtc >= x.Cycle.OpenAtUtc
             && nowUtc <= x.Cycle.CloseAtUtc
-            && !((x.Policy.CompletionBasis == FormCompletionBasis.Submitted
-                    && x.Response != null
-                    && (x.Response.Status == FormResponseStatus.Submitted
-                        || x.Response.Status == FormResponseStatus.UnderReview
-                        || x.Response.Status == FormResponseStatus.Approved
-                        || x.Response.Status == FormResponseStatus.Closed))
-                || (x.Policy.CompletionBasis == FormCompletionBasis.Approved
-                    && x.Response != null
-                    && (x.Response.Status == FormResponseStatus.Approved
-                        || x.Response.Status == FormResponseStatus.Closed)))
             && (x.Response == null
                 || (x.Response.Status != FormResponseStatus.Approved
                     && x.Response.Status != FormResponseStatus.Rejected
@@ -226,9 +222,18 @@ internal static class FormResponseListQueries
         return query;
     }
 
-    private static IQueryable<InboxRow> FilterInboxOverdue(
-        IQueryable<InboxRow> query,
-        DateTimeOffset nowUtc) =>
+    private static IQueryable<InboxRow> WhereInboxCompleted(IQueryable<InboxRow> query) =>
+        query.Where(x =>
+            (x.Policy.CompletionBasis == FormCompletionBasis.Submitted
+                && (x.Response.Status == FormResponseStatus.Submitted
+                    || x.Response.Status == FormResponseStatus.UnderReview
+                    || x.Response.Status == FormResponseStatus.Approved
+                    || x.Response.Status == FormResponseStatus.Closed))
+            || (x.Policy.CompletionBasis == FormCompletionBasis.Approved
+                && (x.Response.Status == FormResponseStatus.Approved
+                    || x.Response.Status == FormResponseStatus.Closed)));
+
+    private static IQueryable<InboxRow> WhereInboxIncomplete(IQueryable<InboxRow> query) =>
         query.Where(x =>
             !((x.Policy.CompletionBasis == FormCompletionBasis.Submitted
                     && (x.Response.Status == FormResponseStatus.Submitted
@@ -237,20 +242,18 @@ internal static class FormResponseListQueries
                         || x.Response.Status == FormResponseStatus.Closed))
                 || (x.Policy.CompletionBasis == FormCompletionBasis.Approved
                     && (x.Response.Status == FormResponseStatus.Approved
-                        || x.Response.Status == FormResponseStatus.Closed)))
-            && nowUtc > (x.Response.DueAtUtcOverride ?? x.Cycle.DueAtUtc));
+                        || x.Response.Status == FormResponseStatus.Closed))));
+
+    private static IQueryable<InboxRow> FilterInboxOverdue(
+        IQueryable<InboxRow> query,
+        DateTimeOffset nowUtc) =>
+        WhereInboxIncomplete(query).Where(x =>
+            nowUtc > (x.Response.DueAtUtcOverride ?? x.Cycle.DueAtUtc));
 
     private static IQueryable<InboxRow> FilterInboxNotOverdue(
         IQueryable<InboxRow> query,
         DateTimeOffset nowUtc) =>
-        query.Where(x =>
-            ((x.Policy.CompletionBasis == FormCompletionBasis.Submitted
-                    && (x.Response.Status == FormResponseStatus.Submitted
-                        || x.Response.Status == FormResponseStatus.UnderReview
-                        || x.Response.Status == FormResponseStatus.Approved
-                        || x.Response.Status == FormResponseStatus.Closed))
-                || (x.Policy.CompletionBasis == FormCompletionBasis.Approved
-                    && (x.Response.Status == FormResponseStatus.Approved
-                        || x.Response.Status == FormResponseStatus.Closed)))
-            || nowUtc <= (x.Response.DueAtUtcOverride ?? x.Cycle.DueAtUtc));
+        WhereInboxCompleted(query).Union(
+            WhereInboxIncomplete(query).Where(x =>
+                nowUtc <= (x.Response.DueAtUtcOverride ?? x.Cycle.DueAtUtc)));
 }

@@ -131,4 +131,108 @@ public sealed class FormResponseValidatorTests
         var issue = Assert.Single(result.Issues, i => i.Code == "REQUIRED");
         Assert.Contains("الاسم", issue.MessageAr);
     }
+
+    [Theory]
+    [InlineData("""{"name":"أ","ok":null}""")]
+    [InlineData("""{"name":"أ","ok":true}""")]
+    [InlineData("""{"name":"أ","ok":false}""")]
+    public void YesNo_null_and_boolean_coercion(string json)
+    {
+        var schema = SimpleSchema();
+        var answers = JsonDocument.Parse(json).RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+        Assert.DoesNotContain(result.Issues, i => i.Code == "TYPE_MISMATCH" && i.FieldKey == "ok");
+    }
+
+    [Theory]
+    [InlineData("""{"name":"أ","ok":"yes"}""")]
+    [InlineData("""{"name":"أ","ok":1}""")]
+    public void YesNo_wrong_type_reports_type_mismatch(string json)
+    {
+        var schema = SimpleSchema();
+        var answers = JsonDocument.Parse(json).RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+        Assert.Contains(result.Issues, i => i.Code == "TYPE_MISMATCH" && i.FieldKey == "ok");
+    }
+
+    [Theory]
+    [InlineData("""{"name":"أ","score":null}""")]
+    [InlineData("""{"name":null,"score":1}""")]
+    public void Nullable_string_fields_accept_null(string json)
+    {
+        var schema = SimpleSchema();
+        var answers = JsonDocument.Parse(json).RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+        Assert.DoesNotContain(result.Issues, i => i.Code == "TYPE_MISMATCH");
+    }
+
+    [Fact]
+    public void Repeating_row_id_non_string_reports_type_mismatch()
+    {
+        var schema = RepeatingSchema();
+        var answers = JsonDocument.Parse("""{"rows":[{"_rowId":1,"col1":"x"}]}""").RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+        Assert.Contains(result.Issues, i => i.Code == "TYPE_MISMATCH" && i.Path.Contains("_rowId"));
+    }
+
+    [Fact]
+    public void Repeating_row_id_empty_reports_invalid_row_id()
+    {
+        var schema = RepeatingSchema();
+        var answers = JsonDocument.Parse("""{"rows":[{"_rowId":"","col1":"x"}]}""").RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+        Assert.Contains(result.Issues, i => i.Code == "INVALID_ROW_ID");
+    }
+
+    [Fact]
+    public void Repeating_duplicate_row_id_reports_duplicate_row()
+    {
+        var schema = RepeatingSchema();
+        var answers = JsonDocument.Parse("""
+            {"rows":[{"_rowId":"r1","col1":"a"},{"_rowId":"r1","col1":"b"}]}
+            """).RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+        Assert.Contains(result.Issues, i => i.Code == "DUPLICATE_ROW");
+    }
+
+    private static FormSchemaDocument RepeatingSchema() => new()
+    {
+        Pages =
+        [
+            new FormPageSchema
+            {
+                Key = "p1",
+                TitleAr = "صفحة",
+                Sections =
+                [
+                    new FormSectionSchema
+                    {
+                        Key = "s1",
+                        TitleAr = "قسم",
+                        Fields =
+                        [
+                            new FormFieldSchema
+                            {
+                                Key = "rows",
+                                Type = FormFieldType.RepeatingTable,
+                                LabelAr = "جدول",
+                                RepeatingTable = new FormRepeatingTableSettings
+                                {
+                                    Columns =
+                                    [
+                                        new FormFieldSchema
+                                        {
+                                            Key = "col1",
+                                            Type = FormFieldType.ShortText,
+                                            LabelAr = "عمود"
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    };
 }

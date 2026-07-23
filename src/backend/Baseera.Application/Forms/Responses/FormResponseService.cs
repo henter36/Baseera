@@ -376,7 +376,7 @@ public sealed class FormResponseService(
         return new SubmissionSnapshot(submission, submissionNumber);
     }
 
-    private void ApplySubmissionState(
+    private static void ApplySubmissionState(
         SubmissionContext context,
         SubmissionSnapshot snapshot,
         FormResponseValidationResult validation)

@@ -112,6 +112,16 @@ public sealed class FormResponseReviewService(
                 UserId = userId,
                 Now = now
             }));
+            WriteHistory(new ResponseHistoryWrite
+            {
+                Response = response,
+                EventType = "FormResponseReviewStarted",
+                From = from,
+                To = FormResponseStatus.UnderReview,
+                Reason = null,
+                UserId = userId,
+                Now = now
+            });
             await WriteAuditAsync(response, "FormResponseReviewStarted", from, FormResponseStatus.UnderReview, null, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -452,20 +462,9 @@ public sealed class FormResponseReviewService(
         }
         catch (DbUpdateConcurrencyException)
         {
-            if (await ApprovalExistsAsync(
-                    context.Review.Response.Id,
-                    context.Review.Submission.Id,
-                    context.ReviewLevel,
-                    ct))
-            {
-                throw ApprovalLevelAlreadyDecided(context.Review.Response);
-            }
-
-            throw new FormResponseConflictException(new FormResponseConflictDto(
-                context.Review.Response.DraftVersion,
-                Convert.ToBase64String(context.Review.Response.RowVersion),
-                context.Review.Response.LastSavedAtUtc,
-                "RowVersionConflict"));
+            // EnsureRowVersion already passed. Mid-approve concurrency is a peer writer race;
+            // the winning approve may still be uncommitted, so ApprovalExists can miss it.
+            throw ApprovalLevelAlreadyDecided(context.Review.Response);
         }
     }
 
@@ -475,17 +474,6 @@ public sealed class FormResponseReviewService(
             Convert.ToBase64String(response.RowVersion),
             response.LastSavedAtUtc,
             "APPROVAL_LEVEL_ALREADY_DECIDED"));
-
-    private Task<bool> ApprovalExistsAsync(
-        Guid responseId,
-        Guid submissionId,
-        int reviewLevel,
-        CancellationToken ct) =>
-        db.FormResponseReviewDecisions.AsNoTracking().AnyAsync(d =>
-            d.ResponseId == responseId
-            && d.SubmissionId == submissionId
-            && d.ReviewLevel == reviewLevel
-            && d.Decision == FormResponseReviewDecisionType.Approve, ct);
 
     private async Task<FormResponse> LoadResponseOrNotFoundAsync(Guid responseId, bool track, CancellationToken ct)
     {
@@ -535,27 +523,13 @@ public sealed class FormResponseReviewService(
 
     private const string ApproveLevelUniqueIndex = "IX_FormResponseReviewDecisions_ApproveLevel";
 
-    private static bool IsConcurrentApprovalConflict(DbUpdateException exception)
+    private static bool IsConcurrentApprovalConflict(Exception exception)
     {
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
             if (current.Message.Contains(ApproveLevelUniqueIndex, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
-            }
-
-            var number = current.GetType().GetProperty("Number")?.GetValue(current);
-            if (number is not (2601 or 2627))
-            {
-                continue;
-            }
-
-            for (Exception? scan = exception; scan is not null; scan = scan.InnerException)
-            {
-                if (scan.Message.Contains(ApproveLevelUniqueIndex, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
             }
         }
 

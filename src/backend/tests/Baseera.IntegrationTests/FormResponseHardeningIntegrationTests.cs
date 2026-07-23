@@ -209,6 +209,142 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
     }
 
     [IntegrationConnectionFact]
+    public async Task Workspace_work_status_filters_translate_to_sql()
+    {
+        await SeedWorkflowUsersAsync();
+        var respondent = _factory.CreateAuthenticatedClient("rsp-h-facility");
+        var publisher = _factory.CreateAuthenticatedClient("rsp-h-publisher");
+        var designer = _factory.CreateAuthenticatedClient("rsp-h-designer");
+        var formApprover = _factory.CreateAuthenticatedClient("rsp-h-form-approver");
+        var reviewer = _factory.CreateAuthenticatedClient("rsp-h-reviewer");
+        var marker = $"WS{Guid.NewGuid():N}"[..10];
+        var search = Uri.EscapeDataString(marker);
+
+        // Completed (Submitted basis): submit alone is complete.
+        var (submittedFormId, submittedVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}S");
+        var submittedCampaign = await CreateAndPublishCampaignAsync(
+            designer, publisher, submittedFormId, submittedVersionId, SeedIds.FacilityA1,
+            requiredApprovalLevels: 0, campaignName: marker, completionBasis: 0, reviewMode: 0);
+        var submittedAssignmentId = await GetFirstAssignmentIdAsync(publisher, submittedCampaign.Id);
+        var submitSubmitted = await respondent.PostAsJsonAsync(
+            $"/api/v1/form-assignments/{submittedAssignmentId}/response/submit",
+            new
+            {
+                answers = new { q1 = "مكتمل-إرسال" },
+                clientMutationId = Guid.NewGuid(),
+                expectedDraftVersion = 0,
+                rowVersion = (string?)null,
+                acknowledged = true,
+                acknowledgementText = "أقر"
+            });
+        Assert.True(submitSubmitted.IsSuccessStatusCode, await submitSubmitted.Content.ReadAsStringAsync());
+
+        // Completed (Approved basis): submit then approve.
+        var (approvedFormId, approvedVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}A");
+        var approvedCampaign = await CreateAndPublishCampaignAsync(
+            designer, publisher, approvedFormId, approvedVersionId, SeedIds.FacilityA1,
+            requiredApprovalLevels: 1, campaignName: marker, completionBasis: 1, reviewMode: 1);
+        var approvedAssignmentId = await GetFirstAssignmentIdAsync(publisher, approvedCampaign.Id);
+        var submitApproved = await respondent.PostAsJsonAsync(
+            $"/api/v1/form-assignments/{approvedAssignmentId}/response/submit",
+            new
+            {
+                answers = new { q1 = "مكتمل-اعتماد" },
+                clientMutationId = Guid.NewGuid(),
+                expectedDraftVersion = 0,
+                rowVersion = (string?)null,
+                acknowledged = true,
+                acknowledgementText = "أقر"
+            });
+        Assert.True(submitApproved.IsSuccessStatusCode, await submitApproved.Content.ReadAsStringAsync());
+        var submittedForApprove = JsonSerializer.Deserialize<SubmitResult>(
+            await submitApproved.Content.ReadAsStringAsync(), JsonOptions)!;
+        var start = await reviewer.PostAsJsonAsync(
+            $"/api/v1/form-responses/{submittedForApprove.ResponseId}/review/start",
+            new { rowVersion = submittedForApprove.RowVersion });
+        Assert.Equal(HttpStatusCode.NoContent, start.StatusCode);
+        var reviewDetail = await reviewer.GetFromJsonAsync<ReviewDetail>(
+            $"/api/v1/form-responses/{submittedForApprove.ResponseId}/review", JsonOptions);
+        Assert.NotNull(reviewDetail);
+        var approve = await reviewer.PostAsJsonAsync(
+            $"/api/v1/form-responses/{submittedForApprove.ResponseId}/approve",
+            new { reason = "اعتماد", rowVersion = reviewDetail!.Workspace.RowVersion });
+        Assert.True(approve.IsSuccessStatusCode, await approve.Content.ReadAsStringAsync());
+
+        // Current + response null: open assignment without draft.
+        var (currentFormId, currentVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}C");
+        await CreateAndPublishCampaignAsync(
+            designer, publisher, currentFormId, currentVersionId, SeedIds.FacilityA1,
+            requiredApprovalLevels: 1, campaignName: marker, completionBasis: 1, reviewMode: 1);
+
+        // Overdue + DueAtUtcOverride: open response with past override (API rejects past return due).
+        var (overdueFormId, overdueVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}O");
+        var overdueCampaign = await CreateAndPublishCampaignAsync(
+            designer, publisher, overdueFormId, overdueVersionId, SeedIds.FacilityA1,
+            requiredApprovalLevels: 1, campaignName: marker, completionBasis: 1, reviewMode: 1);
+        var overdueAssignmentId = await GetFirstAssignmentIdAsync(publisher, overdueCampaign.Id);
+        var draftOverdue = await respondent.PutAsJsonAsync(
+            $"/api/v1/form-assignments/{overdueAssignmentId}/response/draft",
+            new
+            {
+                answers = new { q1 = "متأخر" },
+                clientMutationId = Guid.NewGuid(),
+                expectedDraftVersion = 0,
+                rowVersion = (string?)null
+            });
+        Assert.True(draftOverdue.IsSuccessStatusCode, await draftOverdue.Content.ReadAsStringAsync());
+        var overdueDraft = JsonSerializer.Deserialize<DraftResult>(
+            await draftOverdue.Content.ReadAsStringAsync(), JsonOptions)!;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var response = await db.FormResponses.SingleAsync(r => r.Id == overdueDraft.ResponseId);
+            response.DueAtUtcOverride = DateTimeOffset.UtcNow.AddMinutes(-30);
+            await db.SaveChangesAsync();
+        }
+
+        var completed = await respondent.GetFromJsonAsync<PagedWorkspace>(
+            $"/api/v1/form-response-workspace?workStatus=completed&search={search}&page=1&pageSize=10", JsonOptions);
+        var current = await respondent.GetFromJsonAsync<PagedWorkspace>(
+            $"/api/v1/form-response-workspace?workStatus=current&search={search}&page=1&pageSize=10", JsonOptions);
+        var overdue = await respondent.GetFromJsonAsync<PagedWorkspace>(
+            $"/api/v1/form-response-workspace?workStatus=overdue&search={search}&page=1&pageSize=10", JsonOptions);
+        var page2 = await respondent.GetFromJsonAsync<PagedWorkspace>(
+            $"/api/v1/form-response-workspace?workStatus=current&search={search}&page=2&pageSize=1", JsonOptions);
+
+        Assert.NotNull(completed);
+        Assert.NotNull(current);
+        Assert.NotNull(overdue);
+        Assert.NotNull(page2);
+        Assert.Equal(2, completed!.TotalCount);
+        Assert.Equal(2, completed.Items.Count);
+        Assert.True(current!.TotalCount >= 1);
+        Assert.True(overdue!.TotalCount >= 1);
+        Assert.Equal(current.TotalCount, page2!.TotalCount);
+        Assert.True(completed.TotalCount + current.TotalCount + overdue.TotalCount >= 4);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task StartReview_writes_form_response_history()
+    {
+        await SeedWorkflowUsersAsync();
+        var submitted = await SubmitSingleResponseAsync();
+        var reviewer = _factory.CreateAuthenticatedClient("rsp-h-reviewer");
+
+        var start = await reviewer.PostAsJsonAsync(
+            $"/api/v1/form-responses/{submitted.ResponseId}/review/start",
+            new { rowVersion = submitted.RowVersion });
+        Assert.Equal(HttpStatusCode.NoContent, start.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var history = await db.FormResponseHistories.AsNoTracking()
+            .Where(h => h.ResponseId == submitted.ResponseId && h.EventType == "FormResponseReviewStarted")
+            .ToListAsync();
+        Assert.Single(history);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Form_response_attachment_cross_facility_upload_denied()
     {
         await SeedWorkflowUsersAsync();
@@ -445,9 +581,13 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
         Guid versionId,
         Guid facilityId,
         int requiredApprovalLevels = 1,
-        string? campaignName = null)
+        string? campaignName = null,
+        int? completionBasis = null,
+        int? reviewMode = null)
     {
         var firstOpen = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var resolvedReviewMode = reviewMode ?? (requiredApprovalLevels > 1 ? 2 : requiredApprovalLevels == 0 ? 0 : 1);
+        var resolvedCompletionBasis = completionBasis ?? 1;
         var create = await designer.PostAsJsonAsync("/api/v1/form-campaigns", new
         {
             formDefinitionId = formId,
@@ -469,8 +609,8 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
             exclusions = Array.Empty<object>(),
             responsePolicy = new
             {
-                completionBasis = 1,
-                reviewMode = requiredApprovalLevels > 1 ? 2 : 1,
+                completionBasis = resolvedCompletionBasis,
+                reviewMode = resolvedReviewMode,
                 requiredApprovalLevels,
                 allowLateSubmission = true,
                 allowResubmissionAfterReturn = true,
