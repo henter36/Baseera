@@ -539,17 +539,13 @@ public sealed class FormComplianceQueryService(
         source.Select(row => new FormComplianceResponseProjection
         {
             FactRow = row,
-            ResponseId = row.Response == null ? null : row.Response.Id,
-            LastSavedAtUtc = row.Response == null ? null : row.Response.LastSavedAtUtc,
-            SubmittedAtUtc = row.Response == null ? null : row.Response.SubmittedAtUtc,
-            LastSavedByUserId = row.Response == null ? null : row.Response.LastSavedByUserId,
-            SubmittedByUserId = row.Response == null ? null : row.Response.SubmittedByUserId,
-            LastSavedByUserName = row.Response == null || row.Response.LastSavedByUser == null
-                ? null
-                : row.Response.LastSavedByUser.DisplayNameAr,
-            SubmittedByUserName = row.Response == null || row.Response.SubmittedByUser == null
-                ? null
-                : row.Response.SubmittedByUser.DisplayNameAr
+            ResponseId = row.Response.Id,
+            LastSavedAtUtc = row.Response.LastSavedAtUtc,
+            SubmittedAtUtc = row.Response.SubmittedAtUtc,
+            LastSavedByUserId = row.Response.LastSavedByUserId,
+            SubmittedByUserId = row.Response.SubmittedByUserId,
+            LastSavedByUserName = row.Response.LastSavedByUser.DisplayNameAr,
+            SubmittedByUserName = row.Response.SubmittedByUser.DisplayNameAr
         });
 
     private static IQueryable<FormComplianceSourceRow> BuildComplianceSourceRows(
