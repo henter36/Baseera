@@ -102,6 +102,7 @@ internal sealed class FormCycleConfiguration : IEntityTypeConfiguration<FormCycl
         builder.Property(x => x.CancellationReason).HasMaxLength(1000);
         builder.HasIndex(x => new { x.CampaignId, x.OccurrenceKey }).IsUnique();
         builder.HasIndex(x => new { x.CampaignId, x.SequenceNumber }).IsUnique();
+        builder.HasAlternateKey(x => new { x.CampaignId, x.Id });
         builder.HasIndex(x => new { x.Status, x.OpenAtUtc });
         builder.HasIndex(x => x.DueAtUtc);
         builder.HasIndex(x => x.CloseAtUtc);
@@ -127,12 +128,17 @@ internal sealed class FormFacilityAssignmentConfiguration : IEntityTypeConfigura
         builder.Property(x => x.FacilityTypeAtAssignment).HasMaxLength(100);
         builder.Property(x => x.UnavailableReason).HasMaxLength(1000);
         builder.HasIndex(x => new { x.CycleId, x.FacilityId }).IsUnique();
+        builder.HasIndex(x => new { x.CampaignId, x.CycleId });
         builder.HasIndex(x => x.FacilityId);
         builder.HasIndex(x => x.RegionIdAtAssignment);
         builder.HasIndex(x => x.CampaignId);
+        // Campaign FK retained for direct lookups; Restrict avoids cascade/ambiguity with cycle composite FK.
         builder.HasOne(x => x.Campaign).WithMany().HasForeignKey(x => x.CampaignId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(x => x.Cycle).WithMany(c => c.Assignments).HasForeignKey(x => x.CycleId)
+        builder.HasOne(x => x.Cycle)
+            .WithMany(c => c.Assignments)
+            .HasForeignKey(x => new { x.CampaignId, x.CycleId })
+            .HasPrincipalKey(x => new { x.CampaignId, x.Id })
             .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Facility).WithMany().HasForeignKey(x => x.FacilityId)
             .OnDelete(DeleteBehavior.Restrict);

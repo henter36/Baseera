@@ -4,9 +4,11 @@ using Baseera.Application.Abstractions;
 using Baseera.Domain.Forms;
 using Microsoft.EntityFrameworkCore;
 
+public sealed record CycleGenerationResult(FormCycle Cycle, bool Created, int AssignmentsCreated);
+
 public interface IFormCycleGenerationService
 {
-    Task<FormCycle?> TryGenerateOccurrenceAsync(
+    Task<CycleGenerationResult> TryGenerateOccurrenceAsync(
         FormCampaign campaign,
         DateTimeOffset occurrenceLocal,
         string generatedBy,
@@ -22,7 +24,9 @@ public sealed class FormCycleGenerationService(
     IAuditService audit,
     TimeProvider timeProvider) : IFormCycleGenerationService
 {
-    public async Task<FormCycle?> TryGenerateOccurrenceAsync(
+    private const int BusinessDayAdjustmentRangeDays = 370;
+
+    public async Task<CycleGenerationResult> TryGenerateOccurrenceAsync(
         FormCampaign campaign,
         DateTimeOffset occurrenceLocal,
         string generatedBy,
@@ -37,18 +41,39 @@ public sealed class FormCycleGenerationService(
             campaign.CloseAfterMinutes,
             campaign.BusinessDayAdjustment);
 
-        occurrenceLocal = businessCalendar.Adjust(
-            occurrenceLocal,
-            campaign.BusinessDayAdjustment,
-            campaign.OrganizationId,
-            cancellationToken);
-
         var occurrenceKey = recurrence.BuildOccurrenceKey(campaign.Id, occurrenceLocal, campaign.TimeZoneId);
         var existing = await db.FormCycles.AsNoTracking()
             .FirstOrDefaultAsync(c => c.CampaignId == campaign.Id && c.OccurrenceKey == occurrenceKey, cancellationToken);
         if (existing is not null)
         {
-            return existing;
+            return new CycleGenerationResult(existing, false, 0);
+        }
+
+        BusinessCalendarSnapshot calendar;
+        if (campaign.BusinessDayAdjustment == BusinessDayAdjustment.None)
+        {
+            var date = DateOnly.FromDateTime(occurrenceLocal.DateTime);
+            calendar = new BusinessCalendarSnapshot(campaign.OrganizationId, date, date, new Dictionary<DateOnly, bool>());
+        }
+        else
+        {
+            var center = DateOnly.FromDateTime(occurrenceLocal.DateTime);
+            var from = center.AddDays(-BusinessDayAdjustmentRangeDays);
+            var to = center.AddDays(BusinessDayAdjustmentRangeDays);
+            calendar = await businessCalendar.LoadAsync(campaign.OrganizationId, from, to, cancellationToken);
+        }
+
+        occurrenceLocal = businessCalendar.Adjust(
+            occurrenceLocal,
+            campaign.BusinessDayAdjustment,
+            calendar);
+
+        occurrenceKey = recurrence.BuildOccurrenceKey(campaign.Id, occurrenceLocal, campaign.TimeZoneId);
+        existing = await db.FormCycles.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.CampaignId == campaign.Id && c.OccurrenceKey == occurrenceKey, cancellationToken);
+        if (existing is not null)
+        {
+            return new CycleGenerationResult(existing, false, 0);
         }
 
         var targets = campaign.TargetRules
@@ -119,11 +144,12 @@ public sealed class FormCycleGenerationService(
         {
             await db.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (SqlServerUniqueConstraintDetector.IsOccurrenceDuplicate(ex))
         {
             db.ClearChanges();
-            return await db.FormCycles.AsNoTracking()
-                .FirstOrDefaultAsync(c => c.CampaignId == campaign.Id && c.OccurrenceKey == occurrenceKey, cancellationToken);
+            var duplicate = await db.FormCycles.AsNoTracking()
+                .FirstAsync(c => c.CampaignId == campaign.Id && c.OccurrenceKey == occurrenceKey, cancellationToken);
+            return new CycleGenerationResult(duplicate, false, 0);
         }
 
         await audit.WriteAsync(new AuditEntry
@@ -143,6 +169,32 @@ public sealed class FormCycleGenerationService(
             }
         }, cancellationToken);
 
-        return cycle;
+        return new CycleGenerationResult(cycle, true, resolution.Included.Count);
+    }
+}
+
+internal static class SqlServerUniqueConstraintDetector
+{
+    private const string OccurrenceUniqueIndex = "IX_FormCycles_CampaignId_OccurrenceKey";
+
+    public static bool IsOccurrenceDuplicate(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            var number = current.GetType().GetProperty("Number")?.GetValue(current);
+            if (number is not (2601 or 2627))
+            {
+                continue;
+            }
+
+            if (current.Message.Contains(OccurrenceUniqueIndex, StringComparison.OrdinalIgnoreCase)
+                || (current.Message.Contains("CampaignId", StringComparison.OrdinalIgnoreCase)
+                    && current.Message.Contains("OccurrenceKey", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
