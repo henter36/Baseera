@@ -39,6 +39,8 @@ public sealed class FormResponseReviewService(
         access.EnsureReviewPermission();
         FormResponseListQueries.EnsureKnownReviewStatus(query.Status);
         query = FormResponseListQueries.Normalize(query);
+        var page = query.Page!.Value;
+        var pageSize = query.PageSize!.Value;
         var now = clock.GetUtcNow();
 
         var baseQuery = BuildReviewInboxQuery();
@@ -47,12 +49,12 @@ public sealed class FormResponseReviewService(
         var rows = await baseQuery
             .OrderBy(x => x.Response.SubmittedAtUtc)
             .ThenBy(x => x.Response.Id)
-            .Skip((query.Page - 1) * query.PageSize)
-            .Take(query.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
 
         var items = ProjectReviewInboxItems(rows, now);
-        return new FormResponseWorkspacePageDto(items, query.Page, query.PageSize, totalCount);
+        return new FormResponseWorkspacePageDto(items, page, pageSize, totalCount);
     }
 
     public async Task<FormResponseReviewDetailDto> GetReviewAsync(Guid responseId, CancellationToken cancellationToken = default)
@@ -98,9 +100,18 @@ public sealed class FormResponseReviewService(
             var submission = await CurrentSubmissionAsync(response, ct);
             response.Status = FormResponseStatus.UnderReview;
             response.UpdatedAtUtc = now;
-            db.Add(CreateDecision(new ReviewDecisionWrite(
-                response, submission, FormResponseReviewDecisionType.StartReview, null, null, from,
-                FormResponseStatus.UnderReview, userId, now)));
+            db.Add(CreateDecision(new ReviewDecisionWrite
+            {
+                Response = response,
+                Submission = submission,
+                Type = FormResponseReviewDecisionType.StartReview,
+                Reason = null,
+                NewDue = null,
+                From = from,
+                To = FormResponseStatus.UnderReview,
+                UserId = userId,
+                Now = now
+            }));
             await WriteAuditAsync(response, "FormResponseReviewStarted", from, FormResponseStatus.UnderReview, null, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -125,16 +136,34 @@ public sealed class FormResponseReviewService(
             var now = clock.GetUtcNow();
             var userId = access.UserId;
             var submission = await CurrentSubmissionAsync(response, ct);
-            var decision = CreateDecision(new ReviewDecisionWrite(
-                response, submission, FormResponseReviewDecisionType.Return, request.Reason, request.NewDueAtUtc,
-                from, FormResponseStatus.Returned, userId, now));
+            var decision = CreateDecision(new ReviewDecisionWrite
+            {
+                Response = response,
+                Submission = submission,
+                Type = FormResponseReviewDecisionType.Return,
+                Reason = request.Reason,
+                NewDue = request.NewDueAtUtc,
+                From = from,
+                To = FormResponseStatus.Returned,
+                UserId = userId,
+                Now = now
+            });
             db.Add(decision);
             await AddCommentsAsync(new ReviewCommentWrite(response, submission, decision.Id, request.Comments, userId, now), ct);
             response.Status = FormResponseStatus.Returned;
             response.ReturnedAtUtc = now;
             response.DueAtUtcOverride = request.NewDueAtUtc;
             response.UpdatedAtUtc = now;
-            WriteHistory(new ResponseHistoryWrite(response, "FormResponseReturned", from, FormResponseStatus.Returned, request.Reason, userId, now));
+            WriteHistory(new ResponseHistoryWrite
+            {
+                Response = response,
+                EventType = "FormResponseReturned",
+                From = from,
+                To = FormResponseStatus.Returned,
+                Reason = request.Reason,
+                UserId = userId,
+                Now = now
+            });
             await WriteAuditAsync(response, "FormResponseReturned", from, FormResponseStatus.Returned, request.Reason, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -169,15 +198,33 @@ public sealed class FormResponseReviewService(
             var now = clock.GetUtcNow();
             var userId = access.UserId;
             var submission = await CurrentSubmissionAsync(response, ct);
-            var decision = CreateDecision(new ReviewDecisionWrite(
-                response, submission, FormResponseReviewDecisionType.Reject, request.Reason, null,
-                from, FormResponseStatus.Rejected, userId, now));
+            var decision = CreateDecision(new ReviewDecisionWrite
+            {
+                Response = response,
+                Submission = submission,
+                Type = FormResponseReviewDecisionType.Reject,
+                Reason = request.Reason,
+                NewDue = null,
+                From = from,
+                To = FormResponseStatus.Rejected,
+                UserId = userId,
+                Now = now
+            });
             db.Add(decision);
             await AddCommentsAsync(new ReviewCommentWrite(response, submission, decision.Id, request.Comments, userId, now), ct);
             response.Status = FormResponseStatus.Rejected;
             response.RejectedAtUtc = now;
             response.UpdatedAtUtc = now;
-            WriteHistory(new ResponseHistoryWrite(response, "FormResponseRejected", from, FormResponseStatus.Rejected, request.Reason, userId, now));
+            WriteHistory(new ResponseHistoryWrite
+            {
+                Response = response,
+                EventType = "FormResponseRejected",
+                From = from,
+                To = FormResponseStatus.Rejected,
+                Reason = request.Reason,
+                UserId = userId,
+                Now = now
+            });
             await WriteAuditAsync(response, "FormResponseRejected", from, FormResponseStatus.Rejected, request.Reason, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -201,13 +248,31 @@ public sealed class FormResponseReviewService(
             var now = clock.GetUtcNow();
             var userId = access.UserId;
             var submission = await CurrentSubmissionAsync(response, ct);
-            db.Add(CreateDecision(new ReviewDecisionWrite(
-                response, submission, FormResponseReviewDecisionType.Close, request.Reason, null,
-                from, FormResponseStatus.Closed, userId, now)));
+            db.Add(CreateDecision(new ReviewDecisionWrite
+            {
+                Response = response,
+                Submission = submission,
+                Type = FormResponseReviewDecisionType.Close,
+                Reason = request.Reason,
+                NewDue = null,
+                From = from,
+                To = FormResponseStatus.Closed,
+                UserId = userId,
+                Now = now
+            }));
             response.Status = FormResponseStatus.Closed;
             response.ClosedAtUtc = now;
             response.UpdatedAtUtc = now;
-            WriteHistory(new ResponseHistoryWrite(response, "FormResponseClosed", from, FormResponseStatus.Closed, request.Reason, userId, now));
+            WriteHistory(new ResponseHistoryWrite
+            {
+                Response = response,
+                EventType = "FormResponseClosed",
+                From = from,
+                To = FormResponseStatus.Closed,
+                Reason = request.Reason,
+                UserId = userId,
+                Now = now
+            });
             await WriteAuditAsync(response, "FormResponseClosed", from, FormResponseStatus.Closed, request.Reason, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -323,17 +388,19 @@ public sealed class FormResponseReviewService(
 
     private void ApplyApprovalDecision(ApprovalDecisionContext context)
     {
-        var decision = CreateDecision(new ReviewDecisionWrite(
-            context.Review.Response,
-            context.Review.Submission,
-            FormResponseReviewDecisionType.Approve,
-            context.Review.Request.Reason,
-            null,
-            context.FromStatus,
-            context.TargetStatus,
-            context.Review.UserId,
-            context.Review.Now,
-            context.ReviewLevel));
+        var decision = CreateDecision(new ReviewDecisionWrite
+        {
+            Response = context.Review.Response,
+            Submission = context.Review.Submission,
+            Type = FormResponseReviewDecisionType.Approve,
+            Reason = context.Review.Request.Reason,
+            NewDue = null,
+            From = context.FromStatus,
+            To = context.TargetStatus,
+            UserId = context.Review.UserId,
+            Now = context.Review.Now,
+            Level = context.ReviewLevel
+        });
         db.Add(decision);
         context.DecisionId = decision.Id;
         context.Review.Response.Status = context.TargetStatus;
@@ -358,14 +425,16 @@ public sealed class FormResponseReviewService(
             context.Review.Request.Comments,
             context.Review.UserId,
             context.Review.Now), ct);
-        WriteHistory(new ResponseHistoryWrite(
-            context.Review.Response,
-            "FormResponseApproved",
-            context.FromStatus,
-            context.TargetStatus,
-            context.Review.Request.Reason,
-            context.Review.UserId,
-            context.Review.Now));
+        WriteHistory(new ResponseHistoryWrite
+        {
+            Response = context.Review.Response,
+            EventType = "FormResponseApproved",
+            From = context.FromStatus,
+            To = context.TargetStatus,
+            Reason = context.Review.Request.Reason,
+            UserId = context.Review.UserId,
+            Now = context.Review.Now
+        });
         await WriteAuditAsync(
             context.Review.Response,
             "FormResponseApproved",
@@ -662,17 +731,19 @@ public sealed class FormResponseReviewService(
         public Guid DecisionId { get; set; }
     }
 
-    private sealed record ReviewDecisionWrite(
-        FormResponse Response,
-        FormResponseSubmission Submission,
-        FormResponseReviewDecisionType Type,
-        string? Reason,
-        DateTimeOffset? NewDue,
-        FormResponseStatus From,
-        FormResponseStatus To,
-        Guid UserId,
-        DateTimeOffset Now,
-        int? Level = null);
+    private sealed record ReviewDecisionWrite
+    {
+        public FormResponse Response { get; init; } = null!;
+        public FormResponseSubmission Submission { get; init; } = null!;
+        public FormResponseReviewDecisionType Type { get; init; }
+        public string? Reason { get; init; }
+        public DateTimeOffset? NewDue { get; init; }
+        public FormResponseStatus From { get; init; }
+        public FormResponseStatus To { get; init; }
+        public Guid UserId { get; init; }
+        public DateTimeOffset Now { get; init; }
+        public int? Level { get; init; }
+    }
 
     private sealed record ReviewCommentWrite(
         FormResponse Response,
@@ -682,12 +753,14 @@ public sealed class FormResponseReviewService(
         Guid UserId,
         DateTimeOffset Now);
 
-    private sealed record ResponseHistoryWrite(
-        FormResponse Response,
-        string EventType,
-        FormResponseStatus From,
-        FormResponseStatus To,
-        string? Reason,
-        Guid UserId,
-        DateTimeOffset Now);
+    private sealed record ResponseHistoryWrite
+    {
+        public FormResponse Response { get; init; } = null!;
+        public string EventType { get; init; } = null!;
+        public FormResponseStatus From { get; init; }
+        public FormResponseStatus To { get; init; }
+        public string? Reason { get; init; }
+        public Guid UserId { get; init; }
+        public DateTimeOffset Now { get; init; }
+    }
 }

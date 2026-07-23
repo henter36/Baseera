@@ -15,7 +15,7 @@ Migrations:
 
 - Drops unique index that included `ReviewedByUserId`
 - Adds filtered unique index `IX_FormResponseReviewDecisions_ApproveLevel` on `(ResponseId, SubmissionId, ReviewLevel)` where `[Decision] = 2` (Approve)
-- Sets `RequireSeparationOfDuties = 1` only for policies created by the C.4 migration marker
+- Corrects Phase C.4 campaign policy backfill: `RequireSeparationOfDuties = 1` only for rows with `CreatedBy = migration:PhaseC4` **and** `UpdatedAtUtc IS NULL` (preserves admin edits)
 
 ## Rollback (shell-safe)
 

@@ -111,10 +111,21 @@ describe('RespondPage', () => {
     client.setQueryData(['assignment-response', 'a1'], {
       ...baseDetail,
       draftAnswersJson: JSON.stringify({ q1: 'من الخادم' }),
-      schemaHash: 'hash2',
     })
 
     await waitFor(() => expect(input).toHaveValue('تعديل محلي'))
+  })
+
+  it('does not revert answers after successful autosave when query data is stale', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    renderPage()
+    const input = await screen.findByLabelText('سؤال')
+    fireEvent.change(input, { target: { value: 'قيمة محفوظة' } })
+    await vi.advanceTimersByTimeAsync(900)
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByText('تم الحفظ')).toBeInTheDocument())
+    expect(input).toHaveValue('قيمة محفوظة')
+    vi.useRealTimers()
   })
 
   it('does not apply server answers while dirty', async () => {

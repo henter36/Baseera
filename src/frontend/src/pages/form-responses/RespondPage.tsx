@@ -44,19 +44,31 @@ export function RespondPage() {
 
   const initializedKey = useRef<string | null>(null)
   const pendingSaveRef = useRef(false)
+  const saveStateRef = useRef(saveState)
+
+  useEffect(() => {
+    saveStateRef.current = saveState
+  }, [saveState])
 
   useEffect(() => {
     if (!detail.data) return
     const key = `${detail.data.responseId ?? 'new'}:${detail.data.schemaHash}`
-    const dirty = saveState === 'dirty' || saveState === 'saving' || saveState === 'error' || saveState === 'offline' || saveState === 'conflict' || pendingSaveRef.current
+    const state = saveStateRef.current
+    const dirty = state === 'dirty' || state === 'saving' || state === 'error'
+      || state === 'offline' || state === 'conflict' || pendingSaveRef.current
     if (initializedKey.current === key && dirty) {
+      return
+    }
+    // Only (re)hydrate from server when the response/schema key changes or an
+    // explicit reload refreshed detail.data — never on saveState transitions.
+    if (initializedKey.current === key) {
       return
     }
     initializedKey.current = key
     setAnswers(parseAnswers(detail.data.draftAnswersJson))
     setDraftVersion(detail.data.draftVersion ?? 0)
     setRowVersion(detail.data.rowVersion ?? null)
-  }, [detail.data, saveState])
+  }, [detail.data])
 
   const schema = useMemo(() => {
     if (!detail.data?.schemaJson) return null
@@ -158,17 +170,25 @@ export function RespondPage() {
       {saveState === 'conflict' && (
         <div className="error" role="alert">
           تعارض في النسخة. أعد تحميل نسخة الخادم.
-          <button type="button" onClick={() => void detail.refetch().then((res) => {
-              const data = res.data
-              if (data) {
-                setAnswers(parseAnswers(data.draftAnswersJson))
-                setDraftVersion(data.draftVersion ?? 0)
-                setRowVersion(data.rowVersion ?? null)
-              }
-              conflictRef.current = false
-              pendingSaveRef.current = false
-              setSaveState('saved')
-            })}>
+          <button
+            type="button"
+            onClick={() => {
+              initializedKey.current = null
+              void detail.refetch().then((res) => {
+                const data = res.data
+                if (data) {
+                  const key = `${data.responseId ?? 'new'}:${data.schemaHash}`
+                  initializedKey.current = key
+                  setAnswers(parseAnswers(data.draftAnswersJson))
+                  setDraftVersion(data.draftVersion ?? 0)
+                  setRowVersion(data.rowVersion ?? null)
+                }
+                conflictRef.current = false
+                pendingSaveRef.current = false
+                setSaveState('saved')
+              })
+            }}
+          >
             تحميل نسخة الخادم
           </button>
         </div>

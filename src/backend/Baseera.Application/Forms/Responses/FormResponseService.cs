@@ -56,6 +56,8 @@ public sealed class FormResponseService(
         access.EnsureRespondentWorkspacePermission();
         FormResponseListQueries.EnsureKnownWorkStatus(query.WorkStatus);
         query = FormResponseListQueries.Normalize(query);
+        var page = query.Page!.Value;
+        var pageSize = query.PageSize!.Value;
         var now = clock.GetUtcNow();
 
         var scopedFacilityIds = access.FilterFacilities(db.Facilities.AsNoTracking()).Select(f => f.Id);
@@ -82,8 +84,8 @@ public sealed class FormResponseService(
             .OrderBy(x => x.Cycle.DueAtUtc)
             .ThenBy(x => x.Assignment.FacilityNameArAtAssignment)
             .ThenBy(x => x.Assignment.Id)
-            .Skip((query.Page - 1) * query.PageSize)
-            .Take(query.PageSize)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
 
         var items = rows.Select(row =>
@@ -92,11 +94,21 @@ public sealed class FormResponseService(
             var due = FormResponseWorkStatusResolver.ResolveEffectiveDueAt(row.Cycle.DueAtUtc, row.Response?.DueAtUtcOverride);
             var overdue = FormResponseWorkStatusResolver.IsOverdue(status, row.Policy.CompletionBasis, due, now, completion);
             var work = FormResponseWorkStatusResolver.Resolve(status, overdue);
-            return MapWorkspaceItem(new WorkspaceMappingContext(
-                row.Assignment, row.Cycle, row.Campaign, row.Policy, row.Response, work, overdue, due, now));
+            return MapWorkspaceItem(new WorkspaceMappingContext
+            {
+                Assignment = row.Assignment,
+                Cycle = row.Cycle,
+                Campaign = row.Campaign,
+                Policy = row.Policy,
+                Response = row.Response,
+                Work = work,
+                Overdue = overdue,
+                Due = due,
+                Now = now
+            });
         }).ToList();
 
-        return new FormResponseWorkspacePageDto(items, query.Page, query.PageSize, totalCount);
+        return new FormResponseWorkspacePageDto(items, page, pageSize, totalCount);
     }
 
     public async Task<FormResponseWorkspaceDetailDto> GetAssignmentResponseAsync(
@@ -165,8 +177,18 @@ public sealed class FormResponseService(
             if (response.FirstStartedAtUtc is null)
             {
                 response.FirstStartedAtUtc = now;
-                WriteHistory(new ResponseHistoryWrite(
-                    response, "FormResponseStarted", null, FormResponseStatus.Draft, null, null, null, userId, now));
+                WriteHistory(new ResponseHistoryWrite
+                {
+                    Response = response,
+                    EventType = "FormResponseStarted",
+                    From = null,
+                    To = FormResponseStatus.Draft,
+                    SubmissionNumber = null,
+                    ReviewLevel = null,
+                    Reason = null,
+                    ActorUserId = userId,
+                    Now = now
+                });
                 await audit.WriteAsync(new AuditEntry
                 {
                     Action = "FormResponseStarted",
@@ -374,16 +396,18 @@ public sealed class FormResponseService(
 
     private async Task WriteSubmissionAuditAsync(SubmissionContext context, SubmissionSnapshot snapshot, CancellationToken ct)
     {
-        WriteHistory(new ResponseHistoryWrite(
-            context.Response,
-            "FormResponseSubmitted",
-            context.FromStatus,
-            context.TargetStatus,
-            snapshot.SubmissionNumber,
-            context.Response.CurrentReviewLevel,
-            null,
-            context.UserId,
-            context.Now));
+        WriteHistory(new ResponseHistoryWrite
+        {
+            Response = context.Response,
+            EventType = "FormResponseSubmitted",
+            From = context.FromStatus,
+            To = context.TargetStatus,
+            SubmissionNumber = snapshot.SubmissionNumber,
+            ReviewLevel = context.Response.CurrentReviewLevel,
+            Reason = null,
+            ActorUserId = context.UserId,
+            Now = context.Now
+        });
         await audit.WriteAsync(new AuditEntry
         {
             Action = "FormResponseSubmitted",
@@ -730,27 +754,31 @@ public sealed class FormResponseService(
 
     private sealed record SubmissionSnapshot(FormResponseSubmission Submission, int SubmissionNumber);
 
-    private sealed record WorkspaceMappingContext(
-        FormFacilityAssignment Assignment,
-        FormCycle Cycle,
-        FormCampaign Campaign,
-        FormCampaignResponsePolicy Policy,
-        FormResponse? Response,
-        FormAssignmentWorkStatus Work,
-        bool Overdue,
-        DateTimeOffset Due,
-        DateTimeOffset Now);
+    private sealed record WorkspaceMappingContext
+    {
+        public FormFacilityAssignment Assignment { get; init; } = null!;
+        public FormCycle Cycle { get; init; } = null!;
+        public FormCampaign Campaign { get; init; } = null!;
+        public FormCampaignResponsePolicy Policy { get; init; } = null!;
+        public FormResponse? Response { get; init; }
+        public FormAssignmentWorkStatus Work { get; init; }
+        public bool Overdue { get; init; }
+        public DateTimeOffset Due { get; init; }
+        public DateTimeOffset Now { get; init; }
+    }
 
-    private sealed record ResponseHistoryWrite(
-        FormResponse Response,
-        string EventType,
-        FormResponseStatus? From,
-        FormResponseStatus? To,
-        int? SubmissionNumber,
-        int? ReviewLevel,
-        string? Reason,
-        Guid ActorUserId,
-        DateTimeOffset Now);
+    private sealed record ResponseHistoryWrite
+    {
+        public FormResponse Response { get; init; } = null!;
+        public string EventType { get; init; } = null!;
+        public FormResponseStatus? From { get; init; }
+        public FormResponseStatus? To { get; init; }
+        public int? SubmissionNumber { get; init; }
+        public int? ReviewLevel { get; init; }
+        public string? Reason { get; init; }
+        public Guid ActorUserId { get; init; }
+        public DateTimeOffset Now { get; init; }
+    }
 
     private sealed class ResponseContext(
         FormFacilityAssignment assignment,

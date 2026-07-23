@@ -86,7 +86,16 @@ public sealed class FormResponseValidator : IFormResponseValidator
 
         foreach (var field in fields.Values)
         {
-            ValidateField(new FieldValidationContext(field, values, visible, required, mode, attachmentsById, issues));
+            ValidateField(new FieldValidationContext
+            {
+                Field = field,
+                Values = values,
+                Visible = visible,
+                Required = required,
+                Mode = mode,
+                AttachmentsById = attachmentsById,
+                Issues = issues
+            });
         }
 
         var canonical = BuildCanonical(fields, values, visible);
@@ -705,12 +714,14 @@ public sealed class FormResponseValidator : IFormResponseValidator
         string severity) =>
         new(code, path, fieldKey, messageAr, severity);
 
-    private sealed record FieldValidationContext(
-        FormFieldSchema Field,
-        IReadOnlyDictionary<string, object?> Values,
-        IReadOnlySet<string> Visible,
-        IReadOnlySet<string> Required,
-        FormResponseValidationMode Mode,
-        IReadOnlyDictionary<Guid, Attachment>? AttachmentsById,
-        List<FormResponseValidationIssueDto> Issues);
+    private sealed record FieldValidationContext
+    {
+        public FormFieldSchema Field { get; init; } = null!;
+        public IReadOnlyDictionary<string, object?> Values { get; init; } = null!;
+        public IReadOnlySet<string> Visible { get; init; } = null!;
+        public IReadOnlySet<string> Required { get; init; } = null!;
+        public FormResponseValidationMode Mode { get; init; }
+        public IReadOnlyDictionary<Guid, Attachment>? AttachmentsById { get; init; }
+        public List<FormResponseValidationIssueDto> Issues { get; init; } = null!;
+    }
 }

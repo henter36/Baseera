@@ -28,6 +28,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 UPDATE [FormCampaignResponsePolicies]
                 SET [RequireSeparationOfDuties] = 1
                 WHERE [CreatedBy] = N'migration:PhaseC4'
+                  AND [UpdatedAtUtc] IS NULL
                   AND [RequireSeparationOfDuties] = 0;
                 """);
         }
@@ -51,6 +52,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 UPDATE [FormCampaignResponsePolicies]
                 SET [RequireSeparationOfDuties] = 0
                 WHERE [CreatedBy] = N'migration:PhaseC4'
+                  AND [UpdatedAtUtc] IS NULL
                   AND [RequireSeparationOfDuties] = 1;
                 """);
         }

@@ -247,29 +247,40 @@ public sealed record FormResponseConflictDto(
     string ConflictCode);
 
 
-public sealed record FormResponseWorkspaceQuery(
-    string? WorkStatus = null,
-    Guid? CampaignId = null,
-    Guid? CycleId = null,
-    Guid? FacilityId = null,
-    Guid? RegionId = null,
-    DateTimeOffset? DueFrom = null,
-    DateTimeOffset? DueTo = null,
-    string? Search = null,
-    int Page = 1,
-    int PageSize = 20,
-    string? Sort = null);
+/// <summary>
+/// Workspace list query. Page/PageSize are nullable for Minimal API [AsParameters]
+/// binding (missing keys must not 400); Normalize applies defaults page=1, pageSize=20.
+/// </summary>
+public sealed record FormResponseWorkspaceQuery
+{
+    public string? WorkStatus { get; init; }
+    public Guid? CampaignId { get; init; }
+    public Guid? CycleId { get; init; }
+    public Guid? FacilityId { get; init; }
+    public Guid? RegionId { get; init; }
+    public DateTimeOffset? DueFrom { get; init; }
+    public DateTimeOffset? DueTo { get; init; }
+    public string? Search { get; init; }
+    public int? Page { get; init; }
+    public int? PageSize { get; init; }
+    public string? Sort { get; init; }
+}
 
-public sealed record FormResponseReviewInboxQuery(
-    string? Status = null,
-    Guid? CampaignId = null,
-    Guid? CycleId = null,
-    Guid? RegionId = null,
-    Guid? FacilityId = null,
-    int? ReviewLevel = null,
-    DateTimeOffset? SubmittedFrom = null,
-    DateTimeOffset? SubmittedTo = null,
-    bool? Overdue = null,
-    string? Search = null,
-    int Page = 1,
-    int PageSize = 20);
+/// <summary>
+/// Review inbox query. Page/PageSize nullable for [AsParameters]; Normalize applies defaults.
+/// </summary>
+public sealed record FormResponseReviewInboxQuery
+{
+    public string? Status { get; init; }
+    public Guid? CampaignId { get; init; }
+    public Guid? CycleId { get; init; }
+    public Guid? RegionId { get; init; }
+    public Guid? FacilityId { get; init; }
+    public int? ReviewLevel { get; init; }
+    public DateTimeOffset? SubmittedFrom { get; init; }
+    public DateTimeOffset? SubmittedTo { get; init; }
+    public bool? Overdue { get; init; }
+    public string? Search { get; init; }
+    public int? Page { get; init; }
+    public int? PageSize { get; init; }
+}
