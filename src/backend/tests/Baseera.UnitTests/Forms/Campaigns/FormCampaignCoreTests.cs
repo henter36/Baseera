@@ -1,9 +1,12 @@
 using Baseera.Application.Abstractions;
+using Baseera.Application.Forms;
 using Baseera.Application.Forms.Campaigns;
+using Baseera.Application.Organization;
 using Baseera.Application.Security;
 using Baseera.BackgroundJobs;
 using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
+using Baseera.Domain.Identity;
 using Baseera.Infrastructure.Persistence;
 using Baseera.UnitTests.Forms;
 using FluentValidation;
@@ -45,6 +48,139 @@ public sealed class FormRecurrenceCalculatorTests
         var schedule = BaseSchedule(FormRecurrenceKind.Once, new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3)));
         var upcoming = _calculator.EnumerateUpcoming(schedule, schedule.FirstOpenAtLocal, 5);
         Assert.Single(upcoming);
+    }
+
+    [Fact]
+    public void Once_in_range_returns_occurrence()
+    {
+        var first = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Once, first);
+        var upcoming = _calculator.EnumerateUpcoming(schedule, first, 5);
+        Assert.Equal(first, Assert.Single(upcoming));
+    }
+
+    [Fact]
+    public void Once_out_of_range_returns_empty()
+    {
+        var first = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Once, first);
+        var upcoming = _calculator.EnumerateUpcoming(schedule, first.AddMinutes(1), 5);
+        Assert.Empty(upcoming);
+    }
+
+    [Fact]
+    public void Weekly_one_week_single_day()
+    {
+        var start = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 1,
+            WeekDays = [DayOfWeek.Monday]
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 3);
+        Assert.Equal(3, upcoming.Count);
+        Assert.Equal([6, 13, 20], upcoming.Select(d => d.Day).ToArray());
+        Assert.All(upcoming, d => Assert.Equal(DayOfWeek.Monday, d.DayOfWeek));
+    }
+
+    [Fact]
+    public void Weekly_biweekly_skips_intermediate_weeks()
+    {
+        var start = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 2,
+            WeekDays = [DayOfWeek.Monday]
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 3);
+        Assert.Equal([6, 20, 3], upcoming.Select(d => d.Day).ToArray());
+        Assert.Equal([7, 7, 8], upcoming.Select(d => d.Month).ToArray());
+    }
+
+    [Fact]
+    public void Weekly_mid_week_start_includes_same_week_days()
+    {
+        var start = new DateTimeOffset(2026, 7, 8, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 1,
+            WeekDays = [DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday]
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 3);
+        Assert.Equal([8, 10, 13], upcoming.Select(d => d.Day).ToArray());
+        Assert.Equal(DayOfWeek.Wednesday, upcoming[0].DayOfWeek);
+    }
+
+    [Fact]
+    public void Weekly_respects_until_local()
+    {
+        var start = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 1,
+            WeekDays = [DayOfWeek.Monday, DayOfWeek.Wednesday],
+            UntilLocal = start.AddDays(7)
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 10);
+        Assert.Equal(3, upcoming.Count);
+        Assert.Equal([6, 8, 13], upcoming.Select(d => d.Day).ToArray());
+    }
+
+    [Fact]
+    public void Weekly_respects_max_occurrences()
+    {
+        var start = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 1,
+            WeekDays = [DayOfWeek.Monday, DayOfWeek.Wednesday],
+            MaxOccurrences = 3
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 10);
+        Assert.Equal(3, upcoming.Count);
+    }
+
+    [Fact]
+    public void Weekly_from_inclusive_skips_earlier_candidates()
+    {
+        var start = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 1,
+            WeekDays = [DayOfWeek.Monday, DayOfWeek.Wednesday]
+        };
+        var from = start.AddDays(2);
+        var upcoming = _calculator.EnumerateUpcoming(schedule, from, 2);
+        Assert.Equal(2, upcoming.Count);
+        Assert.Equal([8, 13], upcoming.Select(d => d.Day).ToArray());
+        Assert.All(upcoming, d => Assert.True(d >= from));
+    }
+
+    [Fact]
+    public void Weekly_hard_max_occurrences_cap()
+    {
+        var start = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 1,
+            WeekDays = [DayOfWeek.Monday]
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, FormRecurrenceCalculator.MaxOccurrences + 100);
+        Assert.Equal(FormRecurrenceCalculator.MaxOccurrences, upcoming.Count);
+    }
+
+    [Fact]
+    public void Weekly_results_are_sorted_and_unique()
+    {
+        var start = new DateTimeOffset(2026, 7, 6, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Weekly, start) with
+        {
+            IntervalWeeks = 1,
+            WeekDays = [DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday]
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 12);
+        Assert.Equal(upcoming.Count, upcoming.Distinct().Count());
+        Assert.Equal(upcoming, upcoming.OrderBy(x => x).ToList());
     }
 
     [Fact]
@@ -123,6 +259,41 @@ public sealed class FormRecurrenceCalculatorTests
         var upcoming = _calculator.EnumerateUpcoming(schedule, start, 3);
         Assert.DoesNotContain(upcoming, d => d.Month == 2);
         Assert.All(upcoming, d => Assert.Equal(31, d.Day));
+    }
+
+    [Fact]
+    public void Monthly_march_31_from_jan31_start()
+    {
+        var start = new DateTimeOffset(2026, 1, 31, 9, 0, 0, TimeSpan.FromHours(3));
+        var schedule = BaseSchedule(FormRecurrenceKind.Monthly, start) with
+        {
+            DayOfMonth = 31,
+            MissingDayPolicy = MonthlyMissingDayPolicy.ClampToLastDay,
+            MaxOccurrences = 3
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 3);
+        Assert.Equal([1, 2, 3], upcoming.Select(d => d.Month).ToArray());
+        Assert.Equal([31, 28, 31], upcoming.Select(d => d.Day).ToArray());
+    }
+
+    [Fact]
+    public void Monthly_preserves_offset()
+    {
+        var offset = TimeSpan.FromHours(3);
+        var start = new DateTimeOffset(2026, 1, 31, 9, 30, 0, offset);
+        var schedule = BaseSchedule(FormRecurrenceKind.Monthly, start) with
+        {
+            DayOfMonth = 31,
+            MissingDayPolicy = MonthlyMissingDayPolicy.ClampToLastDay,
+            MaxOccurrences = 4
+        };
+        var upcoming = _calculator.EnumerateUpcoming(schedule, start, 4);
+        Assert.All(upcoming, d =>
+        {
+            Assert.Equal(offset, d.Offset);
+            Assert.Equal(9, d.Hour);
+            Assert.Equal(30, d.Minute);
+        });
     }
 
     [Fact]
@@ -568,6 +739,128 @@ public sealed class FormCampaignSchedulerTests
         Assert.True(tracked.NextOccurrenceUtc > now);
     }
 
+    [Fact]
+    public async Task Catch_up_limit_reached_when_more_occurrences_remain_due()
+    {
+        var now = new DateTimeOffset(2026, 7, 5, 12, 0, 0, TimeSpan.Zero);
+        var firstOpenLocal = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        var timeZones = new FormTimeZoneResolver();
+        var firstUtc = timeZones.ToUtc(firstOpenLocal, "Asia/Riyadh");
+
+        var db = FormTestFixtures.CreateDb();
+        FormTestFixtures.SeedOrgGraph(db);
+        var user = FormTestFixtures.AddUser(db);
+        var campaign = SeedCampaign(db, user.Id, firstOpenLocal, firstUtc, firstUtc);
+        campaign.RecurrenceKind = FormRecurrenceKind.Daily;
+        await db.SaveChangesAsync();
+
+        var cycleGen = new CountingCycleGenerationService();
+        var scheduler = CreateScheduler(db, timeZones, cycleGen, now);
+
+        var result = await scheduler.RunAsync("test", new FormCampaignSchedulerOptions(10, 2, 3, 30));
+
+        Assert.Equal(2, result.CyclesCreated);
+        Assert.Equal(2, cycleGen.CallCount);
+        Assert.True(result.CatchUpLimitReached);
+        var tracked = await db.FormCampaigns.FindAsync(campaign.Id);
+        Assert.NotNull(tracked);
+        Assert.Equal(FormCampaignStatus.Active, tracked!.Status);
+        Assert.NotNull(tracked.NextOccurrenceUtc);
+        Assert.True(tracked.NextOccurrenceUtc <= now);
+    }
+
+    [Fact]
+    public async Task No_upcoming_with_all_cycles_closed_completes_campaign()
+    {
+        var now = new DateTimeOffset(2026, 7, 10, 12, 0, 0, TimeSpan.Zero);
+        var firstOpenLocal = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        var timeZones = new FormTimeZoneResolver();
+        var firstUtc = timeZones.ToUtc(firstOpenLocal, "Asia/Riyadh");
+        var lastUtc = timeZones.ToUtc(firstOpenLocal, "Asia/Riyadh");
+
+        var db = FormTestFixtures.CreateDb();
+        FormTestFixtures.SeedOrgGraph(db);
+        var user = FormTestFixtures.AddUser(db);
+        var campaign = SeedCampaign(db, user.Id, firstOpenLocal, firstUtc, firstUtc);
+        campaign.RecurrenceKind = FormRecurrenceKind.Once;
+        campaign.LastGeneratedOccurrenceUtc = lastUtc;
+        db.FormCycles.Add(new FormCycle
+        {
+            Id = Guid.NewGuid(),
+            CampaignId = campaign.Id,
+            OccurrenceKey = "once",
+            Status = FormCycleStatus.Closed,
+            OpenAtUtc = firstUtc,
+            DueAtUtc = firstUtc.AddHours(1),
+            GraceEndsAtUtc = firstUtc.AddHours(2),
+            CloseAtUtc = firstUtc.AddHours(3),
+            ClosedAtUtc = firstUtc.AddHours(3),
+            TimeZoneId = campaign.TimeZoneId,
+            FormVersionId = campaign.FormVersionId,
+            FormSchemaSnapshotId = campaign.FormSchemaSnapshotId,
+            SchemaHash = campaign.SchemaHash,
+            TargetSnapshotHash = "test",
+            GeneratedBy = "test",
+            GeneratedAtUtc = firstUtc
+        });
+        await db.SaveChangesAsync();
+
+        var cycleGen = new CountingCycleGenerationService();
+        var scheduler = CreateScheduler(db, timeZones, cycleGen, now);
+
+        var result = await scheduler.RunAsync("test", new FormCampaignSchedulerOptions(10, 5, 3, 30));
+
+        Assert.Equal(0, result.CyclesCreated);
+        Assert.Equal(0, cycleGen.CallCount);
+        var tracked = await db.FormCampaigns.FindAsync(campaign.Id);
+        Assert.NotNull(tracked);
+        Assert.Equal(FormCampaignStatus.Completed, tracked!.Status);
+        Assert.Null(tracked.NextOccurrenceUtc);
+        Assert.NotNull(tracked.ClosedAtUtc);
+    }
+
+    [Fact]
+    public async Task Due_occurrence_transitions_scheduled_to_active()
+    {
+        var now = new DateTimeOffset(2026, 7, 1, 12, 0, 0, TimeSpan.Zero);
+        var firstOpenLocal = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        var timeZones = new FormTimeZoneResolver();
+        var firstUtc = timeZones.ToUtc(firstOpenLocal, "Asia/Riyadh");
+
+        var db = FormTestFixtures.CreateDb();
+        FormTestFixtures.SeedOrgGraph(db);
+        var user = FormTestFixtures.AddUser(db);
+        var campaign = SeedCampaign(db, user.Id, firstOpenLocal, firstUtc, firstUtc);
+        campaign.RecurrenceKind = FormRecurrenceKind.Once;
+        await db.SaveChangesAsync();
+
+        var cycleGen = new CountingCycleGenerationService();
+        var scheduler = CreateScheduler(db, timeZones, cycleGen, now);
+
+        var result = await scheduler.RunAsync("test", new FormCampaignSchedulerOptions(10, 5, 3, 30));
+
+        Assert.Equal(1, result.CyclesCreated);
+        Assert.Equal(1, cycleGen.CallCount);
+        var tracked = await db.FormCampaigns.FindAsync(campaign.Id);
+        Assert.NotNull(tracked);
+        Assert.Equal(FormCampaignStatus.Active, tracked!.Status);
+        Assert.Null(tracked.NextOccurrenceUtc);
+    }
+
+    private static FormCampaignScheduler CreateScheduler(
+        BaseeraDbContext db,
+        FormTimeZoneResolver timeZones,
+        IFormCycleGenerationService cycleGen,
+        DateTimeOffset now) =>
+        new(
+            db,
+            cycleGen,
+            new FormRecurrenceCalculator(timeZones),
+            timeZones,
+            new FormTestFixtures.NoOpAudit(),
+            new MutableTimeProvider(now),
+            NullLogger<FormCampaignScheduler>.Instance);
+
     private static FormCampaign SeedCampaign(
         BaseeraDbContext db,
         Guid userId,
@@ -641,6 +934,32 @@ public sealed class FormCampaignSchedulerTests
         {
             CallCount++;
             throw new InvalidOperationException("Cycle generation should not run for future occurrences.");
+        }
+    }
+
+    private sealed class CountingCycleGenerationService : IFormCycleGenerationService
+    {
+        public int CallCount { get; private set; }
+
+        public Task<CycleGenerationResult> TryGenerateOccurrenceAsync(
+            FormCampaign campaign,
+            DateTimeOffset occurrenceLocal,
+            string generatedBy,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            var cycle = new FormCycle
+            {
+                Id = Guid.NewGuid(),
+                CampaignId = campaign.Id,
+                OccurrenceKey = occurrenceLocal.ToString("O"),
+                Status = FormCycleStatus.Scheduled,
+                OpenAtUtc = occurrenceLocal.ToUniversalTime(),
+                DueAtUtc = occurrenceLocal.ToUniversalTime().AddHours(1),
+                GraceEndsAtUtc = occurrenceLocal.ToUniversalTime().AddHours(2),
+                CloseAtUtc = occurrenceLocal.ToUniversalTime().AddHours(3)
+            };
+            return Task.FromResult(new CycleGenerationResult(cycle, true, 1));
         }
     }
 
@@ -723,5 +1042,129 @@ public sealed class FormCampaignAllowedActionsTests
         Assert.Contains("complete", withCapability);
         Assert.Contains("clone", withCapability);
         Assert.Contains("viewAssignments", withCapability);
+    }
+}
+
+public sealed class FormCampaignAccessCoordinatorTests
+{
+    [Fact]
+    public void EnsureAnyViewPermission_throws_when_user_lacks_view_permissions()
+    {
+        using var db = FormTestFixtures.CreateDb();
+        var current = FormTestFixtures.CurrentUser(Guid.NewGuid(), []);
+        var coordinator = CreateCoordinator(db, current);
+
+        var ex = Assert.Throws<UnauthorizedAccessException>(() => coordinator.EnsureAnyViewPermission());
+        Assert.Contains("عرض الحملات", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EnsureAnyViewPermission_succeeds_with_forms_view_permission()
+    {
+        using var db = FormTestFixtures.CreateDb();
+        var current = FormTestFixtures.CurrentUser(Guid.NewGuid(), [PermissionCodes.FormsView]);
+        var coordinator = CreateCoordinator(db, current);
+
+        coordinator.EnsureAnyViewPermission();
+    }
+
+    private static FormCampaignAccessCoordinator CreateCoordinator(BaseeraDbContext db, ICurrentUser current)
+    {
+        var orgScope = new OrganizationalScopeService(current, db);
+        var formScope = new FormScopeService(orgScope, current, db);
+        var effectiveAccess = new FormEffectiveAccessService(db, current);
+        return new FormCampaignAccessCoordinator(db, current, formScope, effectiveAccess, orgScope, TimeProvider.System);
+    }
+}
+
+public sealed class FormCampaignScheduleCoordinatorTests
+{
+    [Fact]
+    public async Task ResolveNextOccurrence_Once_without_cycle_returns_first_occurrence()
+    {
+        using var db = FormTestFixtures.CreateDb();
+        var timeZones = new FormTimeZoneResolver();
+        var coordinator = CreateCoordinator(db, timeZones);
+        var firstLocal = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        var campaign = CreateOnceCampaign(firstLocal);
+
+        var next = await coordinator.ResolveNextOccurrenceForResumeAsync(campaign);
+
+        Assert.NotNull(next);
+        Assert.Equal(timeZones.ToUtc(firstLocal, campaign.TimeZoneId), next);
+    }
+
+    [Fact]
+    public async Task ResolveNextOccurrence_Once_with_existing_cycle_returns_null()
+    {
+        using var db = FormTestFixtures.CreateDb();
+        var timeZones = new FormTimeZoneResolver();
+        var coordinator = CreateCoordinator(db, timeZones);
+        var firstLocal = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        var campaign = CreateOnceCampaign(firstLocal);
+        db.FormCycles.Add(new FormCycle
+        {
+            Id = Guid.NewGuid(),
+            CampaignId = campaign.Id,
+            OccurrenceKey = "once",
+            Status = FormCycleStatus.Closed,
+            OpenAtUtc = firstLocal.ToUniversalTime(),
+            DueAtUtc = firstLocal.ToUniversalTime().AddHours(1),
+            GraceEndsAtUtc = firstLocal.ToUniversalTime().AddHours(2),
+            CloseAtUtc = firstLocal.ToUniversalTime().AddHours(3),
+            TimeZoneId = campaign.TimeZoneId,
+            FormVersionId = campaign.FormVersionId,
+            FormSchemaSnapshotId = campaign.FormSchemaSnapshotId,
+            SchemaHash = campaign.SchemaHash,
+            TargetSnapshotHash = "test",
+            GeneratedBy = "test",
+            GeneratedAtUtc = firstLocal.ToUniversalTime()
+        });
+        await db.SaveChangesAsync();
+
+        var next = await coordinator.ResolveNextOccurrenceForResumeAsync(campaign);
+
+        Assert.Null(next);
+    }
+
+    private static FormCampaignScheduleCoordinator CreateCoordinator(BaseeraDbContext db, FormTimeZoneResolver timeZones) =>
+        new(
+            db,
+            new FormRecurrenceCalculator(timeZones),
+            timeZones,
+            new NoOpCycleGenerationService(),
+            TimeProvider.System);
+
+    private static FormCampaign CreateOnceCampaign(DateTimeOffset firstLocal) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = Guid.NewGuid(),
+            FormDefinitionId = Guid.NewGuid(),
+            FormVersionId = Guid.NewGuid(),
+            FormSchemaSnapshotId = Guid.NewGuid(),
+            SchemaHash = "abc123def4567890123456789012345678901234567890123456789012345678",
+            Code = "ONCE-TEST",
+            NameAr = "اختبار مرة واحدة",
+            Status = FormCampaignStatus.Paused,
+            TimeZoneId = "Asia/Riyadh",
+            RecurrenceKind = FormRecurrenceKind.Once,
+            RecurrenceConfigurationJson = "{}",
+            FirstOpenAtLocal = firstLocal,
+            ResponseWindowMinutes = 1440,
+            GracePeriodMinutes = 60,
+            CloseAfterMinutes = 0,
+            CreatedByUserId = Guid.NewGuid(),
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+
+    private sealed class NoOpCycleGenerationService : IFormCycleGenerationService
+    {
+        public Task<CycleGenerationResult> TryGenerateOccurrenceAsync(
+            FormCampaign campaign,
+            DateTimeOffset occurrenceLocal,
+            string generatedBy,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Not expected in schedule coordinator tests.");
     }
 }

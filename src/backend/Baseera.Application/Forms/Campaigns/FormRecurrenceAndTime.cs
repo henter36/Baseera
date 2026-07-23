@@ -103,7 +103,7 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
 
         return schedule.RecurrenceKind switch
         {
-            FormRecurrenceKind.Once => EnumerateOnce(schedule, fromLocalInclusive, count),
+            FormRecurrenceKind.Once => EnumerateOnce(schedule, fromLocalInclusive),
             FormRecurrenceKind.Daily => EnumerateDaily(schedule, fromLocalInclusive, count),
             FormRecurrenceKind.Weekly => EnumerateWeekly(schedule, fromLocalInclusive, count),
             FormRecurrenceKind.Monthly => EnumerateMonthly(schedule, fromLocalInclusive, count),
@@ -161,7 +161,8 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
     }
 
     private static IReadOnlyList<DateTimeOffset> EnumerateOnce(
-        FormCampaignScheduleRequest schedule, DateTimeOffset fromLocalInclusive, int count)
+        FormCampaignScheduleRequest schedule,
+        DateTimeOffset fromLocalInclusive)
     {
         if (schedule.FirstOpenAtLocal < fromLocalInclusive)
         {
@@ -258,11 +259,12 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
         weekStart = weekStart.AddDays(-(int)weekStart.DayOfWeek);
         var occurrenceIndex = 0;
 
-        for (var week = 0; results.Count < count && occurrenceIndex < MaxOccurrences; week += intervalWeeks)
+        var weekOffset = 0;
+        while (results.Count < count && occurrenceIndex < MaxOccurrences)
         {
             foreach (var day in days)
             {
-                var date = weekStart.AddDays(week * 7 + (int)day).Add(timeOfDay);
+                var date = weekStart.AddDays(weekOffset * 7 + (int)day).Add(timeOfDay);
                 var local = new DateTimeOffset(date, schedule.FirstOpenAtLocal.Offset);
                 if (local < schedule.FirstOpenAtLocal)
                 {
@@ -279,9 +281,18 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
                         break;
                 }
             }
+
+            weekOffset += intervalWeeks;
         }
 
         return results;
+    }
+
+    private static DateTimeOffset CreateLocalOccurrence(
+        int year, int month, int day, TimeSpan timeOfDay, TimeSpan offset)
+    {
+        var localDateTime = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Unspecified).Add(timeOfDay);
+        return new DateTimeOffset(localDateTime, offset);
     }
 
     private static IReadOnlyList<DateTimeOffset> EnumerateMonthly(
@@ -290,6 +301,7 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
         var dayOfMonth = Math.Clamp(schedule.DayOfMonth ?? schedule.FirstOpenAtLocal.Day, 1, 31);
         var policy = schedule.MissingDayPolicy ?? MonthlyMissingDayPolicy.ClampToLastDay;
         var timeOfDay = schedule.FirstOpenAtLocal.TimeOfDay;
+        var offset = schedule.FirstOpenAtLocal.Offset;
         var context = new OccurrenceEnumerationContext(fromLocalInclusive, schedule.UntilLocal, schedule.MaxOccurrences, count);
         var results = new List<DateTimeOffset>();
         var year = schedule.FirstOpenAtLocal.Year;
@@ -302,11 +314,11 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
             DateTimeOffset? candidate = null;
             if (dayOfMonth <= daysInMonth)
             {
-                candidate = new DateTimeOffset(new DateTime(year, month, dayOfMonth).Add(timeOfDay), schedule.FirstOpenAtLocal.Offset);
+                candidate = CreateLocalOccurrence(year, month, dayOfMonth, timeOfDay, offset);
             }
             else if (policy == MonthlyMissingDayPolicy.ClampToLastDay)
             {
-                candidate = new DateTimeOffset(new DateTime(year, month, daysInMonth).Add(timeOfDay), schedule.FirstOpenAtLocal.Offset);
+                candidate = CreateLocalOccurrence(year, month, daysInMonth, timeOfDay, offset);
             }
 
             if (candidate is { } local && local >= schedule.FirstOpenAtLocal)

@@ -40,58 +40,94 @@ public sealed class FormTargetResolver(
 
         foreach (var rule in targets)
         {
-            var query = scope.FilterFacilities(
-                db.Facilities.AsNoTracking().Where(f => f.Region.OrganizationId == organizationId));
-
-            query = rule.RuleType switch
-            {
-                FormTargetRuleType.AllFacilities => query,
-                FormTargetRuleType.Regions => ApplyRegions(query, rule.RegionIds, invalid),
-                FormTargetRuleType.Facilities => ApplyFacilities(query, rule.FacilityIds, invalid),
-                FormTargetRuleType.DynamicCriteria => ApplyDynamic(query, rule.DynamicCriteria, invalid),
-                _ => throw new InvalidOperationException("نوع قاعدة الاستهداف غير مدعوم.")
-            };
-
-            var rows = await query
-                .Select(f => new
-                {
-                    f.Id,
-                    f.RegionId,
-                    f.Code,
-                    f.NameAr,
-                    f.FacilityType,
-                    RegionNameAr = f.Region.NameAr,
-                    f.IsActive
-                })
-                .ToListAsync(cancellationToken);
-
-            foreach (var row in rows)
-            {
-                matched[row.Id] = new ResolvedFacilityTarget(
-                    row.Id,
-                    row.RegionId,
-                    row.Code,
-                    row.NameAr,
-                    row.RegionNameAr,
-                    row.FacilityType,
-                    rule.RuleType,
-                    row.IsActive,
-                    row.IsActive ? null : "الموقع غير نشط");
-            }
+            await ApplyRuleAsync(organizationId, rule, matched, invalid, cancellationToken);
         }
 
-        var exclusionMap = (exclusions ?? [])
+        var exclusionMap = BuildExclusionMap(exclusions);
+        if (exclusionMap.Values.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new InvalidOperationException("سبب الاستثناء مطلوب.");
+        }
+
+        var excluded = ApplyExclusions(matched, exclusionMap, warnings);
+        var included = matched.Values.OrderBy(x => x.FacilityCode).ToList();
+        var (byRegion, byType) = BuildBreakdown(included);
+        var fingerprint = FormTargetSnapshotHasher.HashFacilityIds(included.Select(x => x.FacilityId));
+
+        return new FormTargetResolutionResult(
+            included,
+            excluded,
+            byRegion,
+            byType,
+            fingerprint,
+            warnings,
+            invalid.Distinct().ToList());
+    }
+
+    private async Task ApplyRuleAsync(
+        Guid organizationId,
+        FormCampaignTargetRequest rule,
+        Dictionary<Guid, ResolvedFacilityTarget> matched,
+        List<string> invalid,
+        CancellationToken cancellationToken)
+    {
+        var query = BuildRuleQuery(organizationId, rule, invalid);
+        var rows = await query
+            .Select(f => new
+            {
+                f.Id,
+                f.RegionId,
+                f.Code,
+                f.NameAr,
+                f.FacilityType,
+                RegionNameAr = f.Region.NameAr,
+                f.IsActive
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var row in rows)
+        {
+            matched[row.Id] = new ResolvedFacilityTarget(
+                row.Id,
+                row.RegionId,
+                row.Code,
+                row.NameAr,
+                row.RegionNameAr,
+                row.FacilityType,
+                rule.RuleType,
+                row.IsActive,
+                row.IsActive ? null : "الموقع غير نشط");
+        }
+    }
+
+    private IQueryable<Facility> BuildRuleQuery(
+        Guid organizationId,
+        FormCampaignTargetRequest rule,
+        List<string> invalid)
+    {
+        var query = scope.FilterFacilities(
+            db.Facilities.AsNoTracking().Where(f => f.Region.OrganizationId == organizationId));
+
+        return rule.RuleType switch
+        {
+            FormTargetRuleType.AllFacilities => query,
+            FormTargetRuleType.Regions => ApplyRegions(query, rule.RegionIds, invalid),
+            FormTargetRuleType.Facilities => ApplyFacilities(query, rule.FacilityIds, invalid),
+            FormTargetRuleType.DynamicCriteria => ApplyDynamic(query, rule.DynamicCriteria, invalid),
+            _ => throw new InvalidOperationException("نوع قاعدة الاستهداف غير مدعوم.")
+        };
+    }
+
+    private static Dictionary<Guid, string> BuildExclusionMap(IReadOnlyList<FormCampaignExclusionRequest>? exclusions) =>
+        (exclusions ?? [])
             .GroupBy(e => e.FacilityId)
             .ToDictionary(g => g.Key, g => g.First().Reason?.Trim() ?? string.Empty);
 
-        foreach (var (facilityId, reason) in exclusionMap)
-        {
-            if (string.IsNullOrWhiteSpace(reason))
-            {
-                throw new InvalidOperationException("سبب الاستثناء مطلوب.");
-            }
-        }
-
+    private static List<(Guid FacilityId, string Reason)> ApplyExclusions(
+        Dictionary<Guid, ResolvedFacilityTarget> matched,
+        Dictionary<Guid, string> exclusionMap,
+        List<string> warnings)
+    {
         var excluded = new List<(Guid FacilityId, string Reason)>();
         foreach (var facilityId in exclusionMap.Keys)
         {
@@ -106,21 +142,17 @@ public sealed class FormTargetResolver(
             }
         }
 
-        var included = matched.Values.OrderBy(x => x.FacilityCode).ToList();
+        return excluded;
+    }
+
+    private static (Dictionary<string, int> ByRegion, Dictionary<string, int> ByType) BuildBreakdown(
+        IReadOnlyList<ResolvedFacilityTarget> included)
+    {
         var byRegion = included.GroupBy(x => x.RegionNameAr).ToDictionary(g => g.Key, g => g.Count());
         var byType = included
             .GroupBy(x => string.IsNullOrWhiteSpace(x.FacilityType) ? "غير محدد" : x.FacilityType!)
             .ToDictionary(g => g.Key, g => g.Count());
-        var fingerprint = FormTargetSnapshotHasher.HashFacilityIds(included.Select(x => x.FacilityId));
-
-        return new FormTargetResolutionResult(
-            included,
-            excluded,
-            byRegion,
-            byType,
-            fingerprint,
-            warnings,
-            invalid.Distinct().ToList());
+        return (byRegion, byType);
     }
 
     private static IQueryable<Facility> ApplyRegions(
