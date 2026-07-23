@@ -1065,7 +1065,9 @@ public sealed class FormCampaignAccessCoordinatorTests
         var current = FormTestFixtures.CurrentUser(Guid.NewGuid(), [PermissionCodes.FormsView]);
         var coordinator = CreateCoordinator(db, current);
 
-        coordinator.EnsureAnyViewPermission();
+        var exception = Record.Exception(() => coordinator.EnsureAnyViewPermission());
+
+        Assert.Null(exception);
     }
 
     private static FormCampaignAccessCoordinator CreateCoordinator(BaseeraDbContext db, ICurrentUser current)

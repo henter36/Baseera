@@ -7,7 +7,12 @@ import { listQueryErrorMessage } from '../../shared/listPageUtils'
 
 const STEPS = ['الإصدار', 'البيانات', 'الاستهداف', 'الاستثناءات', 'الجدولة', 'المعاينة', 'التأكيد'] as const
 
-function FieldLabel({ htmlFor, children }: { htmlFor: string; children: ReactNode }) {
+type FieldLabelProps = Readonly<{
+  htmlFor: string
+  children: ReactNode
+}>
+
+function FieldLabel({ htmlFor, children }: FieldLabelProps) {
   return (
     <label htmlFor={htmlFor}>
       <span>{children}</span>

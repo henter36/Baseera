@@ -33,7 +33,7 @@ public interface IFormCampaignService
 public sealed class FormCampaignService(
     IBaseeraDbContext db,
     IFormCampaignAccessCoordinator access,
-    IFormCampaignScheduleCoordinator schedule,
+    IFormCampaignScheduleCoordinator scheduleCoordinator,
     IFormTargetResolver targetResolver,
     IAuditService audit) : IFormCampaignService
 {
@@ -104,9 +104,9 @@ public sealed class FormCampaignService(
         }
 
         var orgId = await ResolveOrganizationIdAsync(form, cancellationToken);
-        schedule.ValidateTimeZone(request.TimeZoneId);
+        scheduleCoordinator.ValidateTimeZone(request.TimeZoneId);
         var userId = access.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
-        var now = schedule.GetUtcNow();
+        var now = scheduleCoordinator.GetUtcNow();
 
         var campaign = new FormCampaign
         {
@@ -123,7 +123,7 @@ public sealed class FormCampaignService(
             Priority = request.Priority,
             TimeZoneId = string.IsNullOrWhiteSpace(request.TimeZoneId) ? FormTimeZoneResolver.DefaultTimeZoneId : request.TimeZoneId.Trim(),
             RecurrenceKind = request.Schedule.RecurrenceKind,
-            RecurrenceConfigurationJson = schedule.SerializeSchedule(request.Schedule),
+            RecurrenceConfigurationJson = scheduleCoordinator.SerializeSchedule(request.Schedule),
             FirstOpenAtLocal = request.Schedule.FirstOpenAtLocal,
             ResponseWindowMinutes = request.Schedule.ResponseWindowMinutes,
             GracePeriodMinutes = request.Schedule.GracePeriodMinutes,
@@ -166,14 +166,14 @@ public sealed class FormCampaignService(
         await access.EnsureViewCapabilityAsync(form, cancellationToken);
 
         var userId = access.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
-        var now = schedule.GetUtcNow();
+        var now = scheduleCoordinator.GetUtcNow();
         campaign.NameAr = request.NameAr.Trim();
         campaign.NameEn = string.IsNullOrWhiteSpace(request.NameEn) ? null : request.NameEn.Trim();
         campaign.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         campaign.Priority = request.Priority;
         campaign.TimeZoneId = string.IsNullOrWhiteSpace(request.TimeZoneId) ? FormTimeZoneResolver.DefaultTimeZoneId : request.TimeZoneId.Trim();
         campaign.RecurrenceKind = request.Schedule.RecurrenceKind;
-        campaign.RecurrenceConfigurationJson = schedule.SerializeSchedule(request.Schedule);
+        campaign.RecurrenceConfigurationJson = scheduleCoordinator.SerializeSchedule(request.Schedule);
         campaign.FirstOpenAtLocal = request.Schedule.FirstOpenAtLocal;
         campaign.ResponseWindowMinutes = request.Schedule.ResponseWindowMinutes;
         campaign.GracePeriodMinutes = request.Schedule.GracePeriodMinutes;
@@ -199,7 +199,7 @@ public sealed class FormCampaignService(
     {
         access.EnsurePermission(PermissionCodes.FormsManageCampaigns);
         var source = await LoadVisibleAsync(campaignId, cancellationToken);
-        var mappedSchedule = schedule.MapSchedule(source);
+        var mappedSchedule = scheduleCoordinator.MapSchedule(source);
         var targets = source.TargetRules.Select(r => FormTargetResolver.DeserializeTarget(r.RuleType, r.ConfigurationJson)).ToList();
         var exclusions = source.Exclusions.Select(e => new FormCampaignExclusionRequest(e.FacilityId, e.Reason)).ToList();
         var created = await CreateAsync(new CreateFormCampaignRequest(
@@ -255,7 +255,7 @@ public sealed class FormCampaignService(
         var sample = resolution.Included.Take(50).Select(x => new FormTargetPreviewFacilityDto(
             x.FacilityId, x.FacilityCode, x.FacilityNameAr, x.RegionId, x.RegionNameAr, x.FacilityType)).ToList();
         return new FormTargetPreviewDto(
-            schedule.GetUtcNow(),
+            scheduleCoordinator.GetUtcNow(),
             resolution.Included.Count + resolution.Excluded.Count,
             resolution.Excluded.Count,
             resolution.Included.Count,
@@ -297,10 +297,10 @@ public sealed class FormCampaignService(
         campaign.FormSchemaSnapshotId = version.Snapshot.Id;
         campaign.SchemaHash = version.Snapshot.SchemaHash;
 
-        var mappedSchedule = schedule.MapSchedule(campaign);
+        var mappedSchedule = scheduleCoordinator.MapSchedule(campaign);
         var firstLocal = mappedSchedule.FirstOpenAtLocal;
-        var firstUtc = schedule.ToUtc(firstLocal, campaign.TimeZoneId);
-        var now = schedule.GetUtcNow();
+        var firstUtc = scheduleCoordinator.ToUtc(firstLocal, campaign.TimeZoneId);
+        var now = scheduleCoordinator.GetUtcNow();
         var userId = access.UserId ?? throw new UnauthorizedAccessException("المستخدم غير معروف.");
 
         var targetStatus = firstUtc <= now ? FormCampaignStatus.Active : FormCampaignStatus.Scheduled;
@@ -315,8 +315,8 @@ public sealed class FormCampaignService(
 
         if (firstUtc <= now)
         {
-            await schedule.GenerateOccurrenceAsync(campaign, firstLocal, access.DisplayName ?? "publisher", cancellationToken);
-            var next = schedule.ComputeNextAfter(mappedSchedule, firstLocal, campaign.TimeZoneId);
+            await scheduleCoordinator.GenerateOccurrenceAsync(campaign, firstLocal, access.DisplayName ?? "publisher", cancellationToken);
+            var next = scheduleCoordinator.ComputeNextAfter(mappedSchedule, firstLocal, campaign.TimeZoneId);
             campaign.LastGeneratedOccurrenceUtc = firstUtc;
             campaign.NextOccurrenceUtc = campaign.RecurrenceKind == FormRecurrenceKind.Once ? null : next;
             await db.SaveChangesAsync(cancellationToken);
@@ -349,8 +349,8 @@ public sealed class FormCampaignService(
                 throw new InvalidOperationException("لا يمكن استئناف حملة مكتملة أو ملغاة.");
             }
 
-            var now = schedule.GetUtcNow();
-            var next = await schedule.ResolveNextOccurrenceForResumeAsync(campaign, ct);
+            var now = scheduleCoordinator.GetUtcNow();
+            var next = await scheduleCoordinator.ResolveNextOccurrenceForResumeAsync(campaign, ct);
             campaign.PausedAtUtc = null;
             campaign.PausedByUserId = null;
             campaign.PauseReason = null;
@@ -502,15 +502,15 @@ public sealed class FormCampaignService(
     }
 
     public Task<IReadOnlyList<DateTimeOffset>> PreviewUpcomingAsync(
-        FormCampaignScheduleRequest scheduleRequest,
+        FormCampaignScheduleRequest schedule,
         string? timeZoneId,
         int count = 10,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ValidateSchedule(scheduleRequest);
-        schedule.ValidateTimeZone(timeZoneId);
-        return Task.FromResult(schedule.PreviewUpcoming(scheduleRequest, count));
+        ValidateSchedule(schedule);
+        scheduleCoordinator.ValidateTimeZone(timeZoneId);
+        return Task.FromResult(scheduleCoordinator.PreviewUpcoming(schedule, count));
     }
 
     private async Task<IQueryable<FormCampaign>> BuildVisibleCampaignQueryAsync(
@@ -629,7 +629,7 @@ public sealed class FormCampaignService(
         var campaign = await LoadTrackedAsync(campaignId, cancellationToken);
         FormAccessHelper.EnsureRowVersion(campaign.RowVersion, request.RowVersion);
         FormCampaignStateMachine.EnsureCanTransition(campaign.Status, to);
-        var now = schedule.GetUtcNow();
+        var now = scheduleCoordinator.GetUtcNow();
         var userId = access.UserId;
         campaign.Status = to;
         campaign.UpdatedAtUtc = now;
@@ -871,7 +871,7 @@ public sealed class FormCampaignService(
             campaign.Priority,
             campaign.TimeZoneId,
             campaign.RecurrenceKind,
-            schedule.MapSchedule(campaign),
+            scheduleCoordinator.MapSchedule(campaign),
             campaign.TargetRules.Select(r => FormTargetResolver.DeserializeTarget(r.RuleType, r.ConfigurationJson)).ToList(),
             campaign.Exclusions.Select(e => new FormCampaignExclusionDto(
                 e.FacilityId,

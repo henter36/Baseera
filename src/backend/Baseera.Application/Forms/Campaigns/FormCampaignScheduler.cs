@@ -33,6 +33,19 @@ public sealed class FormCampaignScheduler(
         int DuplicatesSkipped,
         bool CatchUpLimitReached);
 
+    private enum OccurrenceProcessingDecision
+    {
+        Continue,
+        Stop
+    }
+
+    private sealed record OccurrenceProcessingResult(
+        OccurrenceProcessingDecision Decision,
+        DateTimeOffset NextCursorLocal,
+        bool Created,
+        int AssignmentsCreated,
+        bool Duplicate);
+
     public async Task<FormCampaignSchedulerRunResult> RunAsync(
         string workerIdentity,
         FormCampaignSchedulerOptions options,
@@ -126,59 +139,29 @@ public sealed class FormCampaignScheduler(
 
         while (generatedThisCampaign < context.MaxCatchUpOccurrences)
         {
-            var upcoming = recurrence.EnumerateUpcoming(schedule, cursorLocal, 1);
-            if (upcoming.Count == 0)
-            {
-                campaign.NextOccurrenceUtc = null;
-                await TryCompleteCampaignIfEligibleAsync(campaign, cancellationToken);
-                break;
-            }
-
-            var occurrenceLocal = upcoming[0];
-            var occurrenceUtc = timeZones.ToUtc(occurrenceLocal, campaign.TimeZoneId);
-            if (occurrenceUtc > timeProvider.GetUtcNow())
-            {
-                campaign.NextOccurrenceUtc = occurrenceUtc;
-                break;
-            }
-
-            if (campaign.Status == FormCampaignStatus.Scheduled
-                && FormCampaignStateMachine.CanTransition(campaign.Status, FormCampaignStatus.Active))
-            {
-                campaign.Status = FormCampaignStatus.Active;
-            }
-
-            var generation = await cycleGeneration.TryGenerateOccurrenceAsync(
+            var step = await ProcessNextOccurrenceAsync(
                 campaign,
-                occurrenceLocal,
-                context.WorkerIdentity,
+                schedule,
+                cursorLocal,
+                context,
                 cancellationToken);
-            if (generation.Created)
+
+            if (step.Created)
             {
                 cyclesCreated++;
-                assignmentsCreated += generation.AssignmentsCreated;
+                assignmentsCreated += step.AssignmentsCreated;
+                generatedThisCampaign++;
             }
-            else
+            else if (step.Duplicate)
             {
                 duplicatesSkipped++;
+                generatedThisCampaign++;
             }
 
-            campaign.LastGeneratedOccurrenceUtc = occurrenceUtc;
-            generatedThisCampaign++;
-            cursorLocal = occurrenceLocal.AddMinutes(1);
-
-            var next = recurrence.ComputeNextAfter(schedule, occurrenceLocal);
-            campaign.NextOccurrenceUtc = next is null ? null : timeZones.ToUtc(next.Value, campaign.TimeZoneId);
-
-            if (campaign.RecurrenceKind == FormRecurrenceKind.Once)
+            cursorLocal = step.NextCursorLocal;
+            if (step.Decision == OccurrenceProcessingDecision.Stop)
             {
-                campaign.NextOccurrenceUtc = null;
                 break;
-            }
-
-            if (campaign.NextOccurrenceUtc is null)
-            {
-                await TryCompleteCampaignIfEligibleAsync(campaign, cancellationToken);
             }
         }
 
@@ -187,6 +170,92 @@ public sealed class FormCampaignScheduler(
             && stillDue <= timeProvider.GetUtcNow();
 
         return new CampaignProcessingResult(cyclesCreated, assignmentsCreated, duplicatesSkipped, catchUpLimitReached);
+    }
+
+    private async Task<OccurrenceProcessingResult> ProcessNextOccurrenceAsync(
+        FormCampaign campaign,
+        FormCampaignScheduleRequest schedule,
+        DateTimeOffset cursorLocal,
+        SchedulerExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        var upcoming = recurrence.EnumerateUpcoming(schedule, cursorLocal, 1);
+        if (upcoming.Count == 0)
+        {
+            campaign.NextOccurrenceUtc = null;
+            await TryCompleteCampaignIfEligibleAsync(campaign, cancellationToken);
+            return new OccurrenceProcessingResult(
+                OccurrenceProcessingDecision.Stop,
+                cursorLocal,
+                Created: false,
+                AssignmentsCreated: 0,
+                Duplicate: false);
+        }
+
+        var occurrenceLocal = upcoming[0];
+        var occurrenceUtc = timeZones.ToUtc(occurrenceLocal, campaign.TimeZoneId);
+        if (occurrenceUtc > timeProvider.GetUtcNow())
+        {
+            campaign.NextOccurrenceUtc = occurrenceUtc;
+            return new OccurrenceProcessingResult(
+                OccurrenceProcessingDecision.Stop,
+                cursorLocal,
+                Created: false,
+                AssignmentsCreated: 0,
+                Duplicate: false);
+        }
+
+        ActivateCampaignIfDue(campaign);
+
+        var generation = await cycleGeneration.TryGenerateOccurrenceAsync(
+            campaign,
+            occurrenceLocal,
+            context.WorkerIdentity,
+            cancellationToken);
+
+        campaign.LastGeneratedOccurrenceUtc = occurrenceUtc;
+        campaign.NextOccurrenceUtc = ResolveNextOccurrenceUtc(schedule, occurrenceLocal, campaign.TimeZoneId);
+
+        if (campaign.RecurrenceKind == FormRecurrenceKind.Once)
+        {
+            campaign.NextOccurrenceUtc = null;
+            return new OccurrenceProcessingResult(
+                OccurrenceProcessingDecision.Stop,
+                occurrenceLocal.AddMinutes(1),
+                generation.Created,
+                generation.AssignmentsCreated,
+                Duplicate: !generation.Created);
+        }
+
+        if (campaign.NextOccurrenceUtc is null)
+        {
+            await TryCompleteCampaignIfEligibleAsync(campaign, cancellationToken);
+        }
+
+        return new OccurrenceProcessingResult(
+            OccurrenceProcessingDecision.Continue,
+            occurrenceLocal.AddMinutes(1),
+            generation.Created,
+            generation.AssignmentsCreated,
+            Duplicate: !generation.Created);
+    }
+
+    private static void ActivateCampaignIfDue(FormCampaign campaign)
+    {
+        if (campaign.Status == FormCampaignStatus.Scheduled
+            && FormCampaignStateMachine.CanTransition(campaign.Status, FormCampaignStatus.Active))
+        {
+            campaign.Status = FormCampaignStatus.Active;
+        }
+    }
+
+    private DateTimeOffset? ResolveNextOccurrenceUtc(
+        FormCampaignScheduleRequest schedule,
+        DateTimeOffset occurrenceLocal,
+        string timeZoneId)
+    {
+        var next = recurrence.ComputeNextAfter(schedule, occurrenceLocal);
+        return next is null ? null : timeZones.ToUtc(next.Value, timeZoneId);
     }
 
     private async Task TryCompleteCampaignIfEligibleAsync(FormCampaign campaign, CancellationToken cancellationToken)
