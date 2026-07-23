@@ -40,6 +40,22 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 "طلب غير صالح",
                 ex.Message);
         }
+        catch (Baseera.Application.Forms.Responses.FormResponseConflictException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            await context.Response.WriteAsJsonAsync(ex.Payload);
+        }
+        catch (Baseera.Application.Forms.Responses.FormResponseValidationException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status422UnprocessableEntity;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                type = "about:blank",
+                title = "أخطاء تحقق",
+                status = 422,
+                issues = ex.Issues
+            });
+        }
         catch (InvalidOperationException ex)
         {
             await WriteProblem(context, StatusCodes.Status409Conflict, "تعارض", ex.Message);
