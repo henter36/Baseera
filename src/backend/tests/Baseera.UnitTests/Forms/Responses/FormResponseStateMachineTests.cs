@@ -1,4 +1,5 @@
 using Baseera.Application.Forms.Responses;
+using Baseera.Application.Forms.Compliance;
 using Baseera.Domain.Forms;
 
 namespace Baseera.UnitTests.Forms.Responses;
@@ -104,6 +105,57 @@ public sealed class FormResponseWorkStatusResolverTests
         var due = DateTimeOffset.UtcNow.AddDays(-10);
         Assert.False(FormResponseWorkStatusResolver.IsOverdue(
             FormResponseStatus.Approved, FormCompletionBasis.Approved, due, DateTimeOffset.UtcNow, _completion));
+    }
+}
+
+public sealed class FormCompletionTimestampResolverTests
+{
+    private readonly FormCompletionTimestampResolver _sut = new();
+
+    [Fact]
+    public void Submitted_basis_uses_submitted_at_only()
+    {
+        var submittedAt = DateTimeOffset.UtcNow.AddHours(-2);
+        var response = new FormResponse
+        {
+            SubmittedAtUtc = submittedAt,
+            ApprovedAtUtc = submittedAt.AddHours(1),
+            ClosedAtUtc = submittedAt.AddHours(2)
+        };
+
+        Assert.Equal(submittedAt, _sut.Resolve(FormCompletionBasis.Submitted, response));
+    }
+
+    [Fact]
+    public void Approved_basis_uses_approved_at_only()
+    {
+        var approvedAt = DateTimeOffset.UtcNow.AddHours(-1);
+        var response = new FormResponse
+        {
+            SubmittedAtUtc = approvedAt.AddHours(-1),
+            ApprovedAtUtc = approvedAt,
+            ClosedAtUtc = approvedAt.AddHours(1)
+        };
+
+        Assert.Equal(approvedAt, _sut.Resolve(FormCompletionBasis.Approved, response));
+    }
+
+    [Fact]
+    public void Missing_timestamp_is_not_replaced_by_closed_at()
+    {
+        var response = new FormResponse
+        {
+            Status = FormResponseStatus.Approved,
+            ClosedAtUtc = DateTimeOffset.UtcNow
+        };
+
+        Assert.Null(_sut.Resolve(FormCompletionBasis.Approved, response));
+    }
+
+    [Fact]
+    public void Missing_response_returns_null()
+    {
+        Assert.Null(_sut.Resolve(FormCompletionBasis.Submitted, null));
     }
 }
 
