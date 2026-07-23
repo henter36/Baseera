@@ -205,7 +205,7 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
     private sealed record OccurrenceEnumerationContext(
         DateTimeOffset FromLocalInclusive,
         DateTimeOffset? UntilLocal,
-        int? MaxOccurrences,
+        int? MaxOccurrenceCount,
         int RequestedCount);
 
     private enum CandidateDecision
@@ -226,7 +226,7 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
             return CandidateDecision.Stop;
         }
 
-        if (context.MaxOccurrences is { } max && generatedCount > max)
+        if (context.MaxOccurrenceCount is { } max && generatedCount > max)
         {
             return CandidateDecision.Stop;
         }

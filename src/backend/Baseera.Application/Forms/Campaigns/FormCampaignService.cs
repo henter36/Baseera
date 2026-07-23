@@ -140,6 +140,8 @@ public sealed class FormCampaignService(
                 .ToListAsync(cancellationToken);
         var countMap = cycleCounts.ToDictionary(x => x.CampaignId, x => x);
 
+        var publishCapabilityByFormId = await ResolvePublishCapabilityByFormAsync(items, cancellationToken);
+
         var dtos = new List<FormCampaignListItemDto>();
         foreach (var c in items)
         {
@@ -148,7 +150,7 @@ public sealed class FormCampaignService(
                 c.Id, c.Code, c.NameAr, c.NameEn, c.FormDefinitionId, c.FormDefinition.Code, c.FormDefinition.NameAr,
                 c.FormVersionId, c.FormVersion.VersionNumber, c.Status, c.RecurrenceKind, c.FirstOpenAtLocal,
                 c.NextOccurrenceUtc, stats?.Count ?? 0, stats?.Last,
-                await BuildAllowedActionsAsync(c, cancellationToken),
+                await BuildAllowedActionsAsync(c, cancellationToken, publishCapabilityByFormId),
                 Convert.ToBase64String(c.RowVersion)));
         }
 
@@ -445,7 +447,7 @@ public sealed class FormCampaignService(
             }
 
             var now = timeProvider.GetUtcNow();
-            var next = await ResolveNextOccurrenceForResumeAsync(campaign, now, ct);
+            var next = await ResolveNextOccurrenceForResumeAsync(campaign, ct);
             campaign.PausedAtUtc = null;
             campaign.PausedByUserId = null;
             campaign.PauseReason = null;
@@ -852,56 +854,63 @@ public sealed class FormCampaignService(
         }
     }
 
-    private async Task<IReadOnlyList<string>> BuildAllowedActionsAsync(FormCampaign campaign, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<Guid, bool>> ResolvePublishCapabilityByFormAsync(
+        IReadOnlyList<FormCampaign> pageItems,
+        CancellationToken cancellationToken)
     {
-        var actions = new List<string> { "view" };
-        if (campaign.Status == FormCampaignStatus.Draft && currentUser.HasPermission(PermissionCodes.FormsManageCampaigns))
+        if (!currentUser.HasPermission(PermissionCodes.FormsPublish) || pageItems.Count == 0)
         {
-            actions.Add("edit");
-            actions.Add("preview");
+            return new Dictionary<Guid, bool>();
         }
 
+        var draftForms = pageItems
+            .Where(c => c.Status == FormCampaignStatus.Draft)
+            .GroupBy(c => c.FormDefinitionId)
+            .Select(g => g.First().FormDefinition)
+            .ToList();
+
+        var map = new Dictionary<Guid, bool>(draftForms.Count);
+        foreach (var form in draftForms)
+        {
+            map[form.Id] = await effectiveAccess.HasCapabilityAsync(
+                form,
+                FormAccessCapability.Publish,
+                cancellationToken);
+        }
+
+        return map;
+    }
+
+    private async Task<IReadOnlyList<string>> BuildAllowedActionsAsync(
+        FormCampaign campaign,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<Guid, bool>? publishCapabilityByFormId = null)
+    {
+        var hasPublishCapabilityOnForm = false;
         if (campaign.Status == FormCampaignStatus.Draft
-            && currentUser.HasPermission(PermissionCodes.FormsPublish)
-            && await effectiveAccess.HasCapabilityAsync(campaign.FormDefinition, FormAccessCapability.Publish, cancellationToken))
-        {
-            actions.Add("publish");
-        }
-
-        if (FormCampaignStateMachine.CanTransition(campaign.Status, FormCampaignStatus.Paused)
-            && currentUser.HasPermission(PermissionCodes.FormsPauseCampaign))
-        {
-            actions.Add("pause");
-        }
-
-        if (campaign.Status == FormCampaignStatus.Paused && currentUser.HasPermission(PermissionCodes.FormsPauseCampaign))
-        {
-            actions.Add("resume");
-        }
-
-        if (FormCampaignStateMachine.CanTransition(campaign.Status, FormCampaignStatus.Cancelled)
-            && currentUser.HasPermission(PermissionCodes.FormsCancelCampaign))
-        {
-            actions.Add("cancel");
-        }
-
-        if (FormCampaignStateMachine.CanTransition(campaign.Status, FormCampaignStatus.Completed)
             && currentUser.HasPermission(PermissionCodes.FormsPublish))
         {
-            actions.Add("complete");
+            if (publishCapabilityByFormId is not null)
+            {
+                hasPublishCapabilityOnForm = publishCapabilityByFormId.GetValueOrDefault(campaign.FormDefinitionId);
+            }
+            else
+            {
+                hasPublishCapabilityOnForm = await effectiveAccess.HasCapabilityAsync(
+                    campaign.FormDefinition,
+                    FormAccessCapability.Publish,
+                    cancellationToken);
+            }
         }
 
-        if (currentUser.HasPermission(PermissionCodes.FormsManageCampaigns))
-        {
-            actions.Add("clone");
-        }
-
-        if (currentUser.HasPermission(PermissionCodes.FormsViewCampaignAssignments))
-        {
-            actions.Add("viewAssignments");
-        }
-
-        return actions;
+        return FormCampaignAllowedActions.Build(
+            campaign.Status,
+            currentUser.HasPermission(PermissionCodes.FormsManageCampaigns),
+            currentUser.HasPermission(PermissionCodes.FormsPublish),
+            hasPublishCapabilityOnForm,
+            currentUser.HasPermission(PermissionCodes.FormsPauseCampaign),
+            currentUser.HasPermission(PermissionCodes.FormsCancelCampaign),
+            currentUser.HasPermission(PermissionCodes.FormsViewCampaignAssignments));
     }
 
     private async Task<FormCampaignDetailDto> MapDetailAsync(FormCampaign campaign, CancellationToken cancellationToken)
@@ -1005,7 +1014,6 @@ public sealed class FormCampaignService(
 
     private async Task<DateTimeOffset?> ResolveNextOccurrenceForResumeAsync(
         FormCampaign campaign,
-        DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
         var schedule = MapSchedule(campaign);

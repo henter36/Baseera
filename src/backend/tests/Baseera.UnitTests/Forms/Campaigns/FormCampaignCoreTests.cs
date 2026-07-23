@@ -301,7 +301,8 @@ public sealed class BusinessCalendarTests
         var calendar = CreateCalendar();
         var local = new DateTimeOffset(2026, 1, 5, 9, 0, 0, TimeSpan.FromHours(3));
         var snapshot = Snapshot(local);
-        _ = calendar.Adjust(local, BusinessDayAdjustment.NextBusinessDay, snapshot);
+        var adjusted = calendar.Adjust(local, BusinessDayAdjustment.NextBusinessDay, snapshot);
+        Assert.Equal(local, adjusted);
     }
 
     private static BusinessCalendarSnapshot Snapshot(
@@ -646,5 +647,81 @@ public sealed class FormCampaignSchedulerTests
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+}
+
+public sealed class FormCampaignAllowedActionsTests
+{
+    [Fact]
+    public void Different_forms_receive_their_own_publish_capability()
+    {
+        var formA = FormCampaignAllowedActions.Build(
+            FormCampaignStatus.Draft,
+            canManageCampaigns: true,
+            hasPublishPermission: true,
+            hasPublishCapabilityOnForm: true,
+            canPauseCampaign: false,
+            canCancelCampaign: false,
+            canViewAssignments: false);
+        var formB = FormCampaignAllowedActions.Build(
+            FormCampaignStatus.Draft,
+            canManageCampaigns: true,
+            hasPublishPermission: true,
+            hasPublishCapabilityOnForm: false,
+            canPauseCampaign: false,
+            canCancelCampaign: false,
+            canViewAssignments: false);
+
+        Assert.Contains("publish", formA);
+        Assert.DoesNotContain("publish", formB);
+        Assert.Equal(formA.Where(a => a != "publish"), formB);
+    }
+
+    [Fact]
+    public void Multiple_drafts_for_same_form_share_publish_capability_result()
+    {
+        var sharedCapability = true;
+        var first = FormCampaignAllowedActions.Build(
+            FormCampaignStatus.Draft, true, true, sharedCapability, false, false, false);
+        var second = FormCampaignAllowedActions.Build(
+            FormCampaignStatus.Draft, true, true, sharedCapability, false, false, false);
+
+        Assert.Equal(first, second);
+        Assert.Contains("publish", first);
+    }
+
+    [Fact]
+    public void Without_publish_permission_publish_action_is_absent()
+    {
+        var actions = FormCampaignAllowedActions.Build(
+            FormCampaignStatus.Draft,
+            canManageCampaigns: true,
+            hasPublishPermission: false,
+            hasPublishCapabilityOnForm: true,
+            canPauseCampaign: false,
+            canCancelCampaign: false,
+            canViewAssignments: false);
+
+        Assert.DoesNotContain("publish", actions);
+        Assert.Contains("edit", actions);
+        Assert.Contains("preview", actions);
+        Assert.Contains("clone", actions);
+    }
+
+    [Fact]
+    public void Non_draft_actions_ignore_form_publish_capability()
+    {
+        var withCapability = FormCampaignAllowedActions.Build(
+            FormCampaignStatus.Active, true, true, true, true, true, true);
+        var withoutCapability = FormCampaignAllowedActions.Build(
+            FormCampaignStatus.Active, true, true, false, true, true, true);
+
+        Assert.Equal(withCapability, withoutCapability);
+        Assert.DoesNotContain("publish", withCapability);
+        Assert.Contains("pause", withCapability);
+        Assert.Contains("cancel", withCapability);
+        Assert.Contains("complete", withCapability);
+        Assert.Contains("clone", withCapability);
+        Assert.Contains("viewAssignments", withCapability);
     }
 }
