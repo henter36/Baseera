@@ -82,7 +82,8 @@ public sealed class FormCampaignIntegrationTests : IClassFixture<BaseeraApiFacto
         var scheduler = scope.ServiceProvider.GetRequiredService<IFormCampaignScheduler>();
         var run1 = await scheduler.RunAsync("test-worker", new FormCampaignSchedulerOptions(20, 5, 3, 10));
         var run2 = await scheduler.RunAsync("test-worker", new FormCampaignSchedulerOptions(20, 5, 3, 10));
-        Assert.True(run2.DuplicatesSkipped >= 0);
+        Assert.Equal(0, run2.CyclesCreated);
+        Assert.Equal(0, run2.AssignmentsCreated);
 
         var cyclesAfter = await publisher.GetFromJsonAsync<PagedCycles>($"/api/v1/form-campaigns/{campaign.Id}/cycles");
         Assert.Equal(cycles.TotalCount, cyclesAfter!.TotalCount);
@@ -93,6 +94,119 @@ public sealed class FormCampaignIntegrationTests : IClassFixture<BaseeraApiFacto
             reason = "إيقاف"
         });
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Pause_before_due_then_resume_returns_scheduled_with_next_occurrence()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("cmp-designer");
+        var approver = _factory.CreateAuthenticatedClient("cmp-approver");
+        var publisher = _factory.CreateAuthenticatedClient("cmp-publisher");
+
+        var (formId, versionId, _) = await CreateLockedFormAsync(designer, approver);
+        // Explicit Asia/Riyadh local far in the future so ToUtc stays after now.
+        var firstOpen = new DateTimeOffset(
+            DateTime.SpecifyKind(DateTime.UtcNow.AddDays(2), DateTimeKind.Unspecified),
+            TimeSpan.FromHours(3));
+
+        var campaign = await CreateCampaignAsync(designer, formId, versionId, firstOpen, recurrenceKind: 1, intervalDays: 1);
+        var published = await PublishCampaignAsync(publisher, campaign);
+        Assert.Equal(FormCampaignStatus.Scheduled, published.Status);
+
+        var paused = await PauseCampaignAsync(publisher, published);
+        Assert.Equal(FormCampaignStatus.Paused, paused.Status);
+
+        var resumed = await ResumeCampaignAsync(publisher, paused);
+        Assert.Equal(FormCampaignStatus.Scheduled, resumed.Status);
+        Assert.NotNull(resumed.NextOccurrenceUtc);
+        Assert.True(resumed.NextOccurrenceUtc > DateTimeOffset.UtcNow);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Pause_after_due_then_resume_returns_active_with_next_occurrence()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("cmp-designer");
+        var approver = _factory.CreateAuthenticatedClient("cmp-approver");
+        var publisher = _factory.CreateAuthenticatedClient("cmp-publisher");
+
+        var (formId, versionId, _) = await CreateLockedFormAsync(designer, approver);
+        var firstOpen = DateTimeOffset.UtcNow.AddMinutes(-5);
+
+        var campaign = await CreateCampaignAsync(designer, formId, versionId, firstOpen, recurrenceKind: 1, intervalDays: 1);
+        var published = await PublishCampaignAsync(publisher, campaign);
+        Assert.Equal(FormCampaignStatus.Active, published.Status);
+
+        var paused = await PauseCampaignAsync(publisher, published);
+        Assert.Equal(FormCampaignStatus.Paused, paused.Status);
+
+        var resumed = await ResumeCampaignAsync(publisher, paused);
+        Assert.Equal(FormCampaignStatus.Active, resumed.Status);
+        Assert.NotNull(resumed.NextOccurrenceUtc);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Custom_dates_over_limit_returns_bad_request()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("cmp-designer");
+        var approver = _factory.CreateAuthenticatedClient("cmp-approver");
+
+        var (formId, versionId, _) = await CreateLockedFormAsync(designer, approver);
+        var start = DateTimeOffset.UtcNow.AddDays(1);
+        var customDates = Enumerable.Range(0, 101).Select(i => start.AddDays(i)).ToArray();
+
+        var create = await designer.PostAsJsonAsync("/api/v1/form-campaigns", new
+        {
+            formDefinitionId = formId,
+            formVersionId = versionId,
+            code = $"CMPCD{_seq++:D4}",
+            nameAr = "حملة تواريخ",
+            priority = 1,
+            timeZoneId = "Asia/Riyadh",
+            schedule = new
+            {
+                recurrenceKind = 4,
+                firstOpenAtLocal = start,
+                responseWindowMinutes = 60,
+                gracePeriodMinutes = 0,
+                closeAfterMinutes = 0,
+                businessDayAdjustment = 0,
+                customDatesLocal = customDates
+            },
+            targets = new[] { new { ruleType = 0, regionIds = (Guid[]?)null, facilityIds = (Guid[]?)null, dynamicCriteria = (object?)null } },
+            exclusions = Array.Empty<object>()
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Inactive_facility_preview_lists_unavailable_facility()
+    {
+        await SeedAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var facility = await db.Facilities.FindAsync(SeedIds.FacilityA2);
+            facility!.IsActive = false;
+            await db.SaveChangesAsync();
+        }
+
+        var designer = _factory.CreateAuthenticatedClient("cmp-designer");
+        var approver = _factory.CreateAuthenticatedClient("cmp-approver");
+        var publisher = _factory.CreateAuthenticatedClient("cmp-publisher");
+
+        var (formId, versionId, _) = await CreateLockedFormAsync(designer, approver);
+        var campaign = await CreateCampaignAsync(designer, formId, versionId, DateTimeOffset.UtcNow.AddHours(1));
+
+        var preview = await publisher.PostAsync($"/api/v1/form-campaigns/{campaign.Id}/target-preview", null);
+        var previewBody = await preview.Content.ReadAsStringAsync();
+        Assert.True(preview.IsSuccessStatusCode, previewBody);
+        using var doc = JsonDocument.Parse(previewBody);
+        var unavailable = doc.RootElement.GetProperty("unavailableFacilities").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("FAC-A2", unavailable);
     }
 
     [IntegrationConnectionFact]
@@ -233,7 +347,77 @@ public sealed class FormCampaignIntegrationTests : IClassFixture<BaseeraApiFacto
         return (formId, version.Id, snapshot!.SchemaHash);
     }
 
-    private sealed record CampaignDetail(Guid Id, FormCampaignStatus Status, string SchemaHash, string RowVersion);
+    private async Task<CampaignDetail> CreateCampaignAsync(
+        HttpClient designer,
+        Guid formId,
+        Guid versionId,
+        DateTimeOffset firstOpen,
+        int recurrenceKind = 0,
+        int? intervalDays = null)
+    {
+        var create = await designer.PostAsJsonAsync("/api/v1/form-campaigns", new
+        {
+            formDefinitionId = formId,
+            formVersionId = versionId,
+            code = $"CMP{_seq++:D4}",
+            nameAr = "حملة اختبار",
+            priority = 1,
+            timeZoneId = "Asia/Riyadh",
+            schedule = new
+            {
+                recurrenceKind,
+                firstOpenAtLocal = firstOpen,
+                responseWindowMinutes = 60,
+                gracePeriodMinutes = 15,
+                closeAfterMinutes = 0,
+                businessDayAdjustment = 0,
+                intervalDays
+            },
+            targets = new[] { new { ruleType = 0, regionIds = (Guid[]?)null, facilityIds = (Guid[]?)null, dynamicCriteria = (object?)null } },
+            exclusions = Array.Empty<object>()
+        });
+        var body = await create.Content.ReadAsStringAsync();
+        Assert.True(create.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<CampaignDetail>(body, JsonOptions)!;
+    }
+
+    private static async Task<CampaignDetail> PublishCampaignAsync(HttpClient publisher, CampaignDetail campaign)
+    {
+        var publish = await publisher.PostAsJsonAsync($"/api/v1/form-campaigns/{campaign.Id}/publish", new { rowVersion = campaign.RowVersion });
+        var body = await publish.Content.ReadAsStringAsync();
+        Assert.True(publish.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<CampaignDetail>(body, JsonOptions)!;
+    }
+
+    private static async Task<CampaignDetail> PauseCampaignAsync(HttpClient publisher, CampaignDetail campaign)
+    {
+        var pause = await publisher.PostAsJsonAsync($"/api/v1/form-campaigns/{campaign.Id}/pause", new
+        {
+            rowVersion = campaign.RowVersion,
+            reason = "إيقاف مؤقت"
+        });
+        var body = await pause.Content.ReadAsStringAsync();
+        Assert.True(pause.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<CampaignDetail>(body, JsonOptions)!;
+    }
+
+    private static async Task<CampaignDetail> ResumeCampaignAsync(HttpClient publisher, CampaignDetail campaign)
+    {
+        var resume = await publisher.PostAsJsonAsync($"/api/v1/form-campaigns/{campaign.Id}/resume", new
+        {
+            rowVersion = campaign.RowVersion
+        });
+        var body = await resume.Content.ReadAsStringAsync();
+        Assert.True(resume.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<CampaignDetail>(body, JsonOptions)!;
+    }
+
+    private sealed record CampaignDetail(
+        Guid Id,
+        FormCampaignStatus Status,
+        string SchemaHash,
+        string RowVersion,
+        DateTimeOffset? NextOccurrenceUtc);
     private sealed record VersionDto(Guid Id, FormVersionStatus Status, string RowVersion, Guid? SnapshotId);
     private sealed record SnapshotDto(string SchemaHash);
     private sealed record PagedCycles(int TotalCount, List<CycleItem> Items);
