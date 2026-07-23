@@ -219,7 +219,7 @@ public sealed record FormResponseHistoryDto(
 
 public sealed record FormResponseReviewCommentRequest(
     string? FieldKey,
-    string Body,
+    string? Body,
     bool IsVisibleToRespondent);
 
 public sealed record FormResponseReturnRequest(

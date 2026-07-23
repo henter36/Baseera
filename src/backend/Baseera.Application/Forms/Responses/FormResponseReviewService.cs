@@ -584,20 +584,33 @@ public sealed class FormResponseReviewService(
             (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == write.Response.FormSchemaSnapshotId, ct)).CanonicalSchemaJson);
         var fieldKeys = schema.Pages.SelectMany(p => p.Sections).SelectMany(s => s.Fields).Select(f => f.Key)
             .ToHashSet(StringComparer.Ordinal);
+
+        var validated = new List<(string? FieldKey, string Body, bool IsVisibleToRespondent)>(write.Comments.Count);
         foreach (var comment in write.Comments)
         {
+            var body = comment.Body?.Trim();
+            if (string.IsNullOrEmpty(body))
+            {
+                throw new ArgumentException("نص التعليق مطلوب.");
+            }
+
             if (comment.FieldKey is not null && !fieldKeys.Contains(comment.FieldKey))
             {
                 throw new ArgumentException("مفتاح الحقل في التعليق غير موجود في المخطط.");
             }
 
+            validated.Add((comment.FieldKey, body, comment.IsVisibleToRespondent));
+        }
+
+        foreach (var comment in validated)
+        {
             db.Add(new FormResponseReviewComment
             {
                 ResponseId = write.Response.Id,
                 SubmissionId = write.Submission.Id,
                 ReviewDecisionId = write.DecisionId,
                 FieldKey = comment.FieldKey,
-                Body = comment.Body.Trim(),
+                Body = comment.Body,
                 IsVisibleToRespondent = comment.IsVisibleToRespondent,
                 CreatedByUserId = write.UserId,
                 CreatedAtUtc = write.Now

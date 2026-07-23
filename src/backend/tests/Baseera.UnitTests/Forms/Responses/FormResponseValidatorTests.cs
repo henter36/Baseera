@@ -195,6 +195,53 @@ public sealed class FormResponseValidatorTests
         Assert.Contains(result.Issues, i => i.Code == "DUPLICATE_ROW");
     }
 
+    [Fact]
+    public void Exactly_max_answer_keys_does_not_emit_too_many_keys()
+    {
+        var schema = SimpleSchema();
+        var payload = BuildAnswerObjectJson(FormResponseValidator.MaxAnswerKeys, includeDuplicateAt: 2);
+        var answers = JsonDocument.Parse(payload).RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+
+        Assert.DoesNotContain(result.Issues, i => i.Code == "TOO_MANY_KEYS");
+        Assert.Contains(result.Issues, i => i.Code == "DUPLICATE_KEY");
+        Assert.Equal(FormResponseValidator.MaxAnswerKeys - 1, result.Issues.Count(i => i.Code == "UNKNOWN_FIELD"));
+    }
+
+    [Fact]
+    public void Over_max_answer_keys_emits_single_too_many_keys_and_skips_extra_key()
+    {
+        var schema = SimpleSchema();
+        var total = FormResponseValidator.MaxAnswerKeys + 1;
+        var payload = BuildAnswerObjectJson(total, includeDuplicateAt: null, finalKey: "overflow_key");
+        var answers = JsonDocument.Parse(payload).RootElement;
+        var result = _sut.Validate(schema, answers, FormResponseValidationMode.DraftPartial);
+
+        Assert.Equal(1, result.Issues.Count(i => i.Code == "TOO_MANY_KEYS"));
+        Assert.DoesNotContain(result.Issues, i => i.Code == "UNKNOWN_FIELD" && i.Path == "overflow_key");
+        Assert.Equal(FormResponseValidator.MaxAnswerKeys, result.Issues.Count(i => i.Code == "UNKNOWN_FIELD"));
+        Assert.Equal("TOO_MANY_KEYS", result.Issues[^1].Code);
+    }
+
+    private static string BuildAnswerObjectJson(
+        int keyCount,
+        int? includeDuplicateAt,
+        string? finalKey = null)
+    {
+        var parts = new List<string>(keyCount);
+        for (var i = 0; i < keyCount; i++)
+        {
+            var key = includeDuplicateAt is int dup && i == dup
+                ? $"u{dup - 1}"
+                : i == keyCount - 1 && finalKey is not null
+                    ? finalKey
+                    : $"u{i}";
+            parts.Add($"\"{key}\":\"v{i}\"");
+        }
+
+        return "{" + string.Join(",", parts) + "}";
+    }
+
     private static FormSchemaDocument RepeatingSchema() => new()
     {
         Pages =

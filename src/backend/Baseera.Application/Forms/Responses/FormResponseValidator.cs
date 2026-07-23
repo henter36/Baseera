@@ -156,7 +156,6 @@ public sealed class FormResponseValidator : IFormResponseValidator
         public required List<FormResponseValidationIssueDto> Issues { get; init; }
         public Dictionary<string, object?> Result { get; } = new(StringComparer.Ordinal);
         public HashSet<string> Seen { get; } = new(StringComparer.Ordinal);
-        public int KeyCount { get; set; }
     }
 
     private static Dictionary<string, object?> ParseAnswers(
@@ -164,37 +163,47 @@ public sealed class FormResponseValidator : IFormResponseValidator
         Dictionary<string, FormFieldSchema> fields,
         List<FormResponseValidationIssueDto> issues)
     {
-        var context = new AnswerParsingContext { Fields = fields, Issues = issues };
-        foreach (var prop in answers.EnumerateObject())
+        var context = new AnswerParsingContext
         {
-            if (!TryProcessAnswerProperty(context, prop))
-            {
-                break;
-            }
+            Fields = fields,
+            Issues = issues
+        };
+
+        var properties = answers
+            .EnumerateObject()
+            .Take(MaxAnswerKeys + 1)
+            .ToList();
+
+        foreach (var property in properties.Take(MaxAnswerKeys))
+        {
+            ProcessAnswerProperty(context, property);
+        }
+
+        if (properties.Count > MaxAnswerKeys)
+        {
+            context.Issues.Add(Issue(
+                "TOO_MANY_KEYS",
+                "$",
+                null,
+                "عدد مفاتيح الإجابات يتجاوز الحد.",
+                ErrorSeverity));
         }
 
         return context.Result;
     }
 
-    private static bool TryProcessAnswerProperty(AnswerParsingContext context, JsonProperty prop)
+    private static void ProcessAnswerProperty(AnswerParsingContext context, JsonProperty prop)
     {
-        context.KeyCount++;
-        if (context.KeyCount > MaxAnswerKeys)
-        {
-            context.Issues.Add(Issue("TOO_MANY_KEYS", "$", null, "عدد مفاتيح الإجابات يتجاوز الحد.", ErrorSeverity));
-            return false;
-        }
-
         if (!context.Seen.Add(prop.Name))
         {
             context.Issues.Add(Issue("DUPLICATE_KEY", prop.Name, prop.Name, "مفتاح إجابة مكرر.", ErrorSeverity));
-            return true;
+            return;
         }
 
         if (!context.Fields.TryGetValue(prop.Name, out var field))
         {
             context.Issues.Add(Issue("UNKNOWN_FIELD", prop.Name, prop.Name, "حقل غير موجود في المخطط.", ErrorSeverity));
-            return true;
+            return;
         }
 
         if (field.IsCalculated || field.IsReadOnly)
@@ -205,11 +214,10 @@ public sealed class FormResponseValidator : IFormResponseValidator
                 prop.Name,
                 "لا يمكن تعديل هذا الحقل من العميل.",
                 ErrorSeverity));
-            return true;
+            return;
         }
 
         context.Result[prop.Name] = CoerceValue(field, prop.Value, context.Issues);
-        return true;
     }
 
     private static object? CoerceValue(

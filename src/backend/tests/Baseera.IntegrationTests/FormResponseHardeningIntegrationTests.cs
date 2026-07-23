@@ -61,6 +61,85 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
     }
 
     [IntegrationConnectionFact]
+    public async Task Return_rejects_null_empty_and_whitespace_comment_bodies()
+    {
+        await SeedWorkflowUsersAsync();
+        var reviewer = _factory.CreateAuthenticatedClient("rsp-h-reviewer");
+
+        foreach (var body in new object?[] { null, "", "   " })
+        {
+            var submitted = await SubmitSingleResponseAsync();
+            var response = await reviewer.PostAsJsonAsync($"/api/v1/form-responses/{submitted.ResponseId}/return", new
+            {
+                reason = "يلزم توضيح",
+                newDueAtUtc = DateTimeOffset.UtcNow.AddDays(2),
+                comments = new[]
+                {
+                    new { fieldKey = "q1", body, isVisibleToRespondent = true }
+                },
+                rowVersion = submitted.RowVersion
+            });
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            Assert.Equal(0, await db.FormResponseReviewComments.CountAsync(c => c.ResponseId == submitted.ResponseId));
+        }
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Return_trims_comment_body_and_rejects_partial_invalid_batches()
+    {
+        await SeedWorkflowUsersAsync();
+        var reviewer = _factory.CreateAuthenticatedClient("rsp-h-reviewer");
+        var submitted = await SubmitSingleResponseAsync();
+
+        var invalidBatch = await reviewer.PostAsJsonAsync($"/api/v1/form-responses/{submitted.ResponseId}/return", new
+        {
+            reason = "يلزم توضيح",
+            newDueAtUtc = DateTimeOffset.UtcNow.AddDays(2),
+            comments = new[]
+            {
+                new { fieldKey = "q1", body = "تعليق صالح", isVisibleToRespondent = true },
+                new { fieldKey = (string?)null, body = "   ", isVisibleToRespondent = false }
+            },
+            rowVersion = submitted.RowVersion
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidBatch.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            Assert.Equal(0, await db.FormResponseReviewComments.CountAsync(c => c.ResponseId == submitted.ResponseId));
+        }
+
+        var valid = await reviewer.PostAsJsonAsync($"/api/v1/form-responses/{submitted.ResponseId}/return", new
+        {
+            reason = "يلزم توضيح",
+            newDueAtUtc = DateTimeOffset.UtcNow.AddDays(2),
+            comments = new[]
+            {
+                new { fieldKey = "q1", body = "  تعليق حقلي  ", isVisibleToRespondent = true },
+                new { fieldKey = (string?)null, body = "  تعليق عام  ", isVisibleToRespondent = false }
+            },
+            rowVersion = submitted.RowVersion
+        });
+        Assert.True(valid.IsSuccessStatusCode, await valid.Content.ReadAsStringAsync());
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var comments = await db.FormResponseReviewComments.AsNoTracking()
+                .Where(c => c.ResponseId == submitted.ResponseId)
+                .OrderBy(c => c.CreatedAtUtc)
+                .ToListAsync();
+            Assert.Equal(2, comments.Count);
+            Assert.Contains(comments, c => c.Body == "تعليق حقلي" && c.FieldKey == "q1" && c.IsVisibleToRespondent);
+            Assert.Contains(comments, c => c.Body == "تعليق عام" && c.FieldKey == null && !c.IsVisibleToRespondent);
+        }
+    }
+
+    [IntegrationConnectionFact]
     public async Task ViewResponses_in_scope_can_open_review_detail()
     {
         await SeedWorkflowUsersAsync();
@@ -224,7 +303,8 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
         var (submittedFormId, submittedVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}S");
         var submittedCampaign = await CreateAndPublishCampaignAsync(
             designer, publisher, submittedFormId, submittedVersionId, SeedIds.FacilityA1,
-            requiredApprovalLevels: 0, campaignName: marker, completionBasis: 0, reviewMode: 0);
+            requiredApprovalLevels: 0, campaignName: marker,
+            completionBasis: FormCompletionBasis.Submitted, reviewMode: FormReviewMode.None);
         var submittedAssignmentId = await GetFirstAssignmentIdAsync(publisher, submittedCampaign.Id);
         var submitSubmitted = await respondent.PostAsJsonAsync(
             $"/api/v1/form-assignments/{submittedAssignmentId}/response/submit",
@@ -243,7 +323,8 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
         var (approvedFormId, approvedVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}A");
         var approvedCampaign = await CreateAndPublishCampaignAsync(
             designer, publisher, approvedFormId, approvedVersionId, SeedIds.FacilityA1,
-            requiredApprovalLevels: 1, campaignName: marker, completionBasis: 1, reviewMode: 1);
+            requiredApprovalLevels: 1, campaignName: marker,
+            completionBasis: FormCompletionBasis.Approved, reviewMode: FormReviewMode.SingleLevel);
         var approvedAssignmentId = await GetFirstAssignmentIdAsync(publisher, approvedCampaign.Id);
         var submitApproved = await respondent.PostAsJsonAsync(
             $"/api/v1/form-assignments/{approvedAssignmentId}/response/submit",
@@ -275,13 +356,15 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
         var (currentFormId, currentVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}C");
         await CreateAndPublishCampaignAsync(
             designer, publisher, currentFormId, currentVersionId, SeedIds.FacilityA1,
-            requiredApprovalLevels: 1, campaignName: marker, completionBasis: 1, reviewMode: 1);
+            requiredApprovalLevels: 1, campaignName: marker,
+            completionBasis: FormCompletionBasis.Approved, reviewMode: FormReviewMode.SingleLevel);
 
         // Overdue + DueAtUtcOverride: open response with past override (API rejects past return due).
         var (overdueFormId, overdueVersionId) = await CreateLockedFormAsync(designer, formApprover, $"{marker}O");
         var overdueCampaign = await CreateAndPublishCampaignAsync(
             designer, publisher, overdueFormId, overdueVersionId, SeedIds.FacilityA1,
-            requiredApprovalLevels: 1, campaignName: marker, completionBasis: 1, reviewMode: 1);
+            requiredApprovalLevels: 1, campaignName: marker,
+            completionBasis: FormCompletionBasis.Approved, reviewMode: FormReviewMode.SingleLevel);
         var overdueAssignmentId = await GetFirstAssignmentIdAsync(publisher, overdueCampaign.Id);
         var draftOverdue = await respondent.PutAsJsonAsync(
             $"/api/v1/form-assignments/{overdueAssignmentId}/response/draft",
@@ -582,12 +665,17 @@ public sealed class FormResponseHardeningIntegrationTests : IClassFixture<Baseer
         Guid facilityId,
         int requiredApprovalLevels = 1,
         string? campaignName = null,
-        int? completionBasis = null,
-        int? reviewMode = null)
+        FormCompletionBasis? completionBasis = null,
+        FormReviewMode? reviewMode = null)
     {
         var firstOpen = DateTimeOffset.UtcNow.AddMinutes(-10);
-        var resolvedReviewMode = reviewMode ?? (requiredApprovalLevels > 1 ? 2 : requiredApprovalLevels == 0 ? 0 : 1);
-        var resolvedCompletionBasis = completionBasis ?? 1;
+        var resolvedReviewMode = reviewMode
+            ?? (requiredApprovalLevels > 1
+                ? FormReviewMode.MultiLevel
+                : requiredApprovalLevels == 0
+                    ? FormReviewMode.None
+                    : FormReviewMode.SingleLevel);
+        var resolvedCompletionBasis = completionBasis ?? FormCompletionBasis.Approved;
         var create = await designer.PostAsJsonAsync("/api/v1/form-campaigns", new
         {
             formDefinitionId = formId,
