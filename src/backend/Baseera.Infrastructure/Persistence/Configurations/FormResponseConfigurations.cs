@@ -107,8 +107,9 @@ internal sealed class FormResponseReviewDecisionConfiguration : IEntityTypeConfi
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Reason).HasMaxLength(2000);
         builder.HasIndex(x => new { x.ResponseId, x.ReviewLevel });
-        builder.HasIndex(x => new { x.SubmissionId, x.ReviewLevel, x.ReviewedByUserId, x.Decision })
+        builder.HasIndex(x => new { x.ResponseId, x.SubmissionId, x.ReviewLevel })
             .IsUnique()
+            .HasDatabaseName("IX_FormResponseReviewDecisions_ApproveLevel")
             .HasFilter("[Decision] = 2");
         builder.HasOne(x => x.Response)
             .WithMany(r => r.ReviewDecisions)

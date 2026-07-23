@@ -2,6 +2,7 @@ namespace Baseera.Application.Forms.Responses;
 
 using Baseera.Application.Abstractions;
 using Baseera.Application.Audit;
+using Baseera.Application.Forms;
 using Baseera.Domain.Audit;
 using Baseera.Domain.Forms;
 using Microsoft.EntityFrameworkCore;
@@ -9,18 +10,7 @@ using Microsoft.EntityFrameworkCore;
 public interface IFormResponseReviewService
 {
     Task<FormResponseWorkspacePageDto> ListInboxAsync(
-        string? status,
-        Guid? campaignId,
-        Guid? cycleId,
-        Guid? regionId,
-        Guid? facilityId,
-        int? reviewLevel,
-        DateTimeOffset? submittedFrom,
-        DateTimeOffset? submittedTo,
-        bool? overdue,
-        string? search,
-        int page,
-        int pageSize,
+        FormResponseReviewInboxQuery query,
         CancellationToken cancellationToken = default);
 
     Task<FormResponseReviewDetailDto> GetReviewAsync(Guid responseId, CancellationToken cancellationToken = default);
@@ -43,92 +33,37 @@ public sealed class FormResponseReviewService(
     TimeProvider clock) : IFormResponseReviewService
 {
     public async Task<FormResponseWorkspacePageDto> ListInboxAsync(
-        string? status,
-        Guid? campaignId,
-        Guid? cycleId,
-        Guid? regionId,
-        Guid? facilityId,
-        int? reviewLevel,
-        DateTimeOffset? submittedFrom,
-        DateTimeOffset? submittedTo,
-        bool? overdue,
-        string? search,
-        int page,
-        int pageSize,
+        FormResponseReviewInboxQuery query,
         CancellationToken cancellationToken = default)
     {
         access.EnsureReviewPermission();
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        FormResponseListQueries.EnsureKnownReviewStatus(query.Status);
+        query = FormResponseListQueries.Normalize(query);
         var now = clock.GetUtcNow();
 
-        var query =
-            from r in db.FormResponses.AsNoTracking()
-            join a in db.FormFacilityAssignments.AsNoTracking() on r.AssignmentId equals a.Id
-            join c in db.FormCycles.AsNoTracking() on r.CycleId equals c.Id
-            join camp in db.FormCampaigns.AsNoTracking() on r.CampaignId equals camp.Id
-            join pol in db.FormCampaignResponsePolicies.AsNoTracking() on camp.Id equals pol.CampaignId
-            where r.Status == FormResponseStatus.Submitted || r.Status == FormResponseStatus.UnderReview
-            select new { r, a, c, camp, pol };
-
-        if (campaignId.HasValue) query = query.Where(x => x.r.CampaignId == campaignId);
-        if (cycleId.HasValue) query = query.Where(x => x.r.CycleId == cycleId);
-        if (regionId.HasValue) query = query.Where(x => x.a.RegionIdAtAssignment == regionId);
-        if (facilityId.HasValue) query = query.Where(x => x.r.FacilityId == facilityId);
-        if (reviewLevel.HasValue) query = query.Where(x => x.r.CurrentReviewLevel == reviewLevel);
-        if (submittedFrom.HasValue) query = query.Where(x => x.r.SubmittedAtUtc >= submittedFrom);
-        if (submittedTo.HasValue) query = query.Where(x => x.r.SubmittedAtUtc <= submittedTo);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim();
-            query = query.Where(x => x.camp.NameAr.Contains(term) || x.a.FacilityNameArAtAssignment.Contains(term));
-        }
-
-        var rows = await query
-            .OrderBy(x => x.r.SubmittedAtUtc)
-            .ThenBy(x => x.r.Id)
-            .Take(pageSize * 5)
+        var baseQuery = BuildReviewInboxQuery();
+        baseQuery = FormResponseListQueries.ApplyInboxFilters(baseQuery, query, now);
+        var totalCount = await baseQuery.CountAsync(cancellationToken);
+        var rows = await baseQuery
+            .OrderBy(x => x.Response.SubmittedAtUtc)
+            .ThenBy(x => x.Response.Id)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
             .ToListAsync(cancellationToken);
 
-        var items = new List<FormResponseWorkspaceItemDto>();
-        foreach (var row in rows)
-        {
-            try { await access.EnsureFacilityInScopeAsync(row.r.FacilityId, cancellationToken); }
-            catch (KeyNotFoundException) { continue; }
-
-            var due = FormResponseWorkStatusResolver.ResolveEffectiveDueAt(row.c.DueAtUtc, row.r.DueAtUtcOverride);
-            var isOverdue = FormResponseWorkStatusResolver.IsOverdue(row.r.Status, row.pol.CompletionBasis, due, now, completion);
-            if (overdue == true && !isOverdue) continue;
-            if (overdue == false && isOverdue) continue;
-            if (!string.IsNullOrWhiteSpace(status)
-                && !string.Equals(row.r.Status.ToString(), status, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var work = FormResponseWorkStatusResolver.Resolve(row.r.Status, isOverdue);
-            items.Add(new FormResponseWorkspaceItemDto(
-                row.a.Id, row.camp.Id, row.camp.Code, row.camp.NameAr, row.c.Id, row.c.OccurrenceKey,
-                row.a.FacilityId, row.a.FacilityNameArAtAssignment, row.a.RegionIdAtAssignment, row.a.RegionNameArAtAssignment,
-                row.c.OpenAtUtc, row.c.DueAtUtc, row.c.GraceEndsAtUtc, row.c.CloseAtUtc, due,
-                row.r.Id, row.r.Status, work, isOverdue,
-                completion.IsCompleted(row.pol.CompletionBasis, row.r.Status),
-                row.r.DraftVersion, row.r.LastSavedAtUtc, row.r.SubmittedAtUtc,
-                row.r.CurrentReviewLevel, row.pol.RequiredApprovalLevels,
-                ResolveReviewActions(row.r, row.pol),
-                Convert.ToBase64String(row.r.RowVersion)));
-            if (items.Count >= pageSize) break;
-        }
-
-        return new FormResponseWorkspacePageDto(items, page, pageSize, items.Count);
+        var items = ProjectReviewInboxItems(rows, now);
+        return new FormResponseWorkspacePageDto(items, query.Page, query.PageSize, totalCount);
     }
 
     public async Task<FormResponseReviewDetailDto> GetReviewAsync(Guid responseId, CancellationToken cancellationToken = default)
     {
-        access.EnsureViewResponsesPermission();
+        access.EnsureReviewDetailPermission();
         var response = await LoadResponseOrNotFoundAsync(responseId, track: false, cancellationToken);
         await access.EnsureFacilityInScopeAsync(response.FacilityId, cancellationToken);
-        var workspace = await responseService.GetAssignmentResponseAsync(response.AssignmentId, cancellationToken);
+        var campaign = await db.FormCampaigns.AsNoTracking()
+            .FirstAsync(c => c.Id == response.CampaignId, cancellationToken);
+        await access.EnsureFormCapabilityAsync(campaign.FormDefinitionId, FormAccessCapability.ViewResponses, cancellationToken);
+        var workspace = await responseService.GetReviewerAssignmentDetailAsync(response.AssignmentId, cancellationToken);
         var submissions = await ListSubmissionsAsync(responseId, cancellationToken);
         var decisions = await db.FormResponseReviewDecisions.AsNoTracking()
             .Where(d => d.ResponseId == responseId)
@@ -163,7 +98,9 @@ public sealed class FormResponseReviewService(
             var submission = await CurrentSubmissionAsync(response, ct);
             response.Status = FormResponseStatus.UnderReview;
             response.UpdatedAtUtc = now;
-            db.Add(CreateDecision(response, submission, FormResponseReviewDecisionType.StartReview, null, null, from, FormResponseStatus.UnderReview, userId, now));
+            db.Add(CreateDecision(new ReviewDecisionWrite(
+                response, submission, FormResponseReviewDecisionType.StartReview, null, null, from,
+                FormResponseStatus.UnderReview, userId, now)));
             await WriteAuditAsync(response, "FormResponseReviewStarted", from, FormResponseStatus.UnderReview, null, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -188,14 +125,16 @@ public sealed class FormResponseReviewService(
             var now = clock.GetUtcNow();
             var userId = access.UserId;
             var submission = await CurrentSubmissionAsync(response, ct);
-            var decision = CreateDecision(response, submission, FormResponseReviewDecisionType.Return, request.Reason, request.NewDueAtUtc, from, FormResponseStatus.Returned, userId, now);
+            var decision = CreateDecision(new ReviewDecisionWrite(
+                response, submission, FormResponseReviewDecisionType.Return, request.Reason, request.NewDueAtUtc,
+                from, FormResponseStatus.Returned, userId, now));
             db.Add(decision);
-            await AddCommentsAsync(response, submission, decision.Id, request.Comments, userId, now, ct);
+            await AddCommentsAsync(new ReviewCommentWrite(response, submission, decision.Id, request.Comments, userId, now), ct);
             response.Status = FormResponseStatus.Returned;
             response.ReturnedAtUtc = now;
             response.DueAtUtcOverride = request.NewDueAtUtc;
             response.UpdatedAtUtc = now;
-            await WriteHistoryAsync(response, "FormResponseReturned", from, FormResponseStatus.Returned, request.Reason, userId, now, ct);
+            WriteHistory(new ResponseHistoryWrite(response, "FormResponseReturned", from, FormResponseStatus.Returned, request.Reason, userId, now));
             await WriteAuditAsync(response, "FormResponseReturned", from, FormResponseStatus.Returned, request.Reason, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -205,46 +144,10 @@ public sealed class FormResponseReviewService(
         db.ExecuteInTransactionAsync(async ct =>
         {
             access.EnsureApprovePermission();
-            var response = await LoadResponseOrNotFoundAsync(responseId, track: true, ct);
-            await access.EnsureFacilityInScopeAsync(response.FacilityId, ct);
-            EnsureNotSelf(response);
-            FormAccessHelper.EnsureRowVersion(response.RowVersion, request.RowVersion);
-            var policy = await db.FormCampaignResponsePolicies.FirstAsync(p => p.CampaignId == response.CampaignId, ct);
-            EnsureSeparationOfDuties(response, policy, access.UserId);
-            await EnsureNoDuplicateApprovalAsync(response, access.UserId, ct);
-            await EnsureNoConsecutiveLevelsAsync(response, policy, access.UserId, ct);
-
-            var from = response.Status;
-            if (from == FormResponseStatus.Submitted)
-            {
-                FormResponseStateMachine.EnsureCanTransition(from, FormResponseStatus.UnderReview);
-                response.Status = FormResponseStatus.UnderReview;
-                from = FormResponseStatus.UnderReview;
-            }
-
-            var level = Math.Max(1, response.CurrentReviewLevel);
-            var target = FormResponseStateMachine.ResolveApprovalTargetStatus(level, policy.RequiredApprovalLevels);
-            FormResponseStateMachine.EnsureCanTransition(from, target);
-            var now = clock.GetUtcNow();
-            var userId = access.UserId;
-            var submission = await CurrentSubmissionAsync(response, ct);
-            var decision = CreateDecision(response, submission, FormResponseReviewDecisionType.Approve, request.Reason, null, from, target, userId, now, level);
-            db.Add(decision);
-            await AddCommentsAsync(response, submission, decision.Id, request.Comments, userId, now, ct);
-            response.Status = target;
-            if (target == FormResponseStatus.Approved)
-            {
-                response.ApprovedAtUtc = now;
-            }
-            else
-            {
-                response.CurrentReviewLevel = level + 1;
-            }
-
-            response.UpdatedAtUtc = now;
-            await WriteHistoryAsync(response, "FormResponseApproved", from, target, request.Reason, userId, now, ct);
-            await WriteAuditAsync(response, "FormResponseApproved", from, target, request.Reason, ct);
-            await db.SaveChangesAsync(ct);
+            var reviewContext = await LoadReviewContextAsync(responseId, request, ct);
+            var decisionContext = await ValidateReviewDecisionAsync(reviewContext, ct);
+            ApplyApprovalDecision(decisionContext);
+            await PersistReviewDecisionAsync(decisionContext, ct);
             return true;
         }, cancellationToken);
 
@@ -266,13 +169,15 @@ public sealed class FormResponseReviewService(
             var now = clock.GetUtcNow();
             var userId = access.UserId;
             var submission = await CurrentSubmissionAsync(response, ct);
-            var decision = CreateDecision(response, submission, FormResponseReviewDecisionType.Reject, request.Reason, null, from, FormResponseStatus.Rejected, userId, now);
+            var decision = CreateDecision(new ReviewDecisionWrite(
+                response, submission, FormResponseReviewDecisionType.Reject, request.Reason, null,
+                from, FormResponseStatus.Rejected, userId, now));
             db.Add(decision);
-            await AddCommentsAsync(response, submission, decision.Id, request.Comments, userId, now, ct);
+            await AddCommentsAsync(new ReviewCommentWrite(response, submission, decision.Id, request.Comments, userId, now), ct);
             response.Status = FormResponseStatus.Rejected;
             response.RejectedAtUtc = now;
             response.UpdatedAtUtc = now;
-            await WriteHistoryAsync(response, "FormResponseRejected", from, FormResponseStatus.Rejected, request.Reason, userId, now, ct);
+            WriteHistory(new ResponseHistoryWrite(response, "FormResponseRejected", from, FormResponseStatus.Rejected, request.Reason, userId, now));
             await WriteAuditAsync(response, "FormResponseRejected", from, FormResponseStatus.Rejected, request.Reason, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -296,11 +201,13 @@ public sealed class FormResponseReviewService(
             var now = clock.GetUtcNow();
             var userId = access.UserId;
             var submission = await CurrentSubmissionAsync(response, ct);
-            db.Add(CreateDecision(response, submission, FormResponseReviewDecisionType.Close, request.Reason, null, from, FormResponseStatus.Closed, userId, now));
+            db.Add(CreateDecision(new ReviewDecisionWrite(
+                response, submission, FormResponseReviewDecisionType.Close, request.Reason, null,
+                from, FormResponseStatus.Closed, userId, now)));
             response.Status = FormResponseStatus.Closed;
             response.ClosedAtUtc = now;
             response.UpdatedAtUtc = now;
-            await WriteHistoryAsync(response, "FormResponseClosed", from, FormResponseStatus.Closed, request.Reason, userId, now, ct);
+            WriteHistory(new ResponseHistoryWrite(response, "FormResponseClosed", from, FormResponseStatus.Closed, request.Reason, userId, now));
             await WriteAuditAsync(response, "FormResponseClosed", from, FormResponseStatus.Closed, request.Reason, ct);
             await db.SaveChangesAsync(ct);
             return true;
@@ -308,7 +215,7 @@ public sealed class FormResponseReviewService(
 
     public async Task<IReadOnlyList<FormResponseSubmissionDto>> ListSubmissionsAsync(Guid responseId, CancellationToken cancellationToken = default)
     {
-        access.EnsureViewResponsesPermission();
+        access.EnsureReviewDetailPermission();
         var response = await LoadResponseOrNotFoundAsync(responseId, track: false, cancellationToken);
         await access.EnsureFacilityInScopeAsync(response.FacilityId, cancellationToken);
         return await db.FormResponseSubmissions.AsNoTracking()
@@ -329,7 +236,7 @@ public sealed class FormResponseReviewService(
 
     public async Task<IReadOnlyList<FormResponseHistoryDto>> GetHistoryAsync(Guid responseId, CancellationToken cancellationToken = default)
     {
-        access.EnsureViewResponsesPermission();
+        access.EnsureReviewDetailPermission();
         var response = await LoadResponseOrNotFoundAsync(responseId, track: false, cancellationToken);
         await access.EnsureFacilityInScopeAsync(response.FacilityId, cancellationToken);
         return await db.FormResponseHistories.AsNoTracking()
@@ -339,6 +246,177 @@ public sealed class FormResponseReviewService(
                 h.Id, h.EventType, h.FromStatus, h.ToStatus, h.SubmissionNumber, h.ReviewLevel, h.Reason, h.ActorUserId, h.OccurredAtUtc))
             .ToListAsync(cancellationToken);
     }
+
+    private IQueryable<FormResponseListQueries.InboxRow> BuildReviewInboxQuery()
+    {
+        var scopedFacilityIds = access.FilterFacilities(db.Facilities.AsNoTracking()).Select(f => f.Id);
+        return from r in db.FormResponses.AsNoTracking()
+            join a in db.FormFacilityAssignments.AsNoTracking() on r.AssignmentId equals a.Id
+            join c in db.FormCycles.AsNoTracking() on r.CycleId equals c.Id
+            join camp in db.FormCampaigns.AsNoTracking() on r.CampaignId equals camp.Id
+            join pol in db.FormCampaignResponsePolicies.AsNoTracking() on camp.Id equals pol.CampaignId
+            where (r.Status == FormResponseStatus.Submitted || r.Status == FormResponseStatus.UnderReview)
+                && scopedFacilityIds.Contains(r.FacilityId)
+            select new FormResponseListQueries.InboxRow
+            {
+                Response = r,
+                Assignment = a,
+                Cycle = c,
+                Campaign = camp,
+                Policy = pol
+            };
+    }
+
+    private IReadOnlyList<FormResponseWorkspaceItemDto> ProjectReviewInboxItems(
+        IReadOnlyList<FormResponseListQueries.InboxRow> rows,
+        DateTimeOffset now) =>
+        rows.Select(row =>
+        {
+            var due = FormResponseWorkStatusResolver.ResolveEffectiveDueAt(row.Cycle.DueAtUtc, row.Response.DueAtUtcOverride);
+            var isOverdue = FormResponseWorkStatusResolver.IsOverdue(row.Response.Status, row.Policy.CompletionBasis, due, now, completion);
+            var work = FormResponseWorkStatusResolver.Resolve(row.Response.Status, isOverdue);
+            return new FormResponseWorkspaceItemDto(
+                row.Assignment.Id, row.Campaign.Id, row.Campaign.Code, row.Campaign.NameAr, row.Cycle.Id, row.Cycle.OccurrenceKey,
+                row.Assignment.FacilityId, row.Assignment.FacilityNameArAtAssignment, row.Assignment.RegionIdAtAssignment, row.Assignment.RegionNameArAtAssignment,
+                row.Cycle.OpenAtUtc, row.Cycle.DueAtUtc, row.Cycle.GraceEndsAtUtc, row.Cycle.CloseAtUtc, due,
+                row.Response.Id, row.Response.Status, work, isOverdue,
+                completion.IsCompleted(row.Policy.CompletionBasis, row.Response.Status),
+                row.Response.DraftVersion, row.Response.LastSavedAtUtc, row.Response.SubmittedAtUtc,
+                row.Response.CurrentReviewLevel, row.Policy.RequiredApprovalLevels,
+                ResolveReviewActions(row.Response, row.Policy),
+                Convert.ToBase64String(row.Response.RowVersion));
+        }).ToList();
+
+    private async Task<ResponseReviewContext> LoadReviewContextAsync(
+        Guid responseId,
+        FormResponseApproveRequest request,
+        CancellationToken ct)
+    {
+        var response = await LoadResponseOrNotFoundAsync(responseId, track: true, ct);
+        await access.EnsureFacilityInScopeAsync(response.FacilityId, ct);
+        EnsureNotSelf(response);
+        FormAccessHelper.EnsureResponseRowVersion(response, request.RowVersion);
+        var policy = await db.FormCampaignResponsePolicies.FirstAsync(p => p.CampaignId == response.CampaignId, ct);
+        var submission = await CurrentSubmissionAsync(response, ct);
+        return new ResponseReviewContext(response, policy, request, submission, access.UserId, clock.GetUtcNow());
+    }
+
+    private async Task<ApprovalDecisionContext> ValidateReviewDecisionAsync(ResponseReviewContext context, CancellationToken ct)
+    {
+        EnsureSeparationOfDuties(context.Response, context.Policy, context.UserId);
+        await EnsureNoDuplicateApprovalAsync(context.Response, ct);
+        await EnsureNoConsecutiveLevelsAsync(context.Response, context.Policy, context.UserId, ct);
+
+        var from = context.Response.Status;
+        if (from == FormResponseStatus.Submitted)
+        {
+            FormResponseStateMachine.EnsureCanTransition(from, FormResponseStatus.UnderReview);
+            context.Response.Status = FormResponseStatus.UnderReview;
+            from = FormResponseStatus.UnderReview;
+        }
+
+        var level = Math.Max(1, context.Response.CurrentReviewLevel);
+        var target = FormResponseStateMachine.ResolveApprovalTargetStatus(level, context.Policy.RequiredApprovalLevels);
+        FormResponseStateMachine.EnsureCanTransition(from, target);
+        return new ApprovalDecisionContext(context, from, target, level);
+    }
+
+    private void ApplyApprovalDecision(ApprovalDecisionContext context)
+    {
+        var decision = CreateDecision(new ReviewDecisionWrite(
+            context.Review.Response,
+            context.Review.Submission,
+            FormResponseReviewDecisionType.Approve,
+            context.Review.Request.Reason,
+            null,
+            context.FromStatus,
+            context.TargetStatus,
+            context.Review.UserId,
+            context.Review.Now,
+            context.ReviewLevel));
+        db.Add(decision);
+        context.DecisionId = decision.Id;
+        context.Review.Response.Status = context.TargetStatus;
+        if (context.TargetStatus == FormResponseStatus.Approved)
+        {
+            context.Review.Response.ApprovedAtUtc = context.Review.Now;
+        }
+        else
+        {
+            context.Review.Response.CurrentReviewLevel = context.ReviewLevel + 1;
+        }
+
+        context.Review.Response.UpdatedAtUtc = context.Review.Now;
+    }
+
+    private async Task PersistReviewDecisionAsync(ApprovalDecisionContext context, CancellationToken ct)
+    {
+        await AddCommentsAsync(new ReviewCommentWrite(
+            context.Review.Response,
+            context.Review.Submission,
+            context.DecisionId,
+            context.Review.Request.Comments,
+            context.Review.UserId,
+            context.Review.Now), ct);
+        WriteHistory(new ResponseHistoryWrite(
+            context.Review.Response,
+            "FormResponseApproved",
+            context.FromStatus,
+            context.TargetStatus,
+            context.Review.Request.Reason,
+            context.Review.UserId,
+            context.Review.Now));
+        await WriteAuditAsync(
+            context.Review.Response,
+            "FormResponseApproved",
+            context.FromStatus,
+            context.TargetStatus,
+            context.Review.Request.Reason,
+            ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsConcurrentApprovalConflict(ex))
+        {
+            throw ApprovalLevelAlreadyDecided(context.Review.Response);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            if (await ApprovalExistsAsync(
+                    context.Review.Response.Id,
+                    context.Review.Submission.Id,
+                    context.ReviewLevel,
+                    ct))
+            {
+                throw ApprovalLevelAlreadyDecided(context.Review.Response);
+            }
+
+            throw new FormResponseConflictException(new FormResponseConflictDto(
+                context.Review.Response.DraftVersion,
+                Convert.ToBase64String(context.Review.Response.RowVersion),
+                context.Review.Response.LastSavedAtUtc,
+                "RowVersionConflict"));
+        }
+    }
+
+    private static FormResponseConflictException ApprovalLevelAlreadyDecided(FormResponse response) =>
+        new(new FormResponseConflictDto(
+            response.DraftVersion,
+            Convert.ToBase64String(response.RowVersion),
+            response.LastSavedAtUtc,
+            "APPROVAL_LEVEL_ALREADY_DECIDED"));
+
+    private Task<bool> ApprovalExistsAsync(
+        Guid responseId,
+        Guid submissionId,
+        int reviewLevel,
+        CancellationToken ct) =>
+        db.FormResponseReviewDecisions.AsNoTracking().AnyAsync(d =>
+            d.ResponseId == responseId
+            && d.SubmissionId == submissionId
+            && d.ReviewLevel == reviewLevel
+            && d.Decision == FormResponseReviewDecisionType.Approve, ct);
 
     private async Task<FormResponse> LoadResponseOrNotFoundAsync(Guid responseId, bool track, CancellationToken ct)
     {
@@ -364,7 +442,7 @@ public sealed class FormResponseReviewService(
         }
     }
 
-    private async Task EnsureNoDuplicateApprovalAsync(FormResponse response, Guid userId, CancellationToken ct)
+    private async Task EnsureNoDuplicateApprovalAsync(FormResponse response, CancellationToken ct)
     {
         var level = Math.Max(1, response.CurrentReviewLevel);
         var submission = await db.FormResponseSubmissions.AsNoTracking()
@@ -375,12 +453,44 @@ public sealed class FormResponseReviewService(
             d.ResponseId == response.Id
             && d.SubmissionId == submission.Id
             && d.ReviewLevel == level
-            && d.ReviewedByUserId == userId
             && d.Decision == FormResponseReviewDecisionType.Approve, ct);
         if (exists)
         {
-            throw new InvalidOperationException("لا يمكن اعتماد المستوى نفسه مرتين من المستخدم نفسه.");
+            throw new FormResponseConflictException(new FormResponseConflictDto(
+                response.DraftVersion,
+                Convert.ToBase64String(response.RowVersion),
+                response.LastSavedAtUtc,
+                "APPROVAL_LEVEL_ALREADY_DECIDED"));
         }
+    }
+
+    private const string ApproveLevelUniqueIndex = "IX_FormResponseReviewDecisions_ApproveLevel";
+
+    private static bool IsConcurrentApprovalConflict(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains(ApproveLevelUniqueIndex, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var number = current.GetType().GetProperty("Number")?.GetValue(current);
+            if (number is not (2601 or 2627))
+            {
+                continue;
+            }
+
+            for (Exception? scan = exception; scan is not null; scan = scan.InnerException)
+            {
+                if (scan.Message.Contains(ApproveLevelUniqueIndex, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private async Task EnsureNoConsecutiveLevelsAsync(
@@ -411,46 +521,29 @@ public sealed class FormResponseReviewService(
             .OrderByDescending(s => s.SubmissionNumber)
             .FirstAsync(ct);
 
-    private static FormResponseReviewDecision CreateDecision(
-        FormResponse response,
-        FormResponseSubmission submission,
-        FormResponseReviewDecisionType type,
-        string? reason,
-        DateTimeOffset? newDue,
-        FormResponseStatus from,
-        FormResponseStatus to,
-        Guid userId,
-        DateTimeOffset now,
-        int? level = null) =>
+    private static FormResponseReviewDecision CreateDecision(ReviewDecisionWrite write) =>
         new()
         {
-            ResponseId = response.Id,
-            SubmissionId = submission.Id,
-            ReviewLevel = level ?? Math.Max(1, response.CurrentReviewLevel),
-            Decision = type,
-            Reason = reason,
-            NewDueAtUtc = newDue,
-            ReviewedByUserId = userId,
-            ReviewedAtUtc = now,
-            FromStatus = from,
-            ToStatus = to
+            ResponseId = write.Response.Id,
+            SubmissionId = write.Submission.Id,
+            ReviewLevel = write.Level ?? Math.Max(1, write.Response.CurrentReviewLevel),
+            Decision = write.Type,
+            Reason = write.Reason,
+            NewDueAtUtc = write.NewDue,
+            ReviewedByUserId = write.UserId,
+            ReviewedAtUtc = write.Now,
+            FromStatus = write.From,
+            ToStatus = write.To
         };
 
-    private async Task AddCommentsAsync(
-        FormResponse response,
-        FormResponseSubmission submission,
-        Guid decisionId,
-        IReadOnlyList<FormResponseReviewCommentRequest>? comments,
-        Guid userId,
-        DateTimeOffset now,
-        CancellationToken ct)
+    private async Task AddCommentsAsync(ReviewCommentWrite write, CancellationToken ct)
     {
-        if (comments is null || comments.Count == 0) return;
+        if (write.Comments is null || write.Comments.Count == 0) return;
         var schema = FormResponseSchemaLoader.Parse(
-            (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == response.FormSchemaSnapshotId, ct)).CanonicalSchemaJson);
+            (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == write.Response.FormSchemaSnapshotId, ct)).CanonicalSchemaJson);
         var fieldKeys = schema.Pages.SelectMany(p => p.Sections).SelectMany(s => s.Fields).Select(f => f.Key)
             .ToHashSet(StringComparer.Ordinal);
-        foreach (var comment in comments)
+        foreach (var comment in write.Comments)
         {
             if (comment.FieldKey is not null && !fieldKeys.Contains(comment.FieldKey))
             {
@@ -459,14 +552,14 @@ public sealed class FormResponseReviewService(
 
             db.Add(new FormResponseReviewComment
             {
-                ResponseId = response.Id,
-                SubmissionId = submission.Id,
-                ReviewDecisionId = decisionId,
+                ResponseId = write.Response.Id,
+                SubmissionId = write.Submission.Id,
+                ReviewDecisionId = write.DecisionId,
                 FieldKey = comment.FieldKey,
                 Body = comment.Body.Trim(),
                 IsVisibleToRespondent = comment.IsVisibleToRespondent,
-                CreatedByUserId = userId,
-                CreatedAtUtc = now
+                CreatedByUserId = write.UserId,
+                CreatedAtUtc = write.Now
             });
         }
     }
@@ -505,29 +598,20 @@ public sealed class FormResponseReviewService(
         return actions;
     }
 
-    private async Task WriteHistoryAsync(
-        FormResponse response,
-        string eventType,
-        FormResponseStatus from,
-        FormResponseStatus to,
-        string? reason,
-        Guid userId,
-        DateTimeOffset now,
-        CancellationToken ct)
+    private void WriteHistory(ResponseHistoryWrite write)
     {
         db.Add(new FormResponseHistory
         {
-            ResponseId = response.Id,
-            EventType = eventType,
-            FromStatus = from,
-            ToStatus = to,
-            SubmissionNumber = response.CurrentSubmissionNumber,
-            ReviewLevel = response.CurrentReviewLevel,
-            Reason = reason,
-            ActorUserId = userId,
-            OccurredAtUtc = now
+            ResponseId = write.Response.Id,
+            EventType = write.EventType,
+            FromStatus = write.From,
+            ToStatus = write.To,
+            SubmissionNumber = write.Response.CurrentSubmissionNumber,
+            ReviewLevel = write.Response.CurrentReviewLevel,
+            Reason = write.Reason,
+            ActorUserId = write.UserId,
+            OccurredAtUtc = write.Now
         });
-        await Task.CompletedTask;
     }
 
     private Task WriteAuditAsync(
@@ -556,4 +640,54 @@ public sealed class FormResponseReviewService(
                 Reason = reason
             }
         }, ct);
+
+    private sealed record ResponseReviewContext(
+        FormResponse Response,
+        FormCampaignResponsePolicy Policy,
+        FormResponseApproveRequest Request,
+        FormResponseSubmission Submission,
+        Guid UserId,
+        DateTimeOffset Now);
+
+    private sealed class ApprovalDecisionContext(
+        ResponseReviewContext review,
+        FormResponseStatus fromStatus,
+        FormResponseStatus targetStatus,
+        int reviewLevel)
+    {
+        public ResponseReviewContext Review { get; } = review;
+        public FormResponseStatus FromStatus { get; } = fromStatus;
+        public FormResponseStatus TargetStatus { get; } = targetStatus;
+        public int ReviewLevel { get; } = reviewLevel;
+        public Guid DecisionId { get; set; }
+    }
+
+    private sealed record ReviewDecisionWrite(
+        FormResponse Response,
+        FormResponseSubmission Submission,
+        FormResponseReviewDecisionType Type,
+        string? Reason,
+        DateTimeOffset? NewDue,
+        FormResponseStatus From,
+        FormResponseStatus To,
+        Guid UserId,
+        DateTimeOffset Now,
+        int? Level = null);
+
+    private sealed record ReviewCommentWrite(
+        FormResponse Response,
+        FormResponseSubmission Submission,
+        Guid DecisionId,
+        IReadOnlyList<FormResponseReviewCommentRequest>? Comments,
+        Guid UserId,
+        DateTimeOffset Now);
+
+    private sealed record ResponseHistoryWrite(
+        FormResponse Response,
+        string EventType,
+        FormResponseStatus From,
+        FormResponseStatus To,
+        string? Reason,
+        Guid UserId,
+        DateTimeOffset Now);
 }

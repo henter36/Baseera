@@ -3,6 +3,7 @@ namespace Baseera.Application.Forms.Responses;
 using System.Text.Json;
 using Baseera.Application.Abstractions;
 using Baseera.Application.Audit;
+using Baseera.Application.Forms;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Audit;
 using Baseera.Domain.Forms;
@@ -12,20 +13,14 @@ using Microsoft.EntityFrameworkCore;
 public interface IFormResponseService
 {
     Task<FormResponseWorkspacePageDto> ListWorkspaceAsync(
-        string? workStatus,
-        Guid? campaignId,
-        Guid? cycleId,
-        Guid? facilityId,
-        Guid? regionId,
-        DateTimeOffset? dueFrom,
-        DateTimeOffset? dueTo,
-        string? search,
-        int page,
-        int pageSize,
-        string? sort,
+        FormResponseWorkspaceQuery query,
         CancellationToken cancellationToken = default);
 
     Task<FormResponseWorkspaceDetailDto> GetAssignmentResponseAsync(
+        Guid assignmentId,
+        CancellationToken cancellationToken = default);
+
+    Task<FormResponseWorkspaceDetailDto> GetReviewerAssignmentDetailAsync(
         Guid assignmentId,
         CancellationToken cancellationToken = default);
 
@@ -55,93 +50,78 @@ public sealed class FormResponseService(
     TimeProvider clock) : IFormResponseService
 {
     public async Task<FormResponseWorkspacePageDto> ListWorkspaceAsync(
-        string? workStatus,
-        Guid? campaignId,
-        Guid? cycleId,
-        Guid? facilityId,
-        Guid? regionId,
-        DateTimeOffset? dueFrom,
-        DateTimeOffset? dueTo,
-        string? search,
-        int page,
-        int pageSize,
-        string? sort,
+        FormResponseWorkspaceQuery query,
         CancellationToken cancellationToken = default)
     {
-        access.EnsureViewResponsesPermission();
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 100);
+        access.EnsureRespondentWorkspacePermission();
+        FormResponseListQueries.EnsureKnownWorkStatus(query.WorkStatus);
+        query = FormResponseListQueries.Normalize(query);
         var now = clock.GetUtcNow();
 
-        var query =
+        var scopedFacilityIds = access.FilterFacilities(db.Facilities.AsNoTracking()).Select(f => f.Id);
+        IQueryable<FormResponseListQueries.WorkspaceRow> baseQuery =
             from a in db.FormFacilityAssignments.AsNoTracking()
             join c in db.FormCycles.AsNoTracking() on a.CycleId equals c.Id
             join camp in db.FormCampaigns.AsNoTracking() on a.CampaignId equals camp.Id
             join pol in db.FormCampaignResponsePolicies.AsNoTracking() on camp.Id equals pol.CampaignId
             join r in db.FormResponses.AsNoTracking() on a.Id equals r.AssignmentId into rj
             from response in rj.DefaultIfEmpty()
-            where a.IsAvailable
-            select new { a, c, camp, pol, response };
+            where a.IsAvailable && scopedFacilityIds.Contains(a.FacilityId)
+            select new FormResponseListQueries.WorkspaceRow
+            {
+                Assignment = a,
+                Cycle = c,
+                Campaign = camp,
+                Policy = pol,
+                Response = response
+            };
 
-        if (campaignId.HasValue) query = query.Where(x => x.a.CampaignId == campaignId);
-        if (cycleId.HasValue) query = query.Where(x => x.a.CycleId == cycleId);
-        if (facilityId.HasValue) query = query.Where(x => x.a.FacilityId == facilityId);
-        if (regionId.HasValue) query = query.Where(x => x.a.RegionIdAtAssignment == regionId);
-        if (dueFrom.HasValue) query = query.Where(x => x.c.DueAtUtc >= dueFrom);
-        if (dueTo.HasValue) query = query.Where(x => x.c.DueAtUtc <= dueTo);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var term = search.Trim();
-            query = query.Where(x =>
-                x.camp.NameAr.Contains(term)
-                || x.camp.Code.Contains(term)
-                || x.a.FacilityNameArAtAssignment.Contains(term));
-        }
-
-        var rows = await query
-            .OrderBy(x => x.c.DueAtUtc)
-            .ThenBy(x => x.a.FacilityNameArAtAssignment)
-            .ThenBy(x => x.a.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize * 5)
+        baseQuery = FormResponseListQueries.ApplyWorkspaceFilters(baseQuery, query, now);
+        var totalCount = await baseQuery.CountAsync(cancellationToken);
+        var rows = await baseQuery
+            .OrderBy(x => x.Cycle.DueAtUtc)
+            .ThenBy(x => x.Assignment.FacilityNameArAtAssignment)
+            .ThenBy(x => x.Assignment.Id)
+            .Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize)
             .ToListAsync(cancellationToken);
 
-        var items = new List<FormResponseWorkspaceItemDto>();
-        foreach (var row in rows)
+        var items = rows.Select(row =>
         {
-            try
-            {
-                await access.EnsureFacilityInScopeAsync(row.a.FacilityId, cancellationToken);
-            }
-            catch (KeyNotFoundException)
-            {
-                continue;
-            }
-
-            var status = row.response?.Status;
-            var due = FormResponseWorkStatusResolver.ResolveEffectiveDueAt(row.c.DueAtUtc, row.response?.DueAtUtcOverride);
-            var overdue = FormResponseWorkStatusResolver.IsOverdue(status, row.pol.CompletionBasis, due, now, completion);
+            var status = row.Response?.Status;
+            var due = FormResponseWorkStatusResolver.ResolveEffectiveDueAt(row.Cycle.DueAtUtc, row.Response?.DueAtUtcOverride);
+            var overdue = FormResponseWorkStatusResolver.IsOverdue(status, row.Policy.CompletionBasis, due, now, completion);
             var work = FormResponseWorkStatusResolver.Resolve(status, overdue);
-            if (!MatchesWorkStatusFilter(workStatus, work, overdue, completion.IsCompleted(row.pol.CompletionBasis, status), now, row.c))
-            {
-                continue;
-            }
+            return MapWorkspaceItem(new WorkspaceMappingContext(
+                row.Assignment, row.Cycle, row.Campaign, row.Policy, row.Response, work, overdue, due, now));
+        }).ToList();
 
-            items.Add(MapWorkspaceItem(row.a, row.c, row.camp, row.pol, row.response, work, overdue, due));
-            if (items.Count >= pageSize) break;
-        }
-
-        return new FormResponseWorkspacePageDto(items, page, pageSize, items.Count);
+        return new FormResponseWorkspacePageDto(items, query.Page, query.PageSize, totalCount);
     }
 
     public async Task<FormResponseWorkspaceDetailDto> GetAssignmentResponseAsync(
         Guid assignmentId,
         CancellationToken cancellationToken = default)
     {
-        access.EnsureViewResponsesPermission();
+        access.EnsureRespondentWorkspacePermission();
         var ctx = await LoadContextAsync(assignmentId, track: false, cancellationToken);
         await access.EnsureFacilityInScopeAsync(ctx.Assignment.FacilityId, cancellationToken);
-        return await MapDetailAsync(ctx, cancellationToken);
+        if (!access.CanActAsFacilityRespondent(ctx.Assignment.FacilityId))
+        {
+            throw new KeyNotFoundException("الاستحقاق غير موجود.");
+        }
+
+        return await MapDetailAsync(ctx, forReviewer: false, cancellationToken);
+    }
+
+    public async Task<FormResponseWorkspaceDetailDto> GetReviewerAssignmentDetailAsync(
+        Guid assignmentId,
+        CancellationToken cancellationToken = default)
+    {
+        access.EnsureReviewDetailPermission();
+        var ctx = await LoadContextAsync(assignmentId, track: false, cancellationToken);
+        await access.EnsureFacilityInScopeAsync(ctx.Assignment.FacilityId, cancellationToken);
+        return await MapDetailAsync(ctx, forReviewer: true, cancellationToken);
     }
 
     public async Task<FormResponseDraftSaveResultDto> SaveDraftAsync(
@@ -169,8 +149,8 @@ public sealed class FormResponseService(
             }
 
             EnsureDraftEditable(response);
-            EnsureDraftVersion(response, request.ExpectedDraftVersion);
-            EnsureRowVersion(response, request.RowVersion);
+            FormAccessHelper.EnsureDraftVersion(response, request.ExpectedDraftVersion);
+            FormAccessHelper.EnsureResponseRowVersion(response, request.RowVersion);
 
             var schema = FormResponseSchemaLoader.Parse(ctx.Snapshot.CanonicalSchemaJson);
             FormResponseSchemaLoader.EnsureSchemaHashMatches(response, ctx.Cycle);
@@ -185,7 +165,8 @@ public sealed class FormResponseService(
             if (response.FirstStartedAtUtc is null)
             {
                 response.FirstStartedAtUtc = now;
-                await WriteHistoryAsync(response, "FormResponseStarted", null, FormResponseStatus.Draft, null, null, null, userId, now, ct);
+                WriteHistory(new ResponseHistoryWrite(
+                    response, "FormResponseStarted", null, FormResponseStatus.Draft, null, null, null, userId, now));
                 await audit.WriteAsync(new AuditEntry
                 {
                     Action = "FormResponseStarted",
@@ -257,115 +238,169 @@ public sealed class FormResponseService(
         access.EnsureRespondPermission();
         return await db.ExecuteInTransactionAsync(async ct =>
         {
-            var ctx = await LoadContextAsync(assignmentId, track: true, ct);
-            await access.EnsureFacilityInScopeAsync(ctx.Assignment.FacilityId, ct);
-            EnsureAssignmentEditable(ctx);
-            var response = ctx.Response ?? await CreateDraftResponseAsync(ctx, ct);
-            EnsureDraftEditable(response);
-            EnsureDraftVersion(response, request.ExpectedDraftVersion);
-            EnsureRowVersion(response, request.RowVersion);
-
-            if (ctx.Policy.RequireSubmissionAcknowledgement && !request.Acknowledged)
-            {
-                throw new ArgumentException("الإقرار مطلوب قبل الإرسال.");
-            }
-
-            var now = clock.GetUtcNow();
-            var due = FormResponseWorkStatusResolver.ResolveEffectiveDueAt(ctx.Cycle.DueAtUtc, response.DueAtUtcOverride);
-            var late = now > due;
-            if (late && !ctx.Policy.AllowLateSubmission)
-            {
-                throw new InvalidOperationException("انتهى الموعد والإرسال المتأخر غير مسموح.");
-            }
-
-            if (response.Status == FormResponseStatus.Returned && !ctx.Policy.AllowResubmissionAfterReturn)
-            {
-                throw new InvalidOperationException("إعادة الإرسال بعد الإعادة غير مسموحة.");
-            }
-
-            var schema = FormResponseSchemaLoader.Parse(ctx.Snapshot.CanonicalSchemaJson);
-            FormResponseSchemaLoader.EnsureSchemaHashMatches(response, ctx.Cycle);
-            var attachments = await LoadReferencedAttachmentsAsync(request.Answers, response.Id, ct);
-            var validation = validator.Validate(schema, request.Answers, FormResponseValidationMode.FullSubmit, attachments);
-            if (!validation.IsValid)
-            {
-                throw new FormResponseValidationException(validation.Issues.Where(i => i.Severity == "Error").ToList());
-            }
-
-            var from = response.Status;
-            if (from == FormResponseStatus.Returned)
-            {
-                FormResponseStateMachine.EnsureCanTransition(FormResponseStatus.Returned, FormResponseStatus.Draft);
-                response.Status = FormResponseStatus.Draft;
-                from = FormResponseStatus.Draft;
-            }
-
-            FormResponseStateMachine.EnsureCanTransition(from, FormResponseStatus.Submitted);
-            var target = FormResponseStateMachine.ResolveSubmissionTargetStatus(ctx.Policy.ReviewMode);
-            if (target == FormResponseStatus.UnderReview)
-            {
-                FormResponseStateMachine.EnsureCanTransition(FormResponseStatus.Submitted, FormResponseStatus.UnderReview);
-            }
-            var userId = access.UserId;
-            var submissionNumber = response.CurrentSubmissionNumber + 1;
-            var submission = new FormResponseSubmission
-            {
-                ResponseId = response.Id,
-                SubmissionNumber = submissionNumber,
-                FormSchemaSnapshotId = response.FormSchemaSnapshotId,
-                SchemaHash = response.SchemaHash,
-                CanonicalAnswersJson = validation.CanonicalAnswersJson,
-                AnswersHash = validation.AnswersHash,
-                SubmittedByUserId = userId,
-                SubmittedAtUtc = now,
-                WasLateAtSubmission = late,
-                EffectiveDueAtSubmissionUtc = due,
-                Acknowledged = request.Acknowledged,
-                AcknowledgementText = request.AcknowledgementText,
-                AcknowledgedAtUtc = request.Acknowledged ? now : null
-            };
-            db.Add(submission);
-
-            response.DraftAnswersJson = validation.CanonicalAnswersJson;
-            response.DraftAnswersHash = validation.AnswersHash;
-            response.DraftVersion += 1;
-            response.CurrentSubmissionNumber = submissionNumber;
-            response.CurrentReviewLevel = ctx.Policy.ReviewMode == FormReviewMode.None ? 0 : 1;
-            response.Status = target;
-            response.SubmittedAtUtc = now;
-            response.SubmittedByUserId = userId;
-            response.LastSavedAtUtc = now;
-            response.LastSavedByUserId = userId;
-            response.UpdatedAtUtc = now;
-
-            await WriteHistoryAsync(response, "FormResponseSubmitted", from, target, submissionNumber, response.CurrentReviewLevel, null, userId, now, ct);
-            await audit.WriteAsync(new AuditEntry
-            {
-                Action = "FormResponseSubmitted",
-                Module = FormAccessHelper.ModuleName,
-                EntityType = nameof(FormResponse),
-                EntityId = response.Id.ToString(),
-                NewValues = new
-                {
-                    response.AssignmentId,
-                    response.CampaignId,
-                    response.CycleId,
-                    response.FacilityId,
-                    submissionNumber,
-                    FromStatus = from,
-                    ToStatus = target
-                }
-            }, ct);
-
+            var submissionContext = await LoadSubmissionContextAsync(assignmentId, request, ct);
+            ValidateSubmissionRequest(submissionContext);
+            ValidateSubmissionTiming(submissionContext);
+            var validation = await ValidateAndCanonicalizeAnswersAsync(submissionContext, ct);
+            var snapshot = CreateSubmissionSnapshot(submissionContext, validation);
+            ApplySubmissionState(submissionContext, snapshot, validation);
+            await WriteSubmissionAuditAsync(submissionContext, snapshot, ct);
             await db.SaveChangesAsync(ct);
             return new FormResponseSubmitResultDto(
-                response.Id,
-                submission.Id,
-                submissionNumber,
-                response.Status,
-                Convert.ToBase64String(response.RowVersion),
-                now);
+                submissionContext.Response.Id,
+                snapshot.Submission.Id,
+                snapshot.SubmissionNumber,
+                submissionContext.Response.Status,
+                Convert.ToBase64String(submissionContext.Response.RowVersion),
+                submissionContext.Now);
         }, cancellationToken);
+    }
+
+    private async Task<SubmissionContext> LoadSubmissionContextAsync(
+        Guid assignmentId,
+        FormResponseSubmitRequest request,
+        CancellationToken ct)
+    {
+        var ctx = await LoadContextAsync(assignmentId, track: true, ct);
+        await access.EnsureFacilityInScopeAsync(ctx.Assignment.FacilityId, ct);
+        EnsureAssignmentEditable(ctx);
+        var response = ctx.Response ?? await CreateDraftResponseAsync(ctx, ct);
+        EnsureDraftEditable(response);
+        FormAccessHelper.EnsureDraftVersion(response, request.ExpectedDraftVersion);
+        FormAccessHelper.EnsureResponseRowVersion(response, request.RowVersion);
+        var now = clock.GetUtcNow();
+        var due = FormResponseWorkStatusResolver.ResolveEffectiveDueAt(ctx.Cycle.DueAtUtc, response.DueAtUtcOverride);
+        return new SubmissionContext(ctx, response, request, now, due, access.UserId);
+    }
+
+    private static void ValidateSubmissionRequest(SubmissionContext context)
+    {
+        if (context.Ctx.Policy.RequireSubmissionAcknowledgement && !context.Request.Acknowledged)
+        {
+            throw new ArgumentException("الإقرار مطلوب قبل الإرسال.");
+        }
+
+        if (context.Response.Status == FormResponseStatus.Returned
+            && !context.Ctx.Policy.AllowResubmissionAfterReturn)
+        {
+            throw new InvalidOperationException("إعادة الإرسال بعد الإعادة غير مسموحة.");
+        }
+    }
+
+    private static void ValidateSubmissionTiming(SubmissionContext context)
+    {
+        context.Late = context.Now > context.Due;
+        if (context.Late && !context.Ctx.Policy.AllowLateSubmission)
+        {
+            throw new InvalidOperationException("انتهى الموعد والإرسال المتأخر غير مسموح.");
+        }
+    }
+
+    private async Task<FormResponseValidationResult> ValidateAndCanonicalizeAnswersAsync(
+        SubmissionContext context,
+        CancellationToken ct)
+    {
+        var schema = FormResponseSchemaLoader.Parse(context.Ctx.Snapshot.CanonicalSchemaJson);
+        FormResponseSchemaLoader.EnsureSchemaHashMatches(context.Response, context.Ctx.Cycle);
+        var attachments = await LoadReferencedAttachmentsAsync(context.Request.Answers, context.Response.Id, ct);
+        var validation = validator.Validate(schema, context.Request.Answers, FormResponseValidationMode.FullSubmit, attachments);
+        if (!validation.IsValid)
+        {
+            throw new FormResponseValidationException(validation.Issues.Where(i => i.Severity == "Error").ToList());
+        }
+
+        return validation;
+    }
+
+    private SubmissionSnapshot CreateSubmissionSnapshot(
+        SubmissionContext context,
+        FormResponseValidationResult validation)
+    {
+        var from = context.Response.Status;
+        if (from == FormResponseStatus.Returned)
+        {
+            FormResponseStateMachine.EnsureCanTransition(FormResponseStatus.Returned, FormResponseStatus.Draft);
+            context.Response.Status = FormResponseStatus.Draft;
+            from = FormResponseStatus.Draft;
+        }
+
+        FormResponseStateMachine.EnsureCanTransition(from, FormResponseStatus.Submitted);
+        var target = FormResponseStateMachine.ResolveSubmissionTargetStatus(context.Ctx.Policy.ReviewMode);
+        if (target == FormResponseStatus.UnderReview)
+        {
+            FormResponseStateMachine.EnsureCanTransition(FormResponseStatus.Submitted, FormResponseStatus.UnderReview);
+        }
+
+        context.FromStatus = from;
+        context.TargetStatus = target;
+        var submissionNumber = context.Response.CurrentSubmissionNumber + 1;
+        var submission = new FormResponseSubmission
+        {
+            ResponseId = context.Response.Id,
+            SubmissionNumber = submissionNumber,
+            FormSchemaSnapshotId = context.Response.FormSchemaSnapshotId,
+            SchemaHash = context.Response.SchemaHash,
+            CanonicalAnswersJson = validation.CanonicalAnswersJson,
+            AnswersHash = validation.AnswersHash,
+            SubmittedByUserId = context.UserId,
+            SubmittedAtUtc = context.Now,
+            WasLateAtSubmission = context.Late,
+            EffectiveDueAtSubmissionUtc = context.Due,
+            Acknowledged = context.Request.Acknowledged,
+            AcknowledgementText = context.Request.AcknowledgementText,
+            AcknowledgedAtUtc = context.Request.Acknowledged ? context.Now : null
+        };
+        db.Add(submission);
+        return new SubmissionSnapshot(submission, submissionNumber);
+    }
+
+    private void ApplySubmissionState(
+        SubmissionContext context,
+        SubmissionSnapshot snapshot,
+        FormResponseValidationResult validation)
+    {
+        context.Response.DraftAnswersJson = validation.CanonicalAnswersJson;
+        context.Response.DraftAnswersHash = validation.AnswersHash;
+        context.Response.DraftVersion += 1;
+        context.Response.CurrentSubmissionNumber = snapshot.SubmissionNumber;
+        context.Response.CurrentReviewLevel = context.Ctx.Policy.ReviewMode == FormReviewMode.None ? 0 : 1;
+        context.Response.Status = context.TargetStatus;
+        context.Response.SubmittedAtUtc = context.Now;
+        context.Response.SubmittedByUserId = context.UserId;
+        context.Response.LastSavedAtUtc = context.Now;
+        context.Response.LastSavedByUserId = context.UserId;
+        context.Response.UpdatedAtUtc = context.Now;
+    }
+
+    private async Task WriteSubmissionAuditAsync(SubmissionContext context, SubmissionSnapshot snapshot, CancellationToken ct)
+    {
+        WriteHistory(new ResponseHistoryWrite(
+            context.Response,
+            "FormResponseSubmitted",
+            context.FromStatus,
+            context.TargetStatus,
+            snapshot.SubmissionNumber,
+            context.Response.CurrentReviewLevel,
+            null,
+            context.UserId,
+            context.Now));
+        await audit.WriteAsync(new AuditEntry
+        {
+            Action = "FormResponseSubmitted",
+            Module = FormAccessHelper.ModuleName,
+            EntityType = nameof(FormResponse),
+            EntityId = context.Response.Id.ToString(),
+            NewValues = new
+            {
+                context.Response.AssignmentId,
+                context.Response.CampaignId,
+                context.Response.CycleId,
+                context.Response.FacilityId,
+                snapshot.SubmissionNumber,
+                FromStatus = context.FromStatus,
+                ToStatus = context.TargetStatus
+            }
+        }, ct);
     }
 
     private static bool IsBlockingDraftIssue(string code) =>
@@ -373,70 +408,37 @@ public sealed class FormResponseService(
             or "CALCULATED_WRITE" or "ATTACHMENT_UNAUTHORIZED" or "MALFORMED" or "PAYLOAD_TOO_LARGE"
             or "TOO_MANY_KEYS" or "TOO_MANY_ROWS" or "DUPLICATE_ROW";
 
-    private static bool MatchesWorkStatusFilter(
-        string? filter,
-        FormAssignmentWorkStatus work,
-        bool overdue,
-        bool completed,
-        DateTimeOffset now,
-        FormCycle cycle)
-    {
-        if (string.IsNullOrWhiteSpace(filter) || filter.Equals("current", StringComparison.OrdinalIgnoreCase))
-        {
-            return now >= cycle.OpenAtUtc && now <= cycle.CloseAtUtc && !completed
-                && work is not FormAssignmentWorkStatus.Approved and not FormAssignmentWorkStatus.Rejected and not FormAssignmentWorkStatus.Closed;
-        }
-
-        return filter.ToLowerInvariant() switch
-        {
-            "upcoming" => now < cycle.OpenAtUtc,
-            "overdue" => overdue,
-            "returned" => work == FormAssignmentWorkStatus.Returned,
-            "submitted" => work is FormAssignmentWorkStatus.Submitted or FormAssignmentWorkStatus.UnderReview,
-            "completed" => completed,
-            _ => true
-        };
-    }
-
-    private FormResponseWorkspaceItemDto MapWorkspaceItem(
-        FormFacilityAssignment a,
-        FormCycle c,
-        FormCampaign camp,
-        FormCampaignResponsePolicy pol,
-        FormResponse? response,
-        FormAssignmentWorkStatus work,
-        bool overdue,
-        DateTimeOffset due) =>
+    private FormResponseWorkspaceItemDto MapWorkspaceItem(WorkspaceMappingContext mapping) =>
         new(
-            a.Id,
-            camp.Id,
-            camp.Code,
-            camp.NameAr,
-            c.Id,
-            c.OccurrenceKey,
-            a.FacilityId,
-            a.FacilityNameArAtAssignment,
-            a.RegionIdAtAssignment,
-            a.RegionNameArAtAssignment,
-            c.OpenAtUtc,
-            c.DueAtUtc,
-            c.GraceEndsAtUtc,
-            c.CloseAtUtc,
-            due,
-            response?.Id,
-            response?.Status,
-            work,
-            overdue,
-            completion.IsCompleted(pol.CompletionBasis, response?.Status),
-            response?.DraftVersion,
-            response?.LastSavedAtUtc,
-            response?.SubmittedAtUtc,
-            response?.CurrentReviewLevel ?? 0,
-            pol.RequiredApprovalLevels,
-            ResolveRespondentActions(a, c, response, pol, work, clock.GetUtcNow()),
-            response is null ? null : Convert.ToBase64String(response.RowVersion));
+            mapping.Assignment.Id,
+            mapping.Campaign.Id,
+            mapping.Campaign.Code,
+            mapping.Campaign.NameAr,
+            mapping.Cycle.Id,
+            mapping.Cycle.OccurrenceKey,
+            mapping.Assignment.FacilityId,
+            mapping.Assignment.FacilityNameArAtAssignment,
+            mapping.Assignment.RegionIdAtAssignment,
+            mapping.Assignment.RegionNameArAtAssignment,
+            mapping.Cycle.OpenAtUtc,
+            mapping.Cycle.DueAtUtc,
+            mapping.Cycle.GraceEndsAtUtc,
+            mapping.Cycle.CloseAtUtc,
+            mapping.Due,
+            mapping.Response?.Id,
+            mapping.Response?.Status,
+            mapping.Work,
+            mapping.Overdue,
+            completion.IsCompleted(mapping.Policy.CompletionBasis, mapping.Response?.Status),
+            mapping.Response?.DraftVersion,
+            mapping.Response?.LastSavedAtUtc,
+            mapping.Response?.SubmittedAtUtc,
+            mapping.Response?.CurrentReviewLevel ?? 0,
+            mapping.Policy.RequiredApprovalLevels,
+            ResolveRespondentActions(mapping.Assignment, mapping.Cycle, mapping.Response, mapping.Policy, mapping.Now),
+            mapping.Response is null ? null : Convert.ToBase64String(mapping.Response.RowVersion));
 
-    private async Task<FormResponseWorkspaceDetailDto> MapDetailAsync(ResponseContext ctx, CancellationToken ct)
+    private async Task<FormResponseWorkspaceDetailDto> MapDetailAsync(ResponseContext ctx, bool forReviewer, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         var status = ctx.Response?.Status;
@@ -444,7 +446,12 @@ public sealed class FormResponseService(
         var overdue = FormResponseWorkStatusResolver.IsOverdue(status, ctx.Policy.CompletionBasis, due, now, completion);
         var work = FormResponseWorkStatusResolver.Resolve(status, overdue);
         var schema = FormResponseSchemaLoader.Parse(ctx.Snapshot.CanonicalSchemaJson);
-        var isOwner = true;
+        var isOwner = ctx.Response is not null && access.IsRespondentOwner(ctx.Response);
+        if (forReviewer)
+        {
+            isOwner = false;
+        }
+
         var projected = projection.ProjectAnswers(
             schema,
             ctx.Form.Classification,
@@ -479,8 +486,14 @@ public sealed class FormResponseService(
                     submission.Acknowledged);
             }
 
-            comments = await db.FormResponseReviewComments.AsNoTracking()
-                .Where(c => c.ResponseId == ctx.Response.Id && c.IsVisibleToRespondent)
+            var commentQuery = db.FormResponseReviewComments.AsNoTracking()
+                .Where(c => c.ResponseId == ctx.Response.Id);
+            if (!forReviewer)
+            {
+                commentQuery = commentQuery.Where(c => c.IsVisibleToRespondent);
+            }
+
+            comments = await commentQuery
                 .OrderBy(c => c.CreatedAtUtc)
                 .Select(c => new FormResponseReviewCommentDto(
                     c.Id, c.SubmissionId, c.ReviewDecisionId, c.FieldKey, c.Body, c.IsVisibleToRespondent,
@@ -521,7 +534,7 @@ public sealed class FormResponseService(
             latest,
             comments,
             null,
-            ResolveRespondentActions(ctx.Assignment, ctx.Cycle, ctx.Response, ctx.Policy, work, now),
+            ResolveRespondentActions(ctx.Assignment, ctx.Cycle, ctx.Response, ctx.Policy, now),
             ctx.Response is null ? null : Convert.ToBase64String(ctx.Response.RowVersion),
             projected.Visibility,
             projected.Redacted);
@@ -532,7 +545,6 @@ public sealed class FormResponseService(
         FormCycle cycle,
         FormResponse? response,
         FormCampaignResponsePolicy policy,
-        FormAssignmentWorkStatus work,
         DateTimeOffset now)
     {
         var actions = new List<string>();
@@ -639,64 +651,20 @@ public sealed class FormResponseService(
         }
     }
 
-    private void EnsureDraftVersion(FormResponse response, int expected)
-    {
-        if (response.DraftVersion != expected)
-        {
-            throw new FormResponseConflictException(new FormResponseConflictDto(
-                response.DraftVersion,
-                Convert.ToBase64String(response.RowVersion),
-                response.LastSavedAtUtc,
-                "DraftVersionConflict"));
-        }
-    }
-
-    private void EnsureRowVersion(FormResponse response, string? incoming)
-    {
-        if (response.DraftVersion == 0 && string.IsNullOrWhiteSpace(incoming))
-        {
-            return;
-        }
-
-        try
-        {
-            FormAccessHelper.EnsureRowVersion(response.RowVersion, incoming ?? string.Empty);
-        }
-        catch (InvalidOperationException)
-        {
-            throw new FormResponseConflictException(new FormResponseConflictDto(
-                response.DraftVersion,
-                Convert.ToBase64String(response.RowVersion),
-                response.LastSavedAtUtc,
-                "RowVersionConflict"));
-        }
-    }
-
-    private async Task WriteHistoryAsync(
-        FormResponse response,
-        string eventType,
-        FormResponseStatus? from,
-        FormResponseStatus? to,
-        int? submissionNumber,
-        int? reviewLevel,
-        string? reason,
-        Guid actorUserId,
-        DateTimeOffset now,
-        CancellationToken ct)
+    private void WriteHistory(ResponseHistoryWrite write)
     {
         db.Add(new FormResponseHistory
         {
-            ResponseId = response.Id,
-            EventType = eventType,
-            FromStatus = from,
-            ToStatus = to,
-            SubmissionNumber = submissionNumber,
-            ReviewLevel = reviewLevel,
-            Reason = reason,
-            ActorUserId = actorUserId,
-            OccurredAtUtc = now
+            ResponseId = write.Response.Id,
+            EventType = write.EventType,
+            FromStatus = write.From,
+            ToStatus = write.To,
+            SubmissionNumber = write.SubmissionNumber,
+            ReviewLevel = write.ReviewLevel,
+            Reason = write.Reason,
+            ActorUserId = write.ActorUserId,
+            OccurredAtUtc = write.Now
         });
-        await Task.CompletedTask;
     }
 
     private async Task<IReadOnlyDictionary<Guid, Attachment>> LoadReferencedAttachmentsAsync(
@@ -740,6 +708,49 @@ public sealed class FormResponseService(
             validation.CalculatedValues,
             validation.VisibleFieldKeys.ToList(),
             validation.RequiredFieldKeys.ToList());
+
+    private sealed class SubmissionContext(
+        ResponseContext ctx,
+        FormResponse response,
+        FormResponseSubmitRequest request,
+        DateTimeOffset now,
+        DateTimeOffset due,
+        Guid userId)
+    {
+        public ResponseContext Ctx { get; } = ctx;
+        public FormResponse Response { get; } = response;
+        public FormResponseSubmitRequest Request { get; } = request;
+        public DateTimeOffset Now { get; } = now;
+        public DateTimeOffset Due { get; } = due;
+        public Guid UserId { get; } = userId;
+        public bool Late { get; set; }
+        public FormResponseStatus FromStatus { get; set; }
+        public FormResponseStatus TargetStatus { get; set; }
+    }
+
+    private sealed record SubmissionSnapshot(FormResponseSubmission Submission, int SubmissionNumber);
+
+    private sealed record WorkspaceMappingContext(
+        FormFacilityAssignment Assignment,
+        FormCycle Cycle,
+        FormCampaign Campaign,
+        FormCampaignResponsePolicy Policy,
+        FormResponse? Response,
+        FormAssignmentWorkStatus Work,
+        bool Overdue,
+        DateTimeOffset Due,
+        DateTimeOffset Now);
+
+    private sealed record ResponseHistoryWrite(
+        FormResponse Response,
+        string EventType,
+        FormResponseStatus? From,
+        FormResponseStatus? To,
+        int? SubmissionNumber,
+        int? ReviewLevel,
+        string? Reason,
+        Guid ActorUserId,
+        DateTimeOffset Now);
 
     private sealed class ResponseContext(
         FormFacilityAssignment assignment,

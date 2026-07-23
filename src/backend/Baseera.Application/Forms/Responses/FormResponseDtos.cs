@@ -245,3 +245,31 @@ public sealed record FormResponseConflictDto(
     string CurrentRowVersion,
     DateTimeOffset? LastSavedAtUtc,
     string ConflictCode);
+
+
+public sealed record FormResponseWorkspaceQuery(
+    string? WorkStatus = null,
+    Guid? CampaignId = null,
+    Guid? CycleId = null,
+    Guid? FacilityId = null,
+    Guid? RegionId = null,
+    DateTimeOffset? DueFrom = null,
+    DateTimeOffset? DueTo = null,
+    string? Search = null,
+    int Page = 1,
+    int PageSize = 20,
+    string? Sort = null);
+
+public sealed record FormResponseReviewInboxQuery(
+    string? Status = null,
+    Guid? CampaignId = null,
+    Guid? CycleId = null,
+    Guid? RegionId = null,
+    Guid? FacilityId = null,
+    int? ReviewLevel = null,
+    DateTimeOffset? SubmittedFrom = null,
+    DateTimeOffset? SubmittedTo = null,
+    bool? Overdue = null,
+    string? Search = null,
+    int Page = 1,
+    int PageSize = 20);
