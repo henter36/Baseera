@@ -34,6 +34,8 @@ public class Permission : EntityBase
     public ICollection<RolePermission> RolePermissions { get; set; } = new List<RolePermission>();
 }
 
+#pragma warning disable CS8618 // Required navigation properties are initialized by EF Core.
+
 public class RolePermission
 {
     public Guid RoleId { get; set; }
@@ -65,6 +67,8 @@ public class UserScope : SoftDeletableEntity
     public FacilityUnit? FacilityUnit { get; set; }
     public bool IsActive { get; set; } = true;
 }
+
+#pragma warning restore CS8618
 
 public static class PermissionCodes
 {

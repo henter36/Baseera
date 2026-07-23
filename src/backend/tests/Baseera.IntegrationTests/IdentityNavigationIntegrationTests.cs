@@ -59,6 +59,8 @@ public sealed class IdentityNavigationIntegrationTests : IClassFixture<BaseeraAp
         });
         await db.SaveChangesAsync();
 
+        db.ChangeTracker.Clear();
+
         var rolePermission = await db.RolePermissions
             .Include(x => x.Role)
             .Include(x => x.Permission)
