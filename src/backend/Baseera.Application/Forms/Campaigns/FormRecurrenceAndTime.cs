@@ -3,6 +3,7 @@ namespace Baseera.Application.Forms.Campaigns;
 using System.Text.Json;
 using Baseera.Application.Abstractions;
 using Baseera.Domain.Forms;
+using Microsoft.EntityFrameworkCore;
 
 public interface IFormTimeZoneResolver
 {
@@ -201,6 +202,48 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
         return results;
     }
 
+    private sealed record OccurrenceEnumerationContext(
+        DateTimeOffset FromLocalInclusive,
+        DateTimeOffset? UntilLocal,
+        int? MaxOccurrences,
+        int RequestedCount);
+
+    private enum CandidateDecision
+    {
+        Include,
+        Skip,
+        Stop
+    }
+
+    private static CandidateDecision EvaluateCandidate(
+        DateTimeOffset candidate,
+        OccurrenceEnumerationContext context,
+        int generatedCount,
+        int resultCount)
+    {
+        if (context.UntilLocal is { } until && candidate > until)
+        {
+            return CandidateDecision.Stop;
+        }
+
+        if (context.MaxOccurrences is { } max && generatedCount > max)
+        {
+            return CandidateDecision.Stop;
+        }
+
+        if (candidate < context.FromLocalInclusive)
+        {
+            return CandidateDecision.Skip;
+        }
+
+        if (resultCount >= context.RequestedCount)
+        {
+            return CandidateDecision.Stop;
+        }
+
+        return CandidateDecision.Include;
+    }
+
     private static IReadOnlyList<DateTimeOffset> EnumerateWeekly(
         FormCampaignScheduleRequest schedule, DateTimeOffset fromLocalInclusive, int count)
     {
@@ -209,10 +252,12 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
             ? weekDays.Distinct().OrderBy(d => d).ToArray()
             : [schedule.FirstOpenAtLocal.DayOfWeek]);
         var timeOfDay = schedule.FirstOpenAtLocal.TimeOfDay;
+        var context = new OccurrenceEnumerationContext(fromLocalInclusive, schedule.UntilLocal, schedule.MaxOccurrences, count);
         var results = new List<DateTimeOffset>();
         var weekStart = schedule.FirstOpenAtLocal.Date;
         weekStart = weekStart.AddDays(-(int)weekStart.DayOfWeek);
         var occurrenceIndex = 0;
+
         for (var week = 0; results.Count < count && occurrenceIndex < MaxOccurrences; week += intervalWeeks)
         {
             foreach (var day in days)
@@ -225,23 +270,13 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
                 }
 
                 occurrenceIndex++;
-                if (schedule.UntilLocal is { } until && local > until)
+                switch (EvaluateCandidate(local, context, occurrenceIndex, results.Count))
                 {
-                    return results;
-                }
-
-                if (schedule.MaxOccurrences is { } max && occurrenceIndex > max)
-                {
-                    return results;
-                }
-
-                if (local >= fromLocalInclusive)
-                {
-                    results.Add(local);
-                    if (results.Count >= count)
-                    {
+                    case CandidateDecision.Stop:
                         return results;
-                    }
+                    case CandidateDecision.Include:
+                        results.Add(local);
+                        break;
                 }
             }
         }
@@ -255,10 +290,12 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
         var dayOfMonth = Math.Clamp(schedule.DayOfMonth ?? schedule.FirstOpenAtLocal.Day, 1, 31);
         var policy = schedule.MissingDayPolicy ?? MonthlyMissingDayPolicy.ClampToLastDay;
         var timeOfDay = schedule.FirstOpenAtLocal.TimeOfDay;
+        var context = new OccurrenceEnumerationContext(fromLocalInclusive, schedule.UntilLocal, schedule.MaxOccurrences, count);
         var results = new List<DateTimeOffset>();
         var year = schedule.FirstOpenAtLocal.Year;
         var month = schedule.FirstOpenAtLocal.Month;
         var produced = 0;
+
         while (results.Count < count && produced < MaxOccurrences)
         {
             var daysInMonth = DateTime.DaysInMonth(year, month);
@@ -272,25 +309,16 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
                 candidate = new DateTimeOffset(new DateTime(year, month, daysInMonth).Add(timeOfDay), schedule.FirstOpenAtLocal.Offset);
             }
 
-            if (candidate is { } local)
+            if (candidate is { } local && local >= schedule.FirstOpenAtLocal)
             {
-                if (local >= schedule.FirstOpenAtLocal)
+                produced++;
+                switch (EvaluateCandidate(local, context, produced, results.Count))
                 {
-                    produced++;
-                    if (schedule.UntilLocal is { } until && local > until)
-                    {
-                        break;
-                    }
-
-                    if (schedule.MaxOccurrences is { } max && produced > max)
-                    {
-                        break;
-                    }
-
-                    if (local >= fromLocalInclusive)
-                    {
+                    case CandidateDecision.Stop:
+                        return results;
+                    case CandidateDecision.Include:
                         results.Add(local);
-                    }
+                        break;
                 }
             }
 
@@ -305,54 +333,84 @@ public sealed class FormRecurrenceCalculator(IFormTimeZoneResolver timeZones) : 
         return results;
     }
 
+    /// <summary>
+    /// Returns custom occurrence dates filtered by schedule bounds.
+    /// <see cref="MaxCustomDates"/> applies to the count of distinct dates after <see cref="Enumerable.Distinct"/>.
+    /// </summary>
     private static IReadOnlyList<DateTimeOffset> EnumerateCustom(
         FormCampaignScheduleRequest schedule, DateTimeOffset fromLocalInclusive, int count)
     {
-        var dates = (schedule.CustomDatesLocal ?? [])
+        var distinctDates = (schedule.CustomDatesLocal ?? [])
             .Distinct()
-            .OrderBy(d => d)
-            .Take(MaxCustomDates)
+            .OrderBy(x => x)
+            .ToList();
+        if (distinctDates.Count > MaxCustomDates)
+        {
+            throw new InvalidOperationException(
+                $"عدد التواريخ المخصصة يتجاوز الحد الأقصى ({MaxCustomDates}).");
+        }
+
+        return distinctDates
             .Where(d => d >= schedule.FirstOpenAtLocal && d >= fromLocalInclusive)
             .Take(count)
             .ToList();
-        return dates;
     }
 }
 
+public sealed record BusinessCalendarSnapshot(
+    Guid OrganizationId,
+    DateOnly From,
+    DateOnly To,
+    IReadOnlyDictionary<DateOnly, bool> WorkingDayOverrides);
+
 public interface IBusinessCalendar
 {
-    DateTimeOffset Adjust(DateTimeOffset local, BusinessDayAdjustment adjustment, Guid organizationId, CancellationToken cancellationToken = default);
+    Task<BusinessCalendarSnapshot> LoadAsync(
+        Guid organizationId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default);
+
+    DateTimeOffset Adjust(
+        DateTimeOffset local,
+        BusinessDayAdjustment adjustment,
+        BusinessCalendarSnapshot calendar);
 }
 
-public sealed class BusinessCalendar(
-    IBaseeraDbContext db,
-    TimeProvider timeProvider) : IBusinessCalendar
+public sealed class BusinessCalendar(IBaseeraDbContext db) : IBusinessCalendar
 {
     private static readonly HashSet<DayOfWeek> Weekend = [DayOfWeek.Friday, DayOfWeek.Saturday];
+
+    public async Task<BusinessCalendarSnapshot> LoadAsync(
+        Guid organizationId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken = default)
+    {
+        var overrides = await db.OrganizationBusinessCalendarDates
+            .AsNoTracking()
+            .Where(d => d.OrganizationId == organizationId && d.LocalDate >= from && d.LocalDate <= to)
+            .ToDictionaryAsync(d => d.LocalDate, d => d.IsWorkingDayOverride, cancellationToken);
+
+        return new BusinessCalendarSnapshot(organizationId, from, to, overrides);
+    }
 
     public DateTimeOffset Adjust(
         DateTimeOffset local,
         BusinessDayAdjustment adjustment,
-        Guid organizationId,
-        CancellationToken cancellationToken = default)
+        BusinessCalendarSnapshot calendar)
     {
-        _ = timeProvider;
         if (adjustment == BusinessDayAdjustment.None)
         {
             return local;
         }
-
-        var overrides = db.OrganizationBusinessCalendarDates
-            .Where(d => d.OrganizationId == organizationId)
-            .AsEnumerable()
-            .ToDictionary(d => d.LocalDate, d => d.IsWorkingDayOverride);
 
         var cursor = local;
         for (var i = 0; i < 370; i++)
         {
             var date = DateOnly.FromDateTime(cursor.DateTime);
             var isWeekend = Weekend.Contains(cursor.DayOfWeek);
-            var isWorking = overrides.TryGetValue(date, out var overrideWorking)
+            var isWorking = calendar.WorkingDayOverrides.TryGetValue(date, out var overrideWorking)
                 ? overrideWorking
                 : !isWeekend;
             if (isWorking)

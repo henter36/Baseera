@@ -1,5 +1,6 @@
 namespace Baseera.Application.Forms.Campaigns;
 
+using Baseera.Domain.Forms;
 using FluentValidation;
 
 public sealed class CreateFormCampaignRequestValidator : AbstractValidator<CreateFormCampaignRequest>
@@ -49,7 +50,11 @@ public sealed class FormCampaignScheduleRequestValidator : AbstractValidator<For
         RuleFor(x => x.MaxOccurrences!).InclusiveBetween(1, FormRecurrenceCalculator.MaxOccurrences)
             .When(x => x.MaxOccurrences.HasValue);
         RuleFor(x => x.CustomDatesLocal!)
-            .Must(d => d.Count <= FormRecurrenceCalculator.MaxCustomDates)
+            .NotEmpty()
+            .When(x => x.RecurrenceKind == FormRecurrenceKind.CustomDates);
+        RuleFor(x => x.CustomDatesLocal!)
+            .Must(d => d!.Distinct().Count() <= FormRecurrenceCalculator.MaxCustomDates)
+            .WithMessage($"عدد التواريخ المخصصة يتجاوز الحد الأقصى ({FormRecurrenceCalculator.MaxCustomDates}).")
             .When(x => x.CustomDatesLocal is not null);
     }
 }

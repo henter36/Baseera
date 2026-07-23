@@ -67,7 +67,7 @@ public sealed class FormCampaignScheduler(
                     ? timeZones.ToLocal(lastUtc, campaign.TimeZoneId).AddMinutes(1)
                     : schedule.FirstOpenAtLocal;
 
-                while (generatedThisCampaign < options.MaxCatchUpOccurrencesPerRun)
+                while (generatedThisCampaign < Math.Max(1, options.MaxCatchUpOccurrencesPerRun))
                 {
                     var upcoming = recurrence.EnumerateUpcoming(schedule, cursorLocal, 1);
                     if (upcoming.Count == 0)
@@ -90,16 +90,6 @@ public sealed class FormCampaignScheduler(
                     if (occurrenceUtc > timeProvider.GetUtcNow())
                     {
                         campaign.NextOccurrenceUtc = occurrenceUtc;
-                        if (campaign.Status == FormCampaignStatus.Scheduled)
-                        {
-                            // keep scheduled until due
-                        }
-                        else if (FormCampaignStateMachine.CanTransition(campaign.Status, FormCampaignStatus.Active)
-                                 && campaign.Status == FormCampaignStatus.Scheduled)
-                        {
-                            campaign.Status = FormCampaignStatus.Active;
-                        }
-
                         break;
                     }
 
@@ -109,17 +99,15 @@ public sealed class FormCampaignScheduler(
                         campaign.Status = FormCampaignStatus.Active;
                     }
 
-                    var beforeCount = await db.FormCycles.CountAsync(c => c.CampaignId == campaign.Id, cancellationToken);
-                    var cycle = await cycleGeneration.TryGenerateOccurrenceAsync(
+                    var generation = await cycleGeneration.TryGenerateOccurrenceAsync(
                         campaign,
                         occurrenceLocal,
                         workerIdentity,
                         cancellationToken);
-                    var afterCount = await db.FormCycles.CountAsync(c => c.CampaignId == campaign.Id, cancellationToken);
-                    if (afterCount > beforeCount)
+                    if (generation.Created)
                     {
                         cyclesCreated++;
-                        assignmentsCreated += cycle?.AssignedFacilityCount ?? 0;
+                        assignmentsCreated += generation.AssignmentsCreated;
                     }
                     else
                     {

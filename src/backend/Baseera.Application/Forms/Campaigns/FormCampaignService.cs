@@ -2,6 +2,8 @@ namespace Baseera.Application.Forms.Campaigns;
 
 using Baseera.Application.Abstractions;
 using Baseera.Application.Common;
+using Baseera.Application.Forms;
+using Baseera.Domain.Attachments;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -51,40 +53,91 @@ public sealed class FormCampaignService(
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
 
-        var campaigns = await db.FormCampaigns.AsNoTracking()
+        var scopedForms = await formScope.FilterQueryableAsync(db.FormDefinitions.AsNoTracking(), cancellationToken);
+        var scopedFormIds = scopedForms.Select(f => f.Id);
+
+        var q = db.FormCampaigns.AsNoTracking()
             .Include(c => c.FormDefinition)
             .Include(c => c.FormVersion)
-            .Where(c => status == null || c.Status == status)
-            .Where(c => formDefinitionId == null || c.FormDefinitionId == formDefinitionId)
-            .OrderByDescending(c => c.CreatedAtUtc)
-            .ToListAsync(cancellationToken);
+            .Where(c => scopedFormIds.Contains(c.FormDefinitionId));
 
-        var visible = new List<FormCampaign>();
-        foreach (var campaign in campaigns)
+        if (status is not null)
         {
-            if (await CanViewCampaignAsync(campaign, cancellationToken))
-            {
-                visible.Add(campaign);
-            }
+            q = q.Where(c => c.Status == status);
+        }
+
+        if (formDefinitionId is not null)
+        {
+            q = q.Where(c => c.FormDefinitionId == formDefinitionId);
         }
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var term = query.Search.Trim();
-            visible = visible
-                .Where(c => c.Code.Contains(term, StringComparison.OrdinalIgnoreCase)
-                    || c.NameAr.Contains(term, StringComparison.OrdinalIgnoreCase)
-                    || (c.NameEn?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))
-                .ToList();
+            q = q.Where(c => c.Code.Contains(term)
+                || c.NameAr.Contains(term)
+                || (c.NameEn != null && c.NameEn.Contains(term)));
         }
 
-        var total = visible.Count;
-        var items = visible.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-        var cycleCounts = await db.FormCycles.AsNoTracking()
-            .Where(c => items.Select(i => i.Id).Contains(c.CampaignId))
-            .GroupBy(c => c.CampaignId)
-            .Select(g => new { CampaignId = g.Key, Count = g.Count(), Last = g.Max(x => (DateTimeOffset?)x.GeneratedAtUtc) })
+        var canViewSensitiveViaRole = FormAccessHelper.CanViewSensitive(currentUser)
+            || currentUser.HasPermission(PermissionCodes.FormsMonitorHeadquarters)
+            || currentUser.HasPermission(PermissionCodes.AuditView);
+
+        if (!canViewSensitiveViaRole)
+        {
+            q = q.Where(c => c.FormDefinition.Classification < ClassificationLevel.Confidential);
+        }
+
+        var candidateFormIds = await q.Select(c => c.FormDefinitionId).Distinct().ToListAsync(cancellationToken);
+        var allowedFormIds = new HashSet<Guid>();
+        if (candidateFormIds.Count > 0 && currentUser.UserId is { } listUserId)
+        {
+            var roleIds = await db.UserRoles.AsNoTracking()
+                .Where(r => r.UserId == listUserId)
+                .Select(r => r.RoleId)
+                .ToListAsync(cancellationToken);
+            var grantsByFormId = await db.FormAccessGrants.AsNoTracking()
+                .Where(g => candidateFormIds.Contains(g.FormDefinitionId))
+                .GroupBy(g => g.FormDefinitionId)
+                .ToDictionaryAsync(g => g.Key, g => g.ToList(), cancellationToken);
+            var forms = await db.FormDefinitions.AsNoTracking()
+                .Where(f => candidateFormIds.Contains(f.Id))
+                .ToListAsync(cancellationToken);
+            var now = timeProvider.GetUtcNow();
+
+            foreach (var form in forms)
+            {
+                grantsByFormId.TryGetValue(form.Id, out var grants);
+                var decision = FormGrantResolver.ResolveEffectiveGrant(
+                    grants ?? [],
+                    FormAccessCapability.View,
+                    listUserId,
+                    roleIds,
+                    form,
+                    now);
+                if (decision is not false)
+                {
+                    allowedFormIds.Add(form.Id);
+                }
+            }
+        }
+
+        q = q.Where(c => allowedFormIds.Contains(c.FormDefinitionId));
+
+        var total = await q.CountAsync(cancellationToken);
+        var items = await q.OrderByDescending(c => c.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
+
+        var campaignIds = items.Select(i => i.Id).ToList();
+        var cycleCounts = campaignIds.Count == 0
+            ? []
+            : await db.FormCycles.AsNoTracking()
+                .Where(c => campaignIds.Contains(c.CampaignId))
+                .GroupBy(c => c.CampaignId)
+                .Select(g => new { CampaignId = g.Key, Count = g.Count(), Last = g.Max(x => (DateTimeOffset?)x.GeneratedAtUtc) })
+                .ToListAsync(cancellationToken);
         var countMap = cycleCounts.ToDictionary(x => x.CampaignId, x => x);
 
         var dtos = new List<FormCampaignListItemDto>();
@@ -379,34 +432,61 @@ public sealed class FormCampaignService(
     public Task<FormCampaignDetailDto> PauseAsync(Guid campaignId, FormCampaignTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(campaignId, FormCampaignStatus.Paused, PermissionCodes.FormsPauseCampaign, "FormCampaignPaused", request, cancellationToken);
 
-    public async Task<FormCampaignDetailDto> ResumeAsync(Guid campaignId, FormCampaignTransitionRequest request, CancellationToken cancellationToken = default)
-    {
-        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsPauseCampaign);
-        var campaign = await LoadTrackedAsync(campaignId, cancellationToken);
-        FormAccessHelper.EnsureRowVersion(campaign.RowVersion, request.RowVersion);
-        var now = timeProvider.GetUtcNow();
-        var resumeTo = campaign.NextOccurrenceUtc is { } next && next > now
-            ? FormCampaignStatus.Scheduled
-            : FormCampaignStatus.Active;
-        FormCampaignStateMachine.EnsureCanTransition(campaign.Status, resumeTo);
-        campaign.Status = resumeTo;
-        campaign.PausedAtUtc = null;
-        campaign.PausedByUserId = null;
-        campaign.PauseReason = null;
-        campaign.UpdatedByUserId = currentUser.UserId;
-        campaign.UpdatedAtUtc = now;
-        await db.SaveChangesAsync(cancellationToken);
-        await audit.WriteAsync(new AuditEntry
+    public Task<FormCampaignDetailDto> ResumeAsync(Guid campaignId, FormCampaignTransitionRequest request, CancellationToken cancellationToken = default) =>
+        db.ExecuteInTransactionAsync(async ct =>
         {
-            Action = "FormCampaignResumed",
-            Module = FormAccessHelper.ModuleName,
-            EntityType = nameof(FormCampaign),
-            EntityId = campaign.Id.ToString(),
-            NewValues = new { campaign.Status },
-            Reason = request.Reason
+            FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsPauseCampaign);
+            var campaign = await LoadTrackedAsync(campaignId, ct);
+            FormAccessHelper.EnsureRowVersion(campaign.RowVersion, request.RowVersion);
+
+            if (campaign.Status is FormCampaignStatus.Completed or FormCampaignStatus.Cancelled)
+            {
+                throw new InvalidOperationException("لا يمكن استئناف حملة مكتملة أو ملغاة.");
+            }
+
+            var now = timeProvider.GetUtcNow();
+            var next = await ResolveNextOccurrenceForResumeAsync(campaign, now, ct);
+            campaign.PausedAtUtc = null;
+            campaign.PausedByUserId = null;
+            campaign.PauseReason = null;
+            campaign.UpdatedByUserId = currentUser.UserId;
+            campaign.UpdatedAtUtc = now;
+
+            if (next is null)
+            {
+                if (FormCampaignStateMachine.CanTransition(campaign.Status, FormCampaignStatus.Completed))
+                {
+                    FormCampaignStateMachine.EnsureCanTransition(campaign.Status, FormCampaignStatus.Completed);
+                    campaign.Status = FormCampaignStatus.Completed;
+                    campaign.ClosedAtUtc = now;
+                    campaign.NextOccurrenceUtc = null;
+                }
+                else
+                {
+                    throw new InvalidOperationException("لا توجد دورات قادمة ولا يمكن إكمال الحملة.");
+                }
+            }
+            else
+            {
+                var resumeTo = next > now ? FormCampaignStatus.Scheduled : FormCampaignStatus.Active;
+                FormCampaignStateMachine.EnsureCanTransition(campaign.Status, resumeTo);
+                campaign.Status = resumeTo;
+                campaign.NextOccurrenceUtc = next;
+            }
+
+            await db.SaveChangesAsync(ct);
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "FormCampaignResumed",
+                Module = FormAccessHelper.ModuleName,
+                EntityType = nameof(FormCampaign),
+                EntityId = campaign.Id.ToString(),
+                NewValues = new { campaign.Status, campaign.NextOccurrenceUtc },
+                Reason = request.Reason
+            }, ct);
+
+            return await GetAsync(campaign.Id, ct);
         }, cancellationToken);
-        return await GetAsync(campaign.Id, cancellationToken);
-    }
 
     public Task<FormCampaignDetailDto> CancelAsync(Guid campaignId, FormCampaignTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(campaignId, FormCampaignStatus.Cancelled, PermissionCodes.FormsCancelCampaign, "FormCampaignCancelled", request, cancellationToken, requireReason: true);
@@ -908,16 +988,40 @@ public sealed class FormCampaignService(
         if (schedule.RecurrenceKind == FormRecurrenceKind.CustomDates)
         {
             var dates = schedule.CustomDatesLocal ?? [];
-            if (dates.Count == 0 || dates.Count > FormRecurrenceCalculator.MaxCustomDates)
+            if (dates.Count == 0)
             {
-                throw new InvalidOperationException("قائمة التواريخ المخصصة غير صالحة.");
+                throw new InvalidOperationException("قائمة التواريخ المخصصة فارغة.");
             }
 
-            if (dates.Distinct().Count() != dates.Count)
+            var distinctCount = dates.Distinct().Count();
+            // Limit applies to distinct dates after Distinct (duplicates in the raw list are allowed).
+            if (distinctCount > FormRecurrenceCalculator.MaxCustomDates)
             {
-                throw new InvalidOperationException("التواريخ المخصصة يجب أن تكون فريدة.");
+                throw new InvalidOperationException(
+                    $"عدد التواريخ المخصصة يتجاوز الحد الأقصى ({FormRecurrenceCalculator.MaxCustomDates}).");
             }
         }
+    }
+
+    private async Task<DateTimeOffset?> ResolveNextOccurrenceForResumeAsync(
+        FormCampaign campaign,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var schedule = MapSchedule(campaign);
+
+        if (schedule.RecurrenceKind == FormRecurrenceKind.Once)
+        {
+            var hasCycle = await db.FormCycles.AsNoTracking()
+                .AnyAsync(c => c.CampaignId == campaign.Id, cancellationToken);
+            return hasCycle ? null : timeZones.ToUtc(schedule.FirstOpenAtLocal, campaign.TimeZoneId);
+        }
+
+        var cursorLocal = campaign.LastGeneratedOccurrenceUtc is { } lastUtc
+            ? timeZones.ToLocal(lastUtc, campaign.TimeZoneId).AddMinutes(1)
+            : schedule.FirstOpenAtLocal;
+        var upcoming = recurrence.EnumerateUpcoming(schedule, cursorLocal, 1);
+        return upcoming.Count == 0 ? null : timeZones.ToUtc(upcoming[0], campaign.TimeZoneId);
     }
 
     private static void ValidateTargets(
