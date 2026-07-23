@@ -36,7 +36,11 @@ public enum FormAccessCapability
     ViewSensitive = 6,
     ManageAccess = 7,
     ManageRetention = 8,
-    Publish = 9
+    Publish = 9,
+    Respond = 10,
+    ViewResponses = 11,
+    ReviewResponses = 12,
+    ApproveResponses = 13
 }
 
 public enum FormAccessGrantEffect

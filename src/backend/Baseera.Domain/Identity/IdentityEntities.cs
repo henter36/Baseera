@@ -159,6 +159,10 @@ public static class PermissionCodes
     public const string FormsMonitorRegion = "Forms.MonitorRegion";
     public const string FormsMonitorHeadquarters = "Forms.MonitorHeadquarters";
     public const string FormsApproveResponses = "Forms.ApproveResponses";
+    public const string FormsViewResponses = "Forms.ViewResponses";
+    public const string FormsReviewResponses = "Forms.ReviewResponses";
+    public const string FormsCloseResponses = "Forms.CloseResponses";
+    public const string FormsViewSensitiveResponses = "Forms.ViewSensitiveResponses";
     public const string FormsAnalyze = "Forms.Analyze";
     public const string FormsExport = "Forms.Export";
     public const string FormsCloneVersion = "Forms.CloneVersion";

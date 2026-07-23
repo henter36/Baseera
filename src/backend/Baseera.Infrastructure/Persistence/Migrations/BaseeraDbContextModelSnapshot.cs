@@ -1263,6 +1263,67 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.ToTable("FormCampaignExclusions", (string)null);
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Forms.FormCampaignResponsePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowLateSubmission")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AllowResubmissionAfterReturn")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CompletionBasis")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("RequireSeparationOfDuties")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireSubmissionAcknowledgement")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("RequiredApprovalLevels")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReviewMode")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId")
+                        .IsUnique();
+
+                    b.ToTable("FormCampaignResponsePolicies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FormCampaignResponsePolicies_Completion", "NOT ([CompletionBasis] = 1 AND [ReviewMode] = 0)");
+
+                            t.HasCheckConstraint("CK_FormCampaignResponsePolicies_Levels", "([ReviewMode] = 0 AND [RequiredApprovalLevels] = 0) OR ([ReviewMode] = 1 AND [RequiredApprovalLevels] = 1) OR ([ReviewMode] = 2 AND [RequiredApprovalLevels] BETWEEN 2 AND 5)");
+                        });
+                });
+
             modelBuilder.Entity("Baseera.Domain.Forms.FormCycle", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1703,6 +1764,438 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_FormGovernancePolicies_SensitiveRetentionDays_NonNegative", "[SensitiveRetentionDays] >= 0");
                         });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponse", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ApprovedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("AssignmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CampaignId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ClosedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CurrentReviewLevel")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CurrentSubmissionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("CycleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DraftAnswersHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("DraftAnswersJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DraftVersion")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DueAtUtcOverride")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("FirstStartedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FormSchemaSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("LastSavedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("LastSavedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("RejectedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ReturnedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SchemaHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("SubmittedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("SubmittedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "CampaignId", "CycleId", "FacilityId");
+
+                    b.HasIndex("AssignmentId")
+                        .IsUnique();
+
+                    b.HasIndex("FormSchemaSnapshotId");
+
+                    b.HasIndex("LastSavedByUserId");
+
+                    b.HasIndex("SubmittedAtUtc");
+
+                    b.HasIndex("SubmittedByUserId");
+
+                    b.HasIndex("CampaignId", "CycleId");
+
+                    b.HasIndex("CampaignId", "Status");
+
+                    b.HasIndex("CycleId", "Status");
+
+                    b.HasIndex("FacilityId", "Status");
+
+                    b.HasIndex("AssignmentId", "CampaignId", "CycleId", "FacilityId");
+
+                    b.ToTable("FormResponses", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int?>("FromStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ResponseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("ReviewLevel")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SubmissionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ToStatus")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("ResponseId", "OccurredAtUtc");
+
+                    b.ToTable("FormResponseHistories", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseMutation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AppliedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("AppliedDraftVersion")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClientMutationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ResponseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResultPayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ResponseId", "ClientMutationId")
+                        .IsUnique();
+
+                    b.ToTable("FormResponseMutations", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseReviewComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FieldKey")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<bool>("IsVisibleToRespondent")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ResponseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReviewDecisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("ReviewDecisionId");
+
+                    b.HasIndex("ResponseId", "SubmissionId");
+
+                    b.HasIndex("SubmissionId", "ResponseId");
+
+                    b.ToTable("FormResponseReviewComments", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseReviewDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Decision")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FromStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("NewDueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("ResponseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ReviewLevel")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ReviewedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ReviewedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ToStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("ResponseId", "ReviewLevel");
+
+                    b.HasIndex("SubmissionId", "ResponseId");
+
+                    b.HasIndex("ResponseId", "SubmissionId", "ReviewLevel")
+                        .IsUnique()
+                        .HasDatabaseName("IX_FormResponseReviewDecisions_ApproveLevel")
+                        .HasFilter("[Decision] = 2");
+
+                    b.ToTable("FormResponseReviewDecisions", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Acknowledged")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("AcknowledgedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AcknowledgementText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("AnswersHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("CanonicalAnswersJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveDueAtSubmissionUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FormSchemaSnapshotId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ResponseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SchemaHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("SubmissionNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("SubmittedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("SubmittedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("WasLateAtSubmission")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormSchemaSnapshotId");
+
+                    b.HasIndex("SubmittedByUserId");
+
+                    b.HasIndex("ResponseId", "SubmissionNumber")
+                        .IsUnique();
+
+                    b.ToTable("FormResponseSubmissions", (string)null);
                 });
 
             modelBuilder.Entity("Baseera.Domain.Forms.FormReviewDecision", b =>
@@ -4204,6 +4697,17 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("Facility");
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Forms.FormCampaignResponsePolicy", b =>
+                {
+                    b.HasOne("Baseera.Domain.Forms.FormCampaign", "Campaign")
+                        .WithOne("ResponsePolicy")
+                        .HasForeignKey("Baseera.Domain.Forms.FormCampaignResponsePolicy", "CampaignId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Campaign");
+                });
+
             modelBuilder.Entity("Baseera.Domain.Forms.FormCycle", b =>
                 {
                     b.HasOne("Baseera.Domain.Forms.FormCampaign", "Campaign")
@@ -4352,6 +4856,185 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("UpdatedByUser");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponse", b =>
+                {
+                    b.HasOne("Baseera.Domain.Forms.FormCampaign", "Campaign")
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Forms.FormSchemaSnapshot", "FormSchemaSnapshot")
+                        .WithMany()
+                        .HasForeignKey("FormSchemaSnapshotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "LastSavedByUser")
+                        .WithMany()
+                        .HasForeignKey("LastSavedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Identity.User", "SubmittedByUser")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Forms.FormCycle", "Cycle")
+                        .WithMany()
+                        .HasForeignKey("CampaignId", "CycleId")
+                        .HasPrincipalKey("CampaignId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Forms.FormFacilityAssignment", "Assignment")
+                        .WithMany()
+                        .HasForeignKey("AssignmentId", "CampaignId", "CycleId", "FacilityId")
+                        .HasPrincipalKey("Id", "CampaignId", "CycleId", "FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Assignment");
+
+                    b.Navigation("Campaign");
+
+                    b.Navigation("Cycle");
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FormSchemaSnapshot");
+
+                    b.Navigation("LastSavedByUser");
+
+                    b.Navigation("SubmittedByUser");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseHistory", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Forms.FormResponse", "Response")
+                        .WithMany("History")
+                        .HasForeignKey("ResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("Response");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseMutation", b =>
+                {
+                    b.HasOne("Baseera.Domain.Forms.FormResponse", "Response")
+                        .WithMany("Mutations")
+                        .HasForeignKey("ResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Response");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseReviewComment", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Forms.FormResponse", "Response")
+                        .WithMany("ReviewComments")
+                        .HasForeignKey("ResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Forms.FormResponseReviewDecision", "ReviewDecision")
+                        .WithMany("Comments")
+                        .HasForeignKey("ReviewDecisionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Forms.FormResponseSubmission", "Submission")
+                        .WithMany("ReviewComments")
+                        .HasForeignKey("SubmissionId", "ResponseId")
+                        .HasPrincipalKey("Id", "ResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Response");
+
+                    b.Navigation("ReviewDecision");
+
+                    b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseReviewDecision", b =>
+                {
+                    b.HasOne("Baseera.Domain.Forms.FormResponse", "Response")
+                        .WithMany("ReviewDecisions")
+                        .HasForeignKey("ResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Forms.FormResponseSubmission", "Submission")
+                        .WithMany("ReviewDecisions")
+                        .HasForeignKey("SubmissionId", "ResponseId")
+                        .HasPrincipalKey("Id", "ResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Response");
+
+                    b.Navigation("ReviewedByUser");
+
+                    b.Navigation("Submission");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseSubmission", b =>
+                {
+                    b.HasOne("Baseera.Domain.Forms.FormSchemaSnapshot", "FormSchemaSnapshot")
+                        .WithMany()
+                        .HasForeignKey("FormSchemaSnapshotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Forms.FormResponse", "Response")
+                        .WithMany("Submissions")
+                        .HasForeignKey("ResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "SubmittedByUser")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FormSchemaSnapshot");
+
+                    b.Navigation("Response");
+
+                    b.Navigation("SubmittedByUser");
                 });
 
             modelBuilder.Entity("Baseera.Domain.Forms.FormReviewDecision", b =>
@@ -5113,6 +5796,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Exclusions");
 
+                    b.Navigation("ResponsePolicy");
+
                     b.Navigation("TargetRules");
                 });
 
@@ -5128,6 +5813,31 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("ReviewDecisions");
 
                     b.Navigation("Versions");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponse", b =>
+                {
+                    b.Navigation("History");
+
+                    b.Navigation("Mutations");
+
+                    b.Navigation("ReviewComments");
+
+                    b.Navigation("ReviewDecisions");
+
+                    b.Navigation("Submissions");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseReviewDecision", b =>
+                {
+                    b.Navigation("Comments");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Forms.FormResponseSubmission", b =>
+                {
+                    b.Navigation("ReviewComments");
+
+                    b.Navigation("ReviewDecisions");
                 });
 
             modelBuilder.Entity("Baseera.Domain.Forms.FormVersion", b =>

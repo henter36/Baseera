@@ -2,6 +2,7 @@ namespace Baseera.Infrastructure.Attachments;
 
 using Baseera.Application.Abstractions;
 using Baseera.Application.Attachments;
+using Baseera.Application.Forms.Responses;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
@@ -61,7 +62,8 @@ public sealed class AttachmentService(
     IFileStorage storage,
     ICurrentUser currentUser,
     IOrganizationalScopeService scope,
-    IAuditService audit) : IAttachmentService
+    IAuditService audit,
+    IFormResponseAttachmentAccessResolver formResponseAttachmentAccess) : IAttachmentService
 {
     public async Task<Attachment> UploadAsync(UploadAttachmentRequest request, CancellationToken cancellationToken = default)
     {
@@ -80,7 +82,7 @@ public sealed class AttachmentService(
             throw new InvalidOperationException("نوع الملف غير مسموح.");
         }
 
-        await EnsureEntityInScopeAsync(request.EntityType, request.EntityId, cancellationToken);
+        await EnsureEntityAccessAsync(request.EntityType, request.EntityId, FormResponseAttachmentOperation.Upload, cancellationToken);
 
         AttachmentRules.ValidateMagicBytes(request.Content, request.ContentType, request.OriginalFileName);
 
@@ -143,7 +145,20 @@ public sealed class AttachmentService(
         var entity = await db.Attachments.FirstOrDefaultAsync(a => a.Id == attachmentId, cancellationToken)
             ?? throw new KeyNotFoundException("المرفق غير موجود.");
 
-        await EnsureEntityInScopeAsync(entity.EntityType, entity.EntityId, cancellationToken);
+        await EnsureEntityAccessAsync(entity.EntityType, entity.EntityId, FormResponseAttachmentOperation.Download, cancellationToken);
+        if (string.Equals(entity.EntityType, "FormResponse", StringComparison.OrdinalIgnoreCase)
+            && entity.Classification >= ClassificationLevel.Confidential)
+        {
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "FormResponseAttachmentDownloaded",
+                Module = "Forms",
+                EntityType = "FormResponse",
+                EntityId = entity.EntityId.ToString(),
+                NewValues = new { AttachmentId = entity.Id, Classification = entity.Classification },
+                IsSensitiveView = true
+            }, cancellationToken);
+        }
 
         if (entity.ScanStatus is AttachmentScanStatus.PendingScan or AttachmentScanStatus.Quarantined or AttachmentScanStatus.Rejected)
         {
@@ -183,7 +198,7 @@ public sealed class AttachmentService(
             throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.");
         }
 
-        await EnsureEntityInScopeAsync(entityType, entityId, cancellationToken);
+        await EnsureEntityAccessAsync(entityType, entityId, FormResponseAttachmentOperation.List, cancellationToken);
 
         return await db.Attachments
             .Where(a => a.EntityType == entityType && a.EntityId == entityId)
@@ -195,8 +210,23 @@ public sealed class AttachmentService(
     /// Anti-enumeration: missing entity and out-of-scope both surface as NotFound (KeyNotFoundException).
     /// Global/HQ callers still must reference a real entity — orphan IDs are rejected.
     /// </summary>
-    private async Task EnsureEntityInScopeAsync(string entityType, Guid entityId, CancellationToken cancellationToken)
+    private async Task EnsureEntityAccessAsync(
+        string entityType,
+        Guid entityId,
+        FormResponseAttachmentOperation formResponseOperation,
+        CancellationToken cancellationToken)
     {
+        if (string.Equals(entityType, "FormResponse", StringComparison.OrdinalIgnoreCase))
+        {
+            var decision = await formResponseAttachmentAccess.ResolveAsync(entityId, formResponseOperation, cancellationToken);
+            if (!decision.Exists || !decision.Allowed)
+            {
+                throw new KeyNotFoundException("الكيان غير موجود.");
+            }
+
+            return;
+        }
+
         var access = await ResolveEntityAccessAsync(entityType, entityId, cancellationToken);
         if (!access.Exists || !access.InScope)
         {
@@ -221,6 +251,7 @@ public sealed class AttachmentService(
             "user" => ResolveUserAccessAsync(entityId, cancellationToken),
             "operationalnote" => ResolveOperationalNoteAccessAsync(entityId, cancellationToken),
             "correctiveaction" => ResolveCorrectiveActionAccessAsync(entityId, cancellationToken),
+            "formresponse" => ResolveFormResponseEntityAccessAsync(entityId, cancellationToken),
             _ => throw new InvalidOperationException("نوع الكيان غير مدعوم للمرفقات.")
         };
     }
@@ -242,6 +273,17 @@ public sealed class AttachmentService(
         }
 
         return (true, scope.CanAccess(note));
+    }
+
+    private async Task<(bool Exists, bool InScope)> ResolveFormResponseEntityAccessAsync(
+        Guid entityId,
+        CancellationToken cancellationToken)
+    {
+        var decision = await formResponseAttachmentAccess.ResolveAsync(
+            entityId,
+            FormResponseAttachmentOperation.List,
+            cancellationToken);
+        return (decision.Exists, decision.Allowed);
     }
 
     private async Task<(bool Exists, bool InScope)> ResolveOperationalNoteAccessAsync(Guid entityId, CancellationToken cancellationToken)

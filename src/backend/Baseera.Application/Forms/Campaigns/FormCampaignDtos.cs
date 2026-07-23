@@ -1,5 +1,6 @@
 namespace Baseera.Application.Forms.Campaigns;
 
+using Baseera.Application.Forms.Responses;
 using Baseera.Domain.Forms;
 
 public sealed record FormCampaignListItemDto(
@@ -54,6 +55,7 @@ public sealed record FormCampaignDetailDto(
     DateTimeOffset CreatedAtUtc,
     int CycleCount,
     IReadOnlyList<string> AllowedActions,
+    FormCampaignResponsePolicyDto ResponsePolicy,
     string RowVersion);
 
 public sealed record FormCampaignExclusionDto(
@@ -73,7 +75,8 @@ public sealed record CreateFormCampaignRequest(
     string? TimeZoneId,
     FormCampaignScheduleRequest Schedule,
     IReadOnlyList<FormCampaignTargetRequest> Targets,
-    IReadOnlyList<FormCampaignExclusionRequest>? Exclusions);
+    IReadOnlyList<FormCampaignExclusionRequest>? Exclusions,
+    FormCampaignResponsePolicyRequest? ResponsePolicy);
 
 public sealed record UpdateFormCampaignRequest(
     string NameAr,
@@ -84,6 +87,7 @@ public sealed record UpdateFormCampaignRequest(
     FormCampaignScheduleRequest Schedule,
     IReadOnlyList<FormCampaignTargetRequest> Targets,
     IReadOnlyList<FormCampaignExclusionRequest>? Exclusions,
+    FormCampaignResponsePolicyRequest? ResponsePolicy,
     string RowVersion);
 
 public sealed record FormCampaignTargetRequest(

@@ -10,6 +10,7 @@ using Baseera.Application.Dashboard;
 using Baseera.Application.Escalations;
 using Baseera.Application.Forms;
 using Baseera.Application.Forms.Campaigns;
+using Baseera.Application.Forms.Responses;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
@@ -155,6 +156,7 @@ public static class ApiEndpoints
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
         MapFormCampaignEndpoints(api);
+        MapFormResponseEndpoints(api);
 
         return api;
     }
@@ -598,6 +600,99 @@ public static class ApiEndpoints
                 PageSize = pageSize ?? 50
             }, ct)))
             .RequireAuthorization(AuthPolicies.FormsViewCampaignAssignments);
+    }
+
+
+    private static void MapFormResponseEndpoints(RouteGroupBuilder api)
+    {
+        api.MapGet("/form-response-workspace", async (
+            [AsParameters] FormResponseWorkspaceQuery query,
+            IFormResponseService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListWorkspaceAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsRespond);
+
+        api.MapGet("/form-assignments/{assignmentId:guid}/response", async (
+            Guid assignmentId, IFormResponseService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAssignmentResponseAsync(assignmentId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsRespond);
+
+        api.MapPut("/form-assignments/{assignmentId:guid}/response/draft", async (
+            Guid assignmentId, FormResponseDraftSaveRequest request, IFormResponseService service, CancellationToken ct) =>
+            Results.Ok(await service.SaveDraftAsync(assignmentId, request, ct)))
+            .RequireAuthorization(AuthPolicies.FormsRespond);
+
+        api.MapPost("/form-assignments/{assignmentId:guid}/response/validate", async (
+            Guid assignmentId, FormResponseValidateRequest request, IFormResponseService service, CancellationToken ct) =>
+            Results.Ok(await service.ValidateAsync(assignmentId, request, ct)))
+            .RequireAuthorization(AuthPolicies.FormsRespond);
+
+        api.MapPost("/form-assignments/{assignmentId:guid}/response/submit", async (
+            Guid assignmentId, FormResponseSubmitRequest request, IFormResponseService service, CancellationToken ct) =>
+            Results.Ok(await service.SubmitAsync(assignmentId, request, ct)))
+            .RequireAuthorization(AuthPolicies.FormsRespond);
+
+        api.MapGet("/form-response-reviews", async (
+            [AsParameters] FormResponseReviewInboxQuery query,
+            IFormResponseReviewService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListInboxAsync(query, ct)))
+            .RequireAuthorization(AuthPolicies.FormsReviewResponses);
+
+        api.MapGet("/form-responses/{responseId:guid}/review", async (
+            Guid responseId, IFormResponseReviewService service, CancellationToken ct) =>
+            Results.Ok(await service.GetReviewAsync(responseId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
+
+        api.MapPost("/form-responses/{responseId:guid}/review/start", async (
+            Guid responseId, FormResponseCloseRequest request, IFormResponseReviewService service, CancellationToken ct) =>
+        {
+            await service.StartReviewAsync(responseId, request.RowVersion, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsReviewResponses);
+
+        api.MapPost("/form-responses/{responseId:guid}/return", async (
+            Guid responseId, FormResponseReturnRequest request, IFormResponseReviewService service, CancellationToken ct) =>
+        {
+            await service.ReturnAsync(responseId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsReviewResponses);
+
+        api.MapPost("/form-responses/{responseId:guid}/approve", async (
+            Guid responseId, FormResponseApproveRequest request, IFormResponseReviewService service, CancellationToken ct) =>
+        {
+            await service.ApproveAsync(responseId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsApproveResponses);
+
+        api.MapPost("/form-responses/{responseId:guid}/reject", async (
+            Guid responseId, FormResponseRejectRequest request, IFormResponseReviewService service, CancellationToken ct) =>
+        {
+            await service.RejectAsync(responseId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsReviewResponses);
+
+        api.MapPost("/form-responses/{responseId:guid}/close", async (
+            Guid responseId, FormResponseCloseRequest request, IFormResponseReviewService service, CancellationToken ct) =>
+        {
+            await service.CloseAsync(responseId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.FormsCloseResponses);
+
+        api.MapGet("/form-responses/{responseId:guid}/submissions", async (
+            Guid responseId, IFormResponseReviewService service, CancellationToken ct) =>
+            Results.Ok(await service.ListSubmissionsAsync(responseId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
+
+        api.MapGet("/form-responses/{responseId:guid}/submissions/{submissionNumber:int}", async (
+            Guid responseId, int submissionNumber, IFormResponseReviewService service, CancellationToken ct) =>
+            Results.Ok(await service.GetSubmissionAsync(responseId, submissionNumber, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
+
+        api.MapGet("/form-responses/{responseId:guid}/history", async (
+            Guid responseId, IFormResponseReviewService service, CancellationToken ct) =>
+            Results.Ok(await service.GetHistoryAsync(responseId, ct)))
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
     }
 
     private static void MapOperationalDashboardEndpoints(RouteGroupBuilder api)

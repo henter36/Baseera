@@ -64,6 +64,13 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<FormCycle> FormCycles => Set<FormCycle>();
     public DbSet<FormFacilityAssignment> FormFacilityAssignments => Set<FormFacilityAssignment>();
     public DbSet<OrganizationBusinessCalendarDate> OrganizationBusinessCalendarDates => Set<OrganizationBusinessCalendarDate>();
+    public DbSet<FormCampaignResponsePolicy> FormCampaignResponsePolicies => Set<FormCampaignResponsePolicy>();
+    public DbSet<FormResponse> FormResponses => Set<FormResponse>();
+    public DbSet<FormResponseSubmission> FormResponseSubmissions => Set<FormResponseSubmission>();
+    public DbSet<FormResponseReviewDecision> FormResponseReviewDecisions => Set<FormResponseReviewDecision>();
+    public DbSet<FormResponseReviewComment> FormResponseReviewComments => Set<FormResponseReviewComment>();
+    public DbSet<FormResponseMutation> FormResponseMutations => Set<FormResponseMutation>();
+    public DbSet<FormResponseHistory> FormResponseHistories => Set<FormResponseHistory>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -126,6 +133,13 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<FormCycle> Application.Abstractions.IBaseeraDbContext.FormCycles => FormCycles;
     IQueryable<FormFacilityAssignment> Application.Abstractions.IBaseeraDbContext.FormFacilityAssignments => FormFacilityAssignments;
     IQueryable<OrganizationBusinessCalendarDate> Application.Abstractions.IBaseeraDbContext.OrganizationBusinessCalendarDates => OrganizationBusinessCalendarDates;
+    IQueryable<FormCampaignResponsePolicy> Application.Abstractions.IBaseeraDbContext.FormCampaignResponsePolicies => FormCampaignResponsePolicies;
+    IQueryable<FormResponse> Application.Abstractions.IBaseeraDbContext.FormResponses => FormResponses;
+    IQueryable<FormResponseSubmission> Application.Abstractions.IBaseeraDbContext.FormResponseSubmissions => FormResponseSubmissions;
+    IQueryable<FormResponseReviewDecision> Application.Abstractions.IBaseeraDbContext.FormResponseReviewDecisions => FormResponseReviewDecisions;
+    IQueryable<FormResponseReviewComment> Application.Abstractions.IBaseeraDbContext.FormResponseReviewComments => FormResponseReviewComments;
+    IQueryable<FormResponseMutation> Application.Abstractions.IBaseeraDbContext.FormResponseMutations => FormResponseMutations;
+    IQueryable<FormResponseHistory> Application.Abstractions.IBaseeraDbContext.FormResponseHistories => FormResponseHistories;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();

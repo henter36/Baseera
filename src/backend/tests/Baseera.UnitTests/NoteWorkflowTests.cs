@@ -123,6 +123,13 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Forms.FormCycle> FormCycles => Enumerable.Empty<Domain.Forms.FormCycle>().AsQueryable();
         public IQueryable<Domain.Forms.FormFacilityAssignment> FormFacilityAssignments => Enumerable.Empty<Domain.Forms.FormFacilityAssignment>().AsQueryable();
         public IQueryable<Domain.Forms.OrganizationBusinessCalendarDate> OrganizationBusinessCalendarDates => Enumerable.Empty<Domain.Forms.OrganizationBusinessCalendarDate>().AsQueryable();
+        public IQueryable<Domain.Forms.FormCampaignResponsePolicy> FormCampaignResponsePolicies => Enumerable.Empty<Domain.Forms.FormCampaignResponsePolicy>().AsQueryable();
+        public IQueryable<Domain.Forms.FormResponse> FormResponses => Enumerable.Empty<Domain.Forms.FormResponse>().AsQueryable();
+        public IQueryable<Domain.Forms.FormResponseSubmission> FormResponseSubmissions => Enumerable.Empty<Domain.Forms.FormResponseSubmission>().AsQueryable();
+        public IQueryable<Domain.Forms.FormResponseReviewDecision> FormResponseReviewDecisions => Enumerable.Empty<Domain.Forms.FormResponseReviewDecision>().AsQueryable();
+        public IQueryable<Domain.Forms.FormResponseReviewComment> FormResponseReviewComments => Enumerable.Empty<Domain.Forms.FormResponseReviewComment>().AsQueryable();
+        public IQueryable<Domain.Forms.FormResponseMutation> FormResponseMutations => Enumerable.Empty<Domain.Forms.FormResponseMutation>().AsQueryable();
+        public IQueryable<Domain.Forms.FormResponseHistory> FormResponseHistories => Enumerable.Empty<Domain.Forms.FormResponseHistory>().AsQueryable();
         public void Add<TEntity>(TEntity entity) where TEntity : class { }
         public void Update<TEntity>(TEntity entity) where TEntity : class { }
         public void Remove<TEntity>(TEntity entity) where TEntity : class { }

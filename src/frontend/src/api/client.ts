@@ -1051,6 +1051,94 @@ export type FormCampaignTargetRequest = {
 
 export type FormCampaignExclusionRequest = { facilityId: string; reason: string }
 
+
+export type FormResponseReviewAction =
+  | 'start'
+  | 'return'
+  | 'approve'
+  | 'reject'
+  | 'close'
+
+export type QueryParameterValue =
+  | string
+  | number
+  | boolean
+  | undefined
+
+export type FormCampaignResponsePolicy = {
+  completionBasis: number
+  reviewMode: number
+  requiredApprovalLevels: number
+  allowLateSubmission: boolean
+  allowResubmissionAfterReturn: boolean
+  requireSubmissionAcknowledgement: boolean
+  requireSeparationOfDuties: boolean
+}
+
+export type FormResponseWorkspaceItem = {
+  assignmentId: string
+  campaignId: string
+  campaignCode: string
+  campaignNameAr: string
+  cycleId: string
+  occurrenceKey: string
+  facilityId: string
+  facilityNameAr: string
+  regionId: string
+  regionNameAr: string
+  openAtUtc: string
+  dueAtUtc: string
+  graceEndsAtUtc: string
+  closeAtUtc: string
+  effectiveDueAtUtc: string
+  responseId?: string | null
+  responseStatus?: number | null
+  workStatus: number
+  isOverdue: boolean
+  isCompleted: boolean
+  draftVersion?: number | null
+  lastSavedAtUtc?: string | null
+  submittedAtUtc?: string | null
+  currentReviewLevel: number
+  requiredApprovalLevels: number
+  allowedActions: string[]
+  rowVersion?: string | null
+}
+
+export type FormResponseWorkspaceDetail = FormResponseWorkspaceItem & {
+  cycleStatus: number
+  assignmentAvailable: boolean
+  unavailableReason?: string | null
+  draftAnswersJson?: string | null
+  schemaJson: string
+  schemaHash: string
+  formClassification: number
+  policy: FormCampaignResponsePolicy
+  latestSubmission?: { id: string; submissionNumber: number; canonicalAnswersJson: string; submittedAtUtc: string } | null
+  visibleComments: Array<{ id: string; fieldKey?: string | null; body: string; createdAtUtc: string }>
+  fieldVisibility: Record<string, boolean>
+  fieldRedacted: Record<string, boolean>
+}
+
+export type FormResponseDraftSaveResult = {
+  responseId: string
+  draftVersion: number
+  rowVersion: string
+  lastSavedAtUtc: string
+  validationIssues: Array<{ code: string; path: string; fieldKey?: string | null; messageAr: string; severity: string }>
+  calculatedValues: Record<string, unknown>
+  visibleFieldKeys: string[]
+  requiredFieldKeys: string[]
+}
+
+export type FormResponseReviewDetail = {
+  workspace: FormResponseWorkspaceDetail
+  submissions: Array<{ id: string; submissionNumber: number; canonicalAnswersJson: string; submittedAtUtc: string }>
+  decisions: Array<{ id: string; decision: number; reason?: string | null; reviewedAtUtc: string; fromStatus: number; toStatus: number; reviewLevel: number }>
+  comments: Array<{ id: string; fieldKey?: string | null; body: string; isVisibleToRespondent: boolean }>
+  history: Array<{ id: string; eventType: string; occurredAtUtc: string; reason?: string | null }>
+}
+
 export type CreateFormCampaignRequest = {
   formDefinitionId: string
   formVersionId: string
@@ -1063,6 +1151,7 @@ export type CreateFormCampaignRequest = {
   schedule: FormCampaignScheduleRequest
   targets: FormCampaignTargetRequest[]
   exclusions?: FormCampaignExclusionRequest[] | null
+  responsePolicy?: FormCampaignResponsePolicy | null
 }
 
 export type UpdateFormCampaignRequest = {
@@ -1074,6 +1163,7 @@ export type UpdateFormCampaignRequest = {
   schedule: FormCampaignScheduleRequest
   targets: FormCampaignTargetRequest[]
   exclusions?: FormCampaignExclusionRequest[] | null
+  responsePolicy?: FormCampaignResponsePolicy | null
   rowVersion: string
 }
 
@@ -1114,6 +1204,7 @@ export type FormCampaignDetail = FormCampaignListItem & {
   cancellationReason?: string | null
   closedAtUtc?: string | null
   createdAtUtc: string
+  responsePolicy: FormCampaignResponsePolicy
 }
 
 export type FormTargetPreviewFacility = {
@@ -1408,7 +1499,7 @@ function buildDashboardQuery(filters: DashboardOperationsFilters): string {
   })
 }
 
-function buildSimpleQuery(filters: Record<string, string | number | boolean | undefined>): string {
+function buildSimpleQuery(filters: Record<string, QueryParameterValue>): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined) params.set(key, String(value))
@@ -1787,5 +1878,44 @@ export const api = {
       request<Paged<FormTargetPreviewFacility>>(`/api/v1/form-campaigns/target-options/facilities?${buildSimpleQuery(filters)}`),
     schedulePreview: (body: FormCampaignScheduleRequest, timeZoneId?: string) =>
       postJson<string[]>(`/api/v1/form-campaigns/schedule-preview?${buildSimpleQuery({ timeZoneId })}`, body),
+  },
+
+  formResponses: {
+    workspace: (filters: Record<string, QueryParameterValue> = {}) =>
+      request<{ items: FormResponseWorkspaceItem[]; page: number; pageSize: number; totalCount: number }>(
+        `/api/v1/form-response-workspace?${buildSimpleQuery(filters)}`),
+    getAssignmentResponse: (assignmentId: string) =>
+      request<FormResponseWorkspaceDetail>(`/api/v1/form-assignments/${assignmentId}/response`),
+    saveDraft: (assignmentId: string, body: {
+      answers: Record<string, unknown>
+      clientMutationId: string
+      expectedDraftVersion: number
+      rowVersion?: string | null
+    }) => putJson<FormResponseDraftSaveResult>(`/api/v1/form-assignments/${assignmentId}/response/draft`, body),
+    validate: (assignmentId: string, body: { answers: Record<string, unknown> }) =>
+      postJson<FormResponseDraftSaveResult>(`/api/v1/form-assignments/${assignmentId}/response/validate`, body),
+    submit: (assignmentId: string, body: {
+      answers: Record<string, unknown>
+      clientMutationId: string
+      expectedDraftVersion: number
+      rowVersion: string
+      acknowledged: boolean
+      acknowledgementText?: string | null
+    }) => postJson<{ responseId: string; submissionId: string; submissionNumber: number; status: number; rowVersion: string }>(
+      `/api/v1/form-assignments/${assignmentId}/response/submit`, body),
+    reviews: (filters: Record<string, QueryParameterValue> = {}) =>
+      request<{ items: FormResponseWorkspaceItem[]; page: number; pageSize: number; totalCount: number }>(
+        `/api/v1/form-response-reviews?${buildSimpleQuery(filters)}`),
+    getReview: (responseId: string) => request<FormResponseReviewDetail>(`/api/v1/form-responses/${responseId}/review`),
+    startReview: (responseId: string, body: { rowVersion: string }) =>
+      postJson<void>(`/api/v1/form-responses/${responseId}/review/start`, body),
+    returnResponse: (responseId: string, body: { reason: string; newDueAtUtc?: string | null; comments?: Array<{ fieldKey?: string | null; body: string; isVisibleToRespondent: boolean }>; rowVersion: string }) =>
+      postJson<void>(`/api/v1/form-responses/${responseId}/return`, body),
+    approve: (responseId: string, body: { reason?: string | null; rowVersion: string }) =>
+      postJson<void>(`/api/v1/form-responses/${responseId}/approve`, body),
+    reject: (responseId: string, body: { reason: string; rowVersion: string }) =>
+      postJson<void>(`/api/v1/form-responses/${responseId}/reject`, body),
+    close: (responseId: string, body: { reason?: string | null; rowVersion: string }) =>
+      postJson<void>(`/api/v1/form-responses/${responseId}/close`, body),
   },
 }

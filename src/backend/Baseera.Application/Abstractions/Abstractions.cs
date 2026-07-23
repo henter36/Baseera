@@ -76,6 +76,13 @@ public interface IBaseeraDbContext
     IQueryable<FormCycle> FormCycles { get; }
     IQueryable<FormFacilityAssignment> FormFacilityAssignments { get; }
     IQueryable<OrganizationBusinessCalendarDate> OrganizationBusinessCalendarDates { get; }
+    IQueryable<FormCampaignResponsePolicy> FormCampaignResponsePolicies { get; }
+    IQueryable<FormResponse> FormResponses { get; }
+    IQueryable<FormResponseSubmission> FormResponseSubmissions { get; }
+    IQueryable<FormResponseReviewDecision> FormResponseReviewDecisions { get; }
+    IQueryable<FormResponseReviewComment> FormResponseReviewComments { get; }
+    IQueryable<FormResponseMutation> FormResponseMutations { get; }
+    IQueryable<FormResponseHistory> FormResponseHistories { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;

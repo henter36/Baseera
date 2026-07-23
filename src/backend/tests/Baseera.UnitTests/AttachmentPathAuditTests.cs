@@ -2,7 +2,9 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Attachments;
 using Baseera.Application.Audit;
 using Baseera.Application.Common;
+using Baseera.Application.Forms.Responses;
 using Baseera.Application.Security;
+using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Organization;
@@ -146,7 +148,13 @@ public sealed class AttachmentEntityScopeTests
     }
 
     private static AttachmentService CreateService(BaseeraDbContext db, ICurrentUser user) =>
-        new(db, new NoopStorage(), user, new OrganizationalScopeService(user, db), new NoopAudit());
+        new(
+            db,
+            new NoopStorage(),
+            user,
+            new OrganizationalScopeService(user, db),
+            new NoopAudit(),
+            new DenyFormResponseAttachmentAccess());
 
     private static BaseeraDbContext CreateDb()
     {
@@ -181,6 +189,16 @@ public sealed class AttachmentEntityScopeTests
     private sealed class NoopAudit : IAuditService
     {
         public Task WriteAsync(AuditEntry entry, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class DenyFormResponseAttachmentAccess : IFormResponseAttachmentAccessResolver
+    {
+        public Task<FormResponseAttachmentAccessDecision> ResolveAsync(
+            Guid responseId,
+            FormResponseAttachmentOperation operation,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new FormResponseAttachmentAccessDecision(
+                false, false, false, ClassificationLevel.Internal, false, false));
     }
 }
 

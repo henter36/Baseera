@@ -111,6 +111,7 @@ public class FormCampaign : SoftDeletableEntity
     public ICollection<FormTargetRule> TargetRules { get; set; } = new List<FormTargetRule>();
     public ICollection<FormCampaignExclusion> Exclusions { get; set; } = new List<FormCampaignExclusion>();
     public ICollection<FormCycle> Cycles { get; set; } = new List<FormCycle>();
+    public FormCampaignResponsePolicy? ResponsePolicy { get; set; }
 }
 
 public class FormTargetRule : EntityBase
