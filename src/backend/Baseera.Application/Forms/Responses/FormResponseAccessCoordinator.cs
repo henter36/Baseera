@@ -4,19 +4,25 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Forms;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
+using Baseera.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 
 public interface IFormResponseAccessCoordinator
 {
     Guid UserId { get; }
+    void EnsureRespondentWorkspacePermission();
+    void EnsureReviewDetailPermission();
     void EnsureRespondPermission();
-    void EnsureViewResponsesPermission();
     void EnsureReviewPermission();
     void EnsureApprovePermission();
     void EnsureClosePermission();
     bool CanViewSensitiveResponses();
+    bool HasReviewerSidePermission();
+    IQueryable<Facility> FilterFacilities(IQueryable<Facility> facilities);
     Task EnsureFacilityInScopeAsync(Guid facilityId, CancellationToken cancellationToken);
     Task EnsureFormCapabilityAsync(Guid formDefinitionId, FormAccessCapability capability, CancellationToken cancellationToken);
+    bool IsRespondentOwner(FormResponse response);
+    bool CanActAsFacilityRespondent(Guid facilityId);
 }
 
 public sealed class FormResponseAccessCoordinator(
@@ -30,16 +36,21 @@ public sealed class FormResponseAccessCoordinator(
     public void EnsureRespondPermission() =>
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsRespond);
 
-    public void EnsureViewResponsesPermission()
+    public void EnsureRespondentWorkspacePermission() => EnsureRespondPermission();
+
+    public void EnsureReviewDetailPermission()
     {
-        if (!currentUser.HasPermission(PermissionCodes.FormsViewResponses)
-            && !currentUser.HasPermission(PermissionCodes.FormsRespond)
-            && !currentUser.HasPermission(PermissionCodes.FormsReviewResponses)
-            && !currentUser.HasPermission(PermissionCodes.FormsApproveResponses))
+        if (!HasReviewerSidePermission())
         {
-            throw new UnauthorizedAccessException("ليست لديك صلاحية عرض الردود.");
+            throw new UnauthorizedAccessException("ليست لديك صلاحية عرض تفاصيل المراجعة.");
         }
     }
+
+    public bool HasReviewerSidePermission() =>
+        currentUser.HasPermission(PermissionCodes.FormsViewResponses)
+        || currentUser.HasPermission(PermissionCodes.FormsReviewResponses)
+        || currentUser.HasPermission(PermissionCodes.FormsApproveResponses)
+        || currentUser.HasPermission(PermissionCodes.FormsCloseResponses);
 
     public void EnsureReviewPermission() =>
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsReviewResponses);
@@ -53,6 +64,9 @@ public sealed class FormResponseAccessCoordinator(
     public bool CanViewSensitiveResponses() =>
         currentUser.HasPermission(PermissionCodes.FormsViewSensitiveResponses)
         || currentUser.HasPermission(PermissionCodes.FormsViewSensitive);
+
+    public IQueryable<Facility> FilterFacilities(IQueryable<Facility> facilities) =>
+        orgScope.FilterFacilities(facilities);
 
     public Task EnsureFacilityInScopeAsync(Guid facilityId, CancellationToken cancellationToken)
     {
@@ -73,5 +87,37 @@ public sealed class FormResponseAccessCoordinator(
             .FirstOrDefaultAsync(f => f.Id == formDefinitionId, cancellationToken)
             ?? throw new KeyNotFoundException("النموذج غير موجود.");
         await formAccess.EnsureCapabilityAsync(form, capability, cancellationToken);
+    }
+
+    public bool CanActAsFacilityRespondent(Guid facilityId) =>
+        currentUser.HasPermission(PermissionCodes.FormsRespond)
+        && orgScope.CanAccessFacility(facilityId);
+
+    public bool IsRespondentOwner(FormResponse response)
+    {
+        if (!currentUser.HasPermission(PermissionCodes.FormsRespond)
+            || !orgScope.CanAccessFacility(response.FacilityId))
+        {
+            return false;
+        }
+
+        var userId = currentUser.UserId;
+        if (userId is null)
+        {
+            return false;
+        }
+
+        if (response.SubmittedByUserId == userId)
+        {
+            return true;
+        }
+
+        if (response.Status is FormResponseStatus.Draft or FormResponseStatus.Returned
+            && response.LastSavedByUserId == userId)
+        {
+            return true;
+        }
+
+        return false;
     }
 }

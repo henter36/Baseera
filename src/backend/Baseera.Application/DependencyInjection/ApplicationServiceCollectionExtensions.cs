@@ -59,6 +59,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IFormCampaignService, FormCampaignService>();
         services.AddScoped<IFormCampaignScheduler, FormCampaignScheduler>();
         services.AddScoped<IFormResponseAccessCoordinator, FormResponseAccessCoordinator>();
+        services.AddScoped<IFormResponseAttachmentAccessResolver, FormResponseAttachmentAccessResolver>();
         services.AddScoped<IFormResponseCompletionEvaluator, FormResponseCompletionEvaluator>();
         services.AddScoped<IFormResponseValidator, FormResponseValidator>();
         services.AddScoped<IFormResponseProjectionService, FormResponseProjectionService>();

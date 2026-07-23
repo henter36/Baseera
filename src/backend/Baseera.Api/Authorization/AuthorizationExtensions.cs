@@ -95,12 +95,18 @@ public static class AuthPolicies
     public const string FormsApproveResponses = PermissionPrefix + PermissionCodes.FormsApproveResponses;
     public const string FormsCloseResponses = PermissionPrefix + PermissionCodes.FormsCloseResponses;
     public const string FormsViewSensitiveResponses = PermissionPrefix + PermissionCodes.FormsViewSensitiveResponses;
+    public const string FormsViewResponseDetail = "perm:Forms.ViewResponseDetail";
 }
 
 
 public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
 {
     public string Permission { get; } = permission;
+}
+
+public sealed class AnyPermissionRequirement(params string[] permissions) : IAuthorizationRequirement
+{
+    public IReadOnlyList<string> Permissions { get; } = permissions;
 }
 
 public sealed class PermissionAuthorizationHandler(Application.Abstractions.ICurrentUser currentUser)
@@ -117,15 +123,37 @@ public sealed class PermissionAuthorizationHandler(Application.Abstractions.ICur
     }
 }
 
+public sealed class AnyPermissionAuthorizationHandler(Application.Abstractions.ICurrentUser currentUser)
+    : AuthorizationHandler<AnyPermissionRequirement>
+{
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, AnyPermissionRequirement requirement)
+    {
+        if (currentUser.IsAuthenticated
+            && requirement.Permissions.Any(p => currentUser.HasPermission(p)))
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
 public static class AuthorizationExtensions
 {
     public static IServiceCollection AddBaseeraAuthorizationPolicies(this IServiceCollection services)
     {
         services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, AnyPermissionAuthorizationHandler>();
         services.AddAuthorization(options =>
         {
             void AddPerm(string policy, string permission) =>
                 options.AddPolicy(policy, p => p.Requirements.Add(new PermissionRequirement(permission)));
+
+            options.AddPolicy(AuthPolicies.FormsViewResponseDetail, p => p.Requirements.Add(new AnyPermissionRequirement(
+                PermissionCodes.FormsViewResponses,
+                PermissionCodes.FormsReviewResponses,
+                PermissionCodes.FormsApproveResponses,
+                PermissionCodes.FormsCloseResponses)));
 
             AddPerm(AuthPolicies.OrganizationView, PermissionCodes.OrganizationView);
             AddPerm(AuthPolicies.OrganizationManage, PermissionCodes.OrganizationManage);

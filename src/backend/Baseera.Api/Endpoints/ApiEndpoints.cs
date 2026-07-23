@@ -606,22 +606,10 @@ public static class ApiEndpoints
     private static void MapFormResponseEndpoints(RouteGroupBuilder api)
     {
         api.MapGet("/form-response-workspace", async (
-            string? workStatus,
-            Guid? campaignId,
-            Guid? cycleId,
-            Guid? facilityId,
-            Guid? regionId,
-            DateTimeOffset? dueFrom,
-            DateTimeOffset? dueTo,
-            string? search,
-            int? page,
-            int? pageSize,
-            string? sort,
+            [AsParameters] FormResponseWorkspaceQuery query,
             IFormResponseService service,
             CancellationToken ct) =>
-            Results.Ok(await service.ListWorkspaceAsync(
-                workStatus, campaignId, cycleId, facilityId, regionId, dueFrom, dueTo, search,
-                page ?? 1, pageSize ?? 20, sort, ct)))
+            Results.Ok(await service.ListWorkspaceAsync(query, ct)))
             .RequireAuthorization(AuthPolicies.FormsRespond);
 
         api.MapGet("/form-assignments/{assignmentId:guid}/response", async (
@@ -645,29 +633,16 @@ public static class ApiEndpoints
             .RequireAuthorization(AuthPolicies.FormsRespond);
 
         api.MapGet("/form-response-reviews", async (
-            string? status,
-            Guid? campaignId,
-            Guid? cycleId,
-            Guid? regionId,
-            Guid? facilityId,
-            int? reviewLevel,
-            DateTimeOffset? submittedFrom,
-            DateTimeOffset? submittedTo,
-            bool? overdue,
-            string? search,
-            int? page,
-            int? pageSize,
+            [AsParameters] FormResponseReviewInboxQuery query,
             IFormResponseReviewService service,
             CancellationToken ct) =>
-            Results.Ok(await service.ListInboxAsync(
-                status, campaignId, cycleId, regionId, facilityId, reviewLevel,
-                submittedFrom, submittedTo, overdue, search, page ?? 1, pageSize ?? 20, ct)))
+            Results.Ok(await service.ListInboxAsync(query, ct)))
             .RequireAuthorization(AuthPolicies.FormsReviewResponses);
 
         api.MapGet("/form-responses/{responseId:guid}/review", async (
             Guid responseId, IFormResponseReviewService service, CancellationToken ct) =>
             Results.Ok(await service.GetReviewAsync(responseId, ct)))
-            .RequireAuthorization(AuthPolicies.FormsViewResponses);
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
 
         api.MapPost("/form-responses/{responseId:guid}/review/start", async (
             Guid responseId, FormResponseCloseRequest request, IFormResponseReviewService service, CancellationToken ct) =>
@@ -707,17 +682,17 @@ public static class ApiEndpoints
         api.MapGet("/form-responses/{responseId:guid}/submissions", async (
             Guid responseId, IFormResponseReviewService service, CancellationToken ct) =>
             Results.Ok(await service.ListSubmissionsAsync(responseId, ct)))
-            .RequireAuthorization(AuthPolicies.FormsViewResponses);
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
 
         api.MapGet("/form-responses/{responseId:guid}/submissions/{submissionNumber:int}", async (
             Guid responseId, int submissionNumber, IFormResponseReviewService service, CancellationToken ct) =>
             Results.Ok(await service.GetSubmissionAsync(responseId, submissionNumber, ct)))
-            .RequireAuthorization(AuthPolicies.FormsViewResponses);
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
 
         api.MapGet("/form-responses/{responseId:guid}/history", async (
             Guid responseId, IFormResponseReviewService service, CancellationToken ct) =>
             Results.Ok(await service.GetHistoryAsync(responseId, ct)))
-            .RequireAuthorization(AuthPolicies.FormsViewResponses);
+            .RequireAuthorization(AuthPolicies.FormsViewResponseDetail);
     }
 
     private static void MapOperationalDashboardEndpoints(RouteGroupBuilder api)

@@ -1,6 +1,7 @@
 namespace Baseera.Application.Forms;
 
 using Baseera.Application.Abstractions;
+using Baseera.Application.Forms.Responses;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
@@ -70,4 +71,37 @@ internal static class FormAccessHelper
 
     public static string RedactedTitle => "[محجوب]";
     public static string RedactedDescription => "[محتوى حساس — يتطلب صلاحية عرض]";
+
+    public static void EnsureDraftVersion(FormResponse response, int expected)
+    {
+        if (response.DraftVersion != expected)
+        {
+            throw new FormResponseConflictException(new FormResponseConflictDto(
+                response.DraftVersion,
+                Convert.ToBase64String(response.RowVersion),
+                response.LastSavedAtUtc,
+                "DraftVersionConflict"));
+        }
+    }
+
+    public static void EnsureResponseRowVersion(FormResponse response, string? incoming)
+    {
+        if (response.DraftVersion == 0 && string.IsNullOrWhiteSpace(incoming))
+        {
+            return;
+        }
+
+        try
+        {
+            EnsureRowVersion(response.RowVersion, incoming ?? string.Empty);
+        }
+        catch (InvalidOperationException)
+        {
+            throw new FormResponseConflictException(new FormResponseConflictDto(
+                response.DraftVersion,
+                Convert.ToBase64String(response.RowVersion),
+                response.LastSavedAtUtc,
+                "RowVersionConflict"));
+        }
+    }
 }
