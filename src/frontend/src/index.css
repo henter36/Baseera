@@ -10,6 +10,24 @@
   --ok: #1f6b4a;
   --surface: #fffdf8;
   --shadow: 0 10px 30px rgba(28, 36, 48, 0.08);
+  /* Phase D.2 command center visual system */
+  --command-bg: #eef2ef;
+  --command-surface: #f8faf8;
+  --command-surface-raised: #ffffff;
+  --command-surface-muted: #e6ece8;
+  --command-border-subtle: rgba(28, 45, 39, 0.12);
+  --command-border-strong: rgba(28, 45, 39, 0.28);
+  --command-text-primary: #17231f;
+  --command-text-secondary: #5f6f67;
+  --command-accent: #0f766e;
+  --command-accent-soft: #d7f0ea;
+  --command-critical: #b42318;
+  --command-warning: #b45309;
+  --command-attention: #6d5d0f;
+  --command-stable: #177245;
+  --command-info: #2563a6;
+  --command-shadow: 0 24px 60px rgba(23, 35, 31, 0.14);
+  --command-focus: #0f766e;
   font-family: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
   color: var(--ink);
   background:
@@ -1121,26 +1139,6 @@ code {
 }
 
 /* Phase D.2 command center visual system */
-:root {
-  --command-bg: #eef2ef;
-  --command-surface: #f8faf8;
-  --command-surface-raised: #ffffff;
-  --command-surface-muted: #e6ece8;
-  --command-border-subtle: rgba(28, 45, 39, 0.12);
-  --command-border-strong: rgba(28, 45, 39, 0.28);
-  --command-text-primary: #17231f;
-  --command-text-secondary: #5f6f67;
-  --command-accent: #0f766e;
-  --command-accent-soft: #d7f0ea;
-  --command-critical: #b42318;
-  --command-warning: #b45309;
-  --command-attention: #6d5d0f;
-  --command-stable: #177245;
-  --command-info: #2563a6;
-  --command-shadow: 0 24px 60px rgba(23, 35, 31, 0.14);
-  --command-focus: #0f766e;
-}
-
 .facility-command-center {
   min-height: calc(100vh - 5rem);
   margin: -0.5rem;
@@ -1470,6 +1468,13 @@ code {
 .priority-row-list {
   display: grid;
   gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.priority-row-list > li {
+  min-width: 0;
 }
 
 .priority-row {
@@ -1576,6 +1581,11 @@ code {
   border: 1px solid var(--command-border-subtle);
 }
 
+.command-context-panel {
+  margin: 0;
+  color: inherit;
+}
+
 .context-panel-summary {
   padding: 1rem;
   border-radius: 18px;
@@ -1671,12 +1681,12 @@ code {
   opacity: 0.58;
 }
 
-.inline-action-form {
+.facility-command-center .inline-action-form {
   display: grid;
   gap: 0.7rem;
 }
 
-.inline-action-form label {
+.facility-command-center .inline-action-form label {
   display: grid;
   gap: 0.3rem;
 }

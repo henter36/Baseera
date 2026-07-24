@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FacilityWorkspacePage } from './FacilityWorkspacePage'
@@ -61,6 +61,10 @@ describe('FacilityWorkspacePage', () => {
     expect(screen.getByText('مركز قيادة السجن')).toBeInTheDocument()
     expect(screen.getAllByText('تتطلب تدخلاً').length).toBeGreaterThan(0)
     expect(screen.getByText('قائمة الأولويات')).toBeInTheDocument()
+    const priorityList = screen.getByRole('list', { name: /قائمة الأولويات/ })
+    const priorityItems = within(priorityList).getAllByRole('listitem')
+    expect(priorityItems).toHaveLength(4)
+    expect(within(priorityItems[0]).getByRole('button', { name: /ملاحظة حرجة/ })).toBeEnabled()
     expect(screen.queryByRole('link', { name: 'فتح الملاحظة' })).not.toBeInTheDocument()
     expect(getWorkspace).toHaveBeenCalledWith('facility-operations', expect.objectContaining({ level: 1, facilityId: 'facility-a' }))
   })
@@ -123,9 +127,39 @@ describe('FacilityWorkspacePage', () => {
       expect(screen.getByTestId('router-location')).toHaveTextContent('entityId=note-1')
     })
     expect(await screen.findByRole('heading', { name: 'ملاحظة حرجة' })).toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.tagName).toBe('DIALOG')
+    expect(dialog).toHaveAttribute('open')
+    expect(dialog).toHaveAttribute('aria-labelledby', 'context-panel-title')
     expect(screen.getByText('وصف تفصيلي للملاحظة الحرجة')).toBeInTheDocument()
+    expect(screen.getByText('مفتوحة').closest('dl')).toHaveAttribute('data-tone', 'danger')
     expect(screen.getByRole('link', { name: 'فتح الصفحة الكاملة' })).toHaveAttribute('href', '/notes/workspace?noteId=note-1')
     expect(getNoteWorkspaceDetail).toHaveBeenCalledWith('note-1')
+  })
+
+  it('uses priority tone for a non-overdue note priority and info when no priority summary exists', async () => {
+    getNoteWorkspaceDetail.mockResolvedValue({
+      ...noteWorkspaceDetail,
+      note: { ...noteWorkspaceDetail.note, isOverdue: false },
+    })
+
+    const priorityRender = renderPage('/workspaces/facilities/facility-a')
+
+    fireEvent.click(await screen.findByRole('button', { name: /ملاحظة حرجة/ }))
+
+    expect(await screen.findByText('مفتوحة')).toBeInTheDocument()
+    expect(screen.getByText('مفتوحة').closest('dl')).toHaveAttribute('data-tone', 'danger')
+    priorityRender.unmount()
+
+    getNoteWorkspaceDetail.mockResolvedValue({
+      ...noteWorkspaceDetail,
+      note: { ...noteWorkspaceDetail.note, id: 'note-missing-summary', isOverdue: false },
+    })
+
+    renderPage('/workspaces/facilities/facility-a?panel=note&entityId=note-missing-summary')
+
+    expect(await screen.findByText('مفتوحة')).toBeInTheDocument()
+    expect(screen.getByText('مفتوحة').closest('dl')).toHaveAttribute('data-tone', 'info')
   })
 
   it('keeps unsupported note actions disabled inside the context panel', async () => {
@@ -178,6 +212,9 @@ describe('FacilityWorkspacePage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'مركز الإجراءات' }))
 
     expect(screen.getByRole('heading', { name: 'مركز الإجراءات' })).toBeInTheDocument()
+    const urgentList = screen.getByRole('list', { name: /الإجراءات العاجلة/ })
+    expect(within(urgentList).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(urgentList).getByRole('button', { name: /ملاحظة حرجة/ })).toBeEnabled()
     expect(screen.getByText('مسندة أو تحتاج إجراء')).toBeInTheDocument()
     expect(screen.getByTestId('router-location')).toHaveTextContent('/workspaces/facilities/facility-a')
   })
@@ -214,6 +251,7 @@ describe('FacilityWorkspacePage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /ملاحظة حرجة/ }))
     await screen.findByRole('heading', { name: 'ملاحظة حرجة' })
 
+    expect(screen.getByRole('dialog')).toHaveFocus()
     fireEvent.click(screen.getByLabelText('إغلاق لوحة التفاصيل'))
 
     await waitFor(() => {
@@ -222,6 +260,23 @@ describe('FacilityWorkspacePage', () => {
       expect(location).not.toHaveTextContent('panel=note')
       expect(location).not.toHaveTextContent('entityId=note-1')
     })
+    expect(await screen.findByRole('button', { name: /ملاحظة حرجة/ })).toHaveFocus()
+  })
+
+  it('keeps Escape closing the native dialog and returning focus to the selected row', async () => {
+    renderPage('/workspaces/facilities/facility-a')
+
+    const row = await screen.findByRole('button', { name: /ملاحظة حرجة/ })
+    fireEvent.click(row)
+    expect(await screen.findByRole('dialog')).toHaveFocus()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(screen.getByTestId('router-location')).not.toHaveTextContent('panel=note')
+    })
+    expect(row).toHaveFocus()
   })
 })
 

@@ -398,37 +398,38 @@ function InterventionQueue({
       {items.length === 0 ? (
         <WorkspaceEmpty message="لا توجد عناصر أولوية ضمن الفترة الحالية." />
       ) : (
-        <div className="priority-row-list" role="list">
+        <ul className="priority-row-list" aria-label="قائمة الأولويات">
           {items.map((item, index) => {
             const panel = panelForPriorityItem(item)
             const selected = selectedPanel?.type === panel.type && selectedPanel.entityId === panel.entityId
             return (
-              <button
-                key={`${item.type}-${item.reference}-${index}`}
-                ref={selected ? selectedRowRef : undefined}
-                type="button"
-                className="priority-row"
-                data-selected={selected}
-                data-tone={priorityTone(item)}
-                onClick={(event) => {
-                  selectedRowRef.current = event.currentTarget
-                  openPanel(panel)
-                }}
-              >
-                <span className="priority-band" aria-hidden="true" />
-                <span className="priority-row-main">
-                  <strong>{item.titleAr}</strong>
-                  <small>{item.reference} · {item.reasonAr}</small>
-                </span>
-                <span className="priority-row-meta">
-                  <span>{item.severityAr}</span>
-                  {item.overdueDays != null && <span>{item.overdueDays} يوم</span>}
-                  {item.ownerAr && <span>{item.ownerAr}</span>}
-                </span>
-              </button>
+              <li key={`${item.type}-${item.reference}-${index}`}>
+                <button
+                  ref={selected ? selectedRowRef : undefined}
+                  type="button"
+                  className="priority-row"
+                  data-selected={selected}
+                  data-tone={priorityTone(item)}
+                  onClick={(event) => {
+                    selectedRowRef.current = event.currentTarget
+                    openPanel(panel)
+                  }}
+                >
+                  <span className="priority-band" aria-hidden="true" />
+                  <span className="priority-row-main">
+                    <strong>{item.titleAr}</strong>
+                    <small>{item.reference} · {item.reasonAr}</small>
+                  </span>
+                  <span className="priority-row-meta">
+                    <span>{item.severityAr}</span>
+                    {item.overdueDays != null && <span>{item.overdueDays} يوم</span>}
+                    {item.ownerAr && <span>{item.ownerAr}</span>}
+                  </span>
+                </button>
+              </li>
             )
           })}
-        </div>
+        </ul>
       )}
     </aside>
   )
@@ -449,7 +450,7 @@ function CommandContextPanel({
   onClose: () => void
   onChanged: () => void
 }>) {
-  const panelRef = useRef<HTMLElement | null>(null)
+  const panelRef = useRef<HTMLDialogElement | null>(null)
   const summary = findPanelSummary(panel, queue, activity)
 
   useEffect(() => {
@@ -457,11 +458,10 @@ function CommandContextPanel({
   }, [panel.type, panel.entityId])
 
   return (
-    <aside
+    <dialog
       ref={panelRef}
       className="command-context-panel"
-      role="dialog"
-      aria-modal="false"
+      open
       tabIndex={-1}
       aria-labelledby="context-panel-title"
     >
@@ -476,7 +476,7 @@ function CommandContextPanel({
         {summaryReason(summary) !== '-' && <p>{summaryReason(summary)}</p>}
       </div>
       <PanelDetail panel={panel} summary={summary} onChanged={onChanged} />
-    </aside>
+    </dialog>
   )
 }
 
@@ -526,11 +526,19 @@ function NotePanel({ noteId, summary, onChanged }: Readonly<{ noteId: string; su
   if (!detailQuery.data) return <WorkspaceEmpty message="لا توجد تفاصيل متاحة." />
 
   const detail = detailQuery.data
+  let noteTone: WorkspaceVisualTone = 'info'
+
+  if (detail.note.isOverdue) {
+    noteTone = 'danger'
+  } else if (summary && 'priorityRank' in summary) {
+    noteTone = priorityTone(summary)
+  }
+
   return (
     <div className="context-stack">
       <ContextSection title="ملخص الملاحظة">
         <StatusRail
-          tone={detail.note.isOverdue ? 'danger' : summary && 'priorityRank' in summary ? priorityTone(summary) : 'info'}
+          tone={noteTone}
           rows={[
             ['الحالة', detail.note.statusAr],
             ['الخطورة', detail.note.severityAr],
@@ -675,14 +683,16 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
         <CommandMetric label="متأخرة" value={(data.notes?.overdueNotes ?? 0) + (data.actions?.overdueActions ?? 0) + (data.forms?.overdueForms ?? 0)} tone="danger" />
         <CommandMetric label="مصعدة" value={data.alerts?.openEscalations ?? 0} tone="warn" />
       </div>
-      <div className="priority-row-list" role="list">
+      <ul className="priority-row-list" aria-label="الإجراءات العاجلة">
         {urgent.map((item) => (
-          <button key={`${item.type}-${item.reference}`} type="button" className="priority-row compact" onClick={() => openPanel(panelForPriorityItem(item))}>
-            <span className="priority-band" aria-hidden="true" />
-            <span className="priority-row-main"><strong>{item.titleAr}</strong><small>{item.reasonAr}</small></span>
-          </button>
+          <li key={`${item.type}-${item.reference}`}>
+            <button type="button" className="priority-row compact" onClick={() => openPanel(panelForPriorityItem(item))}>
+              <span className="priority-band" aria-hidden="true" />
+              <span className="priority-row-main"><strong>{item.titleAr}</strong><small>{item.reasonAr}</small></span>
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
     </aside>
   )
 }
@@ -965,11 +975,12 @@ function closePanel(
   setSearchParams: ReturnType<typeof useSearchParams>[1],
   selectedRowRef: React.MutableRefObject<HTMLButtonElement | null>,
 ) {
+  const selectedRow = selectedRowRef.current
   const params = new URLSearchParams(searchParams)
   params.delete('panel')
   params.delete('entityId')
   setSearchParams(params, { replace: false })
-  window.setTimeout(() => selectedRowRef.current?.focus(), 0)
+  window.setTimeout(() => selectedRow?.focus(), 0)
 }
 
 function panelForPriorityItem(item: PriorityItem): PanelState {
