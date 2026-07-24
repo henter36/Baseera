@@ -2,16 +2,16 @@ namespace Baseera.Application.Workspaces;
 
 using Baseera.Application.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 public sealed class WorkspaceQueryService(
     IWorkspaceRegistry registry,
     WorkspaceContextResolver contextResolver,
     ICurrentUser currentUser,
     TimeProvider timeProvider,
-    ILogger<WorkspaceQueryService> logger) : IWorkspaceQueryService
+    ILogger<WorkspaceQueryService> logger,
+    IOptions<WorkspaceFrameworkOptions> options) : IWorkspaceQueryService
 {
-    private const int WidgetQueryBudget = 8;
-
     public async Task<WorkspaceShellDto?> GetWorkspaceAsync(WorkspaceRequest request, CancellationToken cancellationToken = default)
     {
         var definition = registry.GetWorkspaceDefinition(request.WorkspaceKey);
@@ -21,7 +21,13 @@ public sealed class WorkspaceQueryService(
         }
 
         var context = await contextResolver.ResolveAsync(definition, request, cancellationToken);
-        var authorizedDefinitions = AuthorizedWidgets(definition.Key, context).Take(WidgetQueryBudget).ToList();
+        var authorizedDefinitions = AuthorizedWidgets(definition.Key, context)
+            .Take(options.Value.EffectiveWidgetQueryBudget)
+            .ToList();
+        var effectiveContext = context with
+        {
+            IncludesSensitiveData = authorizedDefinitions.Any(widget => widget.ContainsSensitiveData)
+        };
         var widgets = new List<WidgetDataEnvelopeDto>(authorizedDefinitions.Count);
         var failures = new List<WorkspaceWidgetFailureDto>();
 
@@ -35,14 +41,18 @@ public sealed class WorkspaceQueryService(
 
             try
             {
-                widgets.Add(await provider.LoadAsync(context, cancellationToken));
+                widgets.Add(await provider.LoadAsync(effectiveContext, cancellationToken));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex) when (widgetDefinition.EmptyErrorBehavior.AllowPartialFailure)
             {
                 logger.LogWarning(
                     ex,
                     "Workspace widget failed safely. Workspace={WorkspaceKey} Widget={WidgetKey} CorrelationId={CorrelationId}",
-                    context.WorkspaceKey,
+                    effectiveContext.WorkspaceKey,
                     widgetDefinition.Key,
                     currentUser.CorrelationId);
                 failures.Add(new WorkspaceWidgetFailureDto(widgetDefinition.Key, widgetDefinition.EmptyErrorBehavior.ErrorMessageAr, true));
@@ -52,7 +62,7 @@ public sealed class WorkspaceQueryService(
         var generatedAt = timeProvider.GetUtcNow();
         return new WorkspaceShellDto(
             definition with { RegisteredWidgets = authorizedDefinitions.Select(w => w.Key).ToList() },
-            ToDto(context),
+            ToDto(effectiveContext),
             generatedAt,
             WorkspaceContractFactory.Freshness(generatedAt, generatedAt),
             WorkspaceContractFactory.Confidence(ConfidenceLevel.High, null),
@@ -96,7 +106,8 @@ public sealed class WorkspaceQueryService(
             return null;
         }
 
-        return new WorkspaceWidgetDataDto(widgetDefinition, await provider.LoadAsync(context, cancellationToken));
+        var effectiveContext = context with { IncludesSensitiveData = widgetDefinition.ContainsSensitiveData };
+        return new WorkspaceWidgetDataDto(widgetDefinition, await provider.LoadAsync(effectiveContext, cancellationToken));
     }
 
     private IEnumerable<WidgetDefinition> AuthorizedWidgets(string workspaceKey, WorkspaceContext context)

@@ -1,9 +1,11 @@
 using Baseera.Application.Abstractions;
+using Baseera.Application.Dashboard;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Baseera.UnitTests.Workspaces;
 
@@ -42,7 +44,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
     [Fact]
     public async Task Query_filters_widgets_by_server_permissions()
     {
-        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.DashboardViewOperational);
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, PermissionCodes.DashboardViewOperational);
         var service = BuildService(
             user,
             new TestWidgetProvider("visible", PermissionCodes.DashboardViewOperational),
@@ -59,7 +61,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
     [Fact]
     public async Task Query_returns_partial_shell_when_widget_fails_safely()
     {
-        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.DashboardViewOperational);
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, PermissionCodes.DashboardViewOperational);
         var service = BuildService(user, new TestWidgetProvider("visible", PermissionCodes.DashboardViewOperational), new FailingWidgetProvider("fails"));
 
         var shell = await service.GetWorkspaceAsync(new WorkspaceRequest("test", WorkspaceLevel.Domain, null, null, null, null, null, null, null));
@@ -69,6 +71,188 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         Assert.Single(shell.Widgets);
         Assert.Single(shell.WidgetFailures);
         Assert.Equal("fails", shell.WidgetFailures[0].WidgetKey);
+    }
+
+    [Fact]
+    public async Task Workspace_requires_all_definition_permissions()
+    {
+        var partialUser = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain);
+        var partialService = BuildServiceWithDefinition(
+            partialUser,
+            new HashSet<WorkspaceLevel> { WorkspaceLevel.Domain },
+            new HashSet<string> { PermissionCodes.WorkspacesView, PermissionCodes.DashboardViewOperational },
+            null,
+            new TestWidgetProvider("visible", PermissionCodes.WorkspacesView));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => partialService.GetWorkspaceAsync(new WorkspaceRequest(
+            "test",
+            WorkspaceLevel.Domain,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null)));
+
+        var fullUser = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, PermissionCodes.DashboardViewOperational);
+        var fullService = BuildServiceWithDefinition(
+            fullUser,
+            new HashSet<WorkspaceLevel> { WorkspaceLevel.Domain },
+            new HashSet<string> { PermissionCodes.WorkspacesView, PermissionCodes.DashboardViewOperational },
+            null,
+            new TestWidgetProvider("visible", PermissionCodes.WorkspacesView));
+
+        var shell = await fullService.GetWorkspaceAsync(new WorkspaceRequest("test", WorkspaceLevel.Domain, null, null, null, null, null, null, null));
+
+        Assert.NotNull(shell);
+    }
+
+    [Fact]
+    public async Task Domain_level_requires_domain_permission()
+    {
+        var user = CurrentUser(PermissionCodes.WorkspacesView);
+        var service = BuildService(user, new TestWidgetProvider("visible", PermissionCodes.WorkspacesView));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetWorkspaceAsync(new WorkspaceRequest(
+            "test",
+            WorkspaceLevel.Domain,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null)));
+    }
+
+    [Fact]
+    public async Task Sensitive_flag_uses_only_authorized_widget_definitions()
+    {
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, "Sensitive.View", "Normal.View");
+        var service = BuildService(
+            user,
+            new TestWidgetProvider("normal", "Normal.View"),
+            new TestWidgetProvider("sensitive", "Sensitive.View", containsSensitiveData: true));
+
+        var shell = await service.GetWorkspaceAsync(new WorkspaceRequest("test", WorkspaceLevel.Domain, null, null, null, null, null, null, null));
+
+        Assert.NotNull(shell);
+        Assert.True(shell!.Context.IncludesSensitiveData);
+        Assert.All(shell.Widgets, widget => Assert.True(widget.ScopeSummary.IsSensitive));
+    }
+
+    [Fact]
+    public async Task Unauthorized_sensitive_widgets_do_not_mark_workspace_sensitive()
+    {
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, "Normal.View");
+        var service = BuildService(
+            user,
+            new TestWidgetProvider("normal", "Normal.View"),
+            new TestWidgetProvider("hidden-sensitive", "Sensitive.View", containsSensitiveData: true));
+
+        var shell = await service.GetWorkspaceAsync(new WorkspaceRequest("test", WorkspaceLevel.Domain, null, null, null, null, null, null, null));
+
+        Assert.NotNull(shell);
+        Assert.False(shell!.Context.IncludesSensitiveData);
+        Assert.Single(shell.Widgets);
+        Assert.False(shell.Widgets[0].ScopeSummary.IsSensitive);
+    }
+
+    [Fact]
+    public async Task Widget_endpoint_uses_selected_widget_sensitivity()
+    {
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, "Sensitive.View");
+        var service = BuildService(user, new TestWidgetProvider("sensitive", "Sensitive.View", containsSensitiveData: true));
+
+        var widget = await service.GetWidgetAsync(new WorkspaceRequest("test", WorkspaceLevel.Domain, null, null, null, null, null, null, null), "sensitive");
+
+        Assert.NotNull(widget);
+        Assert.True(widget!.Data.ScopeSummary.IsSensitive);
+    }
+
+    [Fact]
+    public async Task Widget_cancellation_is_not_recorded_as_partial_failure()
+    {
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, PermissionCodes.DashboardViewOperational);
+        var cancelled = new CancelledWidgetProvider("cancelled");
+        var next = new CountingWidgetProvider("next");
+        var service = BuildService(user, cancelled, next);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => service.GetWorkspaceAsync(new WorkspaceRequest(
+            "test",
+            WorkspaceLevel.Domain,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null)));
+
+        Assert.Equal(1, cancelled.LoadCount);
+        Assert.Equal(0, next.LoadCount);
+    }
+
+    [Fact]
+    public async Task Query_respects_configured_widget_budget()
+    {
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, PermissionCodes.DashboardViewOperational);
+        var service = BuildService(
+            user,
+            new WorkspaceFrameworkOptions { WidgetQueryBudget = 2 },
+            new TestWidgetProvider("first", PermissionCodes.DashboardViewOperational),
+            new TestWidgetProvider("second", PermissionCodes.DashboardViewOperational),
+            new TestWidgetProvider("third", PermissionCodes.DashboardViewOperational));
+
+        var shell = await service.GetWorkspaceAsync(new WorkspaceRequest("test", WorkspaceLevel.Domain, null, null, null, null, null, null, null));
+
+        Assert.NotNull(shell);
+        Assert.Equal(["first", "second"], shell!.Widgets.Select(widget => widget.WidgetKey).ToArray());
+    }
+
+    [Fact]
+    public async Task Query_corrects_invalid_low_widget_budget()
+    {
+        var user = CurrentUser(PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewDomain, PermissionCodes.DashboardViewOperational);
+        var service = BuildService(
+            user,
+            new WorkspaceFrameworkOptions { WidgetQueryBudget = 0 },
+            new TestWidgetProvider("first", PermissionCodes.DashboardViewOperational),
+            new TestWidgetProvider("second", PermissionCodes.DashboardViewOperational));
+
+        var shell = await service.GetWorkspaceAsync(new WorkspaceRequest("test", WorkspaceLevel.Domain, null, null, null, null, null, null, null));
+
+        Assert.NotNull(shell);
+        Assert.Equal(["first"], shell!.Widgets.Select(widget => widget.WidgetKey).ToArray());
+    }
+
+    [Fact]
+    public async Task Corrective_actions_drill_down_preserves_workspace_filters()
+    {
+        var provider = new CorrectiveActionsSummaryWorkspaceWidgetProvider(new FakeOperationalDashboardQueryService(), time);
+        var context = new WorkspaceContext(
+            "reference",
+            WorkspaceLevel.Region,
+            SeedIds.Organization,
+            SeedIds.RegionA,
+            SeedIds.FacilityA1,
+            null,
+            "region",
+            new DateTimeOffset(2026, 7, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 24, 0, 0, 0, TimeSpan.Zero),
+            "ar-SA",
+            "Asia/Riyadh",
+            new HashSet<string>(),
+            false);
+
+        var envelope = await provider.LoadAsync(context, CancellationToken.None);
+        var target = Assert.Single(envelope.DrillDownTargets);
+
+        Assert.Equal("2026-07-01T00:00:00.0000000+00:00", target.PreservedFilters["fromUtc"]);
+        Assert.Equal("2026-07-24T00:00:00.0000000+00:00", target.PreservedFilters["toUtc"]);
+        Assert.Equal(SeedIds.RegionA.ToString(), target.PreservedFilters["regionId"]);
+        Assert.Equal(SeedIds.FacilityA1.ToString(), target.PreservedFilters["facilityId"]);
     }
 
     [Fact]
@@ -155,12 +339,27 @@ public sealed class WorkspaceFrameworkTests : IDisposable
 
     private WorkspaceQueryService BuildService(ICurrentUser user, params IWorkspaceWidgetProvider[] widgets)
     {
-        return BuildService(user, new HashSet<WorkspaceLevel> { WorkspaceLevel.Domain }, widgets);
+        return BuildServiceWithDefinition(user, new HashSet<WorkspaceLevel> { WorkspaceLevel.Domain }, new HashSet<string> { PermissionCodes.WorkspacesView }, null, widgets);
+    }
+
+    private WorkspaceQueryService BuildService(ICurrentUser user, WorkspaceFrameworkOptions options, params IWorkspaceWidgetProvider[] widgets)
+    {
+        return BuildServiceWithDefinition(user, new HashSet<WorkspaceLevel> { WorkspaceLevel.Domain }, new HashSet<string> { PermissionCodes.WorkspacesView }, options, widgets);
     }
 
     private WorkspaceQueryService BuildService(ICurrentUser user, IReadOnlySet<WorkspaceLevel> levels, params IWorkspaceWidgetProvider[] widgets)
     {
-        var workspace = new TestWorkspaceProvider(widgets.Select(widget => widget.Definition.Key).ToArray(), levels);
+        return BuildServiceWithDefinition(user, levels, new HashSet<string> { PermissionCodes.WorkspacesView }, null, widgets);
+    }
+
+    private WorkspaceQueryService BuildServiceWithDefinition(
+        ICurrentUser user,
+        IReadOnlySet<WorkspaceLevel> levels,
+        IReadOnlySet<string> requiredPermissions,
+        WorkspaceFrameworkOptions? options,
+        params IWorkspaceWidgetProvider[] widgets)
+    {
+        var workspace = new TestWorkspaceProvider(widgets.Select(widget => widget.Definition.Key).ToArray(), levels, requiredPermissions);
         var registry = new WorkspaceRegistry([workspace], widgets, NullLogger<WorkspaceRegistry>.Instance);
         var scope = new Baseera.Application.Security.OrganizationalScopeService(user, db);
         return new WorkspaceQueryService(
@@ -168,7 +367,8 @@ public sealed class WorkspaceFrameworkTests : IDisposable
             new WorkspaceContextResolver(db, user, scope, time),
             user,
             time,
-            NullLogger<WorkspaceQueryService>.Instance);
+            NullLogger<WorkspaceQueryService>.Instance,
+            Options.Create(options ?? new WorkspaceFrameworkOptions()));
     }
 
     private static ICurrentUser CurrentUser(params string[] permissions) => new FakeCurrentUser(
@@ -179,14 +379,17 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         permissions,
         [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
 
-    private sealed class TestWorkspaceProvider(IReadOnlyList<string> widgetKeys, IReadOnlySet<WorkspaceLevel>? levels = null) : IWorkspaceDefinitionProvider
+    private sealed class TestWorkspaceProvider(
+        IReadOnlyList<string> widgetKeys,
+        IReadOnlySet<WorkspaceLevel>? levels = null,
+        IReadOnlySet<string>? requiredPermissions = null) : IWorkspaceDefinitionProvider
     {
         public WorkspaceDefinition Definition { get; } = new(
             "test",
             "اختبار",
             "Test",
             levels ?? new HashSet<WorkspaceLevel> { WorkspaceLevel.Domain },
-            new HashSet<string> { PermissionCodes.WorkspacesView },
+            requiredPermissions ?? new HashSet<string> { PermissionCodes.WorkspacesView },
             widgetKeys,
             new WorkspaceLayoutDefinition([], 1),
             [],
@@ -198,7 +401,8 @@ public sealed class WorkspaceFrameworkTests : IDisposable
     private class TestWidgetProvider(
         string key,
         string requiredPermission,
-        IReadOnlySet<WorkspaceLevel>? levels = null) : IWorkspaceWidgetProvider
+        IReadOnlySet<WorkspaceLevel>? levels = null,
+        bool containsSensitiveData = false) : IWorkspaceWidgetProvider
     {
         public WidgetDefinition Definition { get; } = new(
             key,
@@ -217,7 +421,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
             new WidgetEmptyErrorBehavior("empty", "error", true),
             false,
             false,
-            false,
+            containsSensitiveData,
             true);
 
         public virtual Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
@@ -240,8 +444,60 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         }
     }
 
+    private sealed class CancelledWidgetProvider(string key) : TestWidgetProvider(key, PermissionCodes.DashboardViewOperational)
+    {
+        public int LoadCount { get; private set; }
+
+        public override Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+        {
+            LoadCount += 1;
+            throw new OperationCanceledException(cancellationToken);
+        }
+    }
+
+    private sealed class CountingWidgetProvider(string key) : TestWidgetProvider(key, PermissionCodes.DashboardViewOperational)
+    {
+        public int LoadCount { get; private set; }
+
+        public override Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+        {
+            LoadCount += 1;
+            return base.LoadAsync(context, cancellationToken);
+        }
+    }
+
     private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    private sealed class FakeOperationalDashboardQueryService : IOperationalDashboardQueryService
+    {
+        public Task<OperationalDashboardSummaryDto> GetSummaryAsync(OperationalDashboardQuery query, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new OperationalDashboardSummaryDto(
+                null,
+                null,
+                new OperationalDashboardCorrectiveActionsSummaryDto(1, 2, 3, 4, 5),
+                null,
+                query.FromUtc ?? DateTimeOffset.MinValue,
+                query.ToUtc ?? DateTimeOffset.MinValue,
+                7));
+        }
+
+        public Task<OperationalDashboardTrendsDto> GetTrendsAsync(OperationalDashboardQuery query, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationalDashboardBreakdownsDto> GetBreakdownsAsync(OperationalDashboardQuery query, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<OperationalDashboardPriorityQueuesDto> GetPriorityQueuesAsync(OperationalDashboardQuery query, CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

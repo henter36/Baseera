@@ -47,7 +47,7 @@ public sealed class OperationalSummaryWorkspaceWidgetProvider(
             generatedAt,
             generatedAt,
             payload,
-            [new DrillDownTarget("dashboard.operations", "فتح لوحة المتابعة", new Dictionary<string, string>(), PreserveFilters(context), PermissionCodes.DashboardViewOperational)]));
+            [new DrillDownTarget("dashboard.operations", "فتح لوحة المتابعة", new Dictionary<string, string>(), ReferenceWorkspaceDrillDownFilters.Preserve(context), PermissionCodes.DashboardViewOperational)]));
     }
 
     private static OperationalDashboardQuery ToDashboardQuery(WorkspaceContext context)
@@ -61,25 +61,6 @@ public sealed class OperationalSummaryWorkspaceWidgetProvider(
         };
     }
 
-    private static IReadOnlyDictionary<string, string> PreserveFilters(WorkspaceContext context)
-    {
-        var filters = new Dictionary<string, string>
-        {
-            ["fromUtc"] = context.FromUtc.ToString("O"),
-            ["toUtc"] = context.ToUtc.ToString("O")
-        };
-        if (context.RegionId.HasValue)
-        {
-            filters["regionId"] = context.RegionId.Value.ToString();
-        }
-
-        if (context.FacilityId.HasValue)
-        {
-            filters["facilityId"] = context.FacilityId.Value.ToString();
-        }
-
-        return filters;
-    }
 }
 
 public sealed class CorrectiveActionsSummaryWorkspaceWidgetProvider(
@@ -129,6 +110,30 @@ public sealed class CorrectiveActionsSummaryWorkspaceWidgetProvider(
             generatedAt,
             generatedAt,
             payload,
-            [new DrillDownTarget("corrective-actions.list", "فتح الإجراءات التصحيحية", new Dictionary<string, string>(), new Dictionary<string, string>(), PermissionCodes.CorrectiveActionsView)]));
+            [new DrillDownTarget("corrective-actions.list", "فتح الإجراءات التصحيحية", new Dictionary<string, string>(), ReferenceWorkspaceDrillDownFilters.Preserve(context), PermissionCodes.CorrectiveActionsView)]));
+    }
+}
+
+internal static class ReferenceWorkspaceDrillDownFilters
+{
+    public static IReadOnlyDictionary<string, string> Preserve(WorkspaceContext context)
+    {
+        var filters = new Dictionary<string, string>
+        {
+            ["fromUtc"] = context.FromUtc.ToString("O"),
+            ["toUtc"] = context.ToUtc.ToString("O")
+        };
+
+        if (context.RegionId.HasValue)
+        {
+            filters["regionId"] = context.RegionId.Value.ToString();
+        }
+
+        if (context.FacilityId.HasValue)
+        {
+            filters["facilityId"] = context.FacilityId.Value.ToString();
+        }
+
+        return filters;
     }
 }

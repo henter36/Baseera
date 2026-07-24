@@ -55,7 +55,9 @@ describe('WorkspaceShell', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'الملخص' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'فتح لوحة المتابعة' })).toBeInTheDocument()
+    const drillDown = screen.getByRole('link', { name: 'فتح لوحة المتابعة' })
+    expect(drillDown).toHaveAttribute('href', '/dashboard')
+    expect(drillDown.querySelector('button')).toBeNull()
   })
 })
 

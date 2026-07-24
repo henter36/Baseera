@@ -5,6 +5,7 @@ using Baseera.Api.Health;
 using Baseera.Api.Middleware;
 using Baseera.Application.DependencyInjection;
 using Baseera.Application.Security;
+using Baseera.Application.Workspaces;
 using Baseera.BackgroundJobs;
 using Baseera.Domain.Identity;
 using Baseera.Infrastructure.DependencyInjection;
@@ -30,6 +31,7 @@ EnvironmentSecurityGuard.EnsureEntraConfiguredForRestrictedEnvironments(
     builder.Configuration["AzureAd:Audience"]);
 
 builder.Services.AddBaseeraApplication();
+builder.Services.Configure<WorkspaceFrameworkOptions>(builder.Configuration.GetSection("Workspaces"));
 builder.Services.AddBaseeraInfrastructure(builder.Configuration);
 builder.Services.AddBaseeraBackgroundJobs();
 builder.Services.AddBaseeraReporting();

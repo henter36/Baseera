@@ -187,6 +187,7 @@ public static class PermissionCodes
     public const string DashboardViewRouting = "Dashboard.ViewRouting";
     public const string DashboardViewCorrectiveActions = "Dashboard.ViewCorrectiveActions";
     public const string WorkspacesView = "Workspaces.View";
+    public const string WorkspacesViewDomain = "Workspaces.ViewDomain";
     public const string WorkspacesViewFacility = "Workspaces.ViewFacility";
     public const string WorkspacesViewRegion = "Workspaces.ViewRegion";
     public const string WorkspacesViewHeadquarters = "Workspaces.ViewHeadquarters";

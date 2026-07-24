@@ -23,6 +23,7 @@ public static class ApplicationServiceCollectionExtensions
 {
     public static IServiceCollection AddBaseeraApplication(this IServiceCollection services)
     {
+        services.AddOptions<WorkspaceFrameworkOptions>();
         services.AddValidatorsFromAssemblyContaining<UpdateRegionRequestValidator>();
         services.AddScoped<IOrganizationalScopeService, OrganizationalScopeService>();
         services.AddScoped<IPrivilegeGuard, PrivilegeGuard>();

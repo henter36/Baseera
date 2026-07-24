@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReferenceWorkspacePage } from './ReferenceWorkspacePage'
@@ -45,11 +44,10 @@ describe('ReferenceWorkspacePage', () => {
     renderPage('/workspaces/reference')
     await screen.findByRole('heading', { name: 'مساحة عمل مرجعية' })
 
-    await userEvent.clear(screen.getByLabelText('من'))
-    await userEvent.type(screen.getByLabelText('من'), '2026-07-10')
+    fireEvent.change(screen.getByLabelText('من'), { target: { value: '2026-07-10' } })
 
     await waitFor(() => {
-      expect(getWorkspace.mock.calls.at(-1)?.[1]).toMatchObject({ fromUtc: '2026-07-10T00:00:00.000Z' })
+      expect(getWorkspace.mock.calls.at(-1)?.[1]).toMatchObject({ fromUtc: '2026-07-09T21:00:00.000Z' })
     })
   })
 })

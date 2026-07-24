@@ -65,6 +65,7 @@ public static class AuthPolicies
     public const string DashboardViewRouting = PermissionPrefix + PermissionCodes.DashboardViewRouting;
     public const string DashboardViewCorrectiveActions = PermissionPrefix + PermissionCodes.DashboardViewCorrectiveActions;
     public const string WorkspacesView = PermissionPrefix + PermissionCodes.WorkspacesView;
+    public const string WorkspacesViewDomain = PermissionPrefix + PermissionCodes.WorkspacesViewDomain;
     public const string WorkspacesViewFacility = PermissionPrefix + PermissionCodes.WorkspacesViewFacility;
     public const string WorkspacesViewRegion = PermissionPrefix + PermissionCodes.WorkspacesViewRegion;
     public const string WorkspacesViewHeadquarters = PermissionPrefix + PermissionCodes.WorkspacesViewHeadquarters;
@@ -220,6 +221,7 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.DashboardViewRouting, PermissionCodes.DashboardViewRouting);
             AddPerm(AuthPolicies.DashboardViewCorrectiveActions, PermissionCodes.DashboardViewCorrectiveActions);
             AddPerm(AuthPolicies.WorkspacesView, PermissionCodes.WorkspacesView);
+            AddPerm(AuthPolicies.WorkspacesViewDomain, PermissionCodes.WorkspacesViewDomain);
             AddPerm(AuthPolicies.WorkspacesViewFacility, PermissionCodes.WorkspacesViewFacility);
             AddPerm(AuthPolicies.WorkspacesViewRegion, PermissionCodes.WorkspacesViewRegion);
             AddPerm(AuthPolicies.WorkspacesViewHeadquarters, PermissionCodes.WorkspacesViewHeadquarters);

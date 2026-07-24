@@ -95,6 +95,7 @@ export function ReferenceWorkspacePage() {
       <WorkspaceFilterBar
         fromUtc={filters.fromUtc ?? ''}
         toUtc={filters.toUtc ?? ''}
+        timeZone={query.data.context.timeZone}
         onChange={updateFilters}
         onReset={() => setSearchParams(new URLSearchParams(), { replace: true })}
       />

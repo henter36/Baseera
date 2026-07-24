@@ -20,6 +20,7 @@ Query parameters:
 Server behavior:
 
 - Requires `Workspaces.View`.
+- Requires the matching level permission for the requested context, including `Workspaces.ViewDomain`, `Workspaces.ViewFacility`, `Workspaces.ViewRegion`, or `Workspaces.ViewHeadquarters`.
 - Validates level support and organizational scope.
 - Returns `404` for unknown or out-of-scope workspace/widget contexts.
 - Returns `403` for authenticated users missing required permission.

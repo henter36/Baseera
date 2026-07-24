@@ -248,6 +248,7 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 | Permission | Purpose |
 |------------|---------|
 | Workspaces.View | View registered workspace shells and authorized widgets |
+| Workspaces.ViewDomain | Resolve domain-level workspace context |
 | Workspaces.ViewFacility | Resolve facility-level workspace context |
 | Workspaces.ViewRegion | Resolve region-level workspace context |
 | Workspaces.ViewHeadquarters | Resolve headquarters-level workspace context |

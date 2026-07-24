@@ -48,6 +48,21 @@ public sealed class WorkspaceFrameworkIntegrationTests(BaseeraApiFactory factory
     }
 
     [IntegrationConnectionFact]
+    public async Task Workspace_endpoint_requires_domain_permission_for_domain_level()
+    {
+        await factory.SeedUserAsync(
+            "workspace-no-domain-permission",
+            "بلا صلاحية نطاق",
+            [RoleCodes.ReadOnlyUser],
+            (ScopeType.Global, null, null));
+        var client = factory.CreateAuthenticatedClient("workspace-no-domain-permission");
+
+        var response = await client.GetAsync("/api/v1/workspaces/reference?level=4");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Workspace_endpoint_returns_bad_request_for_invalid_date_range()
     {
         await factory.SeedUserAsync(
@@ -84,7 +99,7 @@ public sealed class WorkspaceFrameworkIntegrationTests(BaseeraApiFactory factory
         Assert.Null(response.Content.Headers.ContentType);
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(string.IsNullOrWhiteSpace(body));
-        Assert.DoesNotContain("FacilityB1", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(SeedIds.FacilityB1.ToString(), body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("سجن", body, StringComparison.OrdinalIgnoreCase);
     }
 

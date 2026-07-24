@@ -200,18 +200,21 @@ public static class DatabaseInitializer
         string[] workspaceHeadquarters =
         [
             PermissionCodes.WorkspacesView,
+            PermissionCodes.WorkspacesViewDomain,
             PermissionCodes.WorkspacesViewHeadquarters,
             PermissionCodes.WorkspacesConfigureOwnView
         ];
         string[] workspaceRegion =
         [
             PermissionCodes.WorkspacesView,
+            PermissionCodes.WorkspacesViewDomain,
             PermissionCodes.WorkspacesViewRegion,
             PermissionCodes.WorkspacesConfigureOwnView
         ];
         string[] workspaceFacility =
         [
             PermissionCodes.WorkspacesView,
+            PermissionCodes.WorkspacesViewDomain,
             PermissionCodes.WorkspacesViewFacility,
             PermissionCodes.WorkspacesConfigureOwnView
         ];
@@ -910,6 +913,7 @@ public static class DatabaseInitializer
             (PermissionCodes.DashboardViewRouting, "عرض مؤشرات التوجيه في لوحة المتابعة", DashboardModule),
             (PermissionCodes.DashboardViewCorrectiveActions, "عرض مؤشرات الإجراءات التصحيحية في لوحة المتابعة", DashboardModule),
             (PermissionCodes.WorkspacesView, "عرض مساحات العمل", WorkspacesModule),
+            (PermissionCodes.WorkspacesViewDomain, "عرض مساحة عمل نطاق تخصصي", WorkspacesModule),
             (PermissionCodes.WorkspacesViewFacility, "عرض مساحة عمل المنشأة", WorkspacesModule),
             (PermissionCodes.WorkspacesViewRegion, "عرض مساحة عمل المنطقة", WorkspacesModule),
             (PermissionCodes.WorkspacesViewHeadquarters, "عرض مساحة عمل المركز", WorkspacesModule),

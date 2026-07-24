@@ -107,6 +107,22 @@ button.secondary {
   color: var(--ink);
 }
 
+.button-link.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.55rem;
+  padding: 0.55rem 1rem;
+  background: var(--bg-accent);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.button-link.secondary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent);
+  outline-offset: 2px;
+}
+
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;

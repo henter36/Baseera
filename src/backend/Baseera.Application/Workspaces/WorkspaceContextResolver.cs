@@ -70,7 +70,7 @@ public sealed class WorkspaceContextResolver(
             return;
         }
 
-        if (!definition.RequiredPermissions.Any(currentUser.HasPermission))
+        if (!definition.RequiredPermissions.All(currentUser.HasPermission))
         {
             throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة العمل.");
         }
@@ -78,6 +78,12 @@ public sealed class WorkspaceContextResolver(
 
     private async Task ValidateScopeAsync(WorkspaceLevel level, Guid? regionId, Guid? facilityId, CancellationToken cancellationToken)
     {
+        if (level == WorkspaceLevel.Domain)
+        {
+            ValidateDomainPermission();
+            return;
+        }
+
         if (level == WorkspaceLevel.Headquarters)
         {
             ValidateHeadquartersPermission();
@@ -93,6 +99,14 @@ public sealed class WorkspaceContextResolver(
         if (level == WorkspaceLevel.Facility)
         {
             await ValidateFacilityScopeAsync(facilityId, cancellationToken);
+        }
+    }
+
+    private void ValidateDomainPermission()
+    {
+        if (!currentUser.HasPermission(PermissionCodes.WorkspacesViewDomain))
+        {
+            throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة عمل النطاق التخصصي.");
         }
     }
 

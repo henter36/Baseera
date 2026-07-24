@@ -2,7 +2,7 @@
 
 Controls:
 
-- Workspace orchestration caps widget execution with `WidgetQueryBudget = 8`.
+- Workspace orchestration caps widget execution with `Workspaces:WidgetQueryBudget`; the default is `8` and runtime values are clamped to a bounded range.
 - Widgets use existing server-side dashboard aggregations.
 - No widget loads all records into memory for aggregation in D0.
 - React Query keys include workspace key and filter context.

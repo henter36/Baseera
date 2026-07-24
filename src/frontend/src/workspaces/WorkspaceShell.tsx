@@ -9,6 +9,7 @@ import type {
   WorkspaceWidgetDefinition,
   WorkspaceWidgetEnvelope,
 } from '../api/client'
+import { endOfLocalDateUtc, instantToDateInput, startOfLocalDateUtc } from './workspaceDateRange'
 
 const DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
   timeZone: 'Asia/Riyadh',
@@ -18,6 +19,11 @@ const DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
   hour: '2-digit',
   minute: '2-digit',
 })
+const DEFAULT_TIME_ZONE = 'Asia/Riyadh'
+const WORKSPACE_ROUTE_MAP = {
+  'dashboard.operations': '/dashboard',
+  'corrective-actions.list': '/corrective-actions',
+} as const
 
 export function WorkspaceShell({
   definition,
@@ -147,11 +153,13 @@ export function WorkspaceWidgetContainer({
 export function WorkspaceFilterBar({
   fromUtc,
   toUtc,
+  timeZone = DEFAULT_TIME_ZONE,
   onChange,
   onReset,
 }: Readonly<{
   fromUtc: string
   toUtc: string
+  timeZone?: string
   onChange: (next: { fromUtc: string; toUtc: string }) => void
   onReset: () => void
 }>) {
@@ -159,11 +167,19 @@ export function WorkspaceFilterBar({
     <form className="workspace-filter-bar" role="search" onSubmit={(event) => event.preventDefault()}>
       <label>
         <span>من</span>
-        <input type="date" value={toDateInput(fromUtc)} onChange={(event) => onChange({ fromUtc: fromDateInput(event.target.value), toUtc })} />
+        <input
+          type="date"
+          value={instantToDateInput(fromUtc, timeZone)}
+          onChange={(event) => onChange({ fromUtc: startOfLocalDateUtc(event.target.value, timeZone), toUtc })}
+        />
       </label>
       <label>
         <span>إلى</span>
-        <input type="date" value={toDateInput(toUtc)} onChange={(event) => onChange({ fromUtc, toUtc: endOfDateInput(event.target.value) })} />
+        <input
+          type="date"
+          value={instantToDateInput(toUtc, timeZone)}
+          onChange={(event) => onChange({ fromUtc, toUtc: endOfLocalDateUtc(event.target.value, timeZone) })}
+        />
       </label>
       <button type="button" className="secondary" onClick={onReset}>إعادة ضبط</button>
     </form>
@@ -219,19 +235,11 @@ function DrillDownLink({ target }: Readonly<{ target: WorkspaceDrillDownTarget }
     return <span className="muted">{target.labelAr}</span>
   }
 
-  return <Link to={route}><button type="button" className="secondary">{target.labelAr}</button></Link>
+  return <Link to={route} className="secondary button-link">{target.labelAr}</Link>
 }
 
 function routeForTarget(target: WorkspaceDrillDownTarget) {
-  if (target.routeKey === 'dashboard.operations') {
-    return '/dashboard'
-  }
-
-  if (target.routeKey === 'corrective-actions.list') {
-    return '/corrective-actions'
-  }
-
-  return ''
+  return WORKSPACE_ROUTE_MAP[target.routeKey as keyof typeof WORKSPACE_ROUTE_MAP] ?? ''
 }
 
 function workspaceLevelLabel(level: number) {
@@ -257,16 +265,4 @@ function confidenceTone(level: number) {
 
 function formatDate(value: string) {
   return DATE_FORMAT.format(new Date(value))
-}
-
-function toDateInput(value: string) {
-  return value.slice(0, 10)
-}
-
-function fromDateInput(value: string) {
-  return `${value}T00:00:00.000Z`
-}
-
-function endOfDateInput(value: string) {
-  return `${value}T23:59:59.999Z`
 }
