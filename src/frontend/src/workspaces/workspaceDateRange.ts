@@ -1,6 +1,16 @@
 const DATE_PART_FORMATTERS = new Map<string, Intl.DateTimeFormat>()
 const OFFSET_FORMATTERS = new Map<string, Intl.DateTimeFormat>()
 
+type LocalDateTimeParts = Readonly<{
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+  millisecond: number
+}>
+
 export function instantToDateInput(instantUtc: string, timeZone: string): string {
   const date = new Date(instantUtc)
   const parts = datePartFormatter(timeZone).formatToParts(date)
@@ -12,40 +22,45 @@ export function instantToDateInput(instantUtc: string, timeZone: string): string
 
 export function startOfLocalDateUtc(date: string, timeZone: string): string {
   const local = parseDateInput(date)
-  return zonedLocalTimeToUtc(local.year, local.month, local.day, 0, 0, 0, 0, timeZone).toISOString()
+  return zonedLocalTimeToUtc(
+    {
+      year: local.year,
+      month: local.month,
+      day: local.day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    },
+    timeZone,
+  ).toISOString()
 }
 
 export function endOfLocalDateUtc(date: string, timeZone: string): string {
   const local = parseDateInput(date)
   const nextLocalDay = new Date(Date.UTC(local.year, local.month - 1, local.day + 1))
   const end = zonedLocalTimeToUtc(
-    nextLocalDay.getUTCFullYear(),
-    nextLocalDay.getUTCMonth() + 1,
-    nextLocalDay.getUTCDate(),
-    0,
-    0,
-    0,
-    0,
+    {
+      year: nextLocalDay.getUTCFullYear(),
+      month: nextLocalDay.getUTCMonth() + 1,
+      day: nextLocalDay.getUTCDate(),
+      hour: 0,
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+    },
     timeZone,
   )
   end.setUTCMilliseconds(end.getUTCMilliseconds() - 1)
   return end.toISOString()
 }
 
-function zonedLocalTimeToUtc(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  second: number,
-  millisecond: number,
-  timeZone: string,
-) {
-  let utc = Date.UTC(year, month - 1, day, hour, minute, second, millisecond)
-  for (let i = 0; i < 4; i += 1) {
+function zonedLocalTimeToUtc(local: LocalDateTimeParts, timeZone: string) {
+  const localAsUtc = localPartsAsUtcMilliseconds(local)
+  let utc = localAsUtc
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     const offset = timeZoneOffsetMilliseconds(new Date(utc), timeZone)
-    const nextUtc = Date.UTC(year, month - 1, day, hour, minute, second, millisecond) - offset
+    const nextUtc = localAsUtc - offset
     if (nextUtc === utc) {
       break
     }
@@ -54,6 +69,18 @@ function zonedLocalTimeToUtc(
   }
 
   return new Date(utc)
+}
+
+function localPartsAsUtcMilliseconds(local: LocalDateTimeParts) {
+  return Date.UTC(
+    local.year,
+    local.month - 1,
+    local.day,
+    local.hour,
+    local.minute,
+    local.second,
+    local.millisecond,
+  )
 }
 
 function timeZoneOffsetMilliseconds(date: Date, timeZone: string) {
