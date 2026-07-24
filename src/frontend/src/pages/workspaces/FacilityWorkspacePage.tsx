@@ -13,6 +13,7 @@ import {
   type FacilityPriorityQueuePayload,
   type FacilityRecentActivityPayload,
   type WorkspaceFilters,
+  type WorkspaceVisualTone,
   type WorkspaceWidgetDefinition,
   type WorkspaceWidgetEnvelope,
 } from '../../api/client'
@@ -38,7 +39,9 @@ const DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
 
 export function FacilityWorkspacePage() {
   const { facilityId } = useParams()
-  const canView = usePermission('Workspaces.ViewFacility')
+  const canViewWorkspace = usePermission('Workspaces.View')
+  const canViewFacility = usePermission('Workspaces.ViewFacility')
+  const canView = canViewWorkspace && canViewFacility
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = useMemo<WorkspaceFilters>(() => {
     const now = new Date()
@@ -203,7 +206,6 @@ function AlertsEscalations({ payload }: Readonly<{ payload: FacilityAlertsEscala
       <Metric label="تصعيدات مفتوحة" value={payload.openEscalations} />
       <Metric label="تصعيدات حرجة" value={payload.criticalEscalations} tone="danger" />
       <Metric label="تنبيهات متأخرة" value={payload.overdueAlerts} tone="danger" />
-      <Metric label="تتطلب إقرار" value={payload.requiresAcknowledgement} />
       <Metric label="آخر معالجة" value={payload.lastEscalationProcessedAtUtc ? formatDate(payload.lastEscalationProcessedAtUtc) : '-'} />
     </div>
   )
@@ -279,7 +281,7 @@ function TopBuckets({ title, rows }: Readonly<{ title: string; rows: Array<{ lab
   )
 }
 
-function Metric({ label, value, tone = 'muted' }: Readonly<{ label: string; value: number | string; tone?: string }>) {
+function Metric({ label, value, tone = 'muted' }: Readonly<{ label: string; value: number | string; tone?: WorkspaceVisualTone }>) {
   return (
     <div className="workspace-metric" data-tone={tone}>
       <span>{label}</span>
@@ -291,4 +293,3 @@ function Metric({ label, value, tone = 'muted' }: Readonly<{ label: string; valu
 function formatDate(value: string) {
   return DATE_FORMAT.format(new Date(value))
 }
-

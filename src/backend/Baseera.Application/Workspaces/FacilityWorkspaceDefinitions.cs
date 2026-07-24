@@ -61,34 +61,37 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
 
 internal static class FacilityWorkspaceWidgetDefinitions
 {
-    public static WidgetDefinition Create(
-        string key,
-        string titleAr,
-        string titleEn,
-        string descriptionAr,
-        WidgetCategory category,
-        string requiredPermission,
-        string dataCapability,
-        WidgetSize size,
-        bool sensitive = false) =>
+    public static WidgetDefinition Create(FacilityWorkspaceWidgetDefinitionSpec spec) =>
         new(
-            key,
-            titleAr,
-            titleEn,
-            descriptionAr,
-            category,
+            spec.Key,
+            spec.TitleAr,
+            spec.TitleEn,
+            spec.DescriptionAr,
+            spec.Category,
             new HashSet<WorkspaceLevel> { WorkspaceLevel.Facility },
-            requiredPermission,
-            dataCapability,
-            size,
+            spec.RequiredPermission,
+            spec.DataCapability,
+            spec.Size,
             WidgetSize.Small,
             WidgetSize.Wide,
             new WidgetRefreshPolicy(60, true),
             new WidgetDataFreshnessPolicy(300, 1800, 3600),
-            new WidgetEmptyErrorBehavior("لا توجد بيانات ضمن هذا السجن.", $"تعذر تحميل {titleAr}.", true),
+            new WidgetEmptyErrorBehavior("لا توجد بيانات ضمن هذا السجن.", $"تعذر تحميل {spec.TitleAr}.", true),
             true,
             false,
-            sensitive,
+            spec.Sensitive,
             true);
 }
 
+internal sealed record FacilityWorkspaceWidgetDefinitionSpec
+{
+    public required string Key { get; init; }
+    public required string TitleAr { get; init; }
+    public required string TitleEn { get; init; }
+    public required string DescriptionAr { get; init; }
+    public required WidgetCategory Category { get; init; }
+    public required string RequiredPermission { get; init; }
+    public required string DataCapability { get; init; }
+    public required WidgetSize Size { get; init; }
+    public bool Sensitive { get; init; }
+}

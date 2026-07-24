@@ -13,3 +13,4 @@ Workspace key: `facility-operations`
 
 Widgets are hidden entirely when the user lacks the widget permission.
 
+Acknowledgement counts are intentionally deferred. The current data model has unread personal notifications, but no independent facility acknowledgement state; the MVP does not equate unread items with operational acknowledgement.

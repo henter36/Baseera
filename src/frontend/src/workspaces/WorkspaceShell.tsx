@@ -258,6 +258,10 @@ function routeForTarget(target: WorkspaceDrillDownTarget) {
   }
 
   const query = new URLSearchParams(target.preservedFilters)
+  for (const key of consumedParameters) {
+    query.delete(key)
+  }
+
   for (const [key, value] of Object.entries(target.routeParameters)) {
     if (!consumedParameters.has(key) && value) {
       query.set(key, value)

@@ -14,7 +14,8 @@ Backend integration:
 Frontend:
 - Facility title and widgets render.
 - Priority item drill-down link works.
-- Date filters sync to URL and preserve facility id.
+- Date filters sync to the actual router location, preserve `/workspaces/facilities/{facilityId}`, and write Riyadh-adjusted `fromUtc`/`toUtc` values.
+- Facility workspace links are hidden unless both `Workspaces.View` and `Workspaces.ViewFacility` exist.
+- Consumed route parameters such as `facilityId` are not duplicated in drill-down query strings.
 
 Full validation also runs existing Workspace Framework, Observation Workspace, Dashboard, Forms, Notes, and Corrective Actions tests.
-

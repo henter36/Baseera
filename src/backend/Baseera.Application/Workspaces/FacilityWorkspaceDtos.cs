@@ -47,8 +47,7 @@ public sealed record FacilityAlertsEscalationsPayload(
     int OpenEscalations,
     int CriticalEscalations,
     int OverdueAlerts,
-    DateTimeOffset? LastEscalationProcessedAtUtc,
-    int RequiresAcknowledgement);
+    DateTimeOffset? LastEscalationProcessedAtUtc);
 
 public sealed record FacilityFormCompliancePayload
 {

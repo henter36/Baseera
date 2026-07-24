@@ -6,7 +6,9 @@ import { usePermission } from '../auth/AuthProvider'
 
 export function FacilitiesPage() {
   const canView = usePermission('Organization.View')
-  const canViewFacilityWorkspace = usePermission('Workspaces.ViewFacility')
+  const canViewWorkspaces = usePermission('Workspaces.View')
+  const canViewFacilityWorkspaceLevel = usePermission('Workspaces.ViewFacility')
+  const canViewFacilityWorkspace = canViewWorkspaces && canViewFacilityWorkspaceLevel
   const [search, setSearch] = useState('')
   const query = useQuery({
     queryKey: ['facilities', search],

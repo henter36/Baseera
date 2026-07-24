@@ -1056,13 +1056,19 @@ export type FacilityCorrectiveActionsPayload = {
   averageClosureHours?: number | null
 }
 
+export type WorkspaceVisualTone =
+  | 'danger'
+  | 'ok'
+  | 'info'
+  | 'muted'
+  | 'warn'
+
 export type FacilityAlertsEscalationsPayload = {
   personalUnreadNotifications: number
   openEscalations: number
   criticalEscalations: number
   overdueAlerts: number
   lastEscalationProcessedAtUtc?: string | null
-  requiresAcknowledgement: number
 }
 
 export type FacilityFormCompliancePayload = {
@@ -1102,7 +1108,7 @@ export type FacilityRecentActivityPayload = {
     occurredAtUtc: string
     actorDisplayName?: string | null
     entityReference: string
-    tone: 'danger' | 'ok' | 'info' | 'muted' | 'warn' | string
+    tone: WorkspaceVisualTone
     drillDownTarget: WorkspaceDrillDownTarget
   }>
 }

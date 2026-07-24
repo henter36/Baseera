@@ -13,6 +13,10 @@ internal interface IFacilityWorkspaceReadService
 {
     Task<FacilityWorkspaceFacilityInfo> GetFacilityAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityWorkspaceMetrics> GetMetricsAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<FacilityNotesOverviewPayload> GetNotesOverviewAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<FacilityCorrectiveActionsPayload> GetCorrectiveActionsAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<FacilityAlertsEscalationsPayload> GetAlertsEscalationsAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<FacilityFormCompliancePayload> GetFormComplianceAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityRecentActivityPayload> GetRecentActivityAsync(WorkspaceContext context, CancellationToken cancellationToken);
 }
@@ -33,7 +37,7 @@ internal sealed class FacilityWorkspaceReadService(
     {
         return await GetOrAddAsync($"facility:{context.FacilityId}", async () =>
         {
-            var facilityId = RequireFacilityId(context);
+            var facilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context);
             var row = await db.Facilities.AsNoTracking()
                 .Where(facility => facility.Id == facilityId && !facility.IsDeleted)
                 .Select(facility => new FacilityWorkspaceFacilityInfo(
@@ -52,13 +56,42 @@ internal sealed class FacilityWorkspaceReadService(
         return await GetOrAddAsync($"metrics:{CacheKey(context)}", async () =>
         {
             var facility = await GetFacilityAsync(context, cancellationToken);
-            var dashboard = await GetDashboardSummaryAsync(context, cancellationToken);
-            var notes = await BuildNotesOverviewAsync(context, dashboard, cancellationToken);
-            var actions = await BuildCorrectiveActionsAsync(context, dashboard, cancellationToken);
-            var alerts = await BuildAlertsAsync(context, cancellationToken);
-            var forms = await BuildFormComplianceAsync(context, cancellationToken);
+            var notes = await GetNotesOverviewAsync(context, cancellationToken);
+            var actions = await GetCorrectiveActionsAsync(context, cancellationToken);
+            var alerts = await GetAlertsEscalationsAsync(context, cancellationToken);
+            var forms = await GetFormComplianceAsync(context, cancellationToken);
             return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms);
         });
+    }
+
+    public async Task<FacilityNotesOverviewPayload> GetNotesOverviewAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"notes-overview:{CacheKey(context)}", async () =>
+        {
+            var dashboardSummary = await GetDashboardSummaryAsync(context, cancellationToken);
+            return await BuildNotesOverviewAsync(context, dashboardSummary, cancellationToken);
+        });
+    }
+
+    public async Task<FacilityCorrectiveActionsPayload> GetCorrectiveActionsAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"corrective-actions:{CacheKey(context)}", async () =>
+        {
+            var dashboardSummary = await GetDashboardSummaryAsync(context, cancellationToken);
+            return await BuildCorrectiveActionsAsync(context, dashboardSummary, cancellationToken);
+        });
+    }
+
+    public async Task<FacilityAlertsEscalationsPayload> GetAlertsEscalationsAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"alerts-escalations:{CacheKey(context)}", async () =>
+            await BuildAlertsAsync(context, cancellationToken));
+    }
+
+    public async Task<FacilityFormCompliancePayload> GetFormComplianceAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"form-compliance:{CacheKey(context)}", async () =>
+            await BuildFormComplianceAsync(context, cancellationToken));
     }
 
     public async Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken)
@@ -129,7 +162,7 @@ internal sealed class FacilityWorkspaceReadService(
 
     private async Task<FacilityNotesOverviewPayload> BuildNotesOverviewAsync(
         WorkspaceContext context,
-        OperationalDashboardSummaryDto dashboard,
+        OperationalDashboardSummaryDto dashboardSummary,
         CancellationToken cancellationToken)
     {
         var notes = await GetScopedNotesAsync(context, cancellationToken);
@@ -153,10 +186,10 @@ internal sealed class FacilityWorkspaceReadService(
             .ToListAsync(cancellationToken);
 
         return new FacilityNotesOverviewPayload(
-            dashboard.Workload?.OpenTotal ?? 0,
+            dashboardSummary.Workload?.OpenTotal ?? 0,
             await notes.CountAsync(note => note.Severity == NoteSeverity.Critical && note.Status != NoteStatus.Closed && note.Status != NoteStatus.Cancelled, cancellationToken),
-            dashboard.Risk?.Overdue ?? 0,
-            dashboard.Workload?.Unassigned ?? 0,
+            dashboardSummary.Risk?.Overdue ?? 0,
+            dashboardSummary.Workload?.Unassigned ?? 0,
             requiresMyAction,
             newInPeriod,
             topTypes);
@@ -164,7 +197,7 @@ internal sealed class FacilityWorkspaceReadService(
 
     private async Task<FacilityCorrectiveActionsPayload> BuildCorrectiveActionsAsync(
         WorkspaceContext context,
-        OperationalDashboardSummaryDto dashboard,
+        OperationalDashboardSummaryDto dashboardSummary,
         CancellationToken cancellationToken)
     {
         var actions = await GetScopedActionsAsync(context, cancellationToken);
@@ -174,14 +207,19 @@ internal sealed class FacilityWorkspaceReadService(
                 action.CompletedAtUtc.HasValue &&
                 action.SubmittedAtUtc.HasValue &&
                 action.CompletedAtUtc >= action.SubmittedAtUtc)
-            .AverageAsync(action => (double?)((action.CompletedAtUtc!.Value - action.SubmittedAtUtc!.Value).TotalHours), cancellationToken);
+            .Select(action => new
+            {
+                CompletedAtUtc = action.CompletedAtUtc ?? DateTimeOffset.MinValue,
+                SubmittedAtUtc = action.SubmittedAtUtc ?? DateTimeOffset.MinValue
+            })
+            .AverageAsync(action => (double?)((action.CompletedAtUtc - action.SubmittedAtUtc).TotalHours), cancellationToken);
 
         return new FacilityCorrectiveActionsPayload(
-            dashboard.CorrectiveActions?.Active ?? 0,
-            dashboard.CorrectiveActions?.Overdue ?? 0,
+            dashboardSummary.CorrectiveActions?.Active ?? 0,
+            dashboardSummary.CorrectiveActions?.Overdue ?? 0,
             await actions.CountAsync(action => action.Status == CorrectiveActionStatus.InProgress, cancellationToken),
-            dashboard.CorrectiveActions?.PendingVerification ?? 0,
-            dashboard.CorrectiveActions?.Reopened ?? 0,
+            dashboardSummary.CorrectiveActions?.PendingVerification ?? 0,
+            dashboardSummary.CorrectiveActions?.Reopened ?? 0,
             await actions.CountAsync(action => action.Priority == CorrectiveActionPriority.Critical && action.Status != CorrectiveActionStatus.Completed && action.Status != CorrectiveActionStatus.Cancelled, cancellationToken),
             averageClosureHours);
     }
@@ -221,8 +259,7 @@ internal sealed class FacilityWorkspaceReadService(
             openEscalations,
             criticalEscalations,
             overdueAlerts,
-            latest,
-            personalUnread);
+            latest);
     }
 
     private async Task<FacilityFormCompliancePayload> BuildFormComplianceAsync(WorkspaceContext context, CancellationToken cancellationToken)
@@ -231,7 +268,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             FromUtc = context.FromUtc,
             ToUtc = context.ToUtc,
-            FacilityId = RequireFacilityId(context),
+            FacilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context),
             Page = 1,
             PageSize = 1
         };
@@ -402,7 +439,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             FromUtc = context.FromUtc,
             ToUtc = context.ToUtc,
-            FacilityId = RequireFacilityId(context),
+            FacilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context),
             IsOverdue = true,
             Page = 1,
             PageSize = PriorityLimit
@@ -506,7 +543,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             FromUtc = context.FromUtc,
             ToUtc = context.ToUtc,
-            FacilityId = RequireFacilityId(context),
+            FacilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context),
             Page = 1,
             PageSize = 5
         }, cancellationToken);
@@ -540,7 +577,7 @@ internal sealed class FacilityWorkspaceReadService(
             FromUtc = context.FromUtc,
             ToUtc = context.ToUtc,
             RegionId = context.RegionId,
-            FacilityId = RequireFacilityId(context)
+            FacilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context)
         };
 
     private async Task<T> GetOrAddAsync<T>(string key, Func<Task<T>> factory)
@@ -559,9 +596,6 @@ internal sealed class FacilityWorkspaceReadService(
     private static string CacheKey(WorkspaceContext context) =>
         $"{context.WorkspaceKey}:{context.Level}:{context.FacilityId}:{context.FromUtc:O}:{context.ToUtc:O}";
 
-    private static Guid RequireFacilityId(WorkspaceContext context) =>
-        context.FacilityId ?? throw new ArgumentException("facilityId مطلوب لمساحة عمل المنشأة.");
-
     private static int? DaysOverdue(DateTimeOffset? dueAtUtc, DateTimeOffset now) =>
         dueAtUtc.HasValue && dueAtUtc.Value < now ? Math.Max(0, (int)Math.Floor((now - dueAtUtc.Value).TotalDays)) : null;
 
@@ -578,7 +612,7 @@ internal sealed class FacilityWorkspaceReadService(
         new(
             "form-compliance.facility",
             "فتح التزام النماذج",
-            new Dictionary<string, string> { ["facilityId"] = RequireFacilityId(context).ToString() },
+            new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             PermissionCodes.FormsViewComplianceDashboard);
 
