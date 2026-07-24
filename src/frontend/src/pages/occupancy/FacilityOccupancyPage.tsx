@@ -147,7 +147,7 @@ function CapacityForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Record<
       <label>العدد<input name="approvedCapacity" type="number" min="1" required /></label>
       <label>يسري من<input name="effectiveFromUtc" type="datetime-local" required /></label>
       <label>مرجع المصدر<input name="sourceReference" required /></label>
-      <button className="command-button" disabled={pending}>حفظ الطاقة</button>
+      <button type="submit" className="command-button" disabled={pending}>حفظ الطاقة</button>
     </form>
   )
 }
@@ -166,7 +166,7 @@ function SnapshotForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Record<
       <label>وقت الالتقاط<input name="capturedAtUtc" type="datetime-local" required /></label>
       <label>العدد<input name="inmateCount" type="number" min="0" required /></label>
       <label>مرجع المصدر<input name="sourceReference" required /></label>
-      <button className="command-button" disabled={pending}>حفظ Snapshot</button>
+      <button type="submit" className="command-button" disabled={pending}>حفظ Snapshot</button>
     </form>
   )
 }
@@ -194,7 +194,7 @@ function MovementImportForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: R
       <label>إلى سجن<input name="toFacilityId" /></label>
       <label>وقت الحركة<input name="occurredAtUtc" type="datetime-local" required /></label>
       <label>معرف الحدث الخارجي<input name="externalEventId" required /></label>
-      <button className="command-button" disabled={pending}>استيراد الحركة</button>
+      <button type="submit" className="command-button" disabled={pending}>استيراد الحركة</button>
     </form>
   )
 }

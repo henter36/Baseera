@@ -6,6 +6,7 @@ using Baseera.Application.Security;
 using Baseera.Domain.Audit;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
+using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Infrastructure.Persistence;
@@ -41,6 +42,48 @@ public sealed class OccupancyServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Summary_reports_unknown_source_when_snapshot_is_missing()
+    {
+        var summary = await Service().GetSummaryAsync(SeedIds.FacilityA1, now, CancellationToken.None);
+
+        Assert.Equal("unknown", summary.StatusCode);
+        Assert.Equal("غير معروف", summary.StatusAr);
+        Assert.Equal("unknown", summary.SourceCode);
+        Assert.Equal("غير معروف", summary.SourceAr);
+    }
+
+    [Fact]
+    public async Task Summary_reports_internal_source_for_non_authoritative_snapshot()
+    {
+        db.FacilityCapacityBaselines.Add(Capacity(null, 100, now.AddDays(-10)));
+        db.InmateCensusSnapshots.Add(Snapshot(null, 80, now.AddHours(-1), false, "internal"));
+        await db.SaveChangesAsync();
+
+        var summary = await Service().GetSummaryAsync(SeedIds.FacilityA1, now, CancellationToken.None);
+
+        Assert.Equal("internal-snapshot", summary.SourceCode);
+        Assert.Equal("Snapshot داخلي", summary.SourceAr);
+    }
+
+    [Fact]
+    public async Task Summary_classifies_normal_and_high_occupancy_without_changing_thresholds()
+    {
+        db.FacilityCapacityBaselines.Add(Capacity(null, 100, now.AddDays(-10)));
+        db.InmateCensusSnapshots.AddRange(
+            Snapshot(null, 70, now.AddHours(-4), true, "normal"),
+            Snapshot(null, 96, now.AddHours(-1), true, "high"));
+        await db.SaveChangesAsync();
+
+        var normal = await Service().GetSummaryAsync(SeedIds.FacilityA1, now.AddHours(-2), CancellationToken.None);
+        var high = await Service().GetSummaryAsync(SeedIds.FacilityA1, now, CancellationToken.None);
+
+        Assert.Equal("normal", normal.StatusCode);
+        Assert.Equal("طبيعي", normal.StatusAr);
+        Assert.Equal("high", high.StatusCode);
+        Assert.Equal("مرتفع", high.StatusAr);
+    }
+
+    [Fact]
     public async Task Summary_does_not_require_unit_or_movement_permissions()
     {
         db.FacilityCapacityBaselines.Add(Capacity(null, 100, now.AddDays(-10)));
@@ -71,6 +114,60 @@ public sealed class OccupancyServiceTests : IDisposable
 
         Assert.Contains(units.Units, unit => unit.UnitId == SeedIds.FacilityA1UnitNorth && unit.StatusCode == "over-capacity" && unit.AlertReasons.Contains("OverCapacity"));
         Assert.Contains(units.Units, unit => unit.UnitId == SeedIds.FacilityA1UnitSouth && unit.StatusCode == "unknown" && unit.AlertReasons.Contains("CapacityMissing"));
+    }
+
+    [Fact]
+    public async Task Unit_breakdown_uses_latest_effective_capacity_authoritative_snapshot_open_notes_and_expected_order()
+    {
+        var user = NoteTestFixtures.AddUser(db);
+        var firstUnit = Guid.NewGuid();
+        var secondUnit = Guid.NewGuid();
+        var thirdUnit = Guid.NewGuid();
+        db.FacilityUnits.AddRange(
+            new FacilityUnit { Id = firstUnit, FacilityId = SeedIds.FacilityA1, Code = "A", NameAr = "أ" },
+            new FacilityUnit { Id = secondUnit, FacilityId = SeedIds.FacilityA1, Code = "B", NameAr = "ب" },
+            new FacilityUnit { Id = thirdUnit, FacilityId = SeedIds.FacilityA1, Code = "C", NameAr = "ج" });
+        db.FacilityCapacityBaselines.AddRange(
+            Capacity(firstUnit, 80, now.AddDays(-20)),
+            Capacity(firstUnit, 100, now.AddDays(-2)),
+            Capacity(secondUnit, 100, now.AddDays(-20)),
+            Capacity(thirdUnit, 50, now.AddDays(-20)));
+        db.InmateCensusSnapshots.AddRange(
+            Snapshot(firstUnit, 90, now.AddHours(-1), true, "first"),
+            Snapshot(secondUnit, 70, now.AddMinutes(-30), false, "newer-internal"),
+            Snapshot(secondUnit, 115, now.AddHours(-3), true, "older-official"),
+            Snapshot(thirdUnit, 10, now.AddHours(-1), true, "third"));
+        db.OperationalNotes.AddRange(
+            NoteTestFixtures.NewNote(ScopeType.FacilityUnit, user.Id, SeedIds.RegionA, SeedIds.FacilityA1, firstUnit, NoteStatus.Open),
+            NoteTestFixtures.NewNote(ScopeType.FacilityUnit, user.Id, SeedIds.RegionA, SeedIds.FacilityA1, firstUnit, NoteStatus.Closed));
+        await db.SaveChangesAsync();
+
+        var units = await Service().GetUnitBreakdownAsync(SeedIds.FacilityA1, now, CancellationToken.None);
+
+        Assert.Collection(
+            units.Units,
+            unit =>
+            {
+                Assert.Equal(secondUnit, unit.UnitId);
+                Assert.Equal(115, unit.CurrentCount);
+                Assert.Equal(15, unit.OverloadCount);
+                Assert.Equal(1.15m, unit.OccupancyRate);
+                Assert.Equal("over-capacity", unit.StatusCode);
+            },
+            unit =>
+            {
+                Assert.Equal(firstUnit, unit.UnitId);
+                Assert.Equal(100, unit.ApprovedCapacity);
+                Assert.Equal(90, unit.CurrentCount);
+                Assert.Equal(0.9m, unit.OccupancyRate);
+                Assert.Equal(1, unit.OpenNotesCount);
+            },
+            unit =>
+            {
+                Assert.Equal(thirdUnit, unit.UnitId);
+                Assert.Equal(40, unit.AvailablePlaces);
+                Assert.Equal("normal", unit.StatusCode);
+            });
     }
 
     [Fact]

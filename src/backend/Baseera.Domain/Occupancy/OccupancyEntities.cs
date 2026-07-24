@@ -48,10 +48,23 @@ public enum MovementType
 
 public class FacilityCapacityBaseline : SoftDeletableEntity, IScopedEntity
 {
+    private Organization? organization;
+    private Facility? facility;
+
     public Guid OrganizationId { get; set; }
-    public Organization Organization { get; set; } = null!;
+    public Organization Organization
+    {
+        get => organization ?? throw new InvalidOperationException("Organization navigation has not been loaded.");
+        set => organization = value;
+    }
+
     public Guid FacilityId { get; set; }
-    public Facility Facility { get; set; } = null!;
+    public Facility Facility
+    {
+        get => facility ?? throw new InvalidOperationException("Facility navigation has not been loaded.");
+        set => facility = value;
+    }
+
     public Guid? FacilityUnitId { get; set; }
     public FacilityUnit? FacilityUnit { get; set; }
     public CapacityType CapacityType { get; set; } = CapacityType.ApprovedOperational;
@@ -65,17 +78,30 @@ public class FacilityCapacityBaseline : SoftDeletableEntity, IScopedEntity
     public string? Notes { get; set; }
 
     public ScopeType ScopeType => FacilityUnitId.HasValue ? ScopeType.FacilityUnit : ScopeType.Facility;
-    Guid? IScopedEntity.RegionId => Facility?.RegionId;
+    Guid? IScopedEntity.RegionId => facility?.RegionId;
     Guid? IScopedEntity.FacilityId => FacilityId;
     Guid? IScopedEntity.FacilityUnitId => FacilityUnitId;
 }
 
 public class InmateCensusSnapshot : SoftDeletableEntity, IScopedEntity
 {
+    private Organization? organization;
+    private Facility? facility;
+
     public Guid OrganizationId { get; set; }
-    public Organization Organization { get; set; } = null!;
+    public Organization Organization
+    {
+        get => organization ?? throw new InvalidOperationException("Organization navigation has not been loaded.");
+        set => organization = value;
+    }
+
     public Guid FacilityId { get; set; }
-    public Facility Facility { get; set; } = null!;
+    public Facility Facility
+    {
+        get => facility ?? throw new InvalidOperationException("Facility navigation has not been loaded.");
+        set => facility = value;
+    }
+
     public Guid? FacilityUnitId { get; set; }
     public FacilityUnit? FacilityUnit { get; set; }
     public DateTimeOffset CapturedAtUtc { get; set; }
@@ -95,17 +121,30 @@ public class InmateCensusSnapshot : SoftDeletableEntity, IScopedEntity
     public string? QualityNotes { get; set; }
 
     public ScopeType ScopeType => FacilityUnitId.HasValue ? ScopeType.FacilityUnit : ScopeType.Facility;
-    Guid? IScopedEntity.RegionId => Facility?.RegionId;
+    Guid? IScopedEntity.RegionId => facility?.RegionId;
     Guid? IScopedEntity.FacilityId => FacilityId;
     Guid? IScopedEntity.FacilityUnitId => FacilityUnitId;
 }
 
 public class InmateMovementEvent : SoftDeletableEntity, IScopedEntity
 {
+    private Organization? organization;
+    private Facility? facility;
+
     public Guid OrganizationId { get; set; }
-    public Organization Organization { get; set; } = null!;
+    public Organization Organization
+    {
+        get => organization ?? throw new InvalidOperationException("Organization navigation has not been loaded.");
+        set => organization = value;
+    }
+
     public Guid FacilityId { get; set; }
-    public Facility Facility { get; set; } = null!;
+    public Facility Facility
+    {
+        get => facility ?? throw new InvalidOperationException("Facility navigation has not been loaded.");
+        set => facility = value;
+    }
+
     public string InmateReferenceHash { get; set; } = string.Empty;
     public MovementType MovementType { get; set; }
     public Guid? FromFacilityId { get; set; }
@@ -127,7 +166,7 @@ public class InmateMovementEvent : SoftDeletableEntity, IScopedEntity
     public InmateMovementEvent? ReversedByEvent { get; set; }
 
     public ScopeType ScopeType => ScopeType.Facility;
-    Guid? IScopedEntity.RegionId => Facility?.RegionId;
+    Guid? IScopedEntity.RegionId => facility?.RegionId;
     Guid? IScopedEntity.FacilityId => FacilityId;
     Guid? IScopedEntity.FacilityUnitId => null;
 }

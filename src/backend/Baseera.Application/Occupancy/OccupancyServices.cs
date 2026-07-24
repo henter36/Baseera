@@ -71,13 +71,14 @@ public sealed class OccupancyService(
             .Select(c => (int?)c.ApprovedCapacity)
             .FirstOrDefaultAsync(cancellationToken);
         var snapshot = await LatestSnapshotQuery(facilityId, null, asOfUtc)
-            .Select(s => new SnapshotProjection(s.InmateCount, s.CapturedAtUtc, s.IsAuthoritative, s.QualityStatus, s.SourceType, s.SourceReference))
+            .Select(s => new SnapshotProjection(s.InmateCount, s.CapturedAtUtc, s.IsAuthoritative, s.QualityStatus))
             .FirstOrDefaultAsync(cancellationToken);
         var units = currentUser.HasPermission(PermissionCodes.OccupancyViewUnitBreakdown)
             ? await GetUnitBreakdownAsync(facilityId, asOfUtc, cancellationToken)
             : new OccupancyUnitBreakdownDto([]);
 
         var status = OccupancyClassifier.Classify(capacity, snapshot?.InmateCount, options);
+        var source = ResolveSource(snapshot);
         var warnings = BuildSummaryWarnings(capacity, snapshot, units);
         var rate = OccupancyClassifier.Rate(capacity, snapshot?.InmateCount);
         int? available = capacity.HasValue && snapshot is not null ? capacity.Value - snapshot.InmateCount : null;
@@ -92,11 +93,11 @@ public sealed class OccupancyService(
             StatusCode = status.Code,
             StatusAr = status.LabelAr,
             UnitCount = units.Units.Count,
-            OverloadedUnits = units.Units.Count(u => u.StatusCode == "over-capacity"),
+            OverloadedUnits = units.Units.Count(u => u.StatusCode == OccupancyStatusCodes.OverCapacity),
             EmptyUnits = units.Units.Count(u => u.CurrentCount == 0 && u.ApprovedCapacity.HasValue),
             LatestSnapshotAtUtc = snapshot?.CapturedAtUtc,
-            SourceCode = snapshot is null ? "unknown" : snapshot.IsAuthoritative ? "authoritative-snapshot" : "internal-snapshot",
-            SourceAr = snapshot is null ? "غير معروف" : snapshot.IsAuthoritative ? "Snapshot رسمي" : "Snapshot داخلي",
+            SourceCode = source.Code,
+            SourceAr = source.LabelAr,
             FreshnessStatus = Freshness(snapshot?.CapturedAtUtc, asOfUtc),
             ConfidenceLevel = Confidence(capacity, snapshot, warnings),
             IsPartial = warnings.Count > 0,
@@ -109,71 +110,15 @@ public sealed class OccupancyService(
         Require(PermissionCodes.OccupancyViewUnitBreakdown);
         await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
 
-        var units = await db.FacilityUnits.AsNoTracking()
-            .Where(unit => unit.FacilityId == facilityId && unit.IsActive)
-            .OrderBy(unit => unit.Code)
-            .Select(unit => new { unit.Id, unit.Code, unit.NameAr })
-            .ToListAsync(cancellationToken);
+        var units = await LoadActiveUnitsAsync(facilityId, cancellationToken);
         var unitIds = units.Select(u => u.Id).ToArray();
 
-        var capacityRows = await db.FacilityCapacityBaselines.AsNoTracking()
-            .Where(c => c.FacilityId == facilityId
-                && c.FacilityUnitId != null
-                && unitIds.Contains(c.FacilityUnitId.Value)
-                && c.CapacityType == CapacityType.ApprovedOperational
-                && c.EffectiveFromUtc <= asOfUtc
-                && (c.EffectiveToUtc == null || c.EffectiveToUtc > asOfUtc))
-            .GroupBy(c => c.FacilityUnitId!.Value)
-            .Select(g => g.OrderByDescending(c => c.EffectiveFromUtc).Select(c => new { c.FacilityUnitId, c.ApprovedCapacity }).First())
-            .ToListAsync(cancellationToken);
-        var capacityByUnit = capacityRows.ToDictionary(c => c.FacilityUnitId!.Value, c => c.ApprovedCapacity);
+        var capacityByUnit = await LoadCapacityByUnitAsync(facilityId, unitIds, asOfUtc, cancellationToken);
+        var snapshotsByUnit = await LoadLatestSnapshotsByUnitAsync(facilityId, unitIds, asOfUtc, cancellationToken);
+        var notesByUnit = await LoadOpenNotesByUnitAsync(facilityId, unitIds, cancellationToken);
 
-        var snapshotRows = await db.InmateCensusSnapshots.AsNoTracking()
-            .Where(s => s.FacilityId == facilityId
-                && s.FacilityUnitId != null
-                && unitIds.Contains(s.FacilityUnitId.Value)
-                && s.CapturedAtUtc <= asOfUtc)
-            .GroupBy(s => s.FacilityUnitId!.Value)
-            .Select(g => g.OrderByDescending(s => s.IsAuthoritative).ThenByDescending(s => s.CapturedAtUtc).Select(s => new { s.FacilityUnitId, s.InmateCount, s.CapturedAtUtc, s.SourceType }).First())
-            .ToListAsync(cancellationToken);
-        var snapshotsByUnit = snapshotRows.ToDictionary(s => s.FacilityUnitId!.Value);
-
-        var openNotes = await db.OperationalNotes.AsNoTracking()
-            .Where(note => note.FacilityId == facilityId
-                && note.FacilityUnitId != null
-                && note.Status != NoteStatus.Closed
-                && unitIds.Contains(note.FacilityUnitId.Value))
-            .GroupBy(note => note.FacilityUnitId!.Value)
-            .Select(g => new { UnitId = g.Key, Count = g.Count() })
-            .ToListAsync(cancellationToken);
-        var notesByUnit = openNotes.ToDictionary(n => n.UnitId, n => n.Count);
-
-        var rows = units.Select(unit =>
-        {
-            capacityByUnit.TryGetValue(unit.Id, out var capacity);
-            snapshotsByUnit.TryGetValue(unit.Id, out var snapshot);
-            var current = snapshot?.InmateCount;
-            var status = OccupancyClassifier.Classify(capacity == 0 ? null : capacity, current, options);
-            return new OccupancyUnitDto
-            {
-                UnitId = unit.Id,
-                UnitNameAr = unit.NameAr,
-                UnitCode = unit.Code,
-                ApprovedCapacity = capacity == 0 ? null : capacity,
-                CurrentCount = current,
-                OccupancyRate = OccupancyClassifier.Rate(capacity == 0 ? null : capacity, current),
-                AvailablePlaces = capacity == 0 || current is null ? null : Math.Max(0, capacity - current.Value),
-                OverloadCount = capacity == 0 || current is null ? null : Math.Max(0, current.Value - capacity),
-                StatusCode = status.Code,
-                StatusAr = status.LabelAr,
-                LastUpdatedAtUtc = snapshot?.CapturedAtUtc,
-                DataSourceAr = snapshot is null ? "لا يوجد Snapshot" : "Snapshot إشغال",
-                OpenNotesCount = notesByUnit.GetValueOrDefault(unit.Id),
-                OpenIncidentsCount = 0,
-                RiskCount = 0,
-                AlertReasons = UnitAlerts(capacity == 0 ? null : capacity, current, snapshot?.CapturedAtUtc, asOfUtc)
-            };
-        })
+        var rows = units
+            .Select(unit => BuildUnitOccupancyDto(unit, capacityByUnit, snapshotsByUnit, notesByUnit, asOfUtc))
             .OrderByDescending(unit => unit.OverloadCount ?? 0)
             .ThenByDescending(unit => unit.OccupancyRate ?? 0)
             .ThenBy(unit => unit.UnitCode, StringComparer.Ordinal)
@@ -393,6 +338,132 @@ public sealed class OccupancyService(
             .OrderByDescending(s => s.IsAuthoritative)
             .ThenByDescending(s => s.CapturedAtUtc);
 
+    private Task<List<UnitProjection>> LoadActiveUnitsAsync(Guid facilityId, CancellationToken cancellationToken) =>
+        db.FacilityUnits.AsNoTracking()
+            .Where(unit => unit.FacilityId == facilityId && unit.IsActive)
+            .OrderBy(unit => unit.Code)
+            .Select(unit => new UnitProjection(unit.Id, unit.Code, unit.NameAr))
+            .ToListAsync(cancellationToken);
+
+    private async Task<IReadOnlyDictionary<Guid, int>> LoadCapacityByUnitAsync(
+        Guid facilityId,
+        IReadOnlyCollection<Guid> unitIds,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.FacilityCapacityBaselines.AsNoTracking()
+            .Where(c => c.FacilityId == facilityId
+                && c.FacilityUnitId.HasValue
+                && unitIds.Contains(c.FacilityUnitId.Value)
+                && c.CapacityType == CapacityType.ApprovedOperational
+                && c.EffectiveFromUtc <= asOfUtc
+                && (c.EffectiveToUtc == null || c.EffectiveToUtc > asOfUtc))
+            .Select(c => new UnitCapacityProjection(c.FacilityUnitId, c.ApprovedCapacity, c.EffectiveFromUtc))
+            .GroupBy(c => c.UnitId)
+            .Select(g => g.OrderByDescending(c => c.EffectiveFromUtc).First())
+            .ToListAsync(cancellationToken);
+
+        var result = new Dictionary<Guid, int>();
+        foreach (var row in rows)
+        {
+            if (row.UnitId.HasValue)
+            {
+                result[row.UnitId.Value] = row.ApprovedCapacity;
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, UnitSnapshotProjection>> LoadLatestSnapshotsByUnitAsync(
+        Guid facilityId,
+        IReadOnlyCollection<Guid> unitIds,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.InmateCensusSnapshots.AsNoTracking()
+            .Where(s => s.FacilityId == facilityId
+                && s.FacilityUnitId.HasValue
+                && unitIds.Contains(s.FacilityUnitId.Value)
+                && s.CapturedAtUtc <= asOfUtc)
+            .Select(s => new UnitSnapshotProjection(s.FacilityUnitId, s.InmateCount, s.CapturedAtUtc, s.IsAuthoritative))
+            .GroupBy(s => s.UnitId)
+            .Select(g => g.OrderByDescending(s => s.IsAuthoritative).ThenByDescending(s => s.CapturedAtUtc).First())
+            .ToListAsync(cancellationToken);
+
+        var result = new Dictionary<Guid, UnitSnapshotProjection>();
+        foreach (var row in rows)
+        {
+            if (row.UnitId.HasValue)
+            {
+                result[row.UnitId.Value] = row;
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, int>> LoadOpenNotesByUnitAsync(
+        Guid facilityId,
+        IReadOnlyCollection<Guid> unitIds,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.OperationalNotes.AsNoTracking()
+            .Where(note => note.FacilityId == facilityId
+                && note.FacilityUnitId.HasValue
+                && note.Status != NoteStatus.Closed
+                && unitIds.Contains(note.FacilityUnitId.Value))
+            .Select(note => note.FacilityUnitId)
+            .GroupBy(unitId => unitId)
+            .Select(g => new UnitOpenNotesProjection(g.Key, g.Count()))
+            .ToListAsync(cancellationToken);
+
+        var result = new Dictionary<Guid, int>();
+        foreach (var row in rows)
+        {
+            if (row.UnitId.HasValue)
+            {
+                result[row.UnitId.Value] = row.Count;
+            }
+        }
+
+        return result;
+    }
+
+    private OccupancyUnitDto BuildUnitOccupancyDto(
+        UnitProjection unit,
+        IReadOnlyDictionary<Guid, int> capacityByUnit,
+        IReadOnlyDictionary<Guid, UnitSnapshotProjection> snapshotsByUnit,
+        IReadOnlyDictionary<Guid, int> notesByUnit,
+        DateTimeOffset asOfUtc)
+    {
+        var hasCapacity = capacityByUnit.TryGetValue(unit.Id, out var rawCapacity);
+        var capacity = hasCapacity && rawCapacity > 0 ? rawCapacity : (int?)null;
+        snapshotsByUnit.TryGetValue(unit.Id, out var snapshot);
+        var current = snapshot?.InmateCount;
+        var status = OccupancyClassifier.Classify(capacity, current, options);
+
+        return new OccupancyUnitDto
+        {
+            UnitId = unit.Id,
+            UnitNameAr = unit.NameAr,
+            UnitCode = unit.Code,
+            ApprovedCapacity = capacity,
+            CurrentCount = current,
+            OccupancyRate = OccupancyClassifier.Rate(capacity, current),
+            AvailablePlaces = capacity is null || current is null ? null : Math.Max(0, capacity.Value - current.Value),
+            OverloadCount = capacity is null || current is null ? null : Math.Max(0, current.Value - capacity.Value),
+            StatusCode = status.Code,
+            StatusAr = status.LabelAr,
+            LastUpdatedAtUtc = snapshot?.CapturedAtUtc,
+            DataSourceAr = snapshot is null ? "لا يوجد Snapshot" : "Snapshot إشغال",
+            OpenNotesCount = notesByUnit.GetValueOrDefault(unit.Id),
+            OpenIncidentsCount = 0,
+            RiskCount = 0,
+            AlertReasons = UnitAlerts(capacity, current, snapshot?.CapturedAtUtc, asOfUtc)
+        };
+    }
+
     private async Task<FacilityScopeProjection> EnsureFacilityVisibleAsync(Guid facilityId, CancellationToken cancellationToken)
     {
         if (!scope.CanAccessFacility(facilityId))
@@ -461,7 +532,7 @@ public sealed class OccupancyService(
         if (!capacity.HasValue) warnings.Add("لا توجد طاقة تشغيلية معتمدة للسجن.");
         if (snapshot is null) warnings.Add("لا يوجد Snapshot إشغال موثوق للسجن.");
         if (snapshot is not null && Freshness(snapshot.CapturedAtUtc, timeProvider.GetUtcNow()) == "stale") warnings.Add("آخر Snapshot إشغال قديم.");
-        if (units.Units.Any(u => u.StatusCode == "unknown")) warnings.Add("بعض الوحدات لا تحتوي طاقة أو عددًا موثوقًا.");
+        if (units.Units.Any(u => u.StatusCode == OccupancyStatusCodes.Unknown)) warnings.Add("بعض الوحدات لا تحتوي طاقة أو عددًا موثوقًا.");
         return warnings;
     }
 
@@ -478,7 +549,7 @@ public sealed class OccupancyService(
 
     private static string Freshness(DateTimeOffset? capturedAtUtc, DateTimeOffset asOfUtc)
     {
-        if (!capturedAtUtc.HasValue) return "unknown";
+        if (!capturedAtUtc.HasValue) return OccupancyStatusCodes.Unknown;
         var age = asOfUtc - capturedAtUtc.Value;
         if (age <= TimeSpan.FromDays(1)) return "current";
         if (age <= TimeSpan.FromDays(3)) return "delayed";
@@ -487,7 +558,7 @@ public sealed class OccupancyService(
 
     private static string Confidence(int? capacity, SnapshotProjection? snapshot, IReadOnlyList<string> warnings)
     {
-        if (!capacity.HasValue || snapshot is null) return "unknown";
+        if (!capacity.HasValue || snapshot is null) return OccupancyStatusCodes.Unknown;
         if (snapshot.QualityStatus == CensusQualityStatus.Conflicting) return "low";
         return warnings.Count == 0 ? "high" : "medium";
     }
@@ -495,7 +566,7 @@ public sealed class OccupancyService(
     private static IReadOnlyList<OccupancyInterventionDto> BuildInterventions(OccupancySummaryDto summary, OccupancyUnitBreakdownDto units)
     {
         var items = new List<OccupancyInterventionDto>();
-        if (summary.StatusCode == "over-capacity")
+        if (summary.StatusCode == OccupancyStatusCodes.OverCapacity)
         {
             items.Add(new OccupancyInterventionDto
             {
@@ -509,16 +580,17 @@ public sealed class OccupancyService(
             });
         }
 
-        foreach (var unit in units.Units.Where(u => u.StatusCode is "over-capacity" or "unknown").Take(10))
+        foreach (var unit in units.Units.Where(u => u.StatusCode is OccupancyStatusCodes.OverCapacity or OccupancyStatusCodes.Unknown).Take(10))
         {
+            var isOverCapacity = unit.StatusCode == OccupancyStatusCodes.OverCapacity;
             items.Add(new OccupancyInterventionDto
             {
-                Type = unit.StatusCode == "over-capacity" ? "UnitOverCapacity" : "CapacityMissing",
+                Type = isOverCapacity ? "UnitOverCapacity" : "CapacityMissing",
                 Reference = unit.UnitCode,
                 TitleAr = unit.UnitNameAr,
-                SeverityAr = unit.StatusCode == "over-capacity" ? "عالية" : "متوسطة",
-                PriorityRank = unit.StatusCode == "over-capacity" ? 940 : 760,
-                ReasonAr = unit.StatusCode == "over-capacity" ? $"تجاوز بمقدار {unit.OverloadCount ?? 0}." : "بيانات الطاقة أو العدد غير مكتملة.",
+                SeverityAr = isOverCapacity ? "عالية" : "متوسطة",
+                PriorityRank = isOverCapacity ? 940 : 760,
+                ReasonAr = isOverCapacity ? $"تجاوز بمقدار {unit.OverloadCount ?? 0}." : "بيانات الطاقة أو العدد غير مكتملة.",
                 UnitId = unit.UnitId,
                 ActionLabelAr = "فتح الوحدة"
             });
@@ -545,6 +617,21 @@ public sealed class OccupancyService(
             RejectedMovements = 0
         };
 
+    private static OccupancySourceDisplay ResolveSource(SnapshotProjection? snapshot)
+    {
+        if (snapshot is null)
+        {
+            return new OccupancySourceDisplay(OccupancyStatusCodes.Unknown, "غير معروف");
+        }
+
+        if (snapshot.IsAuthoritative)
+        {
+            return new OccupancySourceDisplay("authoritative-snapshot", "Snapshot رسمي");
+        }
+
+        return new OccupancySourceDisplay("internal-snapshot", "Snapshot داخلي");
+    }
+
     private Task AuditAsync(string action, string entityType, object entityId, CancellationToken cancellationToken) =>
         audit.WriteAsync(new AuditEntry
         {
@@ -558,7 +645,18 @@ public sealed class OccupancyService(
         }, cancellationToken);
 
     private sealed record FacilityScopeProjection(Guid Id, Guid OrganizationId);
-    private sealed record SnapshotProjection(int InmateCount, DateTimeOffset CapturedAtUtc, bool IsAuthoritative, CensusQualityStatus QualityStatus, OccupancySourceType SourceType, string SourceReference);
+    private sealed record SnapshotProjection(int InmateCount, DateTimeOffset CapturedAtUtc, bool IsAuthoritative, CensusQualityStatus QualityStatus);
+    private sealed record OccupancySourceDisplay(string Code, string LabelAr);
+    private sealed record UnitProjection(Guid Id, string Code, string NameAr);
+    private sealed record UnitCapacityProjection(Guid? UnitId, int ApprovedCapacity, DateTimeOffset EffectiveFromUtc);
+    private sealed record UnitSnapshotProjection(Guid? UnitId, int InmateCount, DateTimeOffset CapturedAtUtc, bool IsAuthoritative);
+    private sealed record UnitOpenNotesProjection(Guid? UnitId, int Count);
+}
+
+internal static class OccupancyStatusCodes
+{
+    public const string OverCapacity = "over-capacity";
+    public const string Unknown = "unknown";
 }
 
 internal static class OccupancyClassifier
@@ -567,13 +665,19 @@ internal static class OccupancyClassifier
     {
         if (!capacity.HasValue || !current.HasValue || capacity.Value <= 0)
         {
-            return ("unknown", "غير معروف");
+            return (OccupancyStatusCodes.Unknown, "غير معروف");
         }
 
-        var rate = Rate(capacity, current)!.Value;
-        if (rate > 1m) return ("over-capacity", "متجاوز للطاقة");
-        if (rate >= options.HighThreshold) return ("high", "مرتفع");
-        if (rate >= options.AttentionThreshold) return ("attention", "يحتاج متابعة");
+        var rate = Rate(capacity, current);
+        if (!rate.HasValue)
+        {
+            return (OccupancyStatusCodes.Unknown, "غير معروف");
+        }
+
+        var rateValue = rate.Value;
+        if (rateValue > 1m) return (OccupancyStatusCodes.OverCapacity, "متجاوز للطاقة");
+        if (rateValue >= options.HighThreshold) return ("high", "مرتفع");
+        if (rateValue >= options.AttentionThreshold) return ("attention", "يحتاج متابعة");
         return ("normal", "طبيعي");
     }
 
