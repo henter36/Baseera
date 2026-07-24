@@ -103,6 +103,60 @@ public sealed class WorkspaceFrameworkIntegrationTests(BaseeraApiFactory factory
         Assert.DoesNotContain("سجن", body, StringComparison.OrdinalIgnoreCase);
     }
 
+    [IntegrationConnectionFact]
+    public async Task Facility_workspace_returns_facility_scoped_real_widgets()
+    {
+        await factory.SeedUserAsync(
+            "facility-workspace-a1",
+            "مدير سجن أ1",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("facility-workspace-a1");
+
+        var response = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityA1}");
+
+        response.EnsureSuccessStatusCode();
+        var shell = await response.Content.ReadFromJsonAsync<WorkspaceShellResponse>(JsonOptions);
+        Assert.NotNull(shell);
+        Assert.Equal("facility-operations", shell!.Definition.Key);
+        Assert.Contains(shell.WidgetDefinitions, widget => widget.Key == "facility.executive-summary");
+        Assert.Contains(shell.WidgetDefinitions, widget => widget.Key == "facility.priority-queue");
+        Assert.Contains(shell.Widgets, widget => widget.WidgetKey == "facility.header");
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Facility_workspace_returns_not_found_for_other_facility()
+    {
+        await factory.SeedUserAsync(
+            "facility-workspace-out-of-scope",
+            "مدير سجن أ1 محدود",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("facility-workspace-out-of-scope");
+
+        var response = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityB1}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(string.IsNullOrWhiteSpace(body));
+        Assert.DoesNotContain(SeedIds.FacilityB1.ToString(), body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Facility_workspace_requires_facility_workspace_permission()
+    {
+        await factory.SeedUserAsync(
+            "facility-workspace-no-permission",
+            "بلا صلاحية مساحة",
+            [RoleCodes.FormRespondent],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("facility-workspace-no-permission");
+
+        var response = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityA1}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private sealed record WorkspaceShellResponse(
         WorkspaceDefinitionResponse Definition,
         IReadOnlyList<WidgetDefinitionResponse> WidgetDefinitions,

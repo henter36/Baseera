@@ -984,6 +984,87 @@ code {
   color: var(--danger);
 }
 
+.workspace-metric[data-tone="ok"] strong {
+  color: var(--ok);
+}
+
+.facility-workspace-grid .workspace-widget.size-3,
+.facility-workspace-grid .workspace-widget.size-4 {
+  min-height: 18rem;
+}
+
+.facility-context-card,
+.facility-executive-summary,
+.facility-top-buckets,
+.facility-priority-list li {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.facility-context-card {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+}
+
+.facility-context-card strong,
+.facility-executive-summary strong {
+  font-size: 1.35rem;
+}
+
+.facility-executive-summary[data-status="critical"] strong,
+.facility-executive-summary[data-status="intervention"] strong {
+  color: var(--danger);
+}
+
+.facility-executive-summary[data-status="follow-up"] strong {
+  color: var(--warning);
+}
+
+.compact-list,
+.facility-priority-list {
+  margin: 0;
+  padding-inline-start: 1.2rem;
+}
+
+.facility-priority-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.facility-priority-list li {
+  border-block-end: 1px solid var(--line);
+  padding-block-end: 0.75rem;
+}
+
+.facility-priority-list li:last-child {
+  border-block-end: 0;
+  padding-block-end: 0;
+}
+
+.facility-priority-list li > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.facility-priority-list p {
+  margin: 0;
+  font-weight: 700;
+}
+
+.facility-priority-list span,
+.facility-top-buckets span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.facility-top-buckets {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
 .master-detail-layout {
   display: grid;
   grid-template-columns: minmax(280px, 35%) 1fr;
@@ -1024,6 +1105,10 @@ code {
   .workspace-filter-bar input,
   .workspace-filter-bar button {
     width: 100%;
+  }
+
+  .facility-context-card {
+    grid-template-columns: 1fr;
   }
 
   .master-detail-layout {

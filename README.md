@@ -78,3 +78,8 @@ npm run build             # إنتاج: Entra إلزامي
 ## التوثيق
 
 انظر مجلد [`docs/`](docs/).
+
+## مساحات العمل
+
+- `facility-operations`: مركز قرار السجن MVP ضمن Phase D.1، متاح عبر `/workspaces/facilities/:facilityId` ويستخدم Workspace Framework وبيانات حقيقية فقط.
+- `reference`: مساحة مرجعية للتطوير من Phase D.0، مفعّلة حسب feature flag.

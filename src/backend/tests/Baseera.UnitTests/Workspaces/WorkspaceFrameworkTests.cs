@@ -337,6 +337,96 @@ public sealed class WorkspaceFrameworkTests : IDisposable
             null)));
     }
 
+    [Fact]
+    public void Facility_workspace_definition_registers_facility_only_widgets()
+    {
+        var definition = new FacilityWorkspaceDefinitionProvider().Definition;
+
+        Assert.Equal(FacilityWorkspaceDefinitionProvider.WorkspaceKey, definition.Key);
+        Assert.Equal([WorkspaceLevel.Facility], definition.SupportedLevels.Order().ToArray());
+        Assert.Contains(PermissionCodes.WorkspacesViewFacility, definition.RequiredPermissions);
+        Assert.Contains(FacilityWorkspaceDefinitionProvider.PriorityQueueWidgetKey, definition.RegisteredWidgets);
+        Assert.DoesNotContain(WorkspaceLevel.Region, definition.SupportedLevels);
+        Assert.DoesNotContain(WorkspaceLevel.Headquarters, definition.SupportedLevels);
+    }
+
+    [Fact]
+    public async Task Facility_workspace_rejects_unsupported_region_level()
+    {
+        var user = new FakeCurrentUser(
+            true,
+            Guid.NewGuid(),
+            "facility-workspace-user",
+            "facility-workspace-user",
+            [PermissionCodes.WorkspacesView, PermissionCodes.WorkspacesViewFacility],
+            [new UserScopeSnapshot(ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null)]);
+        var workspace = new FacilityWorkspaceDefinitionProvider();
+        var registry = new WorkspaceRegistry([workspace], [], NullLogger<WorkspaceRegistry>.Instance);
+        var service = new WorkspaceQueryService(
+            registry,
+            new WorkspaceContextResolver(db, user, new Baseera.Application.Security.OrganizationalScopeService(user, db), time),
+            user,
+            time,
+            NullLogger<WorkspaceQueryService>.Instance,
+            Options.Create(new WorkspaceFrameworkOptions()));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetWorkspaceAsync(new WorkspaceRequest(
+            FacilityWorkspaceDefinitionProvider.WorkspaceKey,
+            WorkspaceLevel.Region,
+            SeedIds.RegionA,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null)));
+    }
+
+    [Fact]
+    public void Facility_summary_rules_classify_critical_from_escalations()
+    {
+        var metrics = FacilityMetrics(
+            notes: new FacilityNotesOverviewPayload(2, 0, 0, 0, 0, 1, []),
+            actions: new FacilityCorrectiveActionsPayload(1, 0, 0, 0, 0, 0, null),
+            alerts: new FacilityAlertsEscalationsPayload(0, 1, 1, 1, null, 0),
+            forms: new FacilityFormCompliancePayload
+            {
+                TargetedForms = 1,
+                CompletedForms = 1,
+                RemainingForms = 0,
+                OverdueForms = 0,
+                CompletionRate = 1,
+                NotStartedForms = 0,
+                PendingReviewForms = 0
+            });
+
+        var status = FacilityWorkspaceRules.ClassifyStatus(metrics);
+
+        Assert.Equal("critical", status.Code);
+        Assert.Equal("التصعيدات الحرجة: 1", FacilityWorkspaceRules.TopDriver(metrics));
+    }
+
+    [Fact]
+    public void Facility_summary_rules_report_medium_confidence_without_form_targets()
+    {
+        var metrics = FacilityMetrics(
+            notes: new FacilityNotesOverviewPayload(0, 0, 0, 0, 0, 0, []),
+            actions: new FacilityCorrectiveActionsPayload(0, 0, 0, 0, 0, 0, null),
+            alerts: new FacilityAlertsEscalationsPayload(0, 0, 0, 0, null, 0),
+            forms: new FacilityFormCompliancePayload
+            {
+                TargetedForms = 0,
+                CompletedForms = 0,
+                RemainingForms = 0,
+                OverdueForms = 0,
+                NotStartedForms = 0,
+                PendingReviewForms = 0
+            });
+
+        Assert.Equal(ConfidenceLevel.Medium, FacilityWorkspaceRules.Confidence(metrics));
+        Assert.NotEmpty(FacilityWorkspaceRules.ConfidenceReasons(metrics));
+    }
+
     private WorkspaceQueryService BuildService(ICurrentUser user, params IWorkspaceWidgetProvider[] widgets)
     {
         return BuildServiceWithDefinition(user, new HashSet<WorkspaceLevel> { WorkspaceLevel.Domain }, new HashSet<string> { PermissionCodes.WorkspacesView }, null, widgets);
@@ -378,6 +468,18 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         "workspace-user",
         permissions,
         [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
+
+    private static FacilityWorkspaceMetrics FacilityMetrics(
+        FacilityNotesOverviewPayload notes,
+        FacilityCorrectiveActionsPayload actions,
+        FacilityAlertsEscalationsPayload alerts,
+        FacilityFormCompliancePayload forms) =>
+        new(
+            new FacilityWorkspaceFacilityInfo(SeedIds.FacilityA1, "سجن أ1", SeedIds.RegionA, "منطقة أ", "سجن"),
+            notes,
+            actions,
+            alerts,
+            forms);
 
     private sealed class TestWorkspaceProvider(
         IReadOnlyList<string> widgetKeys,

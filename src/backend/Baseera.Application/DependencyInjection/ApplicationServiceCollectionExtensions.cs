@@ -88,6 +88,16 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IWorkspaceDefinitionProvider, ReferenceWorkspaceDefinitionProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, OperationalSummaryWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, CorrectiveActionsSummaryWorkspaceWidgetProvider>();
+        services.AddScoped<IFacilityWorkspaceReadService, FacilityWorkspaceReadService>();
+        services.AddScoped<IWorkspaceDefinitionProvider, FacilityWorkspaceDefinitionProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityHeaderWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityExecutiveSummaryWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityNotesOverviewWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityCorrectiveActionsWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityAlertsEscalationsWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityFormComplianceWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityPriorityQueueWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityRecentActivityWorkspaceWidgetProvider>();
         services.AddScoped<WorkspaceContextResolver>();
         services.AddScoped<IWorkspaceRegistry, WorkspaceRegistry>();
         services.AddScoped<IWorkspaceQueryService, WorkspaceQueryService>();

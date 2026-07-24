@@ -23,6 +23,9 @@ const DEFAULT_TIME_ZONE = 'Asia/Riyadh'
 const WORKSPACE_ROUTE_MAP = {
   'dashboard.operations': '/dashboard',
   'corrective-actions.list': '/corrective-actions',
+  'notes.workspace': '/notes/workspace',
+  'escalations.occurrences': '/settings/escalations/occurrences',
+  'form-compliance.facility': '/form-compliance/facilities/:facilityId',
 } as const
 
 export function WorkspaceShell({
@@ -143,7 +146,7 @@ export function WorkspaceWidgetContainer({
       {children}
       {data && data.drillDownTargets.length > 0 && (
         <footer>
-          {data.drillDownTargets.map((target) => <DrillDownLink key={target.routeKey} target={target} />)}
+          {data.drillDownTargets.map((target) => <WorkspaceDrillDownLink key={target.routeKey} target={target} />)}
         </footer>
       )}
     </article>
@@ -229,7 +232,7 @@ export function WorkspaceUnauthorized() {
   return <div className="error" role="alert">ليست لديك صلاحية عرض مساحة العمل.</div>
 }
 
-function DrillDownLink({ target }: Readonly<{ target: WorkspaceDrillDownTarget }>) {
+export function WorkspaceDrillDownLink({ target }: Readonly<{ target: WorkspaceDrillDownTarget }>) {
   const route = routeForTarget(target)
   if (!route) {
     return <span className="muted">{target.labelAr}</span>
@@ -239,7 +242,30 @@ function DrillDownLink({ target }: Readonly<{ target: WorkspaceDrillDownTarget }
 }
 
 function routeForTarget(target: WorkspaceDrillDownTarget) {
-  return WORKSPACE_ROUTE_MAP[target.routeKey as keyof typeof WORKSPACE_ROUTE_MAP] ?? ''
+  const template = WORKSPACE_ROUTE_MAP[target.routeKey as keyof typeof WORKSPACE_ROUTE_MAP]
+  if (!template) {
+    return ''
+  }
+
+  let route: string = template
+  const consumedParameters = new Set<string>()
+  for (const [key, value] of Object.entries(target.routeParameters)) {
+    const token = `:${key}`
+    if (route.includes(token)) {
+      route = route.replace(token, encodeURIComponent(value))
+      consumedParameters.add(key)
+    }
+  }
+
+  const query = new URLSearchParams(target.preservedFilters)
+  for (const [key, value] of Object.entries(target.routeParameters)) {
+    if (!consumedParameters.has(key) && value) {
+      query.set(key, value)
+    }
+  }
+
+  const queryString = query.toString()
+  return queryString ? `${route}?${queryString}` : route
 }
 
 function workspaceLevelLabel(level: number) {

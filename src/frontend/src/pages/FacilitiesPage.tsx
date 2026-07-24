@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { usePermission } from '../auth/AuthProvider'
 
 export function FacilitiesPage() {
   const canView = usePermission('Organization.View')
+  const canViewFacilityWorkspace = usePermission('Workspaces.ViewFacility')
   const [search, setSearch] = useState('')
   const query = useQuery({
     queryKey: ['facilities', search],
@@ -39,6 +41,7 @@ export function FacilitiesPage() {
               <th>الاسم</th>
               <th>النوع</th>
               <th>الحالة</th>
+              {canViewFacilityWorkspace && <th>مساحة العمل</th>}
             </tr>
           </thead>
           <tbody>
@@ -52,6 +55,11 @@ export function FacilitiesPage() {
                     {facility.isActive ? 'نشط' : 'غير نشط'}
                   </span>
                 </td>
+                {canViewFacilityWorkspace && (
+                  <td>
+                    <Link className="secondary button-link" to={`/workspaces/facilities/${facility.id}`}>مركز القرار</Link>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

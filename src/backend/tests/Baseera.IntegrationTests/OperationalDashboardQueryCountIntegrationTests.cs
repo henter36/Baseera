@@ -16,6 +16,7 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
 {
     private const int SummaryQueryMax = 18;
     private const int TrendsQueryMax = 14;
+    private const int FacilityWorkspaceQueryMax = 80;
 
     [IntegrationConnectionFact]
     public async Task Summary_query_count_is_bounded_and_independent_of_note_volume()
@@ -81,6 +82,29 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
     }
 
     [IntegrationConnectionFact]
+    public async Task Facility_workspace_query_count_is_bounded_and_independent_of_note_volume()
+    {
+        var counter = new SqlCommandCounter();
+        await using var factory = BaseeraApiFactory.WithInterceptor(counter);
+        await SeedFacilityDirectorAsync(factory, "facility-workspace-count-admin");
+
+        var client = factory.CreateAuthenticatedClient("facility-workspace-count-admin");
+        await SeedOverdueNotesAsync(factory, "facility-workspace-count-admin", count: 5, startIndex: 200);
+        counter.Reset();
+        var small = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityA1}");
+        small.EnsureSuccessStatusCode();
+        var smallCount = counter.SelectCount;
+
+        await SeedOverdueNotesAsync(factory, "facility-workspace-count-admin", count: 40, startIndex: 300);
+        counter.Reset();
+        var large = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityA1}");
+        large.EnsureSuccessStatusCode();
+
+        Assert.Equal(smallCount, counter.SelectCount);
+        Assert.InRange(counter.SelectCount, 1, FacilityWorkspaceQueryMax);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Trends_returns_expected_counts_and_zero_empty_buckets()
     {
         await using var factory = new BaseeraApiFactory();
@@ -133,6 +157,11 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
     private static async Task SeedDashboardAdminAsync(BaseeraApiFactory factory, string subject)
     {
         await factory.SeedUserAsync(subject, "مسؤول", [RoleCodes.SystemAdministrator], (ScopeType.Global, null, null));
+    }
+
+    private static async Task SeedFacilityDirectorAsync(BaseeraApiFactory factory, string subject)
+    {
+        await factory.SeedUserAsync(subject, "مدير سجن", [RoleCodes.FacilityDirector], (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
     }
 
     private static async Task SeedOverdueNotesAsync(

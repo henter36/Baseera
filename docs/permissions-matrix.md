@@ -255,3 +255,20 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 | Workspaces.ConfigureOwnView | Future personal layout configuration boundary for #21 |
 
 Widget data still requires its module permission, such as `Dashboard.ViewOperational` or `Dashboard.ViewCorrectiveActions`.
+
+## Phase D.1 facility workspace MVP
+
+`facility-operations` requires `Workspaces.View` + `Workspaces.ViewFacility` and a valid in-scope `facilityId`.
+
+| Widget | Additional permission |
+|--------|------------------------|
+| Facility context | Workspaces.ViewFacility |
+| Executive summary | Dashboard.ViewOperational |
+| Notes overview | Notes.View |
+| Corrective actions | CorrectiveActions.View |
+| Alerts/escalations | Escalations.ViewOccurrences |
+| Form compliance | Forms.ViewComplianceDashboard |
+| Priority queue | Dashboard.ViewRisk |
+| Recent activity | Dashboard.ViewOperational |
+
+Facility Workspace permission alone does not reveal domain widget data.

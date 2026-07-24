@@ -1014,7 +1014,111 @@ export type ReferenceCorrectiveActionsPayload = {
   notesWithStalledActions: number
 }
 
-export type WorkspaceWidgetPayload = ReferenceOperationalSummaryPayload | ReferenceCorrectiveActionsPayload | Record<string, unknown>
+export type FacilityHeaderPayload = {
+  facilityId: string
+  facilityNameAr: string
+  regionId: string
+  regionNameAr: string
+  facilityType?: string | null
+  fromUtc: string
+  toUtc: string
+  calculatedAtUtc: string
+}
+
+export type FacilityExecutiveSummaryPayload = {
+  statusCode: string
+  statusAr: string
+  priorityIssues: number
+  topDriverAr: string
+  changeSummaryAr: string
+  topPendingActionAr: string
+  confidenceReasons: string[]
+  calculatedAtUtc: string
+}
+
+export type FacilityNotesOverviewPayload = {
+  openNotes: number
+  criticalNotes: number
+  overdueNotes: number
+  unassignedNotes: number
+  requiresMyAction: number
+  newInPeriod: number
+  topNoteTypes: Array<{ labelAr: string; count: number }>
+}
+
+export type FacilityCorrectiveActionsPayload = {
+  openActions: number
+  overdueActions: number
+  inProgressActions: number
+  pendingVerificationActions: number
+  reopenedActions: number
+  criticalActions: number
+  averageClosureHours?: number | null
+}
+
+export type FacilityAlertsEscalationsPayload = {
+  personalUnreadNotifications: number
+  openEscalations: number
+  criticalEscalations: number
+  overdueAlerts: number
+  lastEscalationProcessedAtUtc?: string | null
+  requiresAcknowledgement: number
+}
+
+export type FacilityFormCompliancePayload = {
+  targetedForms: number
+  completedForms: number
+  remainingForms: number
+  overdueForms: number
+  completionRate?: number | null
+  nearestDueAtUtc?: string | null
+  notStartedForms: number
+  pendingReviewForms: number
+}
+
+export type FacilityPriorityQueuePayload = {
+  limit: number
+  items: Array<{
+    type: string
+    reference: string
+    titleAr: string
+    severityAr: string
+    priorityRank: number
+    reasonAr: string
+    dueAtUtc?: string | null
+    overdueDays?: number | null
+    ownerAr?: string | null
+    actionLabelAr: string
+    drillDownTarget: WorkspaceDrillDownTarget
+  }>
+}
+
+export type FacilityRecentActivityPayload = {
+  limit: number
+  items: Array<{
+    eventType: string
+    titleAr: string
+    descriptionAr?: string | null
+    occurredAtUtc: string
+    actorDisplayName?: string | null
+    entityReference: string
+    tone: 'danger' | 'ok' | 'info' | 'muted' | 'warn' | string
+    drillDownTarget: WorkspaceDrillDownTarget
+  }>
+}
+
+export type WorkspaceWidgetPayload =
+  | ReferenceOperationalSummaryPayload
+  | ReferenceCorrectiveActionsPayload
+  | FacilityHeaderPayload
+  | FacilityExecutiveSummaryPayload
+  | FacilityNotesOverviewPayload
+  | FacilityCorrectiveActionsPayload
+  | FacilityAlertsEscalationsPayload
+  | FacilityFormCompliancePayload
+  | FacilityPriorityQueuePayload
+  | FacilityRecentActivityPayload
+  | Record<string, unknown>
 
 export type WorkspaceWidgetEnvelope<TPayload = WorkspaceWidgetPayload> = {
   widgetKey: string
