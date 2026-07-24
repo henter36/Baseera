@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 import { api, ApiError } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
 import { formatApiError, hasAllowedAction } from '../../../forms/designer/designerHelpers'

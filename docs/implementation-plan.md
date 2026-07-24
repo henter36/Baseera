@@ -117,6 +117,14 @@
 - تعتمد على `OperationalDashboardFilterBuilder`, `IFormComplianceQueryService`, وكيانات التصعيد الحالية دون Mock أو migration.
 - تؤجل Region/Headquarters Workspaces (#12/#13)، الموارد (#15)، المخاطر (#16)، Timeline الكامل (#18)، Alert Center الكامل (#19)، وSaved Views (#21).
 
+### Phase D.2 — Facility Command Center UX (Issue #11 استمرار جزئي)
+
+- إعادة تصميم تجربة `facility-operations` من Dashboard كروت إلى مركز قيادة وتشغيل.
+- Command Header، Situation Overview، Operational Pulse، Intervention Queue، Context Panel، وAction Center.
+- فتح تفاصيل الملاحظات والإجراءات والتصعيدات والنماذج والأحداث داخل نفس مساحة العمل قدر الإمكان.
+- الحفاظ على APIs وصلاحيات ونطاق D.1 دون migration أو Backend بديل.
+- لا يشمل Region/Headquarters Workspaces (#12/#13)، ولا محركات AI أو تخصيص محفوظ.
+
 ## المرحلة E — المشاريع والاستراتيجية
 
 مشاريع متعددة المواقع، مبادرات، أهداف، مؤشرات، مستهدفات، لوحة أداء.

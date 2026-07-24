@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes } from 'react-router'
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import { useAuth } from './auth/AuthProvider'

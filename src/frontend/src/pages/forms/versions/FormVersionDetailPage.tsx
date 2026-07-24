@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 import { api, ApiError } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
 import { formatApiError, hasAllowedAction } from '../../../forms/designer/designerHelpers'
