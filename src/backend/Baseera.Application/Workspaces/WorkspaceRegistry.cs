@@ -36,8 +36,8 @@ public sealed class WorkspaceRegistry : IWorkspaceRegistry
 
         return workspace.RegisteredWidgets
             .Select(GetWidgetProvider)
-            .Where(provider => provider is not null)
-            .Select(provider => provider!.Definition)
+            .OfType<IWorkspaceWidgetProvider>()
+            .Select(provider => provider.Definition)
             .Where(definition => definition.IsEnabled && definition.SupportedLevels.Contains(level))
             .ToList();
     }
@@ -49,13 +49,16 @@ public sealed class WorkspaceRegistry : IWorkspaceRegistry
 
     private static IReadOnlyDictionary<string, WorkspaceDefinition> BuildWorkspaceMap(IEnumerable<IWorkspaceDefinitionProvider> providers)
     {
+        var definitions = providers
+            .Select(provider => provider.Definition)
+            .ToArray();
         var map = new Dictionary<string, WorkspaceDefinition>(StringComparer.OrdinalIgnoreCase);
-        foreach (var provider in providers)
+        foreach (var definition in definitions)
         {
-            var key = NormalizeKey(provider.Definition.Key);
-            if (!map.TryAdd(key, provider.Definition))
+            var key = NormalizeKey(definition.Key);
+            if (!map.TryAdd(key, definition))
             {
-                throw new InvalidOperationException($"Duplicate workspace key '{provider.Definition.Key}'.");
+                throw new InvalidOperationException($"Duplicate workspace key '{definition.Key}'.");
             }
         }
 

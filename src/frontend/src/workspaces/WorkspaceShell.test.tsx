@@ -42,7 +42,7 @@ describe('WorkspaceShell', () => {
     expect(screen.getByText('محدثة')).toBeInTheDocument()
     expect(screen.getByText('ثقة متوسطة')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'تخصيص العرض' })).toBeDisabled()
-    expect(screen.getByText(/تعذر تحميل أداة/)).toBeInTheDocument()
+    expect(screen.getByText(/تعذر تحميل أداة/).tagName).toBe('OUTPUT')
   })
 
   it('renders drill-down targets through the shared widget container', () => {

@@ -46,31 +46,75 @@ public static class WorkspaceContractFactory
             context.IncludesSensitiveData);
     }
 
-    public static WidgetDataEnvelopeDto Envelope<TPayload>(
+    public static WidgetDataEnvelopeDto Envelope<TPayload>(WidgetDataEnvelopeBuildRequest<TPayload> request)
+        where TPayload : notnull
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var freshness = request.IsPartial
+            ? new DataFreshness(DataFreshnessStatus.Partial, "جزئية", "تم توليد البيانات مع تحذيرات.")
+            : Freshness(request.Timing.GeneratedAtUtc, request.Timing.DataEffectiveAtUtc);
+
+        return new WidgetDataEnvelopeDto(
+            request.WidgetKey,
+            request.Timing.GeneratedAtUtc,
+            request.Timing.DataEffectiveAtUtc,
+            freshness,
+            Confidence(request.Options.Confidence, request.Options.ConfidenceReasonAr),
+            ScopeSummary(request.Context),
+            request.Options.IsPartial,
+            request.Options.Warnings,
+            request.Payload,
+            request.Options.DrillDownTargets,
+            request.Options.AllowedActions);
+    }
+
+    public static WidgetDataEnvelopeBuildRequest<TPayload> BuildRequest<TPayload>(
         WorkspaceContext context,
         string widgetKey,
         DateTimeOffset generatedAtUtc,
         DateTimeOffset? dataEffectiveAtUtc,
         TPayload payload,
-        IReadOnlyList<DrillDownTarget>? drillDownTargets = null,
-        IReadOnlyList<WorkspaceAllowedAction>? allowedActions = null,
-        IReadOnlyList<string>? warnings = null,
-        bool isPartial = false,
-        ConfidenceLevel confidence = ConfidenceLevel.High,
-        string? confidenceReasonAr = null)
+        IReadOnlyList<DrillDownTarget>? drillDownTargets = null)
         where TPayload : notnull
     {
-        return new WidgetDataEnvelopeDto(
+        return new WidgetDataEnvelopeBuildRequest<TPayload>(
+            context,
             widgetKey,
-            generatedAtUtc,
-            dataEffectiveAtUtc,
-            isPartial ? new DataFreshness(DataFreshnessStatus.Partial, "جزئية", "تم توليد البيانات مع تحذيرات.") : Freshness(generatedAtUtc, dataEffectiveAtUtc),
-            Confidence(confidence, confidenceReasonAr),
-            ScopeSummary(context),
-            isPartial,
-            warnings ?? [],
+            new WidgetDataEnvelopeTiming(generatedAtUtc, dataEffectiveAtUtc),
             payload,
-            drillDownTargets ?? [],
-            allowedActions ?? []);
+            WidgetDataEnvelopeOptions.Default with { DrillDownTargets = drillDownTargets ?? [] });
     }
+}
+
+public sealed record WidgetDataEnvelopeBuildRequest<TPayload>(
+    WorkspaceContext Context,
+    string WidgetKey,
+    WidgetDataEnvelopeTiming Timing,
+    TPayload Payload,
+    WidgetDataEnvelopeOptions Options)
+    where TPayload : notnull
+{
+    public bool IsPartial => Options.IsPartial;
+}
+
+public sealed record WidgetDataEnvelopeTiming(
+    DateTimeOffset GeneratedAtUtc,
+    DateTimeOffset? DataEffectiveAtUtc);
+
+public sealed record WidgetDataEnvelopeOptions(
+    IReadOnlyList<DrillDownTarget> DrillDownTargets,
+    IReadOnlyList<WorkspaceAllowedAction> AllowedActions,
+    IReadOnlyList<string> Warnings,
+    bool IsPartial,
+    ConfidenceLevel Confidence,
+    string? ConfidenceReasonAr)
+{
+    public static WidgetDataEnvelopeOptions Default { get; } = new(
+        [],
+        [],
+        [],
+        false,
+        ConfidenceLevel.High,
+        null);
 }

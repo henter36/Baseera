@@ -14,23 +14,21 @@ public sealed class WorkspaceContextResolver(
 
     public async Task<WorkspaceContext> ResolveAsync(WorkspaceDefinition definition, WorkspaceRequest request, CancellationToken cancellationToken)
     {
-        var level = request.Level ?? ResolveDefaultLevel(definition);
-        if (!definition.SupportedLevels.Contains(level))
-        {
-            throw new ArgumentException("مستوى مساحة العمل غير مدعوم.");
-        }
-
+        var level = ResolveWorkspaceLevel(definition, request);
         ValidateWorkspacePermission(definition);
         await ValidateScopeAsync(level, request.RegionId, request.FacilityId, cancellationToken);
+        var timeRange = NormalizeTimeRange(request);
 
-        var now = timeProvider.GetUtcNow();
-        var from = request.FromUtc ?? now.Subtract(DefaultRange);
-        var to = request.ToUtc ?? now;
-        if (from > to)
-        {
-            throw new ArgumentException("نطاق التاريخ غير صحيح.");
-        }
+        return await BuildResolvedContextAsync(definition, request, level, timeRange, cancellationToken);
+    }
 
+    private async Task<WorkspaceContext> BuildResolvedContextAsync(
+        WorkspaceDefinition definition,
+        WorkspaceRequest request,
+        WorkspaceLevel level,
+        WorkspaceTimeRange timeRange,
+        CancellationToken cancellationToken)
+    {
         return new WorkspaceContext(
             definition.Key,
             level,
@@ -39,12 +37,23 @@ public sealed class WorkspaceContextResolver(
             request.FacilityId,
             request.EntityId,
             scopeService.SummarizeScopes(),
-            from,
-            to,
+            timeRange.FromUtc,
+            timeRange.ToUtc,
             NormalizeLocale(request.Locale),
             NormalizeTimeZone(request.TimeZone),
             currentUser.Permissions.ToHashSet(StringComparer.OrdinalIgnoreCase),
             false);
+    }
+
+    private static WorkspaceLevel ResolveWorkspaceLevel(WorkspaceDefinition definition, WorkspaceRequest request)
+    {
+        var level = request.Level ?? ResolveDefaultLevel(definition);
+        if (!definition.SupportedLevels.Contains(level))
+        {
+            throw new ArgumentException("مستوى مساحة العمل غير مدعوم.");
+        }
+
+        return level;
     }
 
     private static WorkspaceLevel ResolveDefaultLevel(WorkspaceDefinition definition)
@@ -69,48 +78,81 @@ public sealed class WorkspaceContextResolver(
 
     private async Task ValidateScopeAsync(WorkspaceLevel level, Guid? regionId, Guid? facilityId, CancellationToken cancellationToken)
     {
-        if (level == WorkspaceLevel.Headquarters && !currentUser.HasPermission(PermissionCodes.WorkspacesViewHeadquarters))
+        if (level == WorkspaceLevel.Headquarters)
         {
-            throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة عمل المركز.");
+            ValidateHeadquartersPermission();
+            return;
         }
 
         if (level == WorkspaceLevel.Region)
         {
-            if (!currentUser.HasPermission(PermissionCodes.WorkspacesViewRegion))
-            {
-                throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة عمل المنطقة.");
-            }
-
-            if (regionId is null)
-            {
-                throw new ArgumentException("regionId مطلوب لمساحة عمل المنطقة.");
-            }
-
-            var exists = await db.Regions.AnyAsync(region => region.Id == regionId && !region.IsDeleted, cancellationToken);
-            if (!exists || !scopeService.CanAccessRegion(regionId.Value))
-            {
-                throw new KeyNotFoundException("لم يتم العثور على المنطقة ضمن نطاقك.");
-            }
+            await ValidateRegionScopeAsync(regionId, cancellationToken);
+            return;
         }
 
         if (level == WorkspaceLevel.Facility)
         {
-            if (!currentUser.HasPermission(PermissionCodes.WorkspacesViewFacility))
-            {
-                throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة عمل المنشأة.");
-            }
-
-            if (facilityId is null)
-            {
-                throw new ArgumentException("facilityId مطلوب لمساحة عمل المنشأة.");
-            }
-
-            var exists = await db.Facilities.AnyAsync(facility => facility.Id == facilityId && !facility.IsDeleted, cancellationToken);
-            if (!exists || !scopeService.CanAccessFacility(facilityId.Value))
-            {
-                throw new KeyNotFoundException("لم يتم العثور على المنشأة ضمن نطاقك.");
-            }
+            await ValidateFacilityScopeAsync(facilityId, cancellationToken);
         }
+    }
+
+    private void ValidateHeadquartersPermission()
+    {
+        if (!currentUser.HasPermission(PermissionCodes.WorkspacesViewHeadquarters))
+        {
+            throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة عمل المركز.");
+        }
+    }
+
+    private async Task ValidateRegionScopeAsync(Guid? regionId, CancellationToken cancellationToken)
+    {
+        if (!currentUser.HasPermission(PermissionCodes.WorkspacesViewRegion))
+        {
+            throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة عمل المنطقة.");
+        }
+
+        if (regionId is null)
+        {
+            throw new ArgumentException("regionId مطلوب لمساحة عمل المنطقة.");
+        }
+
+        var exists = await db.Regions.AnyAsync(region => region.Id == regionId && !region.IsDeleted, cancellationToken);
+        if (!exists || !scopeService.CanAccessRegion(regionId.Value))
+        {
+            throw new KeyNotFoundException("لم يتم العثور على المنطقة ضمن نطاقك.");
+        }
+    }
+
+    private async Task ValidateFacilityScopeAsync(Guid? facilityId, CancellationToken cancellationToken)
+    {
+        if (!currentUser.HasPermission(PermissionCodes.WorkspacesViewFacility))
+        {
+            throw new UnauthorizedAccessException("ليست لديك صلاحية مساحة عمل المنشأة.");
+        }
+
+        if (facilityId is null)
+        {
+            throw new ArgumentException("facilityId مطلوب لمساحة عمل المنشأة.");
+        }
+
+        var exists = await db.Facilities.AnyAsync(facility => facility.Id == facilityId && !facility.IsDeleted, cancellationToken);
+        if (!exists || !scopeService.CanAccessFacility(facilityId.Value))
+        {
+            throw new KeyNotFoundException("لم يتم العثور على المنشأة ضمن نطاقك.");
+        }
+    }
+
+    private WorkspaceTimeRange NormalizeTimeRange(WorkspaceRequest request)
+    {
+        var now = timeProvider.GetUtcNow();
+        var from = request.FromUtc ?? now.Subtract(DefaultRange);
+        var to = request.ToUtc ?? now;
+        if (from > to)
+        {
+            throw new ArgumentException("نطاق التاريخ غير صحيح.");
+        }
+
+        return new WorkspaceTimeRange(from, to);
     }
 
     private async Task<Guid?> ResolveOrganizationIdAsync(CancellationToken cancellationToken)
@@ -131,4 +173,6 @@ public sealed class WorkspaceContextResolver(
     {
         return string.IsNullOrWhiteSpace(timeZone) ? "Asia/Riyadh" : timeZone.Trim();
     }
+
+    private readonly record struct WorkspaceTimeRange(DateTimeOffset FromUtc, DateTimeOffset ToUtc);
 }

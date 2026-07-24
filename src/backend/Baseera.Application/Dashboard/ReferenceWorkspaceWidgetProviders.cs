@@ -41,13 +41,13 @@ public sealed class OperationalSummaryWorkspaceWidgetProvider(
             summary.Risk?.DueSoon ?? 0,
             summary.Risk?.CriticalOrHigh ?? 0);
 
-        return WorkspaceContractFactory.Envelope(
+        return WorkspaceContractFactory.Envelope(WorkspaceContractFactory.BuildRequest(
             context,
             Definition.Key,
             generatedAt,
             generatedAt,
             payload,
-            [new DrillDownTarget("dashboard.operations", "فتح لوحة المتابعة", new Dictionary<string, string>(), PreserveFilters(context), PermissionCodes.DashboardViewOperational)]);
+            [new DrillDownTarget("dashboard.operations", "فتح لوحة المتابعة", new Dictionary<string, string>(), PreserveFilters(context), PermissionCodes.DashboardViewOperational)]));
     }
 
     private static OperationalDashboardQuery ToDashboardQuery(WorkspaceContext context)
@@ -123,12 +123,12 @@ public sealed class CorrectiveActionsSummaryWorkspaceWidgetProvider(
             summary.CorrectiveActions?.Reopened ?? 0,
             summary.CorrectiveActions?.NotesWithStalledActions ?? 0);
 
-        return WorkspaceContractFactory.Envelope(
+        return WorkspaceContractFactory.Envelope(WorkspaceContractFactory.BuildRequest(
             context,
             Definition.Key,
             generatedAt,
             generatedAt,
             payload,
-            [new DrillDownTarget("corrective-actions.list", "فتح الإجراءات التصحيحية", new Dictionary<string, string>(), new Dictionary<string, string>(), PermissionCodes.CorrectiveActionsView)]);
+            [new DrillDownTarget("corrective-actions.list", "فتح الإجراءات التصحيحية", new Dictionary<string, string>(), new Dictionary<string, string>(), PermissionCodes.CorrectiveActionsView)]));
     }
 }

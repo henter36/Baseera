@@ -47,6 +47,47 @@ public sealed class WorkspaceFrameworkIntegrationTests(BaseeraApiFactory factory
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [IntegrationConnectionFact]
+    public async Task Workspace_endpoint_returns_bad_request_for_invalid_date_range()
+    {
+        await factory.SeedUserAsync(
+            "workspace-invalid-date-range",
+            "نطاق غير صحيح",
+            [RoleCodes.RegionalDirector],
+            (ScopeType.Region, SeedIds.RegionA, null));
+        var client = factory.CreateAuthenticatedClient("workspace-invalid-date-range");
+
+        var response = await client.GetAsync("/api/v1/workspaces/reference?level=4&fromUtc=2026-07-25T00:00:00Z&toUtc=2026-07-24T00:00:00Z");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.StartsWith("application/json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal("نطاق التاريخ غير صحيح.", json.RootElement.GetProperty("detail").GetString());
+        Assert.DoesNotContain("System.", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(" at ", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Workspace_endpoint_returns_not_found_for_out_of_scope_facility()
+    {
+        await factory.SeedUserAsync(
+            "workspace-out-of-scope-facility",
+            "خارج النطاق",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, null, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("workspace-out-of-scope-facility");
+
+        var response = await client.GetAsync($"/api/v1/workspaces/reference?level=1&facilityId={SeedIds.FacilityB1}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Null(response.Content.Headers.ContentType);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(string.IsNullOrWhiteSpace(body));
+        Assert.DoesNotContain("FacilityB1", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("سجن", body, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed record WorkspaceShellResponse(
         WorkspaceDefinitionResponse Definition,
         IReadOnlyList<WidgetDefinitionResponse> WidgetDefinitions,

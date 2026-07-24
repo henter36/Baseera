@@ -49,9 +49,9 @@ export function WorkspaceShell({
         allowedActions={allowedActions}
       />
       {widgetFailures && widgetFailures.length > 0 && (
-        <div className="workspace-warning" role="status">
+        <output className="workspace-warning" aria-live="polite" aria-atomic="true">
           بعض الأدوات لم تكتمل: {widgetFailures.map((failure) => failure.messageAr).join('، ')}
-        </div>
+        </output>
       )}
       {children}
     </section>

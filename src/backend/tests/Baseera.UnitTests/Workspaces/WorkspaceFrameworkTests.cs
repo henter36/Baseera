@@ -83,6 +83,42 @@ public sealed class WorkspaceFrameworkTests : IDisposable
     }
 
     [Fact]
+    public void Envelope_build_request_preserves_contract_values()
+    {
+        var context = new WorkspaceContext(
+            "test",
+            WorkspaceLevel.Domain,
+            SeedIds.Organization,
+            null,
+            null,
+            null,
+            "global",
+            time.GetUtcNow().AddDays(-1),
+            time.GetUtcNow(),
+            "ar-SA",
+            "Asia/Riyadh",
+            new HashSet<string> { PermissionCodes.WorkspacesView },
+            false);
+        var generatedAt = time.GetUtcNow();
+        var payload = new { Count = 3 };
+
+        var envelope = WorkspaceContractFactory.Envelope(WorkspaceContractFactory.BuildRequest(
+            context,
+            "widget.test",
+            generatedAt,
+            generatedAt,
+            payload));
+
+        Assert.Equal("widget.test", envelope.WidgetKey);
+        Assert.Equal(generatedAt, envelope.GeneratedAtUtc);
+        Assert.Equal(DataFreshnessStatus.Current, envelope.Freshness.Status);
+        Assert.Equal(ConfidenceLevel.High, envelope.Confidence.Level);
+        Assert.Same(payload, envelope.Payload);
+        Assert.Empty(envelope.WarningMessages);
+        Assert.Empty(envelope.AllowedActions);
+    }
+
+    [Fact]
     public async Task Context_rejects_out_of_scope_facility()
     {
         db.Facilities.Add(new Baseera.Domain.Organization.Facility
@@ -187,7 +223,12 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         public virtual Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
         {
             var generatedAt = new DateTimeOffset(2026, 7, 24, 9, 0, 0, TimeSpan.Zero);
-            return Task.FromResult(WorkspaceContractFactory.Envelope(context, Definition.Key, generatedAt, generatedAt, new { Count = 1 }));
+            return Task.FromResult(WorkspaceContractFactory.Envelope(WorkspaceContractFactory.BuildRequest(
+                context,
+                Definition.Key,
+                generatedAt,
+                generatedAt,
+                new { Count = 1 })));
         }
     }
 
