@@ -19,6 +19,8 @@ internal interface IFacilityWorkspaceReadService
     Task<FacilityFormCompliancePayload> GetFormComplianceAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityRecentActivityPayload> GetRecentActivityAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<FacilityDataQualityPayload> GetDataQualityAsync(WorkspaceContext context, CancellationToken cancellationToken);
 }
 
 internal sealed class FacilityWorkspaceReadService(
@@ -31,6 +33,7 @@ internal sealed class FacilityWorkspaceReadService(
 {
     private const int PriorityLimit = 10;
     private const int RecentActivityLimit = 10;
+    private const int UnitLimit = 12;
     private readonly Dictionary<string, object> cache = new(StringComparer.Ordinal);
 
     public async Task<FacilityWorkspaceFacilityInfo> GetFacilityAsync(WorkspaceContext context, CancellationToken cancellationToken)
@@ -139,6 +142,79 @@ internal sealed class FacilityWorkspaceReadService(
                     .OrderByDescending(item => item.OccurredAtUtc)
                     .Take(RecentActivityLimit)
                     .ToList());
+        });
+    }
+
+    public async Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"structure:{CacheKey(context)}", async () =>
+        {
+            var facilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context);
+            var notes = await GetScopedNotesAsync(context, cancellationToken);
+            var actions = await GetScopedActionsAsync(context, cancellationToken);
+
+            var unitsCount = await db.FacilityUnits.AsNoTracking()
+                .CountAsync(unit => unit.FacilityId == facilityId && !unit.IsDeleted && unit.IsActive, cancellationToken);
+            var buildingsCount = await db.Buildings.AsNoTracking()
+                .CountAsync(building => building.FacilityId == facilityId && !building.IsDeleted && building.IsActive, cancellationToken);
+            var assetLocationsCount = await db.FacilityAssetLocations.AsNoTracking()
+                .CountAsync(location => !location.IsDeleted && location.IsActive && location.Building.FacilityId == facilityId, cancellationToken);
+
+            var rows = await db.FacilityUnits.AsNoTracking()
+                .Where(unit => unit.FacilityId == facilityId && !unit.IsDeleted && unit.IsActive)
+                .OrderBy(unit => unit.Code)
+                .ThenBy(unit => unit.NameAr)
+                .Take(UnitLimit)
+                .Select(unit => new FacilityUnitOperationsPayload
+                {
+                    UnitId = unit.Id,
+                    Code = unit.Code,
+                    NameAr = unit.NameAr,
+                    ParentUnitNameAr = unit.ParentUnit != null ? unit.ParentUnit.NameAr : null,
+                    OpenNotes = notes.Count(note =>
+                        note.FacilityUnitId == unit.Id &&
+                        note.Status != NoteStatus.Closed &&
+                        note.Status != NoteStatus.Cancelled),
+                    OverdueNotes = notes.Count(note =>
+                        note.FacilityUnitId == unit.Id &&
+                        note.DueAtUtc.HasValue &&
+                        note.DueAtUtc < context.ToUtc &&
+                        note.Status != NoteStatus.Closed &&
+                        note.Status != NoteStatus.Cancelled),
+                    OpenCorrectiveActions = actions.Count(action =>
+                        action.OperationalNote.FacilityUnitId == unit.Id &&
+                        action.Status != CorrectiveActionStatus.Completed &&
+                        action.Status != CorrectiveActionStatus.Cancelled)
+                })
+                .ToListAsync(cancellationToken);
+
+            return new FacilityStructurePayload(unitsCount, buildingsCount, assetLocationsCount, rows);
+        });
+    }
+
+    public async Task<FacilityDataQualityPayload> GetDataQualityAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"data-quality:{CacheKey(context)}", async () =>
+        {
+            var metrics = await GetMetricsAsync(context, cancellationToken);
+            var structure = await GetStructureAsync(context, cancellationToken);
+            var domains = new List<FacilityDataQualityDomainPayload>
+            {
+                AvailableDomain("structure", "الهيكل التنظيمي والوحدات", structure.UnitsCount + structure.BuildingsCount + structure.AssetLocationsCount, context.ToUtc, "يدعم قراءة الوحدة والموقع لكنه لا يحتوي إشغالًا أو جاهزية موارد."),
+                AvailableDomain("notes", "الملاحظات التشغيلية", metrics.Notes.OpenNotes, context.ToUtc, "يدخل في الحالة العامة والعمل العاجل."),
+                AvailableDomain("corrective-actions", "الإجراءات التصحيحية", metrics.CorrectiveActions.OpenActions, context.ToUtc, "يدخل في العمل العاجل وخط الحالة."),
+                AvailableDomain("escalations", "التصعيدات والتنبيهات", metrics.Alerts.OpenEscalations + metrics.Alerts.PersonalUnreadNotifications, metrics.Alerts.LastEscalationProcessedAtUtc ?? context.ToUtc, "التنبيهات الشخصية منفصلة عن حالة المنشأة."),
+                AvailableDomain("forms", "النماذج والالتزام", metrics.FormCompliance.TargetedForms, context.ToUtc, "يعتمد على قواعد لوحة الالتزام الحالية."),
+                MissingDomain("occupancy", "الإشغال والنزلاء", "لا توجد كيانات نزلاء أو سعة معتمدة في النموذج الحالي.", "#124"),
+                MissingDomain("resources", "القوى والموارد والجاهزية", "لا توجد كيانات مخزون موارد تشغيلية للقوى أو المركبات أو الأسلحة أو الاتصالات.", "#15"),
+                MissingDomain("incidents", "الوقوعات والحوادث", "لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.", "#127"),
+                MissingDomain("risks", "المخاطر والمعالجات", "لا يوجد Risk/RiskTreatment engine في النطاق الحالي.", "#16"),
+                MissingDomain("projects", "المشاريع والمبادرات", "لا توجد كيانات Project أو Initiative مرتبطة بالسجن.", "#126"),
+                MissingDomain("plans", "الخطط والطوارئ", "لا توجد كيانات OperationalPlan أو EmergencyPlan.", "#128"),
+                MissingDomain("decisions", "القرارات والتوجيهات", "لا توجد كيانات Decision أو Directive تنفيذية.", "#125")
+            };
+
+            return new FacilityDataQualityPayload(domains);
         });
     }
 
@@ -598,6 +674,41 @@ internal sealed class FacilityWorkspaceReadService(
 
     private static int? DaysOverdue(DateTimeOffset? dueAtUtc, DateTimeOffset now) =>
         dueAtUtc.HasValue && dueAtUtc.Value < now ? Math.Max(0, (int)Math.Floor((now - dueAtUtc.Value).TotalDays)) : null;
+
+    private static FacilityDataQualityDomainPayload AvailableDomain(
+        string key,
+        string labelAr,
+        int count,
+        DateTimeOffset? lastUpdatedAtUtc,
+        string impactAr) =>
+        new()
+        {
+            Key = key,
+            LabelAr = labelAr,
+            StatusCode = count > 0 ? "complete" : "partial",
+            StatusAr = count > 0 ? "متاح" : "جزئي",
+            ConfidenceAr = count > 0 ? "مرتفعة" : "متوسطة",
+            LastUpdatedAtUtc = lastUpdatedAtUtc,
+            ImpactAr = count > 0 ? impactAr : $"{impactAr} لا توجد سجلات حالية ضمن الفترة أو النطاق.",
+            FollowUpIssue = null
+        };
+
+    private static FacilityDataQualityDomainPayload MissingDomain(
+        string key,
+        string labelAr,
+        string impactAr,
+        string followUpIssue) =>
+        new()
+        {
+            Key = key,
+            LabelAr = labelAr,
+            StatusCode = "unavailable",
+            StatusAr = "غير متاح",
+            ConfidenceAr = "غير معروفة",
+            LastUpdatedAtUtc = null,
+            ImpactAr = impactAr,
+            FollowUpIssue = followUpIssue
+        };
 
     private static DrillDownTarget NoteTarget(Guid noteId) =>
         new("notes.workspace", "فتح الملاحظة", new Dictionary<string, string> { ["noteId"] = noteId.ToString() }, new Dictionary<string, string>(), PermissionCodes.NotesView);

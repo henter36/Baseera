@@ -84,6 +84,38 @@ public sealed record FacilityRecentActivityPayload(
     int Limit,
     IReadOnlyList<FacilityActivityItemPayload> Items);
 
+public sealed record FacilityStructurePayload(
+    int UnitsCount,
+    int BuildingsCount,
+    int AssetLocationsCount,
+    IReadOnlyList<FacilityUnitOperationsPayload> Units);
+
+public sealed record FacilityUnitOperationsPayload
+{
+    public required Guid UnitId { get; init; }
+    public required string Code { get; init; }
+    public required string NameAr { get; init; }
+    public string? ParentUnitNameAr { get; init; }
+    public required int OpenNotes { get; init; }
+    public required int OverdueNotes { get; init; }
+    public required int OpenCorrectiveActions { get; init; }
+}
+
+public sealed record FacilityDataQualityPayload(
+    IReadOnlyList<FacilityDataQualityDomainPayload> Domains);
+
+public sealed record FacilityDataQualityDomainPayload
+{
+    public required string Key { get; init; }
+    public required string LabelAr { get; init; }
+    public required string StatusCode { get; init; }
+    public required string StatusAr { get; init; }
+    public required string ConfidenceAr { get; init; }
+    public DateTimeOffset? LastUpdatedAtUtc { get; init; }
+    public required string ImpactAr { get; init; }
+    public string? FollowUpIssue { get; init; }
+}
+
 public sealed record FacilityActivityItemPayload
 {
     public required string EventType { get; init; }

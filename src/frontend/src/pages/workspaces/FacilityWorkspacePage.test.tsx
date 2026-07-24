@@ -227,6 +227,7 @@ describe('FacilityWorkspacePage', () => {
     expect(within(urgentList).getAllByRole('listitem')).toHaveLength(4)
     expect(within(urgentList).getByRole('button', { name: /ملاحظة حرجة/ })).toBeEnabled()
     expect(screen.getByText('مسندة أو تحتاج إجراء')).toBeInTheDocument()
+    expect(screen.getByText('نواقص بيانات').nextElementSibling).toHaveTextContent('7')
     expect(screen.getByTestId('router-location')).toHaveTextContent('/workspaces/facilities/facility-a')
   })
 
@@ -234,9 +235,53 @@ describe('FacilityWorkspacePage', () => {
     renderPage('/workspaces/facilities/facility-a')
 
     await screen.findByRole('heading', { name: 'سجن أ1' })
-    fireEvent.click(screen.getByRole('button', { name: 'الأولويات' }))
+    fireEvent.click(screen.getByRole('button', { name: 'العمل العاجل' }))
 
     expect(screen.getAllByRole('list', { name: /قائمة الأولويات/ })).toHaveLength(1)
+    expect(screen.getByTestId('router-location')).toHaveTextContent('section=urgent')
+  })
+
+  it('renders all facility operations sections and keeps section state in the URL', async () => {
+    renderPage('/workspaces/facilities/facility-a')
+
+    await screen.findByRole('heading', { name: 'سجن أ1' })
+
+    for (const label of [
+      'التشغيل والوقوعات',
+      'الإشغال والنزلاء',
+      'الموارد والجاهزية',
+      'المخاطر والمعالجات',
+      'المشاريع والمبادرات',
+      'الخطط والطوارئ',
+      'القرارات والتوجيهات',
+      'السجل التشغيلي',
+      'جودة البيانات',
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'الموارد والجاهزية' }))
+
+    expect(screen.getByRole('heading', { name: 'الموارد والجاهزية' })).toBeInTheDocument()
+    expect(screen.getByText(/لا توجد حاليًا كيانات مركبات أو أسلحة أو أجهزة اتصال أو معدات/)).toBeInTheDocument()
+    expect(screen.getByTestId('router-location')).toHaveTextContent('section=resources')
+  })
+
+  it('opens facility unit and data quality gaps in the context panel', async () => {
+    renderPage('/workspaces/facilities/facility-a?section=occupancy')
+
+    fireEvent.click(await screen.findByRole('button', { name: /عنبر أ/ }))
+
+    expect(await screen.findByRole('heading', { name: 'عنبر أ' })).toBeInTheDocument()
+    expect(screen.getByText('ملاحظات مفتوحة')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('إغلاق لوحة التفاصيل'))
+    fireEvent.click(screen.getByRole('button', { name: 'جودة البيانات' }))
+    const dataQualityList = await screen.findByRole('list', { name: /جودة بيانات المجالات/ })
+    fireEvent.click(within(dataQualityList).getByRole('button', { name: /المخاطر والمعالجات/ }))
+
+    expect(await screen.findByRole('heading', { name: 'المخاطر والمعالجات' })).toBeInTheDocument()
+    expect(within(screen.getByRole('dialog')).getAllByText('لا يوجد Risk/RiskTreatment engine في النطاق الحالي.').length).toBeGreaterThan(0)
   })
 
   it('supports direct panel links and browser back to the operational scene', async () => {
@@ -377,6 +422,8 @@ const shell = {
     { ...widgetDefinitionBase, key: 'facility.executive-summary', titleAr: 'الملخص التشغيلي', defaultSize: 3 },
     { ...widgetDefinitionBase, key: 'facility.priority-queue', titleAr: 'قائمة الأولويات', defaultSize: 3 },
     { ...widgetDefinitionBase, key: 'facility.form-compliance', titleAr: 'الالتزام بالنماذج', defaultSize: 2 },
+    { ...widgetDefinitionBase, key: 'facility.structure', titleAr: 'الوحدات والمرافق', defaultSize: 4 },
+    { ...widgetDefinitionBase, key: 'facility.data-quality', titleAr: 'جودة البيانات', defaultSize: 4 },
   ],
   widgets: [
     {
@@ -546,6 +593,56 @@ const shell = {
         },
         requiredPermission: 'Forms.View',
       }],
+      allowedActions: [],
+    },
+    {
+      widgetKey: 'facility.structure',
+      generatedAtUtc: '2026-07-24T09:00:00Z',
+      dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+      freshness: { status: 1, labelAr: 'محدثة' },
+      confidence: { level: 1, labelAr: 'مرتفعة' },
+      scopeSummary: { level: 1, labelAr: 'Facility', facilityId: 'facility-a', isSensitive: false },
+      isPartial: false,
+      warningMessages: [],
+      payload: {
+        unitsCount: 1,
+        buildingsCount: 1,
+        assetLocationsCount: 2,
+        units: [{
+          unitId: 'unit-1',
+          code: 'U-1',
+          nameAr: 'عنبر أ',
+          parentUnitNameAr: null,
+          openNotes: 2,
+          overdueNotes: 1,
+          openCorrectiveActions: 1,
+        }],
+      },
+      drillDownTargets: [],
+      allowedActions: [],
+    },
+    {
+      widgetKey: 'facility.data-quality',
+      generatedAtUtc: '2026-07-24T09:00:00Z',
+      dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+      freshness: { status: 1, labelAr: 'جزئية' },
+      confidence: { level: 2, labelAr: 'متوسطة' },
+      scopeSummary: { level: 1, labelAr: 'Facility', facilityId: 'facility-a', isSensitive: false },
+      isPartial: false,
+      warningMessages: ['مجالات غير متاحة'],
+      payload: {
+        domains: [
+          { key: 'structure', labelAr: 'الهيكل التنظيمي والوحدات', statusCode: 'complete', statusAr: 'متاح', confidenceAr: 'مرتفعة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'يدعم قراءة الوحدة والموقع.' },
+          { key: 'occupancy', labelAr: 'الإشغال والنزلاء', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات نزلاء أو سعة معتمدة في النموذج الحالي.', followUpIssue: '#124' },
+          { key: 'resources', labelAr: 'القوى والموارد والجاهزية', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات مخزون موارد تشغيلية للقوى أو المركبات أو الأسلحة أو الاتصالات.', followUpIssue: '#15' },
+          { key: 'incidents', labelAr: 'الوقوعات والحوادث', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.', followUpIssue: '#127' },
+          { key: 'risks', labelAr: 'المخاطر والمعالجات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد Risk/RiskTreatment engine في النطاق الحالي.', followUpIssue: '#16' },
+          { key: 'projects', labelAr: 'المشاريع والمبادرات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات Project أو Initiative مرتبطة بالسجن.', followUpIssue: '#126' },
+          { key: 'plans', labelAr: 'الخطط والطوارئ', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات OperationalPlan أو EmergencyPlan.', followUpIssue: '#128' },
+          { key: 'decisions', labelAr: 'القرارات والتوجيهات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات Decision أو Directive تنفيذية.', followUpIssue: '#125' },
+        ],
+      },
+      drillDownTargets: [],
       allowedActions: [],
     },
   ],

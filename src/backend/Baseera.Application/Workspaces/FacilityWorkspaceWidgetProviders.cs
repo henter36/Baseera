@@ -246,6 +246,67 @@ internal sealed class FacilityRecentActivityWorkspaceWidgetProvider(
     }
 }
 
+internal sealed class FacilityStructureWorkspaceWidgetProvider(
+    IFacilityWorkspaceReadService readService,
+    TimeProvider timeProvider) : IWorkspaceWidgetProvider
+{
+    public WidgetDefinition Definition { get; } = FacilityWorkspaceWidgetDefinitions.Create(new FacilityWorkspaceWidgetDefinitionSpec
+    {
+        Key = FacilityWorkspaceDefinitionProvider.StructureWidgetKey,
+        TitleAr = "الوحدات والمرافق",
+        TitleEn = "Facility Structure",
+        DescriptionAr = "الوحدات والمباني ومواقع الأصول المتاحة فعليًا في نموذج التنظيم.",
+        Category = WidgetCategory.Workload,
+        RequiredPermission = PermissionCodes.WorkspacesViewFacility,
+        DataCapability = "Facility.Structure",
+        Size = WidgetSize.Wide
+    });
+
+    public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        var payload = await readService.GetStructureAsync(context, cancellationToken);
+        var generatedAt = timeProvider.GetUtcNow();
+        var confidence = payload.UnitsCount + payload.BuildingsCount + payload.AssetLocationsCount > 0
+            ? ConfidenceLevel.High
+            : ConfidenceLevel.Medium;
+        var warnings = payload.UnitsCount == 0
+            ? ["لا توجد وحدات داخلية مسجلة لهذا السجن؛ لن يتم حساب إشغال أو متابعة حسب الوحدة."]
+            : Array.Empty<string>();
+
+        return Envelope(context, Definition.Key, generatedAt, payload, confidence, warnings: warnings);
+    }
+}
+
+internal sealed class FacilityDataQualityWorkspaceWidgetProvider(
+    IFacilityWorkspaceReadService readService,
+    TimeProvider timeProvider) : IWorkspaceWidgetProvider
+{
+    public WidgetDefinition Definition { get; } = FacilityWorkspaceWidgetDefinitions.Create(new FacilityWorkspaceWidgetDefinitionSpec
+    {
+        Key = FacilityWorkspaceDefinitionProvider.DataQualityWidgetKey,
+        TitleAr = "جودة البيانات",
+        TitleEn = "Data Quality",
+        DescriptionAr = "حالة تغطية مصادر القرار داخل مساحة السجن.",
+        Category = WidgetCategory.Compliance,
+        RequiredPermission = PermissionCodes.WorkspacesViewFacility,
+        DataCapability = "Facility.DataQuality",
+        Size = WidgetSize.Wide
+    });
+
+    public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        var payload = await readService.GetDataQualityAsync(context, cancellationToken);
+        var generatedAt = timeProvider.GetUtcNow();
+        var unavailable = payload.Domains.Count(domain => domain.StatusCode == "unavailable");
+        var confidence = unavailable == 0 ? ConfidenceLevel.High : ConfidenceLevel.Medium;
+        IReadOnlyList<string> warnings = unavailable == 0
+            ? Array.Empty<string>()
+            : [$"{unavailable} مجال قرار غير متاح في النموذج الحالي ولا يدخل في الحالة العامة."];
+
+        return Envelope(context, Definition.Key, generatedAt, payload, confidence, warnings: warnings);
+    }
+}
+
 internal static class FacilityWorkspaceWidgetProviderSupport
 {
     public static WidgetDataEnvelopeDto Envelope<TPayload>(

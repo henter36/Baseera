@@ -1113,6 +1113,34 @@ export type FacilityRecentActivityPayload = {
   }>
 }
 
+export type FacilityStructurePayload = {
+  unitsCount: number
+  buildingsCount: number
+  assetLocationsCount: number
+  units: Array<{
+    unitId: string
+    code: string
+    nameAr: string
+    parentUnitNameAr?: string | null
+    openNotes: number
+    overdueNotes: number
+    openCorrectiveActions: number
+  }>
+}
+
+export type FacilityDataQualityPayload = {
+  domains: Array<{
+    key: string
+    labelAr: string
+    statusCode: string
+    statusAr: string
+    confidenceAr: string
+    lastUpdatedAtUtc?: string | null
+    impactAr: string
+    followUpIssue?: string | null
+  }>
+}
+
 export type WorkspaceWidgetPayload =
   | ReferenceOperationalSummaryPayload
   | ReferenceCorrectiveActionsPayload
@@ -1124,6 +1152,8 @@ export type WorkspaceWidgetPayload =
   | FacilityFormCompliancePayload
   | FacilityPriorityQueuePayload
   | FacilityRecentActivityPayload
+  | FacilityStructurePayload
+  | FacilityDataQualityPayload
   | Record<string, unknown>
 
 export type WorkspaceWidgetEnvelope<TPayload = WorkspaceWidgetPayload> = {
