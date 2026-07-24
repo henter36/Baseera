@@ -121,15 +121,15 @@ jobs:
       - name: Integration tests
         run: |
           set -euo pipefail
+          test_output="$(mktemp)"
           set +e
-          dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --logger "console;verbosity=detailed"
-          status=$?
+          dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --logger "console;verbosity=detailed" | tee "$test_output"
+          status=${PIPESTATUS[0]}
           set -e
           if [[ "$status" -ne 0 ]]; then
             exit "$status"
           fi
-          summary=$(dotnet test src/backend/tests/Baseera.IntegrationTests -c Release --no-build --verbosity quiet)
-          if echo "$summary" | grep -E 'Skipped:\s*[1-9]' >/dev/null; then
+          if grep -E 'Skipped:\s*[1-9]' "$test_output" >/dev/null; then
             echo "Integration tests reported skips; failing CI" >&2
             exit 1
           fi

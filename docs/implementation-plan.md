@@ -110,6 +110,13 @@
 - مكونات واجهة RTL مشتركة وRoute مرجعي feature-flagged يستخدم بيانات dashboard حقيقية.
 - لا ينفذ Facility/Region/Headquarters Workspace الكاملة (#11-#13)، ولا persistence للـpersonalization (#21).
 
+### Phase D.1 — Facility Workspace MVP (Issue #11 جزئيًا)
+
+- مساحة `facility-operations` على مستوى السجن فقط فوق Workspace Framework.
+- تعرض تعريف السجن، الملخص التشغيلي، مؤشرات الملاحظات، الإجراءات التصحيحية، التصعيدات، التزام النماذج، قائمة الأولويات، وآخر الأحداث.
+- تعتمد على `OperationalDashboardFilterBuilder`, `IFormComplianceQueryService`, وكيانات التصعيد الحالية دون Mock أو migration.
+- تؤجل Region/Headquarters Workspaces (#12/#13)، الموارد (#15)، المخاطر (#16)، Timeline الكامل (#18)، Alert Center الكامل (#19)، وSaved Views (#21).
+
 ## المرحلة E — المشاريع والاستراتيجية
 
 مشاريع متعددة المواقع، مبادرات، أهداف، مؤشرات، مستهدفات، لوحة أداء.
