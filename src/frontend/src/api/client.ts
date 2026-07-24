@@ -1082,6 +1082,85 @@ export type FacilityFormCompliancePayload = {
   pendingReviewForms: number
 }
 
+export type OccupancySummaryPayload = {
+  facilityId: string
+  approvedCapacity?: number | null
+  currentCount?: number | null
+  occupancyRate?: number | null
+  availablePlaces?: number | null
+  overCapacityCount?: number | null
+  statusCode: string
+  statusAr: string
+  unitCount: number
+  overloadedUnits: number
+  emptyUnits: number
+  latestSnapshotAtUtc?: string | null
+  sourceCode: string
+  sourceAr: string
+  freshnessStatus: string
+  confidenceLevel: string
+  isPartial: boolean
+  warnings: string[]
+}
+
+export type OccupancyUnitPayload = {
+  unitId: string
+  unitNameAr: string
+  unitCode: string
+  approvedCapacity?: number | null
+  currentCount?: number | null
+  occupancyRate?: number | null
+  availablePlaces?: number | null
+  overloadCount?: number | null
+  statusCode: string
+  statusAr: string
+  lastUpdatedAtUtc?: string | null
+  dataSourceAr: string
+  openNotesCount: number
+  openIncidentsCount: number
+  riskCount: number
+  alertReasons: string[]
+}
+
+export type OccupancyMovementSummaryPayload = {
+  admissions: number
+  releases: number
+  transferIn: number
+  transferOut: number
+  internalTransfers: number
+  temporaryLeave: number
+  returns: number
+  netMovement: number
+  dailyTrend: Array<{
+    date: string
+    admissions: number
+    releases: number
+    transfersIn: number
+    transfersOut: number
+    net: number
+  }>
+  rejectedMovements: number
+}
+
+export type OccupancyWorkspacePayload = {
+  summary: OccupancySummaryPayload
+  unitBreakdown: {
+    units: OccupancyUnitPayload[]
+  }
+  movementSummary: OccupancyMovementSummaryPayload
+  interventions: Array<{
+    type: string
+    reference: string
+    titleAr: string
+    severityAr: string
+    priorityRank: number
+    reasonAr: string
+    actionLabelAr: string
+    unitId?: string | null
+    dueAtUtc?: string | null
+  }>
+}
+
 export type FacilityPriorityQueuePayload = {
   limit: number
   items: Array<{
@@ -1150,6 +1229,7 @@ export type WorkspaceWidgetPayload =
   | FacilityCorrectiveActionsPayload
   | FacilityAlertsEscalationsPayload
   | FacilityFormCompliancePayload
+  | OccupancyWorkspacePayload
   | FacilityPriorityQueuePayload
   | FacilityRecentActivityPayload
   | FacilityStructurePayload
@@ -2310,6 +2390,21 @@ export const api = {
     widget: (workspaceKey: string, widgetKey: string, filters: WorkspaceFilters = {}) =>
       request<{ definition: WorkspaceWidgetDefinition; data: WorkspaceWidgetEnvelope }>(
         `/api/v1/workspaces/${workspaceKey}/widgets/${widgetKey}?${buildSimpleQuery(filters)}`),
+  },
+
+  occupancy: {
+    summary: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<OccupancySummaryPayload>(`/api/v1/facilities/${facilityId}/occupancy/summary?${buildSimpleQuery(filters)}`),
+    units: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<{ units: OccupancyUnitPayload[] }>(`/api/v1/facilities/${facilityId}/occupancy/units?${buildSimpleQuery(filters)}`),
+    movementsSummary: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<OccupancyMovementSummaryPayload>(`/api/v1/facilities/${facilityId}/occupancy/movements/summary?${buildSimpleQuery(filters)}`),
+    recordCapacity: (facilityId: string, body: Record<string, unknown>) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/occupancy/capacity`, body),
+    recordSnapshot: (facilityId: string, body: Record<string, unknown>) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/occupancy/snapshots`, body),
+    importMovements: (facilityId: string, body: Record<string, unknown>) =>
+      postJson<{ acceptedRows: number; duplicateRows: number; rejectedRows: string[] }>(`/api/v1/facilities/${facilityId}/occupancy/movements/import`, body),
   },
 
   formCompliance: {

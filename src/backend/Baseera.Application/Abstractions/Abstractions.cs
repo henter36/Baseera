@@ -8,6 +8,7 @@ using Baseera.Domain.Escalations;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 
 public interface IBaseeraDbContext
@@ -83,6 +84,9 @@ public interface IBaseeraDbContext
     IQueryable<FormResponseReviewComment> FormResponseReviewComments { get; }
     IQueryable<FormResponseMutation> FormResponseMutations { get; }
     IQueryable<FormResponseHistory> FormResponseHistories { get; }
+    IQueryable<FacilityCapacityBaseline> FacilityCapacityBaselines { get; }
+    IQueryable<InmateCensusSnapshot> InmateCensusSnapshots { get; }
+    IQueryable<InmateMovementEvent> InmateMovementEvents { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;

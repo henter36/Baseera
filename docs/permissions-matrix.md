@@ -143,6 +143,22 @@
 | Dashboard.ViewRouting | عرض مؤشرات التوجيه في اللوحة | ✓ | ✓ | ✓ | | | | |
 | Dashboard.ViewCorrectiveActions | عرض مؤشرات الإجراءات التصحيحية | ✓ | ✓ | ✓ | ✓ | ✓ | | |
 
+## صلاحيات الإشغال وحركة النزلاء (Phase D.4)
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Regional Coordinator | Facility Director | Facility Coordinator | Prisoner Case Officer |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:---------------------:|:-----------------:|:--------------------:|:---------------------:|
+| Occupancy.ViewSummary | عرض ملخص الإشغال غير التعريفي | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Occupancy.ViewUnitBreakdown | عرض إشغال الوحدات | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Occupancy.ViewMovements | عرض مؤشرات الحركة المجمعة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Occupancy.ViewSensitiveMovements | عرض تفاصيل حركة حساسة مستقبلًا | ✓ | | ✓ | | | | | ✓ |
+| Occupancy.ManageCapacity | تسجيل طاقة معتمدة | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Occupancy.RecordSnapshot | تسجيل Snapshot إحصائي | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Occupancy.Import | استيراد حركات مموهة | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Occupancy.Export | تصدير بيانات إشغال مستقبلًا | ✓ | | ✓ | | | | | ✓ |
+| Occupancy.Reconcile | تنفيذ reconciliation مستقبلًا | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+
+`Workspaces.ViewFacility` لا يمنح أي صلاحية إشغال بمفرده. Missing permission للـendpoint المباشر تعود `403`، وخارج النطاق يعود `404`.
+
 Capabilities النوع:
 
 - CanView

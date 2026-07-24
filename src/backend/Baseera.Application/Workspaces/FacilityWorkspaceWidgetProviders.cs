@@ -222,6 +222,46 @@ internal sealed class FacilityPriorityQueueWorkspaceWidgetProvider(
     }
 }
 
+internal sealed class FacilityOccupancyWorkspaceWidgetProvider(
+    IFacilityWorkspaceReadService readService,
+    TimeProvider timeProvider) : IWorkspaceWidgetProvider
+{
+    public WidgetDefinition Definition { get; } = FacilityWorkspaceWidgetDefinitions.Create(new FacilityWorkspaceWidgetDefinitionSpec
+    {
+        Key = FacilityWorkspaceDefinitionProvider.OccupancyWidgetKey,
+        TitleAr = "الإشغال وحركة النزلاء",
+        TitleEn = "Occupancy and Inmate Movement",
+        DescriptionAr = "الطاقة المعتمدة والعدد الحالي وحركة الدخول والإفراج والنقل دون كشف هوية النزلاء.",
+        Category = WidgetCategory.Workload,
+        RequiredPermission = PermissionCodes.OccupancyViewSummary,
+        DataCapability = "Occupancy.Summary",
+        Size = WidgetSize.Wide,
+        Sensitive = true
+    });
+
+    public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        var payload = await readService.GetOccupancyAsync(context, cancellationToken);
+        var generatedAt = timeProvider.GetUtcNow();
+        var confidence = payload.Summary.ConfidenceLevel switch
+        {
+            "high" => ConfidenceLevel.High,
+            "medium" => ConfidenceLevel.Medium,
+            "low" => ConfidenceLevel.Low,
+            _ => ConfidenceLevel.Unknown
+        };
+
+        return Envelope(
+            context,
+            Definition.Key,
+            generatedAt,
+            payload,
+            confidence,
+            [new DrillDownTarget("facility.occupancy", "فتح الإشغال", new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() }, FacilityWorkspaceDrillDownFilters.Preserve(context), PermissionCodes.OccupancyViewSummary)],
+            payload.Summary.Warnings);
+    }
+}
+
 internal sealed class FacilityRecentActivityWorkspaceWidgetProvider(
     IFacilityWorkspaceReadService readService,
     TimeProvider timeProvider) : IWorkspaceWidgetProvider

@@ -3,6 +3,7 @@ namespace Baseera.Application.Workspaces;
 using Baseera.Application.Abstractions;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
+using Baseera.Application.Occupancy;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Escalations;
 using Baseera.Domain.Identity;
@@ -17,6 +18,7 @@ internal interface IFacilityWorkspaceReadService
     Task<FacilityCorrectiveActionsPayload> GetCorrectiveActionsAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityAlertsEscalationsPayload> GetAlertsEscalationsAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityFormCompliancePayload> GetFormComplianceAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityRecentActivityPayload> GetRecentActivityAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken);
@@ -29,6 +31,7 @@ internal sealed class FacilityWorkspaceReadService(
     OperationalDashboardFilterBuilder dashboardFilters,
     IOperationalDashboardQueryService dashboard,
     IFormComplianceQueryService formCompliance,
+    IOccupancyQueryService occupancy,
     TimeProvider timeProvider) : IFacilityWorkspaceReadService
 {
     private const int PriorityLimit = 10;
@@ -63,7 +66,10 @@ internal sealed class FacilityWorkspaceReadService(
             var actions = await GetCorrectiveActionsAsync(context, cancellationToken);
             var alerts = await GetAlertsEscalationsAsync(context, cancellationToken);
             var forms = await GetFormComplianceAsync(context, cancellationToken);
-            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms);
+            var occupancyPayload = currentUser.HasPermission(PermissionCodes.OccupancyViewSummary)
+                ? await GetOccupancyAsync(context, cancellationToken)
+                : null;
+            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload);
         });
     }
 
@@ -97,6 +103,16 @@ internal sealed class FacilityWorkspaceReadService(
             await BuildFormComplianceAsync(context, cancellationToken));
     }
 
+    public async Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"occupancy:{CacheKey(context)}", async () =>
+            await occupancy.GetWorkspacePayloadAsync(
+                FacilityWorkspaceContextGuard.RequireFacilityId(context),
+                context.FromUtc,
+                context.ToUtc,
+                cancellationToken));
+    }
+
     public async Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
         return await GetOrAddAsync($"priority:{CacheKey(context)}", async () =>
@@ -111,6 +127,10 @@ internal sealed class FacilityWorkspaceReadService(
             items.AddRange(await BuildOverdueActionPriorityItemsAsync(actions, now, cancellationToken));
             items.AddRange(await BuildEscalationPriorityItemsAsync(context, cancellationToken));
             items.AddRange(await BuildFormPriorityItemsAsync(context, cancellationToken));
+            if (currentUser.HasPermission(PermissionCodes.OccupancyViewSummary))
+            {
+                items.AddRange(await BuildOccupancyPriorityItemsAsync(context, now, cancellationToken));
+            }
 
             return new FacilityPriorityQueuePayload(
                 PriorityLimit,
@@ -135,6 +155,10 @@ internal sealed class FacilityWorkspaceReadService(
             events.AddRange(await BuildRecentActionEventsAsync(actions, cancellationToken));
             events.AddRange(await BuildRecentEscalationEventsAsync(context, cancellationToken));
             events.AddRange(await BuildRecentFormEventsAsync(context, cancellationToken));
+            if (currentUser.HasPermission(PermissionCodes.OccupancyViewMovements))
+            {
+                events.AddRange(await BuildRecentOccupancyEventsAsync(context, cancellationToken));
+            }
 
             return new FacilityRecentActivityPayload(
                 RecentActivityLimit,
@@ -205,7 +229,6 @@ internal sealed class FacilityWorkspaceReadService(
                 AvailableDomain("corrective-actions", "الإجراءات التصحيحية", metrics.CorrectiveActions.OpenActions, context.ToUtc, "يدخل في العمل العاجل وخط الحالة."),
                 AvailableDomain("escalations", "التصعيدات والتنبيهات", metrics.Alerts.OpenEscalations + metrics.Alerts.PersonalUnreadNotifications, metrics.Alerts.LastEscalationProcessedAtUtc ?? context.ToUtc, "التنبيهات الشخصية منفصلة عن حالة المنشأة."),
                 AvailableDomain("forms", "النماذج والالتزام", metrics.FormCompliance.TargetedForms, context.ToUtc, "يعتمد على قواعد لوحة الالتزام الحالية."),
-                MissingDomain("occupancy", "الإشغال والنزلاء", "لا توجد كيانات نزلاء أو سعة معتمدة في النموذج الحالي.", "#124"),
                 MissingDomain("resources", "القوى والموارد والجاهزية", "لا توجد كيانات مخزون موارد تشغيلية للقوى أو المركبات أو الأسلحة أو الاتصالات.", "#15"),
                 MissingDomain("incidents", "الوقوعات والحوادث", "لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.", "#127"),
                 MissingDomain("risks", "المخاطر والمعالجات", "لا يوجد Risk/RiskTreatment engine في النطاق الحالي.", "#16"),
@@ -213,6 +236,11 @@ internal sealed class FacilityWorkspaceReadService(
                 MissingDomain("plans", "الخطط والطوارئ", "لا توجد كيانات OperationalPlan أو EmergencyPlan.", "#128"),
                 MissingDomain("decisions", "القرارات والتوجيهات", "لا توجد كيانات Decision أو Directive تنفيذية.", "#125")
             };
+
+            if (metrics.Occupancy is not null)
+            {
+                domains.Insert(5, OccupancyDomain(metrics.Occupancy));
+            }
 
             return new FacilityDataQualityPayload(domains);
         });
@@ -537,6 +565,31 @@ internal sealed class FacilityWorkspaceReadService(
         }).ToList();
     }
 
+    private async Task<IReadOnlyList<FacilityPriorityItemPayload>> BuildOccupancyPriorityItemsAsync(
+        WorkspaceContext context,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var payload = await GetOccupancyAsync(context, cancellationToken);
+        return payload.Interventions
+            .Take(PriorityLimit)
+            .Select(item => new FacilityPriorityItemPayload
+            {
+                Type = "occupancy",
+                Reference = item.Reference,
+                TitleAr = item.TitleAr,
+                SeverityAr = item.SeverityAr,
+                PriorityRank = item.PriorityRank,
+                ReasonAr = item.ReasonAr,
+                DueAtUtc = item.DueAtUtc,
+                OverdueDays = DaysOverdue(item.DueAtUtc, now),
+                OwnerAr = null,
+                ActionLabelAr = item.ActionLabelAr,
+                DrillDownTarget = OccupancyTarget(context, item.UnitId)
+            })
+            .ToList();
+    }
+
     private async Task<IReadOnlyList<FacilityActivityItemPayload>> BuildRecentNoteEventsAsync(
         IQueryable<OperationalNote> notes,
         CancellationToken cancellationToken)
@@ -637,6 +690,37 @@ internal sealed class FacilityWorkspaceReadService(
         }).ToList();
     }
 
+    private async Task<IReadOnlyList<FacilityActivityItemPayload>> BuildRecentOccupancyEventsAsync(
+        WorkspaceContext context,
+        CancellationToken cancellationToken)
+    {
+        var facilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context);
+        var rows = await db.InmateCensusSnapshots.AsNoTracking()
+            .Where(snapshot => snapshot.FacilityId == facilityId && snapshot.CapturedAtUtc <= context.ToUtc)
+            .OrderByDescending(snapshot => snapshot.CapturedAtUtc)
+            .Take(5)
+            .Select(snapshot => new
+            {
+                snapshot.Id,
+                snapshot.FacilityUnitId,
+                snapshot.InmateCount,
+                snapshot.CapturedAtUtc,
+                UnitName = snapshot.FacilityUnit != null ? snapshot.FacilityUnit.NameAr : null
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(row => new FacilityActivityItemPayload
+        {
+            EventType = "occupancy.snapshot",
+            TitleAr = row.FacilityUnitId.HasValue ? $"تحديث إشغال {row.UnitName}" : "تحديث إشغال السجن",
+            DescriptionAr = $"Snapshot إحصائي بعدد {row.InmateCount} دون عرض هوية نزيل.",
+            OccurredAtUtc = row.CapturedAtUtc,
+            EntityReference = row.FacilityUnitId?.ToString() ?? facilityId.ToString(),
+            Tone = "info",
+            DrillDownTarget = OccupancyTarget(context, row.FacilityUnitId)
+        }).ToList();
+    }
+
     private IQueryable<EscalationOccurrence> BuildScopedEscalations(IQueryable<OperationalNote> notes, IQueryable<CorrectiveAction> actions)
     {
         var noteIds = notes.Select(note => note.Id);
@@ -710,6 +794,27 @@ internal sealed class FacilityWorkspaceReadService(
             FollowUpIssue = followUpIssue
         };
 
+    private static FacilityDataQualityDomainPayload OccupancyDomain(OccupancyWorkspacePayload payload) =>
+        new()
+        {
+            Key = "occupancy",
+            LabelAr = "الإشغال والنزلاء",
+            StatusCode = payload.Summary.IsPartial ? "partial" : "complete",
+            StatusAr = payload.Summary.IsPartial ? "جزئي" : "متاح",
+            ConfidenceAr = payload.Summary.ConfidenceLevel switch
+            {
+                "high" => "مرتفعة",
+                "medium" => "متوسطة",
+                "low" => "منخفضة",
+                _ => "غير معروفة"
+            },
+            LastUpdatedAtUtc = payload.Summary.LatestSnapshotAtUtc,
+            ImpactAr = payload.Summary.IsPartial
+                ? string.Join(" ", payload.Summary.Warnings)
+                : "يدخل في الحالة العامة والعمل العاجل وقسم الإشغال.",
+            FollowUpIssue = null
+        };
+
     private static DrillDownTarget NoteTarget(Guid noteId) =>
         new("notes.workspace", "فتح الملاحظة", new Dictionary<string, string> { ["noteId"] = noteId.ToString() }, new Dictionary<string, string>(), PermissionCodes.NotesView);
 
@@ -726,6 +831,20 @@ internal sealed class FacilityWorkspaceReadService(
             new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             PermissionCodes.FormsViewComplianceDashboard);
+
+    private static DrillDownTarget OccupancyTarget(WorkspaceContext context, Guid? unitId) =>
+        new(
+            "facility.occupancy",
+            unitId.HasValue ? "فتح وحدة الإشغال" : "فتح الإشغال",
+            unitId.HasValue
+                ? new Dictionary<string, string>
+                {
+                    ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
+                    ["unitId"] = unitId.Value.ToString()
+                }
+                : new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+            FacilityWorkspaceDrillDownFilters.Preserve(context),
+            PermissionCodes.OccupancyViewSummary);
 
 }
 

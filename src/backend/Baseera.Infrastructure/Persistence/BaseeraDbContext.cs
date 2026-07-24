@@ -8,6 +8,7 @@ using Baseera.Domain.Escalations;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -71,6 +72,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<FormResponseReviewComment> FormResponseReviewComments => Set<FormResponseReviewComment>();
     public DbSet<FormResponseMutation> FormResponseMutations => Set<FormResponseMutation>();
     public DbSet<FormResponseHistory> FormResponseHistories => Set<FormResponseHistory>();
+    public DbSet<FacilityCapacityBaseline> FacilityCapacityBaselines => Set<FacilityCapacityBaseline>();
+    public DbSet<InmateCensusSnapshot> InmateCensusSnapshots => Set<InmateCensusSnapshot>();
+    public DbSet<InmateMovementEvent> InmateMovementEvents => Set<InmateMovementEvent>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -140,6 +144,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<FormResponseReviewComment> Application.Abstractions.IBaseeraDbContext.FormResponseReviewComments => FormResponseReviewComments;
     IQueryable<FormResponseMutation> Application.Abstractions.IBaseeraDbContext.FormResponseMutations => FormResponseMutations;
     IQueryable<FormResponseHistory> Application.Abstractions.IBaseeraDbContext.FormResponseHistories => FormResponseHistories;
+    IQueryable<FacilityCapacityBaseline> Application.Abstractions.IBaseeraDbContext.FacilityCapacityBaselines => FacilityCapacityBaselines;
+    IQueryable<InmateCensusSnapshot> Application.Abstractions.IBaseeraDbContext.InmateCensusSnapshots => InmateCensusSnapshots;
+    IQueryable<InmateMovementEvent> Application.Abstractions.IBaseeraDbContext.InmateMovementEvents => InmateMovementEvents;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -261,6 +268,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<FormReviewDecision>().HasQueryFilter(d => !d.FormDefinition.IsDeleted);
         modelBuilder.Entity<Notification>().HasQueryFilter(n => !n.RecipientUser.IsDeleted);
         modelBuilder.Entity<NotificationDeliveryAttempt>().HasQueryFilter(a => !a.Notification.RecipientUser.IsDeleted);
+        modelBuilder.Entity<FacilityCapacityBaseline>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<InmateCensusSnapshot>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<InmateMovementEvent>().HasQueryFilter(e => !e.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {

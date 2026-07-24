@@ -3,6 +3,7 @@ using Baseera.Application.Common;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Notes;
+using Baseera.Application.Occupancy;
 using Baseera.Domain.Attachments;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.CorrectiveActions;
@@ -499,6 +500,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 new NoteTypeAccessService(db, currentUser)),
             new FakeOperationalDashboardQueryService(),
             new FakeFormComplianceQueryService(),
+            new ThrowingOccupancyQueryService(),
             time);
 
         var payload = await readService.GetCorrectiveActionsAsync(FacilityWorkspaceContext(), CancellationToken.None);
@@ -635,7 +637,8 @@ public sealed class WorkspaceFrameworkTests : IDisposable
             notes,
             actions,
             alerts,
-            forms);
+            forms,
+            null);
 
     private static WorkspaceContext FacilityWorkspaceContext(Guid? facilityId = null, bool omitFacilityId = false) =>
         new(
@@ -681,6 +684,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         CorrectiveActions,
         AlertsEscalations,
         FormCompliance,
+        Occupancy,
         PriorityQueue,
         RecentActivity,
         Structure,
@@ -694,6 +698,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         public int CorrectiveActionsCalls { get; private set; }
         public int AlertsEscalationsCalls { get; private set; }
         public int FormComplianceCalls { get; private set; }
+        public int OccupancyCalls { get; private set; }
         public int StructureCalls { get; private set; }
         public int DataQualityCalls { get; private set; }
 
@@ -740,6 +745,51 @@ public sealed class WorkspaceFrameworkTests : IDisposable
             FormComplianceCalls += 1;
             EnsureAllowed(FacilityReadMethod.FormCompliance);
             return Task.FromResult(EmptyFormCompliance());
+        }
+
+        public Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken)
+        {
+            OccupancyCalls += 1;
+            EnsureAllowed(FacilityReadMethod.Occupancy);
+            return Task.FromResult(new OccupancyWorkspacePayload
+            {
+                Summary = new OccupancySummaryDto
+                {
+                    FacilityId = SeedIds.FacilityA1,
+                    ApprovedCapacity = 100,
+                    CurrentCount = 82,
+                    OccupancyRate = 0.82m,
+                    AvailablePlaces = 18,
+                    OverCapacityCount = 0,
+                    StatusCode = "normal",
+                    StatusAr = "طبيعي",
+                    UnitCount = 0,
+                    OverloadedUnits = 0,
+                    EmptyUnits = 0,
+                    LatestSnapshotAtUtc = new DateTimeOffset(2026, 7, 24, 0, 0, 0, TimeSpan.Zero),
+                    SourceCode = "authoritative-snapshot",
+                    SourceAr = "Snapshot رسمي",
+                    FreshnessStatus = "current",
+                    ConfidenceLevel = "high",
+                    IsPartial = false,
+                    Warnings = []
+                },
+                UnitBreakdown = new OccupancyUnitBreakdownDto([]),
+                MovementSummary = new MovementSummaryDto
+                {
+                    Admissions = 0,
+                    Releases = 0,
+                    TransferIn = 0,
+                    TransferOut = 0,
+                    InternalTransfers = 0,
+                    TemporaryLeave = 0,
+                    Returns = 0,
+                    NetMovement = 0,
+                    DailyTrend = [],
+                    RejectedMovements = 0
+                },
+                Interventions = []
+            });
         }
 
         public Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken)
@@ -960,6 +1010,21 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 PageSize = query.PageSize ?? 20,
                 TotalCount = 0
             });
+    }
+
+    private sealed class ThrowingOccupancyQueryService : IOccupancyQueryService
+    {
+        public Task<OccupancyWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
+
+        public Task<OccupancySummaryDto> GetSummaryAsync(Guid facilityId, DateTimeOffset asOfUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
+
+        public Task<OccupancyUnitBreakdownDto> GetUnitBreakdownAsync(Guid facilityId, DateTimeOffset asOfUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
+
+        public Task<MovementSummaryDto> GetMovementSummaryAsync(Guid facilityId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
     }
 
     private sealed class FakeOperationalDashboardQueryService : IOperationalDashboardQueryService

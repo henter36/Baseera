@@ -13,6 +13,7 @@ using Baseera.Application.Forms.Responses;
 using Baseera.Application.Forms.Schema;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
+using Baseera.Application.Occupancy;
 using Baseera.Application.Organization;
 using Baseera.Application.Security;
 using Baseera.Application.Workspaces;
@@ -88,6 +89,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IWorkspaceDefinitionProvider, ReferenceWorkspaceDefinitionProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, OperationalSummaryWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, CorrectiveActionsSummaryWorkspaceWidgetProvider>();
+        services.AddScoped<OccupancyService>();
+        services.AddScoped<IOccupancyQueryService>(sp => sp.GetRequiredService<OccupancyService>());
+        services.AddScoped<IOccupancyCommandService>(sp => sp.GetRequiredService<OccupancyService>());
         services.AddScoped<IFacilityWorkspaceReadService, FacilityWorkspaceReadService>();
         services.AddScoped<IWorkspaceDefinitionProvider, FacilityWorkspaceDefinitionProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityHeaderWorkspaceWidgetProvider>();
@@ -97,6 +101,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IWorkspaceWidgetProvider, FacilityAlertsEscalationsWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityFormComplianceWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityPriorityQueueWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityOccupancyWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityRecentActivityWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityStructureWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityDataQualityWorkspaceWidgetProvider>();

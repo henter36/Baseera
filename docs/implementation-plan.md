@@ -119,6 +119,14 @@
 
 ### Phase D.2 — Facility Command Center UX (Issue #11 استمرار جزئي)
 
+### Phase D.4 — Facility Occupancy and Inmate Movement (Issue #124, استمرار #11)
+
+- يضيف Domain حقيقيًا للطاقة الاستيعابية وSnapshots الإحصائية وحركات النزلاء غير التعريفية.
+- يدمج الإشغال في `facility-operations` كمؤشر حقيقي في النبض التشغيلي، القسم الداخلي، قائمة التدخل، جودة البيانات، والسجل المحدود.
+- يضيف إدارة محدودة للإشغال عبر `/facilities/:facilityId/occupancy` لتسجيل الطاقة وSnapshot واستيراد الحركة المنضبط.
+- يمنع عرض هوية النزيل في Workspace، ولا يمنح `Workspaces.ViewFacility` حق الإشغال دون صلاحيات `Occupancy.*`.
+- لا ينفذ Region/HQ Workspaces، ولا بقية Resource Center خارج الطاقة الاستيعابية، ولا reconciliation workflow كامل.
+
 - إعادة تصميم تجربة `facility-operations` من Dashboard كروت إلى مركز قيادة وتشغيل.
 - Command Header، Situation Overview، Operational Pulse، Intervention Queue، Context Panel، وAction Center.
 - فتح تفاصيل الملاحظات والإجراءات والتصعيدات والنماذج والأحداث داخل نفس مساحة العمل قدر الإمكان.

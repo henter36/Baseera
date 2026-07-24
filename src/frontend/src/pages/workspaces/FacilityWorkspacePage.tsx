@@ -13,6 +13,8 @@ import {
   type FacilityHeaderPayload,
   type FacilityDataQualityPayload,
   type FacilityNotesOverviewPayload,
+  type OccupancyUnitPayload,
+  type OccupancyWorkspacePayload,
   type FacilityPriorityQueuePayload,
   type FacilityRecentActivityPayload,
   type FacilityStructurePayload,
@@ -97,7 +99,7 @@ type PriorityItem = FacilityPriorityQueuePayload['items'][number]
 type ActivityItem = FacilityRecentActivityPayload['items'][number]
 type FacilityUnitItem = FacilityStructurePayload['units'][number]
 type DataQualityDomain = FacilityDataQualityPayload['domains'][number]
-type PanelSummary = PriorityItem | ActivityItem | FacilityUnitItem | DataQualityDomain
+type PanelSummary = PriorityItem | ActivityItem | FacilityUnitItem | OccupancyUnitPayload | DataQualityDomain
 
 type CommandData = Readonly<{
   header?: FacilityHeaderPayload
@@ -106,6 +108,7 @@ type CommandData = Readonly<{
   actions?: FacilityCorrectiveActionsPayload
   alerts?: FacilityAlertsEscalationsPayload
   forms?: FacilityFormCompliancePayload
+  occupancy?: OccupancyWorkspacePayload
   priority?: FacilityPriorityQueuePayload
   activity?: FacilityRecentActivityPayload
   structure?: FacilityStructurePayload
@@ -274,6 +277,7 @@ export function FacilityWorkspacePage() {
           queue={data.priority}
           activity={data.activity}
           structure={data.structure}
+          occupancy={data.occupancy}
           dataQuality={data.dataQuality}
           onClose={() => closePanel(searchParams, setSearchParams, selectedRowRef)}
           onChanged={() => {
@@ -375,9 +379,9 @@ function OperationalPulse({ data }: Readonly<{ data: CommandData }>) {
     <div className="operational-pulse" aria-label="نبض التشغيل">
       <OperationalPulseItem
         label="الإشغال"
-        value={occupancy?.statusAr ?? 'غير متاح'}
-        detail={occupancy?.impactAr ?? 'لا توجد بيانات إشغال'}
-        tone={domainTone(occupancy)}
+        value={data.occupancy?.summary.occupancyRate == null ? occupancy?.statusAr ?? 'غير متاح' : `${Math.round(data.occupancy.summary.occupancyRate * 100)}%`}
+        detail={data.occupancy ? `${data.occupancy.summary.currentCount ?? '-'} نزيل · طاقة ${data.occupancy.summary.approvedCapacity ?? '-'}` : occupancy?.impactAr ?? 'لا توجد بيانات إشغال'}
+        tone={occupancyTone(data.occupancy?.summary.statusCode) ?? domainTone(occupancy)}
       />
       <OperationalPulseItem
         label="الجاهزية"
@@ -467,7 +471,7 @@ function SectionDeck({
   if (activeSection === 'occupancy') {
     return (
       <CommandSection title="الإشغال والنزلاء">
-        <OccupancySection structure={data.structure} occupancy={domainFor(data, 'occupancy')} openPanel={openPanel} />
+        <OccupancySection data={data} openPanel={openPanel} />
       </CommandSection>
     )
   }
@@ -584,6 +588,7 @@ function CommandContextPanel({
   queue,
   activity,
   structure,
+  occupancy,
   dataQuality,
   onClose,
   onChanged,
@@ -593,12 +598,13 @@ function CommandContextPanel({
   queue?: FacilityPriorityQueuePayload
   activity?: FacilityRecentActivityPayload
   structure?: FacilityStructurePayload
+  occupancy?: OccupancyWorkspacePayload
   dataQuality?: FacilityDataQualityPayload
   onClose: () => void
   onChanged: () => void
 }>) {
   const panelRef = useRef<HTMLDialogElement | null>(null)
-  const summary = findPanelSummary(panel, queue, activity, structure, dataQuality)
+  const summary = findPanelSummary(panel, queue, activity, structure, occupancy, dataQuality)
   const title = summary ? summaryTitle(summary) : panelLabel(panel.type)
   const fullPageRoute = legacyRouteForPanel(panel, summary, shell)
 
@@ -651,6 +657,9 @@ function PanelDetail({
   }
 
   if (panel.type === 'facility-unit') {
+    if (summary && 'unitNameAr' in summary) {
+      return <OccupancyUnitPanel summary={summary} />
+    }
     if (summary && 'unitId' in summary) {
       return <FacilityUnitPanel summary={summary} />
     }
@@ -847,8 +856,44 @@ function FacilityUnitPanel({ summary }: Readonly<{ summary: FacilityUnitItem }>)
   )
 }
 
+function OccupancyUnitPanel({ summary }: Readonly<{ summary: OccupancyUnitPayload }>) {
+  return (
+    <div className="context-stack">
+      <ContextSection title="إشغال الوحدة">
+        <StatusRail
+          tone={occupancyTone(summary.statusCode) ?? 'info'}
+          rows={[
+            ['الكود', summary.unitCode],
+            ['الوحدة', summary.unitNameAr],
+            ['الحالة', summary.statusAr],
+            ['الطاقة المعتمدة', summary.approvedCapacity == null ? '-' : String(summary.approvedCapacity)],
+            ['العدد الحالي', summary.currentCount == null ? '-' : String(summary.currentCount)],
+            ['نسبة الإشغال', summary.occupancyRate == null ? '-' : `${Math.round(summary.occupancyRate * 100)}%`],
+            ['الشواغر', summary.availablePlaces == null ? '-' : String(summary.availablePlaces)],
+            ['التجاوز', summary.overloadCount == null ? '-' : String(summary.overloadCount)],
+            ['آخر تحديث', formatShortDate(summary.lastUpdatedAtUtc ?? undefined)],
+            ['المصدر', summary.dataSourceAr],
+          ]}
+        />
+      </ContextSection>
+      <ContextSection title="المتابعة التشغيلية">
+        <StatusRail
+          tone={summary.alertReasons.length > 0 ? 'warn' : 'ok'}
+          rows={[
+            ['ملاحظات مفتوحة', String(summary.openNotesCount)],
+            ['وقوعات مفتوحة', String(summary.openIncidentsCount)],
+            ['مخاطر مرتبطة', String(summary.riskCount)],
+            ['أسباب التنبيه', summary.alertReasons.length > 0 ? summary.alertReasons.join('، ') : 'لا توجد'],
+          ]}
+        />
+      </ContextSection>
+      <div className="context-action-note">لا تعرض هذه اللوحة هوية النزلاء. الإجراءات المتقدمة مثل تسجيل Snapshot أو تحديث الطاقة متاحة من صفحة إدارة الإشغال حسب الصلاحية.</div>
+    </div>
+  )
+}
+
 function DomainGapPanel({ type, summary }: Readonly<{ type: PanelType; summary?: PanelSummary }>) {
-  const domain = summary && 'statusCode' in summary ? summary : undefined
+  const domain = summary && 'key' in summary ? summary : undefined
   return (
     <div className="context-stack">
       <ContextSection title={panelLabel(type)}>
@@ -971,21 +1016,90 @@ function OperationsIncidentsSection({
 }
 
 function OccupancySection({
-  structure,
-  occupancy,
+  data,
   openPanel,
-}: Readonly<{ structure?: FacilityStructurePayload; occupancy?: DataQualityDomain; openPanel: (panel: PanelState) => void }>) {
+}: Readonly<{ data: CommandData; openPanel: (panel: PanelState) => void }>) {
+  const occupancy = data.occupancy
+  const occupancyGap = domainFor(data, 'occupancy')
+  if (!occupancy) {
+    return (
+      <div className="command-section-stack">
+        <div className="readiness-rail">
+          <CommandMetric label="وحدات مسجلة" value={data.structure?.unitsCount ?? 0} tone="info" />
+          <CommandMetric label="مبانٍ" value={data.structure?.buildingsCount ?? 0} tone="info" />
+          <CommandMetric label="مواقع أصول" value={data.structure?.assetLocationsCount ?? 0} tone="info" />
+          <CommandMetric label="الإشغال" value={occupancyGap?.statusAr ?? 'غير متاح'} tone="muted" />
+        </div>
+        <UnitLoadRows units={data.structure?.units ?? []} openPanel={openPanel} />
+        <DomainUnavailableSection domain={occupancyGap} panelType="facility-unit" openPanel={openPanel} compact />
+      </div>
+    )
+  }
+
   return (
     <div className="command-section-stack">
-      <div className="readiness-rail">
-        <CommandMetric label="وحدات مسجلة" value={structure?.unitsCount ?? 0} tone="info" />
-        <CommandMetric label="مبانٍ" value={structure?.buildingsCount ?? 0} tone="info" />
-        <CommandMetric label="مواقع أصول" value={structure?.assetLocationsCount ?? 0} tone="info" />
-        <CommandMetric label="الإشغال" value={occupancy?.statusAr ?? 'غير متاح'} tone="muted" />
+      <div className="occupancy-command-strip" data-status={occupancy.summary.statusCode}>
+        <div>
+          <span className="command-eyebrow">مصدر الإشغال</span>
+          <h3>{occupancy.summary.statusAr}</h3>
+          <p>{occupancy.summary.sourceAr} · آخر Snapshot {formatShortDate(occupancy.summary.latestSnapshotAtUtc ?? undefined)}</p>
+        </div>
+        <strong>{occupancy.summary.occupancyRate == null ? '-' : `${Math.round(occupancy.summary.occupancyRate * 100)}%`}</strong>
       </div>
-      <UnitLoadRows units={structure?.units ?? []} openPanel={openPanel} />
-      <DomainUnavailableSection domain={occupancy} panelType="facility-unit" openPanel={openPanel} compact />
+      <div className="readiness-rail">
+        <CommandMetric label="الطاقة المعتمدة" value={occupancy.summary.approvedCapacity ?? '-'} tone="info" />
+        <CommandMetric label="العدد الحالي" value={occupancy.summary.currentCount ?? '-'} tone={occupancyTone(occupancy.summary.statusCode) ?? 'info'} />
+        <CommandMetric label="الشواغر" value={occupancy.summary.availablePlaces ?? '-'} tone="ok" />
+        <CommandMetric label="التجاوز" value={occupancy.summary.overCapacityCount ?? 0} tone={(occupancy.summary.overCapacityCount ?? 0) > 0 ? 'danger' : 'ok'} />
+      </div>
+      <div className="movement-pulse" aria-label="حركة النزلاء">
+        <CommandMetric label="دخول" value={occupancy.movementSummary.admissions} tone="info" />
+        <CommandMetric label="إفراج" value={occupancy.movementSummary.releases} tone="ok" />
+        <CommandMetric label="نقل داخلي" value={occupancy.movementSummary.internalTransfers} tone="info" />
+        <CommandMetric label="صافي الحركة" value={occupancy.movementSummary.netMovement} tone={occupancy.movementSummary.netMovement > 0 ? 'warn' : 'ok'} />
+      </div>
+      <OccupancyUnitRows units={occupancy.unitBreakdown.units} openPanel={openPanel} />
+      {occupancy.interventions.length > 0 && (
+        <ul className="data-quality-list" aria-label="تدخلات الإشغال">
+          {occupancy.interventions.map((item) => (
+            <li key={`${item.type}-${item.reference}`}>
+              <button type="button" data-status={item.priorityRank >= 900 ? 'unavailable' : 'partial'} onClick={() => openPanel({ type: 'facility-unit', entityId: item.unitId ?? `domain-occupancy` })}>
+                <span>{item.titleAr}</span>
+                <strong>{item.severityAr}</strong>
+                <small>{item.reasonAr}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {occupancy.summary.warnings.length > 0 && <div className="context-action-note">{occupancy.summary.warnings.join(' ')}</div>}
     </div>
+  )
+}
+
+function OccupancyUnitRows({ units, openPanel }: Readonly<{ units: OccupancyUnitPayload[]; openPanel: (panel: PanelState) => void }>) {
+  if (units.length === 0) {
+    return <WorkspaceEmpty message="لا توجد قراءة إشغال حسب الوحدة." />
+  }
+
+  return (
+    <ul className="unit-load-list occupancy-units" aria-label="إشغال الوحدات">
+      {units.map((unit) => (
+        <li key={unit.unitId}>
+          <button type="button" data-status={unit.statusCode} onClick={() => openPanel({ type: 'facility-unit', entityId: unit.unitId })}>
+            <span className="unit-load-title"><strong>{unit.unitNameAr}</strong><small>{unit.unitCode} · {unit.statusAr}</small></span>
+            <span className="unit-capacity-bar" aria-label={`نسبة الإشغال ${unit.occupancyRate == null ? 'غير معروفة' : Math.round(unit.occupancyRate * 100) + '%'}`}>
+              <i style={{ inlineSize: `${Math.min(120, Math.round((unit.occupancyRate ?? 0) * 100))}%` }} />
+            </span>
+            <span className="unit-load-values">
+              <b>{unit.currentCount ?? '-'}</b><small>عدد</small>
+              <b>{unit.approvedCapacity ?? '-'}</b><small>طاقة</small>
+              <b>{unit.overloadCount ?? 0}</b><small>تجاوز</small>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -1330,6 +1444,7 @@ function extractCommandData(shell: WorkspaceShellDto): CommandData {
     actions: payloadFor<FacilityCorrectiveActionsPayload>(shell.widgets, 'facility.corrective-actions'),
     alerts: payloadFor<FacilityAlertsEscalationsPayload>(shell.widgets, 'facility.alerts-escalations'),
     forms: payloadFor<FacilityFormCompliancePayload>(shell.widgets, 'facility.form-compliance'),
+    occupancy: payloadFor<OccupancyWorkspacePayload>(shell.widgets, 'facility.occupancy'),
     priority: payloadFor<FacilityPriorityQueuePayload>(shell.widgets, 'facility.priority-queue'),
     activity: payloadFor<FacilityRecentActivityPayload>(shell.widgets, 'facility.recent-activity'),
     structure: payloadFor<FacilityStructurePayload>(shell.widgets, 'facility.structure'),
@@ -1375,6 +1490,7 @@ function panelForPriorityItem(item: PriorityItem): PanelState {
   if (item.type === 'corrective-action') return { type: 'corrective-action', entityId: item.drillDownTarget.routeParameters.id ?? item.reference }
   if (item.type === 'form') return { type: 'form-assignment', entityId: item.reference }
   if (item.type === 'escalation') return { type: 'escalation', entityId: item.reference }
+  if (item.type === 'occupancy') return { type: 'facility-unit', entityId: item.drillDownTarget.routeParameters.unitId ?? 'domain-occupancy' }
   return { type: 'activity', entityId: item.reference }
 }
 
@@ -1390,6 +1506,9 @@ function panelForActivityItem(item: ActivityItem, index: number): PanelState {
   }
   if (item.drillDownTarget.routeKey === 'escalations.occurrences') {
     return { type: 'escalation', entityId: item.entityReference }
+  }
+  if (item.drillDownTarget.routeKey === 'facility.occupancy') {
+    return { type: 'facility-unit', entityId: item.drillDownTarget.routeParameters.unitId ?? 'domain-occupancy' }
   }
   return { type: 'activity', entityId: `${item.entityReference}-${index}` }
 }
@@ -1418,9 +1537,12 @@ function findPanelSummary(
   queue?: FacilityPriorityQueuePayload,
   activity?: FacilityRecentActivityPayload,
   structure?: FacilityStructurePayload,
+  occupancy?: OccupancyWorkspacePayload,
   dataQuality?: FacilityDataQualityPayload,
 ): PanelSummary | undefined {
   if (panel.type === 'facility-unit') {
+    const occupancyUnit = occupancy?.unitBreakdown.units.find((item) => item.unitId === panel.entityId)
+    if (occupancyUnit) return occupancyUnit
     const unit = structure?.units.find((item) => item.unitId === panel.entityId)
     if (unit) return unit
   }
@@ -1447,6 +1569,7 @@ function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefine
   if (panel.type === 'corrective-action') return `/corrective-actions?id=${encodeURIComponent(panel.entityId)}`
   if (panel.type === 'form-assignment') return `/form-compliance/facilities/${shell.context.facilityId ?? ''}`
   if (panel.type === 'escalation') return '/settings/escalations/occurrences'
+  if (panel.type === 'facility-unit') return `/facilities/${shell.context.facilityId ?? ''}/occupancy`
   if (summary && 'drillDownTarget' in summary) return routeFromTarget(summary.drillDownTarget)
   return null
 }
@@ -1456,6 +1579,7 @@ function routeFromTarget(target: { routeKey: string; routeParameters: Record<str
   if (target.routeKey === 'corrective-actions.list') return `/corrective-actions?id=${target.routeParameters.id ?? ''}`
   if (target.routeKey === 'form-compliance.facility') return `/form-compliance/facilities/${target.routeParameters.facilityId ?? ''}`
   if (target.routeKey === 'escalations.occurrences') return '/settings/escalations/occurrences'
+  if (target.routeKey === 'facility.occupancy') return `/facilities/${target.routeParameters.facilityId ?? ''}/occupancy`
   return null
 }
 
@@ -1521,6 +1645,14 @@ function alertsPulseTone(alerts?: FacilityAlertsEscalationsPayload): WorkspaceVi
   return 'muted'
 }
 
+function occupancyTone(status?: string): WorkspaceVisualTone | null {
+  if (status === 'over-capacity') return 'danger'
+  if (status === 'high') return 'warn'
+  if (status === 'attention') return 'warn'
+  if (status === 'normal') return 'ok'
+  return null
+}
+
 function domainFor(data: CommandData, key: string): DataQualityDomain | undefined {
   return data.dataQuality?.domains.find((domain) => domain.key === key)
 }
@@ -1553,6 +1685,7 @@ function panelLabel(type: PanelType) {
 
 function summaryReference(summary?: PanelSummary) {
   if (!summary) return '-'
+  if ('unitNameAr' in summary) return summary.unitCode
   if ('unitId' in summary) return summary.code
   if ('key' in summary) return summary.key
   return 'reference' in summary ? summary.reference : summary.entityReference
@@ -1560,6 +1693,7 @@ function summaryReference(summary?: PanelSummary) {
 
 function summaryTitle(summary?: PanelSummary) {
   if (!summary) return '-'
+  if ('unitNameAr' in summary) return summary.unitNameAr
   if ('unitId' in summary) return summary.nameAr
   if ('labelAr' in summary) return summary.labelAr
   return summary.titleAr
@@ -1567,6 +1701,7 @@ function summaryTitle(summary?: PanelSummary) {
 
 function summaryReason(summary?: PanelSummary) {
   if (!summary) return '-'
+  if ('unitNameAr' in summary) return `${summary.statusAr} · ${summary.currentCount ?? '-'} من ${summary.approvedCapacity ?? '-'}`
   if ('unitId' in summary) return `${summary.openNotes} ملاحظات مفتوحة · ${summary.openCorrectiveActions} إجراءات مفتوحة`
   if ('impactAr' in summary) return summary.impactAr
   if ('reasonAr' in summary) return summary.reasonAr
