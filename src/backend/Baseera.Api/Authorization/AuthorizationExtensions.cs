@@ -64,6 +64,12 @@ public static class AuthPolicies
     public const string DashboardViewRisk = PermissionPrefix + PermissionCodes.DashboardViewRisk;
     public const string DashboardViewRouting = PermissionPrefix + PermissionCodes.DashboardViewRouting;
     public const string DashboardViewCorrectiveActions = PermissionPrefix + PermissionCodes.DashboardViewCorrectiveActions;
+    public const string WorkspacesView = PermissionPrefix + PermissionCodes.WorkspacesView;
+    public const string WorkspacesViewDomain = PermissionPrefix + PermissionCodes.WorkspacesViewDomain;
+    public const string WorkspacesViewFacility = PermissionPrefix + PermissionCodes.WorkspacesViewFacility;
+    public const string WorkspacesViewRegion = PermissionPrefix + PermissionCodes.WorkspacesViewRegion;
+    public const string WorkspacesViewHeadquarters = PermissionPrefix + PermissionCodes.WorkspacesViewHeadquarters;
+    public const string WorkspacesConfigureOwnView = PermissionPrefix + PermissionCodes.WorkspacesConfigureOwnView;
     public const string FormsView = PermissionPrefix + PermissionCodes.FormsView;
     public const string FormsViewSensitive = PermissionPrefix + PermissionCodes.FormsViewSensitive;
     public const string FormsCreate = PermissionPrefix + PermissionCodes.FormsCreate;
@@ -214,6 +220,12 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.DashboardViewRisk, PermissionCodes.DashboardViewRisk);
             AddPerm(AuthPolicies.DashboardViewRouting, PermissionCodes.DashboardViewRouting);
             AddPerm(AuthPolicies.DashboardViewCorrectiveActions, PermissionCodes.DashboardViewCorrectiveActions);
+            AddPerm(AuthPolicies.WorkspacesView, PermissionCodes.WorkspacesView);
+            AddPerm(AuthPolicies.WorkspacesViewDomain, PermissionCodes.WorkspacesViewDomain);
+            AddPerm(AuthPolicies.WorkspacesViewFacility, PermissionCodes.WorkspacesViewFacility);
+            AddPerm(AuthPolicies.WorkspacesViewRegion, PermissionCodes.WorkspacesViewRegion);
+            AddPerm(AuthPolicies.WorkspacesViewHeadquarters, PermissionCodes.WorkspacesViewHeadquarters);
+            AddPerm(AuthPolicies.WorkspacesConfigureOwnView, PermissionCodes.WorkspacesConfigureOwnView);
             AddPerm(AuthPolicies.FormsView, PermissionCodes.FormsView);
             AddPerm(AuthPolicies.FormsViewSensitive, PermissionCodes.FormsViewSensitive);
             AddPerm(AuthPolicies.FormsCreate, PermissionCodes.FormsCreate);

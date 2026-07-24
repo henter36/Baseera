@@ -45,6 +45,11 @@ import { FormCompliancePage } from './pages/form-compliance/FormCompliancePage'
 import { MyFormResponsesPage } from './pages/form-responses/MyFormResponsesPage'
 import { RespondPage } from './pages/form-responses/RespondPage'
 import { FormResponseReviewsPage, FormResponseReviewDetailPage } from './pages/form-responses/FormResponseReviewsPage'
+import { ReferenceWorkspacePage } from './pages/workspaces/ReferenceWorkspacePage'
+
+function isReferenceWorkspaceNavEnabled() {
+  return import.meta.env.DEV || import.meta.env.VITE_ENABLE_REFERENCE_WORKSPACE === 'true'
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { me, logout, hasPermission } = useAuth()
@@ -87,6 +92,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           {hasPermission('Forms.ViewComplianceDashboard') && <NavLink to="/form-compliance" className={({ isActive }) => isActive ? 'active' : undefined}>التزام النماذج</NavLink>}
           {(hasPermission('Dashboard.ViewOperational') || hasPermission('Dashboard.ViewRisk') || hasPermission('Dashboard.ViewRouting') || hasPermission('Dashboard.ViewCorrectiveActions')) &&
             <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'active' : undefined}>لوحة المتابعة</NavLink>}
+          {isReferenceWorkspaceNavEnabled() && hasPermission('Workspaces.View') && <NavLink to="/workspaces/reference" className={({ isActive }) => isActive ? 'active' : undefined}>مساحة مرجعية</NavLink>}
           {hasPermission('CorrectiveActions.View') && <NavLink to="/corrective-actions" className={({ isActive }) => isActive ? 'active' : undefined}>الإجراءات التصحيحية</NavLink>}
           {hasPermission('Notifications.ViewOwn') && <NavLink to="/notifications" className={({ isActive }) => isActive ? 'active' : undefined}>الإشعارات {unreadCount > 0 ? `(${unreadCount})` : ''}</NavLink>}
           {hasPermission('Escalations.View') && <NavLink to="/settings/escalations" className={({ isActive }) => isActive ? 'active' : undefined}>التصعيد</NavLink>}
@@ -127,6 +133,7 @@ export default function App() {
       <Route path="/notes" element={<Protected><ObservationWorkspacePage /></Protected>} />
       <Route path="/notes/workspace" element={<Protected><ObservationWorkspacePage /></Protected>} />
       <Route path="/dashboard" element={<Protected><OperationalDashboardPage /></Protected>} />
+      <Route path="/workspaces/reference" element={<Protected><ReferenceWorkspacePage /></Protected>} />
       <Route path="/notes/new" element={<Protected><NoteCreatePage /></Protected>} />
       <Route path="/notes/:id" element={<Protected><NoteDetailPage /></Protected>} />
       <Route path="/notes/:id/edit" element={<Protected><NoteEditPage /></Protected>} />

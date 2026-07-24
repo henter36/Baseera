@@ -242,3 +242,16 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 ## Phase C.3 campaign permissions
 
 `Forms.ManageCampaigns`, `Forms.PreviewTargets`, `Forms.PauseCampaign`, `Forms.CancelCampaign`, `Forms.ViewCampaignAssignments` (+ wired `Forms.Publish`). FormResponse permissions remain for #48.
+
+## Phase D.0 workspace permissions
+
+| Permission | Purpose |
+|------------|---------|
+| Workspaces.View | View registered workspace shells and authorized widgets |
+| Workspaces.ViewDomain | Resolve domain-level workspace context |
+| Workspaces.ViewFacility | Resolve facility-level workspace context |
+| Workspaces.ViewRegion | Resolve region-level workspace context |
+| Workspaces.ViewHeadquarters | Resolve headquarters-level workspace context |
+| Workspaces.ConfigureOwnView | Future personal layout configuration boundary for #21 |
+
+Widget data still requires its module permission, such as `Dashboard.ViewOperational` or `Dashboard.ViewCorrectiveActions`.

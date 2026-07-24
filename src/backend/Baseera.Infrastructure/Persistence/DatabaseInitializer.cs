@@ -197,6 +197,27 @@ public static class DatabaseInitializer
             PermissionCodes.DashboardViewCorrectiveActions
         ];
         string[] dashboardReadOnly = [PermissionCodes.DashboardViewOperational];
+        string[] workspaceHeadquarters =
+        [
+            PermissionCodes.WorkspacesView,
+            PermissionCodes.WorkspacesViewDomain,
+            PermissionCodes.WorkspacesViewHeadquarters,
+            PermissionCodes.WorkspacesConfigureOwnView
+        ];
+        string[] workspaceRegion =
+        [
+            PermissionCodes.WorkspacesView,
+            PermissionCodes.WorkspacesViewDomain,
+            PermissionCodes.WorkspacesViewRegion,
+            PermissionCodes.WorkspacesConfigureOwnView
+        ];
+        string[] workspaceFacility =
+        [
+            PermissionCodes.WorkspacesView,
+            PermissionCodes.WorkspacesViewDomain,
+            PermissionCodes.WorkspacesViewFacility,
+            PermissionCodes.WorkspacesConfigureOwnView
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -208,10 +229,11 @@ public static class DatabaseInitializer
             PermissionCodes.NotesView,
             caViewOnly,
             ownNotifications,
-            dashboardReadOnly);
+            dashboardReadOnly,
+            PermissionCodes.WorkspacesView);
 
         var readonlyUser = roles.First(r => r.Code == RoleCodes.ReadOnlyUser);
-        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly, ownNotifications, dashboardReadOnly);
+        Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly, ownNotifications, dashboardReadOnly, PermissionCodes.WorkspacesView);
 
         var hq = roles.First(r => r.Code == RoleCodes.HeadquartersExecutive);
         Grant(hq,
@@ -230,7 +252,8 @@ public static class DatabaseInitializer
             routingViewer,
             escalationViewer,
             ownNotifications,
-            dashboardFull);
+            dashboardFull,
+            workspaceHeadquarters);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -247,7 +270,8 @@ public static class DatabaseInitializer
             caDirector,
             escalationManager,
             ownNotifications,
-            dashboardFull);
+            dashboardFull,
+            workspaceHeadquarters);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -272,7 +296,8 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsRestore,
             escalationViewer,
             ownNotifications,
-            dashboardScoped);
+            dashboardScoped,
+            workspaceRegion);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -284,7 +309,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesSubmitForVerification,
             PermissionCodes.NotesCancel,
             caCoordinator,
-            ownNotifications);
+            ownNotifications,
+            workspaceRegion);
 
         var facilityDirector = roles.First(r => r.Code == RoleCodes.FacilityDirector);
         Grant(facilityDirector,
@@ -311,7 +337,8 @@ public static class DatabaseInitializer
             PermissionCodes.CorrectiveActionsRestore,
             escalationViewer,
             ownNotifications,
-            dashboardScoped);
+            dashboardScoped,
+            workspaceFacility);
 
         string[] formsDesigner =
         [
@@ -415,7 +442,8 @@ public static class DatabaseInitializer
             PermissionCodes.FormsViewResponses,
             PermissionCodes.AttachmentsUpload,
             PermissionCodes.AttachmentsDownload,
-            ownNotifications);
+            ownNotifications,
+            workspaceFacility);
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -764,6 +792,7 @@ public static class DatabaseInitializer
     private const string EscalationsModule = "Escalations";
     private const string NotificationsModule = "Notifications";
     private const string DashboardModule = "Dashboard";
+    private const string WorkspacesModule = "Workspaces";
     private const string FormsModule = "Forms";
 
     private static List<Permission> BuildPermissions()
@@ -882,7 +911,13 @@ public static class DatabaseInitializer
             (PermissionCodes.DashboardViewOperational, "عرض لوحة المتابعة التشغيلية", DashboardModule),
             (PermissionCodes.DashboardViewRisk, "عرض مؤشرات المخاطر في لوحة المتابعة", DashboardModule),
             (PermissionCodes.DashboardViewRouting, "عرض مؤشرات التوجيه في لوحة المتابعة", DashboardModule),
-            (PermissionCodes.DashboardViewCorrectiveActions, "عرض مؤشرات الإجراءات التصحيحية في لوحة المتابعة", DashboardModule)
+            (PermissionCodes.DashboardViewCorrectiveActions, "عرض مؤشرات الإجراءات التصحيحية في لوحة المتابعة", DashboardModule),
+            (PermissionCodes.WorkspacesView, "عرض مساحات العمل", WorkspacesModule),
+            (PermissionCodes.WorkspacesViewDomain, "عرض مساحة عمل نطاق تخصصي", WorkspacesModule),
+            (PermissionCodes.WorkspacesViewFacility, "عرض مساحة عمل المنشأة", WorkspacesModule),
+            (PermissionCodes.WorkspacesViewRegion, "عرض مساحة عمل المنطقة", WorkspacesModule),
+            (PermissionCodes.WorkspacesViewHeadquarters, "عرض مساحة عمل المركز", WorkspacesModule),
+            (PermissionCodes.WorkspacesConfigureOwnView, "تخصيص العرض الشخصي لمساحة العمل", WorkspacesModule)
         ];
 
         return items.Select(i => new Permission
