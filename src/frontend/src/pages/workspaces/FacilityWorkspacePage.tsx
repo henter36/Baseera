@@ -14,7 +14,6 @@ import {
   type FacilityDataQualityPayload,
   type FacilityNotesOverviewPayload,
   type FacilityPriorityQueuePayload,
-  type FacilityPriorityQueuePayload as FacilityPriorityPayload,
   type FacilityRecentActivityPayload,
   type FacilityStructurePayload,
   type NoteWorkspaceAllowedAction,
@@ -55,24 +54,25 @@ const SHORT_DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
   day: 'numeric',
 })
 
-type FacilityContextEntityType =
-  | 'note'
-  | 'corrective-action'
-  | 'escalation'
-  | 'form-assignment'
-  | 'facility-unit'
-  | 'incident'
-  | 'risk'
-  | 'vehicle'
-  | 'weapon'
-  | 'communication-device'
-  | 'equipment'
-  | 'project'
-  | 'emergency-plan'
-  | 'decision'
-  | 'activity'
+const PANEL_TYPES = [
+  'note',
+  'corrective-action',
+  'escalation',
+  'form-assignment',
+  'facility-unit',
+  'incident',
+  'risk',
+  'vehicle',
+  'weapon',
+  'communication-device',
+  'equipment',
+  'project',
+  'emergency-plan',
+  'decision',
+  'activity',
+] as const
 
-type PanelType = FacilityContextEntityType
+type PanelType = (typeof PANEL_TYPES)[number]
 
 type SectionKey =
   | 'overview'
@@ -93,7 +93,7 @@ type PanelState = Readonly<{
   entityId: string
 }>
 
-type PriorityItem = FacilityPriorityPayload['items'][number]
+type PriorityItem = FacilityPriorityQueuePayload['items'][number]
 type ActivityItem = FacilityRecentActivityPayload['items'][number]
 type FacilityUnitItem = FacilityStructurePayload['units'][number]
 type DataQualityDomain = FacilityDataQualityPayload['domains'][number]
@@ -415,10 +415,10 @@ function OperationalPulse({ data }: Readonly<{ data: CommandData }>) {
         detail={`${data.forms?.overdueForms ?? 0} متأخرة · ${data.forms?.remainingForms ?? 0} متبقية`}
         tone={(data.forms?.overdueForms ?? 0) > 0 ? 'warn' : 'ok'}
       />
-      <OperationalPulseItem label="المخاطر" value={risks?.statusAr ?? 'غير متاح'} detail={risks?.impactAr ?? 'لا توجد مخاطر'} tone={domainTone(risks)} />
-      <OperationalPulseItem label="المشاريع" value={projects?.statusAr ?? 'غير متاح'} detail={projects?.impactAr ?? 'لا توجد مشاريع'} tone={domainTone(projects)} />
-      <OperationalPulseItem label="الخطط" value={plans?.statusAr ?? 'غير متاح'} detail={plans?.impactAr ?? 'لا توجد خطط'} tone={domainTone(plans)} />
-      <OperationalPulseItem label="القرارات" value={decisions?.statusAr ?? 'غير متاح'} detail={decisions?.impactAr ?? 'لا توجد قرارات'} tone={domainTone(decisions)} />
+      <OperationalPulseItem label="المخاطر" value={risks?.statusAr ?? 'غير متاح'} detail={risks?.impactAr ?? 'مصدر بيانات المخاطر غير متاح حاليًا'} tone={domainTone(risks)} />
+      <OperationalPulseItem label="المشاريع" value={projects?.statusAr ?? 'غير متاح'} detail={projects?.impactAr ?? 'مصدر بيانات المشاريع غير متاح حاليًا'} tone={domainTone(projects)} />
+      <OperationalPulseItem label="الخطط" value={plans?.statusAr ?? 'غير متاح'} detail={plans?.impactAr ?? 'مصدر بيانات الخطط غير متاح حاليًا'} tone={domainTone(plans)} />
+      <OperationalPulseItem label="القرارات" value={decisions?.statusAr ?? 'غير متاح'} detail={decisions?.impactAr ?? 'مصدر بيانات القرارات غير متاح حاليًا'} tone={domainTone(decisions)} />
     </div>
   )
 }
@@ -508,7 +508,11 @@ function SectionDeck({
     )
   }
 
-  return <CommandSection title="جودة البيانات"><DataQualitySection payload={data.dataQuality} openPanel={openPanel} /></CommandSection>
+  if (activeSection === 'data-quality') {
+    return <CommandSection title="جودة البيانات"><DataQualitySection payload={data.dataQuality} openPanel={openPanel} /></CommandSection>
+  }
+
+  return <CommandSection title="القسم غير متاح"><WorkspaceEmpty message="القسم المطلوب غير معروف." /></CommandSection>
 }
 
 function InterventionQueue({
@@ -595,6 +599,8 @@ function CommandContextPanel({
 }>) {
   const panelRef = useRef<HTMLDialogElement | null>(null)
   const summary = findPanelSummary(panel, queue, activity, structure, dataQuality)
+  const title = summary ? summaryTitle(summary) : panelLabel(panel.type)
+  const fullPageRoute = legacyRouteForPanel(panel, summary, shell)
 
   useEffect(() => {
     panelRef.current?.focus()
@@ -611,11 +617,11 @@ function CommandContextPanel({
       <div className="context-panel-toolbar">
         <button type="button" className="command-icon-button" onClick={onClose} aria-label="إغلاق لوحة التفاصيل">×</button>
         <span>{panelLabel(panel.type)}</span>
-        <Link className="command-button ghost" to={legacyRouteForPanel(panel, summary, shell)}>فتح الصفحة الكاملة</Link>
+        {fullPageRoute && <Link className="command-button ghost" to={fullPageRoute}>فتح الصفحة الكاملة</Link>}
       </div>
       <div className="context-panel-summary">
         <span className="command-eyebrow">{summaryReference(summary) || panel.entityId}</span>
-        <h2 id="context-panel-title">{summaryTitle(summary)}</h2>
+        <h2 id="context-panel-title">{title}</h2>
         {summaryReason(summary) !== '-' && <p>{summaryReason(summary)}</p>}
       </div>
       <PanelDetail panel={panel} summary={summary} onChanged={onChanged} />
@@ -645,10 +651,14 @@ function PanelDetail({
   }
 
   if (panel.type === 'facility-unit') {
-    if (!summary || !('unitId' in summary)) {
-      return <DomainGapPanel type={panel.type} summary={summary} />
+    if (summary && 'unitId' in summary) {
+      return <FacilityUnitPanel summary={summary} />
     }
-    return <FacilityUnitPanel summary={summary} />
+    return <DomainGapPanel type={panel.type} summary={summary} />
+  }
+
+  if (panel.entityId.startsWith('domain-') && summary && 'statusCode' in summary) {
+    return <DomainGapPanel type={panel.type} summary={summary} />
   }
 
   if (panel.type !== 'activity') {
@@ -816,11 +826,7 @@ function FormPreviewPanel({ summary }: Readonly<{ summary?: PanelSummary }>) {
   )
 }
 
-function FacilityUnitPanel({ summary }: Readonly<{ summary?: PanelSummary }>) {
-  if (!summary || !('unitId' in summary)) {
-    return <WorkspaceEmpty message="لا توجد بيانات وحدة متاحة." />
-  }
-
+function FacilityUnitPanel({ summary }: Readonly<{ summary: FacilityUnitItem }>) {
   return (
     <div className="context-stack">
       <ContextSection title="ملخص الوحدة">
@@ -879,7 +885,8 @@ function ActivityPreviewPanel({ summary }: Readonly<{ summary?: PanelSummary }>)
 
 function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData; onClose: () => void; openPanel: (panel: PanelState) => void }>) {
   const urgent = data.priority?.items.slice(0, 5) ?? []
-  const missingDomains = data.dataQuality?.domains.filter((domain) => domain.statusCode === 'unavailable').slice(0, 3) ?? []
+  const missingDomains = data.dataQuality?.domains.filter((domain) => domain.statusCode === 'unavailable') ?? []
+  const missingDomainChips = missingDomains.slice(0, 3)
   return (
     <aside className="action-center" aria-labelledby="action-center-title">
       <div className="context-panel-toolbar">
@@ -902,9 +909,9 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
           </li>
         ))}
       </ul>
-      {missingDomains.length > 0 && (
+      {missingDomainChips.length > 0 && (
         <div className="domain-gap-strip" aria-label="مجالات تحتاج استكمال نموذج بيانات">
-          {missingDomains.map((domain) => <span key={domain.key}>{domain.labelAr}</span>)}
+          {missingDomainChips.map((domain) => <span key={domain.key}>{domain.labelAr}</span>)}
         </div>
       )}
     </aside>
@@ -1342,21 +1349,7 @@ function panelFromSearch(searchParams: URLSearchParams): PanelState | null {
 }
 
 function isPanelType(value: string | null): value is PanelType {
-  return value === 'note' ||
-    value === 'corrective-action' ||
-    value === 'escalation' ||
-    value === 'form-assignment' ||
-    value === 'facility-unit' ||
-    value === 'incident' ||
-    value === 'risk' ||
-    value === 'vehicle' ||
-    value === 'weapon' ||
-    value === 'communication-device' ||
-    value === 'equipment' ||
-    value === 'project' ||
-    value === 'emergency-plan' ||
-    value === 'decision' ||
-    value === 'activity'
+  return typeof value === 'string' && (PANEL_TYPES as readonly string[]).includes(value)
 }
 
 function sectionFromSearch(searchParams: URLSearchParams): SectionKey {
@@ -1403,6 +1396,11 @@ function panelForActivityItem(item: ActivityItem, index: number): PanelState {
 
 function panelForDomain(domain: DataQualityDomain): PanelState {
   const panelTypeByDomain: Record<string, PanelType> = {
+    structure: 'activity',
+    notes: 'activity',
+    'corrective-actions': 'activity',
+    escalations: 'activity',
+    forms: 'activity',
     occupancy: 'facility-unit',
     resources: 'equipment',
     incidents: 'incident',
@@ -1444,21 +1442,21 @@ function findPanelSummary(
   })
 }
 
-function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefined, shell: WorkspaceShellDto) {
+function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefined, shell: WorkspaceShellDto): string | null {
   if (panel.type === 'note') return `/notes/workspace?noteId=${encodeURIComponent(panel.entityId)}`
   if (panel.type === 'corrective-action') return `/corrective-actions?id=${encodeURIComponent(panel.entityId)}`
   if (panel.type === 'form-assignment') return `/form-compliance/facilities/${shell.context.facilityId ?? ''}`
   if (panel.type === 'escalation') return '/settings/escalations/occurrences'
   if (summary && 'drillDownTarget' in summary) return routeFromTarget(summary.drillDownTarget)
-  return '#'
+  return null
 }
 
-function routeFromTarget(target: { routeKey: string; routeParameters: Record<string, string>; preservedFilters: Record<string, string> }) {
+function routeFromTarget(target: { routeKey: string; routeParameters: Record<string, string>; preservedFilters: Record<string, string> }): string | null {
   if (target.routeKey === 'notes.workspace') return `/notes/workspace?noteId=${target.routeParameters.noteId ?? ''}`
   if (target.routeKey === 'corrective-actions.list') return `/corrective-actions?id=${target.routeParameters.id ?? ''}`
   if (target.routeKey === 'form-compliance.facility') return `/form-compliance/facilities/${target.routeParameters.facilityId ?? ''}`
   if (target.routeKey === 'escalations.occurrences') return '/settings/escalations/occurrences'
-  return '#'
+  return null
 }
 
 function executeNoteAction(action: NoteWorkspaceAllowedAction, data: NoteWorkspaceDetail, reason: string) {

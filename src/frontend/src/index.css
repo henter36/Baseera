@@ -1318,12 +1318,6 @@ code {
   color: #fff;
 }
 
-.command-section-nav button small {
-  display: block;
-  color: inherit;
-  opacity: 0.75;
-}
-
 .facility-command-center .workspace-filter-bar {
   border: 0;
   background: rgba(248, 250, 248, 0.74);
@@ -1590,19 +1584,19 @@ code {
   background: rgba(255, 255, 255, 0.62);
   color: var(--command-text-primary);
   text-align: start;
-  box-shadow: inset 4px 0 0 var(--command-info);
+  border-inline-start: 4px solid var(--command-info);
 }
 
 .domain-coverage-row[data-status="unavailable"],
 .resource-rail button[data-status="unavailable"],
 .domain-unavailable[data-status="unavailable"] {
-  box-shadow: inset 4px 0 0 var(--command-border-strong);
+  border-inline-start-color: var(--command-border-strong);
 }
 
 .domain-coverage-row[data-status="partial"],
 .resource-rail button[data-status="partial"],
 .domain-unavailable[data-status="partial"] {
-  box-shadow: inset 4px 0 0 var(--command-warning);
+  border-inline-start-color: var(--command-warning);
 }
 
 .domain-coverage-row small,

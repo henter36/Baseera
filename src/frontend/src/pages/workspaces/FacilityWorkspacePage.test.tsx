@@ -227,6 +227,7 @@ describe('FacilityWorkspacePage', () => {
     expect(within(urgentList).getAllByRole('listitem')).toHaveLength(4)
     expect(within(urgentList).getByRole('button', { name: /ملاحظة حرجة/ })).toBeEnabled()
     expect(screen.getByText('مسندة أو تحتاج إجراء')).toBeInTheDocument()
+    expect(screen.getByText('نواقص بيانات').nextElementSibling).toHaveTextContent('7')
     expect(screen.getByTestId('router-location')).toHaveTextContent('/workspaces/facilities/facility-a')
   })
 
