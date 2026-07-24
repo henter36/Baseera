@@ -443,6 +443,8 @@ public sealed class WorkspaceFrameworkTests : IDisposable
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
             new FacilityFormComplianceWorkspaceWidgetProvider(read, time).LoadAsync(context, CancellationToken.None));
+
+        Assert.Equal(0, read.FormComplianceCalls);
     }
 
     [Fact]

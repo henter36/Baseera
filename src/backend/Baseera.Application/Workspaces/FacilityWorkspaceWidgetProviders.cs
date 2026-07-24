@@ -185,9 +185,9 @@ internal sealed class FacilityFormComplianceWorkspaceWidgetProvider(
 
     public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
+        var facilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context);
         var payload = await readService.GetFormComplianceAsync(context, cancellationToken);
         var generatedAt = timeProvider.GetUtcNow();
-        var facilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context);
         return Envelope(
             context,
             Definition.Key,
