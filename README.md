@@ -12,7 +12,9 @@
 | **Phase B.2.3.1** — أنواع الملاحظات والصلاحيات الفعلية وتثبيت الإدخال | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b231-note-type-completion-report.md`](docs/phase-b231-note-type-completion-report.md) |
 | **Phase B.2.3.2** — توجيه الملاحظات والتكليف التلقائي | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-b232-note-routing-completion-report.md`](docs/phase-b232-note-routing-completion-report.md) |
 | **Phase B.3.1** — لوحة المتابعة التشغيلية | المرحلة الحالية — [`docs/phase-b31-dashboard-completion-report.md`](docs/phase-b31-dashboard-completion-report.md) |
-| **Phase D.0** — إطار مساحات العمل | قيد المراجعة — [`docs/phase-d0-workspace-framework-completion-report.md`](docs/phase-d0-workspace-framework-completion-report.md) |
+| **Phase D.0** — إطار مساحات العمل | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-d0-workspace-framework-completion-report.md`](docs/phase-d0-workspace-framework-completion-report.md) |
+| **Phase D.1** — مركز قرار السجن MVP | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-d1-facility-workspace-completion-report.md`](docs/phase-d1-facility-workspace-completion-report.md) |
+| **Phase D.2** — إعادة تصميم مركز قيادة السجن | قيد التنفيذ — [`docs/phase-d2-facility-command-center-completion-report.md`](docs/phase-d2-facility-command-center-completion-report.md) |
 
 ## المتطلبات
 
@@ -81,5 +83,5 @@ npm run build             # إنتاج: Entra إلزامي
 
 ## مساحات العمل
 
-- `facility-operations`: مركز قرار السجن MVP ضمن Phase D.1، متاح عبر `/workspaces/facilities/:facilityId` ويستخدم Workspace Framework وبيانات حقيقية فقط.
+- `facility-operations`: مركز قرار السجن ضمن Phase D.1/D.2، متاح عبر `/workspaces/facilities/:facilityId` ويستخدم Workspace Framework وبيانات حقيقية فقط. D.2 يحول التجربة إلى مركز قيادة مع Context Panel بدل الانتقال الافتراضي بين صفحات منفصلة.
 - `reference`: مساحة مرجعية للتطوير من Phase D.0، مفعّلة حسب feature flag.
