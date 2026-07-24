@@ -351,6 +351,8 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         Assert.Equal([WorkspaceLevel.Facility], definition.SupportedLevels.Order().ToArray());
         Assert.Contains(PermissionCodes.WorkspacesViewFacility, definition.RequiredPermissions);
         Assert.Contains(FacilityWorkspaceDefinitionProvider.PriorityQueueWidgetKey, definition.RegisteredWidgets);
+        Assert.Contains(FacilityWorkspaceDefinitionProvider.StructureWidgetKey, definition.RegisteredWidgets);
+        Assert.Contains(FacilityWorkspaceDefinitionProvider.DataQualityWidgetKey, definition.RegisteredWidgets);
         Assert.DoesNotContain(WorkspaceLevel.Region, definition.SupportedLevels);
         Assert.DoesNotContain(WorkspaceLevel.Headquarters, definition.SupportedLevels);
     }
@@ -419,6 +421,16 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         await new FacilityFormComplianceWorkspaceWidgetProvider(formsRead, time).LoadAsync(context, CancellationToken.None);
         Assert.Equal(1, formsRead.FormComplianceCalls);
         Assert.Equal(0, formsRead.MetricsCalls);
+
+        var structureRead = new StrictFacilityReadService(FacilityReadMethod.Structure);
+        await new FacilityStructureWorkspaceWidgetProvider(structureRead, time).LoadAsync(context, CancellationToken.None);
+        Assert.Equal(1, structureRead.StructureCalls);
+        Assert.Equal(0, structureRead.MetricsCalls);
+
+        var dataQualityRead = new StrictFacilityReadService(FacilityReadMethod.DataQuality);
+        await new FacilityDataQualityWorkspaceWidgetProvider(dataQualityRead, time).LoadAsync(context, CancellationToken.None);
+        Assert.Equal(1, dataQualityRead.DataQualityCalls);
+        Assert.Equal(0, dataQualityRead.MetricsCalls);
     }
 
     [Fact]
@@ -670,7 +682,9 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         AlertsEscalations,
         FormCompliance,
         PriorityQueue,
-        RecentActivity
+        RecentActivity,
+        Structure,
+        DataQuality
     }
 
     private sealed class StrictFacilityReadService(FacilityReadMethod allowed) : IFacilityWorkspaceReadService
@@ -680,6 +694,8 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         public int CorrectiveActionsCalls { get; private set; }
         public int AlertsEscalationsCalls { get; private set; }
         public int FormComplianceCalls { get; private set; }
+        public int StructureCalls { get; private set; }
+        public int DataQualityCalls { get; private set; }
 
         public Task<FacilityWorkspaceFacilityInfo> GetFacilityAsync(WorkspaceContext context, CancellationToken cancellationToken)
         {
@@ -736,6 +752,41 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         {
             EnsureAllowed(FacilityReadMethod.RecentActivity);
             return Task.FromResult(new FacilityRecentActivityPayload(10, []));
+        }
+
+        public Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken)
+        {
+            StructureCalls += 1;
+            EnsureAllowed(FacilityReadMethod.Structure);
+            return Task.FromResult(new FacilityStructurePayload(1, 1, 1, [
+                new FacilityUnitOperationsPayload
+                {
+                    UnitId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                    Code = "U-A1",
+                    NameAr = "عنبر أ",
+                    OpenNotes = 1,
+                    OverdueNotes = 0,
+                    OpenCorrectiveActions = 0
+                }
+            ]));
+        }
+
+        public Task<FacilityDataQualityPayload> GetDataQualityAsync(WorkspaceContext context, CancellationToken cancellationToken)
+        {
+            DataQualityCalls += 1;
+            EnsureAllowed(FacilityReadMethod.DataQuality);
+            return Task.FromResult(new FacilityDataQualityPayload([
+                new FacilityDataQualityDomainPayload
+                {
+                    Key = "resources",
+                    LabelAr = "الموارد والجاهزية",
+                    StatusCode = "unavailable",
+                    StatusAr = "غير متاح",
+                    ConfidenceAr = "غير معروفة",
+                    ImpactAr = "لا توجد كيانات موارد.",
+                    FollowUpIssue = "#15"
+                }
+            ]));
         }
 
         private void EnsureAllowed(FacilityReadMethod actual)

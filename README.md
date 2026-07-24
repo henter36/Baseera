@@ -15,6 +15,7 @@
 | **Phase D.0** — إطار مساحات العمل | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-d0-workspace-framework-completion-report.md`](docs/phase-d0-workspace-framework-completion-report.md) |
 | **Phase D.1** — مركز قرار السجن MVP | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-d1-facility-workspace-completion-report.md`](docs/phase-d1-facility-workspace-completion-report.md) |
 | **Phase D.2** — إعادة تصميم مركز قيادة السجن | قيد المراجعة؛ لقطات الشاشة النهائية معلقة — [`docs/phase-d2-facility-command-center-completion-report.md`](docs/phase-d2-facility-command-center-completion-report.md) |
+| **Phase D.3** — إكمال مساحة تشغيل السجن | قيد التنفيذ — [`docs/phase-d3-complete-facility-workspace-completion-report.md`](docs/phase-d3-complete-facility-workspace-completion-report.md) |
 
 ## المتطلبات
 
@@ -83,5 +84,5 @@ npm run build             # إنتاج: Entra إلزامي
 
 ## مساحات العمل
 
-- `facility-operations`: مركز قرار السجن ضمن Phase D.1/D.2، متاح عبر `/workspaces/facilities/:facilityId` ويستخدم Workspace Framework وبيانات حقيقية فقط. D.2 يحول التجربة إلى مركز قيادة مع Context Panel بدل الانتقال الافتراضي بين صفحات منفصلة.
+- `facility-operations`: مركز قرار السجن ضمن Phase D.1/D.2/D.3، متاح عبر `/workspaces/facilities/:facilityId` ويستخدم Workspace Framework وبيانات حقيقية فقط. D.3 يضيف أقسام التشغيل الكاملة، هيكل السجن، وجودة البيانات، ويعرض المجالات غير الموجودة كفجوات آمنة بدل بيانات تجريبية.
 - `reference`: مساحة مرجعية للتطوير من Phase D.0، مفعّلة حسب feature flag.

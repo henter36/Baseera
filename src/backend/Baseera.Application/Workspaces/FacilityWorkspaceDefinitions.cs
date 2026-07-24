@@ -13,6 +13,8 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
     public const string FormComplianceWidgetKey = "facility.form-compliance";
     public const string PriorityQueueWidgetKey = "facility.priority-queue";
     public const string RecentActivityWidgetKey = "facility.recent-activity";
+    public const string StructureWidgetKey = "facility.structure";
+    public const string DataQualityWidgetKey = "facility.data-quality";
 
     public WorkspaceDefinition Definition { get; } = new(
         WorkspaceKey,
@@ -28,7 +30,9 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
             CorrectiveActionsWidgetKey,
             AlertsEscalationsWidgetKey,
             FormComplianceWidgetKey,
-            RecentActivityWidgetKey
+            StructureWidgetKey,
+            RecentActivityWidgetKey,
+            DataQualityWidgetKey
         ],
         new WorkspaceLayoutDefinition(
             [
@@ -39,7 +43,9 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
                 new WorkspaceLayoutItemDefinition(CorrectiveActionsWidgetKey, 4, WidgetSize.Medium, false),
                 new WorkspaceLayoutItemDefinition(AlertsEscalationsWidgetKey, 5, WidgetSize.Medium, false),
                 new WorkspaceLayoutItemDefinition(FormComplianceWidgetKey, 6, WidgetSize.Medium, false),
-                new WorkspaceLayoutItemDefinition(RecentActivityWidgetKey, 7, WidgetSize.Wide, false)
+                new WorkspaceLayoutItemDefinition(StructureWidgetKey, 7, WidgetSize.Wide, false),
+                new WorkspaceLayoutItemDefinition(RecentActivityWidgetKey, 8, WidgetSize.Wide, false),
+                new WorkspaceLayoutItemDefinition(DataQualityWidgetKey, 9, WidgetSize.Wide, false)
             ],
             1),
         [
