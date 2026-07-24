@@ -230,6 +230,87 @@ export type NoteStatusHistoryEntry = {
   assignmentId?: string | null
 }
 
+export type NoteWorkspaceSummary = {
+  openCorrectiveActions: number
+  attachmentCount: number
+  waitingResource: boolean
+  waitingVerification: boolean
+  waitingClosureApproval: boolean
+  hasEscalation: boolean
+  progressPercent: number
+  currentBlockerAr?: string | null
+  lastUpdatedAtUtc: string
+}
+
+export type NoteWorkspaceTimelineEntry = {
+  id: string
+  type: string
+  titleAr: string
+  descriptionAr?: string | null
+  actorDisplayName?: string | null
+  occurredAtUtc: string
+  tone: 'danger' | 'ok' | 'info' | 'muted' | 'warn'
+}
+
+export type NoteWorkspaceAllowedAction =
+  | 'SUBMIT'
+  | 'ASSIGN'
+  | 'REASSIGN'
+  | 'START_WORK'
+  | 'ADD_ACTION'
+  | 'REQUEST_VERIFICATION'
+  | 'REJECT_VERIFICATION'
+  | 'REOPEN'
+  | 'CANCEL'
+
+export type NoteWorkspaceResource = {
+  id: string
+  titleAr: string
+  statusAr: string
+  responsiblePartyAr?: string | null
+  quantity?: number | null
+  requestedAtUtc?: string | null
+  expectedAtUtc?: string | null
+  deliveredAtUtc?: string | null
+  impactAr?: string | null
+}
+
+export type NoteWorkspaceDecision = {
+  id: string
+  decisionAr: string
+  reasonAr?: string | null
+  alternativesAr?: string | null
+  evidenceAr?: string | null
+  decisionOwnerDisplayName?: string | null
+  decidedAtUtc: string
+  expectedOutcomeAr?: string | null
+  actualOutcomeAr?: string | null
+}
+
+export type NoteWorkspaceLink = {
+  id: string
+  linkTypeAr: string
+  reference: string
+  titleAr: string
+}
+
+export type NoteWorkspaceList = {
+  notes: Paged<NoteListItem>
+}
+
+export type NoteWorkspaceDetail = {
+  note: NoteDetail
+  allowedActions: NoteWorkspaceAllowedAction[]
+  summary: NoteWorkspaceSummary
+  assignments: NoteAssignment[]
+  correctiveActions: Paged<CorrectiveActionListItem>
+  attachments: Attachment[]
+  resources: NoteWorkspaceResource[]
+  decisions: NoteWorkspaceDecision[]
+  links: NoteWorkspaceLink[]
+  timeline: NoteWorkspaceTimelineEntry[]
+}
+
 export type NoteListFilters = {
   page?: number
   pageSize?: number
@@ -1774,6 +1855,9 @@ export const api = {
   downloadAttachment: (id: string) => downloadFile(`/api/v1/attachments/${id}/download`),
 
   notes: {
+    workspace: (filters: NoteListFilters = {}) =>
+      request<NoteWorkspaceList>(`/api/v1/notes/workspace?${buildNoteQuery(filters)}`),
+    workspaceDetail: (id: string) => request<NoteWorkspaceDetail>(`/api/v1/notes/${id}/workspace`),
     list: (filters: NoteListFilters = {}) =>
       request<Paged<NoteListItem>>(`/api/v1/notes?${buildNoteQuery(filters)}`),
     get: (id: string) => request<NoteDetail>(`/api/v1/notes/${id}`),

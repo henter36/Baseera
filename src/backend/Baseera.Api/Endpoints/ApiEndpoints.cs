@@ -1162,7 +1162,16 @@ public static class ApiEndpoints
     {
         var notes = api.MapGroup("/notes");
 
+        notes.MapGet("/workspace", async ([AsParameters] NoteListQueryParams query, INoteWorkspaceQueryService workspace, CancellationToken ct) =>
+            Results.Ok(await workspace.ListAsync(query.ToQuery(), ct))).RequireAuthorization(AuthPolicies.NotesView);
+
         notes.MapGet("/", ListNotesAsync).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapGet("/{id:guid}/workspace", async (Guid id, INoteWorkspaceQueryService workspace, CancellationToken ct) =>
+        {
+            var item = await workspace.GetAsync(id, ct);
+            return item is null ? Results.NotFound() : Results.Ok(item);
+        }).RequireAuthorization(AuthPolicies.NotesView);
 
         notes.MapGet(EntityIdRoute, async (Guid id, INoteQueryService queries, CancellationToken ct) =>
         {

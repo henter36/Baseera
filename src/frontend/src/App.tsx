@@ -14,10 +14,10 @@ import { CorrectiveActionsListPage } from './pages/corrective-actions/Corrective
 import { NoteCreatePage } from './pages/notes/NoteCreatePage'
 import { NoteDetailPage } from './pages/notes/NoteDetailPage'
 import { NoteEditPage } from './pages/notes/NoteEditPage'
+import { ObservationWorkspacePage } from './pages/notes/ObservationWorkspacePage'
 import { NoteRoutingEffectivenessPage } from './pages/notes/NoteRoutingEffectivenessPage'
 import { NoteRoutingSettingsPage } from './pages/notes/NoteRoutingSettingsPage'
 import { NoteTypesSettingsPage } from './pages/notes/NoteTypesSettingsPage'
-import { NotesListPage } from './pages/notes/NotesListPage'
 import { RegionsPage } from './pages/RegionsPage'
 import { UsersPage } from './pages/UsersPage'
 import { EscalationOccurrencesPage } from './pages/escalations/EscalationOccurrencesPage'
@@ -76,7 +76,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <nav className="nav" aria-label="القائمة الرئيسية">
           {hasPermission('Organization.View') && <NavLink to="/regions" className={({ isActive }) => isActive ? 'active' : undefined}>المناطق</NavLink>}
           {hasPermission('Organization.View') && <NavLink to="/facilities" className={({ isActive }) => isActive ? 'active' : undefined}>السجون</NavLink>}
-          {hasPermission('Notes.View') && <NavLink to="/notes" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
+          {hasPermission('Notes.View') && <NavLink to="/notes/workspace" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
           {hasPermission('Forms.View') && <NavLink to="/forms" className={({ isActive }) => isActive ? 'active' : undefined}>النماذج</NavLink>}
           {hasPermission('Forms.View') && <NavLink to="/form-templates" className={({ isActive }) => isActive ? 'active' : undefined}>قوالب النماذج</NavLink>}
           {(hasPermission('Forms.Publish') || hasPermission('Forms.ManageCampaigns') || hasPermission('Forms.View')) && (
@@ -124,7 +124,8 @@ export default function App() {
       <Route path="/" element={<Protected><Navigate to="/regions" replace /></Protected>} />
       <Route path="/regions" element={<Protected><RegionsPage /></Protected>} />
       <Route path="/facilities" element={<Protected><FacilitiesPage /></Protected>} />
-      <Route path="/notes" element={<Protected><NotesListPage /></Protected>} />
+      <Route path="/notes" element={<Protected><ObservationWorkspacePage /></Protected>} />
+      <Route path="/notes/workspace" element={<Protected><ObservationWorkspacePage /></Protected>} />
       <Route path="/dashboard" element={<Protected><OperationalDashboardPage /></Protected>} />
       <Route path="/notes/new" element={<Protected><NoteCreatePage /></Protected>} />
       <Route path="/notes/:id" element={<Protected><NoteDetailPage /></Protected>} />
