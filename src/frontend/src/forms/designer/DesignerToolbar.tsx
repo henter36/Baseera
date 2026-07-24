@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import type { AutosaveStatus } from './useFormDesignerAutosave'
 import { saveStatusLabel } from './designerHelpers'
 

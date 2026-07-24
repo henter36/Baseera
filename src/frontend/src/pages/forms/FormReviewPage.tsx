@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router'
 import { api, ApiError, type FormDetail } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import { FormDefinitionStatus } from '../../forms/formEnums'

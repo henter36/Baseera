@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 import { api, type CreateFormCampaignRequest, type FormCampaignScheduleRequest, type FormCampaignTargetRequest } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import { listQueryErrorMessage } from '../../shared/listPageUtils'
