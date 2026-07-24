@@ -590,6 +590,18 @@ function CorrectiveActionPanel({ actionId }: Readonly<{ actionId: string; summar
   if (!detailQuery.data) return <WorkspaceEmpty message="لا توجد تفاصيل متاحة." />
 
   const action = detailQuery.data
+  let historyContent: React.ReactNode = <PanelLoading />
+
+  if (historyQuery.isError) {
+    historyContent = <PanelError error={historyQuery.error} />
+  } else if (historyQuery.data !== undefined) {
+    historyContent = (
+      <CompactTimeline
+        rows={historyQuery.data.map(toCorrectiveActionTimeline)}
+      />
+    )
+  }
+
   return (
     <div className="context-stack">
       <ContextSection title="ملخص الإجراء">
@@ -607,13 +619,7 @@ function CorrectiveActionPanel({ actionId }: Readonly<{ actionId: string; summar
         />
       </ContextSection>
       <ContextSection title="خط الحالة">
-        {historyQuery.isError ? (
-          <PanelError error={historyQuery.error} />
-        ) : historyQuery.data ? (
-          <CompactTimeline rows={historyQuery.data.map(toCorrectiveActionTimeline)} />
-        ) : (
-          <PanelLoading />
-        )}
+        {historyContent}
       </ContextSection>
       <div className="context-action-note">الإجراءات المركبة لهذا الإجراء متاحة من الصفحة الكاملة حتى يتم استخراج نماذجها داخل مركز القرار.</div>
     </div>
