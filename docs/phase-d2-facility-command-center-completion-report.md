@@ -1,6 +1,6 @@
 # Phase D.2 Facility Command Center Completion Report
 
-Status: local implementation and verification complete; CI, Sonar, and PR status are completed after push.
+Status: local implementation, CI, and Sonar verification complete; final screenshot artifacts remain outstanding acceptance work.
 
 Implemented:
 - Redesigned `/workspaces/facilities/:facilityId` as a prison command center.
@@ -34,6 +34,9 @@ Screenshot status:
 - `docs/screenshots/phase-d2/README.md` lists the required capture set.
 - Local browser capture was attempted but the local API process did not reach the listening state during this run. Screenshots must be attached from a fully running local stack or PR review environment.
 - Automated frontend tests validate the command layout, in-context panel behavior, URL state, permissions, partial data, and panel previews.
+
+Outstanding acceptance artifact:
+- Attach the required before/after screenshots from a fully running local stack or PR review environment.
 
 Gitleaks:
 - Could not run locally because `gitleaks` is not installed in this environment.

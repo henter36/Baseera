@@ -193,6 +193,17 @@ describe('FacilityWorkspacePage', () => {
     expect(getCorrectiveActionHistory).toHaveBeenCalledWith('action-1')
   })
 
+  it('shows corrective action history errors instead of a permanent loading state', async () => {
+    getCorrectiveActionHistory.mockRejectedValueOnce(new Error('history failed'))
+
+    renderPage('/workspaces/facilities/facility-a')
+
+    fireEvent.click(await screen.findByRole('button', { name: /إجراء متأخر/ }))
+
+    expect(await screen.findByText('تعذر تحميل تفاصيل العنصر داخل مساحة العمل.')).toBeInTheDocument()
+    expect(screen.queryByText('جاري تحميل التفاصيل…')).not.toBeInTheDocument()
+  })
+
   it('opens escalation and form previews inside the workspace', async () => {
     renderPage('/workspaces/facilities/facility-a')
 
@@ -217,6 +228,15 @@ describe('FacilityWorkspacePage', () => {
     expect(within(urgentList).getByRole('button', { name: /ملاحظة حرجة/ })).toBeEnabled()
     expect(screen.getByText('مسندة أو تحتاج إجراء')).toBeInTheDocument()
     expect(screen.getByTestId('router-location')).toHaveTextContent('/workspaces/facilities/facility-a')
+  })
+
+  it('does not render a duplicate priority queue inside the priorities section', async () => {
+    renderPage('/workspaces/facilities/facility-a')
+
+    await screen.findByRole('heading', { name: 'سجن أ1' })
+    fireEvent.click(screen.getByRole('button', { name: 'الأولويات' }))
+
+    expect(screen.getAllByRole('list', { name: /قائمة الأولويات/ })).toHaveLength(1)
   })
 
   it('supports direct panel links and browser back to the operational scene', async () => {

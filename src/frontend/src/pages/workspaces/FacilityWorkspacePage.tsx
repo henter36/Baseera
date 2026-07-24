@@ -195,12 +195,14 @@ export function FacilityWorkspacePage() {
           <SectionDeck data={data} activeSection={activeSection} openPanel={openPanel} selectedPanel={panel} selectedRowRef={selectedRowRef} />
         </section>
 
-        <InterventionQueue
-          payload={data.priority}
-          selectedPanel={panel}
-          openPanel={openPanel}
-          selectedRowRef={selectedRowRef}
-        />
+        {activeSection !== 'priorities' && (
+          <InterventionQueue
+            payload={data.priority}
+            selectedPanel={panel}
+            openPanel={openPanel}
+            selectedRowRef={selectedRowRef}
+          />
+        )}
       </div>
 
       {panel && (
@@ -605,7 +607,9 @@ function CorrectiveActionPanel({ actionId }: Readonly<{ actionId: string; summar
         />
       </ContextSection>
       <ContextSection title="خط الحالة">
-        {historyQuery.data ? (
+        {historyQuery.isError ? (
+          <PanelError error={historyQuery.error} />
+        ) : historyQuery.data ? (
           <CompactTimeline rows={historyQuery.data.map(toCorrectiveActionTimeline)} />
         ) : (
           <PanelLoading />

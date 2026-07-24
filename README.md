@@ -14,7 +14,7 @@
 | **Phase B.3.1** — لوحة المتابعة التشغيلية | المرحلة الحالية — [`docs/phase-b31-dashboard-completion-report.md`](docs/phase-b31-dashboard-completion-report.md) |
 | **Phase D.0** — إطار مساحات العمل | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-d0-workspace-framework-completion-report.md`](docs/phase-d0-workspace-framework-completion-report.md) |
 | **Phase D.1** — مركز قرار السجن MVP | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-d1-facility-workspace-completion-report.md`](docs/phase-d1-facility-workspace-completion-report.md) |
-| **Phase D.2** — إعادة تصميم مركز قيادة السجن | قيد التنفيذ — [`docs/phase-d2-facility-command-center-completion-report.md`](docs/phase-d2-facility-command-center-completion-report.md) |
+| **Phase D.2** — إعادة تصميم مركز قيادة السجن | قيد المراجعة؛ لقطات الشاشة النهائية معلقة — [`docs/phase-d2-facility-command-center-completion-report.md`](docs/phase-d2-facility-command-center-completion-report.md) |
 
 ## المتطلبات
 
