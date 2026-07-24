@@ -903,6 +903,157 @@ export type DashboardOperationsSummary = {
   dueSoonDays: number
 }
 
+export type WorkspaceLevel = 1 | 2 | 3 | 4
+export type DataFreshnessStatus = 1 | 2 | 3 | 4 | 5
+export type ConfidenceLevel = 1 | 2 | 3 | 4
+export type WorkspaceWidgetSize = 1 | 2 | 3 | 4
+
+export type DataFreshness = {
+  status: DataFreshnessStatus
+  labelAr: string
+  reasonAr?: string | null
+}
+
+export type WorkspaceConfidence = {
+  level: ConfidenceLevel
+  labelAr: string
+  reasonAr?: string | null
+}
+
+export type WorkspaceAllowedAction = {
+  code: string
+  labelAr: string
+  enabled: boolean
+  disabledReasonAr?: string | null
+  requiresConfirmation: boolean
+  target?: { kind: string; routeKey?: string | null; routeParameters: Record<string, string> } | null
+}
+
+export type WorkspaceDrillDownTarget = {
+  routeKey: string
+  labelAr: string
+  routeParameters: Record<string, string>
+  preservedFilters: Record<string, string>
+  requiredPermission: string
+}
+
+export type WorkspaceScopeSummary = {
+  level: WorkspaceLevel
+  labelAr: string
+  regionId?: string | null
+  facilityId?: string | null
+  isSensitive: boolean
+}
+
+export type WorkspaceWidgetDefinition = {
+  key: string
+  titleAr: string
+  titleEn: string
+  descriptionAr?: string | null
+  category: number
+  supportedLevels: WorkspaceLevel[]
+  requiredPermission?: string | null
+  requiredDataCapability?: string | null
+  defaultSize: WorkspaceWidgetSize
+  minSize: WorkspaceWidgetSize
+  maxSize: WorkspaceWidgetSize
+  refreshPolicy: { minimumRefreshSeconds: number; supportsManualRefresh: boolean }
+  dataFreshnessPolicy: { currentForSeconds: number; delayedAfterSeconds: number; staleAfterSeconds: number }
+  emptyErrorBehavior: { emptyMessageAr: string; errorMessageAr: string; allowPartialFailure: boolean }
+  supportsDrillDown: boolean
+  isConfigurable: boolean
+  containsSensitiveData: boolean
+  isEnabled: boolean
+}
+
+export type WorkspaceDefinition = {
+  key: string
+  titleAr: string
+  titleEn: string
+  supportedLevels: WorkspaceLevel[]
+  requiredPermissions: string[]
+  registeredWidgets: string[]
+  defaultLayout: { items: Array<{ widgetKey: string; order: number; size: WorkspaceWidgetSize; isPinned: boolean }>; version: number }
+  availableFilters: Array<{ key: string; labelAr: string; type: string; isServerSide: boolean }>
+  supportedDrillDowns: Array<{ routeKey: string; labelAr: string; requiredPermission: string }>
+  features: { supportsSavedViews: boolean; supportsWidgetConfiguration: boolean; supportsExport: boolean; isReferenceOnly: boolean }
+  version: number
+}
+
+export type WorkspaceContext = {
+  workspaceKey: string
+  level: WorkspaceLevel
+  organizationId?: string | null
+  regionId?: string | null
+  facilityId?: string | null
+  entityId?: string | null
+  scopeLabelAr: string
+  fromUtc: string
+  toUtc: string
+  locale: string
+  timeZone: string
+  includesSensitiveData: boolean
+}
+
+export type ReferenceOperationalSummaryPayload = {
+  openNotes: number
+  inProgressNotes: number
+  pendingVerificationNotes: number
+  unassignedNotes: number
+  requiresRouting: number
+  overdueNotes: number
+  dueSoonNotes: number
+  criticalOrHighNotes: number
+}
+
+export type ReferenceCorrectiveActionsPayload = {
+  activeActions: number
+  overdueActions: number
+  pendingVerificationActions: number
+  reopenedActions: number
+  notesWithStalledActions: number
+}
+
+export type WorkspaceWidgetPayload = ReferenceOperationalSummaryPayload | ReferenceCorrectiveActionsPayload | Record<string, unknown>
+
+export type WorkspaceWidgetEnvelope<TPayload = WorkspaceWidgetPayload> = {
+  widgetKey: string
+  generatedAtUtc: string
+  dataEffectiveAtUtc?: string | null
+  freshness: DataFreshness
+  confidence: WorkspaceConfidence
+  scopeSummary: WorkspaceScopeSummary
+  isPartial: boolean
+  warningMessages: string[]
+  payload: TPayload
+  drillDownTargets: WorkspaceDrillDownTarget[]
+  allowedActions: WorkspaceAllowedAction[]
+}
+
+export type WorkspaceShell = {
+  definition: WorkspaceDefinition
+  context: WorkspaceContext
+  generatedAtUtc: string
+  freshness: DataFreshness
+  confidence: WorkspaceConfidence
+  allowedActions: WorkspaceAllowedAction[]
+  widgetDefinitions: WorkspaceWidgetDefinition[]
+  widgets: WorkspaceWidgetEnvelope[]
+  widgetFailures: Array<{ widgetKey: string; messageAr: string; isPartialSafe: boolean }>
+  isPartial: boolean
+}
+
+export type WorkspaceFilters = {
+  level?: WorkspaceLevel
+  regionId?: string
+  facilityId?: string
+  entityId?: string
+  fromUtc?: string
+  toUtc?: string
+  locale?: string
+  timeZone?: string
+}
+
 export type DashboardTrendPoint = {
   bucketStartUtc: string
   bucketEndUtc: string
@@ -2009,6 +2160,16 @@ export const api = {
       priorityQueues: (filters: DashboardOperationsFilters = {}) =>
         request<DashboardPriorityQueues>(`/api/v1/dashboard/operations/priority-queues?${buildDashboardQuery(filters)}`),
     },
+  },
+
+  workspaces: {
+    get: (workspaceKey: string, filters: WorkspaceFilters = {}) =>
+      request<WorkspaceShell>(`/api/v1/workspaces/${workspaceKey}?${buildSimpleQuery(filters)}`),
+    widgets: (workspaceKey: string, filters: WorkspaceFilters = {}) =>
+      request<WorkspaceWidgetDefinition[]>(`/api/v1/workspaces/${workspaceKey}/widgets?${buildSimpleQuery(filters)}`),
+    widget: (workspaceKey: string, widgetKey: string, filters: WorkspaceFilters = {}) =>
+      request<{ definition: WorkspaceWidgetDefinition; data: WorkspaceWidgetEnvelope }>(
+        `/api/v1/workspaces/${workspaceKey}/widgets/${widgetKey}?${buildSimpleQuery(filters)}`),
   },
 
   formCompliance: {

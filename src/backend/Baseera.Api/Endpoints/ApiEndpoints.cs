@@ -15,6 +15,7 @@ using Baseera.Application.Forms.Responses;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
+using Baseera.Application.Workspaces;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
@@ -154,6 +155,7 @@ public static class ApiEndpoints
         MapEscalationEndpoints(api);
         MapNotificationEndpoints(api);
         MapOperationalDashboardEndpoints(api);
+        MapWorkspaceEndpoints(api);
         MapFormComplianceEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
@@ -740,6 +742,55 @@ public static class ApiEndpoints
                 await service.GetPriorityQueuesAsync(
                     query,
                     ct)));
+    }
+
+    private static void MapWorkspaceEndpoints(RouteGroupBuilder api)
+    {
+        var workspaces = api.MapGroup("/workspaces").RequireAuthorization(AuthPolicies.WorkspacesView);
+
+        workspaces.MapGet("/{workspaceKey}", async (
+            string workspaceKey,
+            [AsParameters] WorkspaceQueryParams query,
+            IWorkspaceQueryService service,
+            CancellationToken ct) =>
+            await ToWorkspaceResultAsync(() => service.GetWorkspaceAsync(query.ToRequest(workspaceKey), ct)));
+
+        workspaces.MapGet("/{workspaceKey}/widgets", async (
+            string workspaceKey,
+            [AsParameters] WorkspaceQueryParams query,
+            IWorkspaceQueryService service,
+            CancellationToken ct) =>
+            await ToWorkspaceResultAsync(() => service.GetWidgetsAsync(query.ToRequest(workspaceKey), ct)));
+
+        workspaces.MapGet("/{workspaceKey}/widgets/{widgetKey}", async (
+            string workspaceKey,
+            string widgetKey,
+            [AsParameters] WorkspaceQueryParams query,
+            IWorkspaceQueryService service,
+            CancellationToken ct) =>
+            await ToWorkspaceResultAsync(() => service.GetWidgetAsync(query.ToRequest(workspaceKey), widgetKey, ct)));
+    }
+
+    private static async Task<IResult> ToWorkspaceResultAsync<T>(Func<Task<T?>> load)
+        where T : class
+    {
+        try
+        {
+            var result = await load();
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { detail = ex.Message });
+        }
+        catch (KeyNotFoundException)
+        {
+            return Results.NotFound();
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Results.Problem(title: "Forbidden", detail: ex.Message, statusCode: StatusCodes.Status403Forbidden);
+        }
     }
 
     private static void MapFormComplianceEndpoints(RouteGroupBuilder api)

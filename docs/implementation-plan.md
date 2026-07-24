@@ -102,6 +102,14 @@
 
 مركبات، قوى عاملة، خطط، أحداث ووقائع.
 
+### Phase D.0 — Workspace Framework Foundation (Issue #10)
+
+- إطار Workspace مشترك لمستويات Facility وRegion وHeadquarters وDomain.
+- Widget registry عبر DI مع منع المفاتيح المكررة وفصل Core عن تفاصيل الوحدات.
+- API محدود `/api/v1/workspaces/*` مع صلاحيات ونطاق على الخادم.
+- مكونات واجهة RTL مشتركة وRoute مرجعي feature-flagged يستخدم بيانات dashboard حقيقية.
+- لا ينفذ Facility/Region/Headquarters Workspace الكاملة (#11-#13)، ولا persistence للـpersonalization (#21).
+
 ## المرحلة E — المشاريع والاستراتيجية
 
 مشاريع متعددة المواقع، مبادرات، أهداف، مؤشرات، مستهدفات، لوحة أداء.

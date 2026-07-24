@@ -15,6 +15,7 @@ using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Organization;
 using Baseera.Application.Security;
+using Baseera.Application.Workspaces;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -83,6 +84,12 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IEscalationOccurrenceService, EscalationOccurrenceService>();
         services.AddScoped<OperationalDashboardFilterBuilder>();
         services.AddScoped<IOperationalDashboardQueryService, OperationalDashboardQueryService>();
+        services.AddScoped<IWorkspaceDefinitionProvider, ReferenceWorkspaceDefinitionProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, OperationalSummaryWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, CorrectiveActionsSummaryWorkspaceWidgetProvider>();
+        services.AddScoped<WorkspaceContextResolver>();
+        services.AddScoped<IWorkspaceRegistry, WorkspaceRegistry>();
+        services.AddScoped<IWorkspaceQueryService, WorkspaceQueryService>();
         return services;
     }
 }
