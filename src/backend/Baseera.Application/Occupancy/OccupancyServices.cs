@@ -96,8 +96,8 @@ public sealed class OccupancyService(
             OverloadedUnits = units.Units.Count(u => u.StatusCode == OccupancyStatusCodes.OverCapacity),
             EmptyUnits = units.Units.Count(u => u.CurrentCount == 0 && u.ApprovedCapacity.HasValue),
             LatestSnapshotAtUtc = snapshot?.CapturedAtUtc,
-            SourceCode = source.Code,
-            SourceAr = source.LabelAr,
+            SourceCode = source.SourceCode,
+            SourceAr = source.SourceLabelAr,
             FreshnessStatus = Freshness(snapshot?.CapturedAtUtc, asOfUtc),
             ConfidenceLevel = Confidence(capacity, snapshot, warnings),
             IsPartial = warnings.Count > 0,
@@ -469,8 +469,8 @@ public sealed class OccupancyService(
         return new OccupancyUnitDto
         {
             UnitId = unit.Id,
-            UnitNameAr = unit.NameAr,
-            UnitCode = unit.Code,
+            UnitNameAr = unit.UnitNameAr,
+            UnitCode = unit.UnitCode,
             ApprovedCapacity = capacity,
             CurrentCount = current,
             OccupancyRate = OccupancyClassifier.Rate(capacity, current),
@@ -505,16 +505,7 @@ public sealed class OccupancyService(
             .Select(e => e.ExternalEventId)
             .ToListAsync(cancellationToken);
 
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in rows)
-        {
-            if (id is not null)
-            {
-                result.Add(id);
-            }
-        }
-
-        return result;
+        return new HashSet<string>(rows.OfType<string>(), StringComparer.OrdinalIgnoreCase);
     }
 
     private InmateMovementEvent CreateMovementEvent(
@@ -618,12 +609,29 @@ public sealed class OccupancyService(
 
     private static string? ValidateMovementRow(Guid facilityId, InmateMovementImportRow row)
     {
+        return ValidateRequiredMovementFields(row)
+            ?? ValidateMovementTypeRequirements(row)
+            ?? ValidateMovementScope(facilityId, row);
+    }
+
+    private static string? ValidateRequiredMovementFields(InmateMovementImportRow row)
+    {
         if (string.IsNullOrWhiteSpace(row.InmateReferenceHash)) return "مرجع النزيل المموه مطلوب.";
         if (string.IsNullOrWhiteSpace(row.ExternalEventId)) return "معرف الحدث الخارجي مطلوب.";
         if (row.OccurredAtUtc == default) return "وقت الحركة مطلوب.";
+        return null;
+    }
+
+    private static string? ValidateMovementTypeRequirements(InmateMovementImportRow row)
+    {
         if (row.MovementType == MovementType.Admission && row.ToFacilityId is null) return "الدخول يتطلب وجهة.";
         if (row.MovementType == MovementType.Release && row.FromFacilityId is null) return "الإفراج يتطلب مصدرًا.";
         if (row.MovementType == MovementType.InternalTransfer && (row.FromFacilityUnitId is null || row.ToFacilityUnitId is null)) return "النقل الداخلي يتطلب وحدتين.";
+        return null;
+    }
+
+    private static string? ValidateMovementScope(Guid facilityId, InmateMovementImportRow row)
+    {
         var hasMovementScope = row.FromFacilityId.HasValue
             || row.ToFacilityId.HasValue
             || row.FromFacilityUnitId.HasValue
@@ -779,8 +787,8 @@ public sealed class OccupancyService(
 
     private sealed record FacilityScopeProjection(Guid Id, Guid OrganizationId);
     private sealed record SnapshotProjection(int InmateCount, DateTimeOffset CapturedAtUtc, bool IsAuthoritative, CensusQualityStatus QualityStatus);
-    private sealed record OccupancySourceDisplay(string Code, string LabelAr);
-    private sealed record UnitProjection(Guid Id, string Code, string NameAr);
+    private sealed record OccupancySourceDisplay(string SourceCode, string SourceLabelAr);
+    private sealed record UnitProjection(Guid Id, string UnitCode, string UnitNameAr);
     private sealed record UnitCapacityProjection(Guid? UnitId, int ApprovedCapacity, DateTimeOffset EffectiveFromUtc);
     private sealed record UnitSnapshotProjection(Guid? UnitId, int InmateCount, DateTimeOffset CapturedAtUtc, bool IsAuthoritative);
     private sealed record UnitOpenNotesProjection(Guid? UnitId, int Count);

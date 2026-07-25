@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
+import { getFormString, getOptionalFormString } from './facilityOccupancyFormData'
 import { FacilityOccupancyPage } from './FacilityOccupancyPage'
 
 const {
@@ -196,6 +197,28 @@ describe('FacilityOccupancyPage', () => {
         occurredAtUtc: '2026-07-24T11:30:00.000Z',
       })],
     }))
+  })
+})
+
+describe('facility occupancy form data helpers', () => {
+  it('returns text values without coercing null or files to object strings', () => {
+    const data = new FormData()
+    data.set('sourceReference', 'CAP-1')
+    data.set('attachment', new File(['content'], 'movement.csv'))
+
+    expect(getFormString(data, 'sourceReference')).toBe('CAP-1')
+    expect(getFormString(data, 'missing')).toBe('')
+    expect(getFormString(data, 'attachment')).toBe('')
+  })
+
+  it('returns undefined for empty optional facility identifiers', () => {
+    const data = new FormData()
+    data.set('fromFacilityId', '  ')
+    data.set('toFacilityId', 'facility-a')
+
+    expect(getOptionalFormString(data, 'fromFacilityId')).toBeUndefined()
+    expect(getOptionalFormString(data, 'missing')).toBeUndefined()
+    expect(getOptionalFormString(data, 'toFacilityId')).toBe('facility-a')
   })
 })
 

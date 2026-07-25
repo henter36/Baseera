@@ -15,6 +15,7 @@ import {
 } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import { WorkspaceEmpty, WorkspaceError, WorkspaceLoading, WorkspaceUnauthorized } from '../../workspaces/WorkspaceShell'
+import { getFormString, getOptionalFormString } from './facilityOccupancyFormData'
 import { riyadhDateTimeLocalToUtc } from './occupancyDateTime'
 
 const nowIso = () => new Date().toISOString()
@@ -209,8 +210,8 @@ function CapacityForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Occupan
   return (
     <form className="inline-action-form" onSubmit={(event) => submitForm(event, (data) => onSubmit({
       approvedCapacity: Number(data.get('approvedCapacity')),
-      effectiveFromUtc: riyadhDateTimeLocalToUtc(String(data.get('effectiveFromUtc'))),
-      sourceReference: String(data.get('sourceReference')),
+      effectiveFromUtc: riyadhDateTimeLocalToUtc(getFormString(data, 'effectiveFromUtc')),
+      sourceReference: getFormString(data, 'sourceReference').trim(),
       capacityType: OccupancyCapacityType.ApprovedOperational,
       sourceType: OccupancySourceType.Manual,
     }))}>
@@ -226,9 +227,9 @@ function CapacityForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Occupan
 function SnapshotForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: OccupancySnapshotRequest) => void; pending: boolean }>) {
   return (
     <form className="inline-action-form" onSubmit={(event) => submitForm(event, (data) => onSubmit({
-      capturedAtUtc: riyadhDateTimeLocalToUtc(String(data.get('capturedAtUtc'))),
+      capturedAtUtc: riyadhDateTimeLocalToUtc(getFormString(data, 'capturedAtUtc')),
       inmateCount: Number(data.get('inmateCount')),
-      sourceReference: String(data.get('sourceReference')),
+      sourceReference: getFormString(data, 'sourceReference').trim(),
       sourceType: OccupancySourceType.Manual,
       isAuthoritative: true,
       qualityStatus: CensusQualityStatus.Complete,
@@ -245,15 +246,15 @@ function SnapshotForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Occupan
 function MovementImportForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: OccupancyMovementImportRequest) => void; pending: boolean }>) {
   return (
     <form className="inline-action-form" onSubmit={(event) => submitForm(event, (data) => onSubmit({
-      sourceSystem: String(data.get('sourceSystem')),
-      importReference: String(data.get('importReference')),
+      sourceSystem: getFormString(data, 'sourceSystem').trim(),
+      importReference: getFormString(data, 'importReference').trim(),
       rows: [{
-        inmateReferenceHash: String(data.get('inmateReferenceHash')),
+        inmateReferenceHash: getFormString(data, 'inmateReferenceHash').trim(),
         movementType: movementTypeFromForm(data.get('movementType')),
-        toFacilityId: String(data.get('toFacilityId') || '') || undefined,
-        fromFacilityId: String(data.get('fromFacilityId') || '') || undefined,
-        occurredAtUtc: riyadhDateTimeLocalToUtc(String(data.get('occurredAtUtc'))),
-        externalEventId: String(data.get('externalEventId')),
+        toFacilityId: getOptionalFormString(data, 'toFacilityId'),
+        fromFacilityId: getOptionalFormString(data, 'fromFacilityId'),
+        occurredAtUtc: riyadhDateTimeLocalToUtc(getFormString(data, 'occurredAtUtc')),
+        externalEventId: getFormString(data, 'externalEventId').trim(),
       }],
     }))}>
       <h2>استيراد حركة مضبوطة</h2>
