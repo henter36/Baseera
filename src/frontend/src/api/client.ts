@@ -1153,12 +1153,18 @@ export type OccupancyCapacityType = (typeof OccupancyCapacityType)[keyof typeof 
 
 export const OccupancySourceType = {
   Manual: 0,
+  ExternalSystem: 1,
   Import: 2,
+  Reconciliation: 3,
 } as const
 export type OccupancySourceType = (typeof OccupancySourceType)[keyof typeof OccupancySourceType]
 
 export const CensusQualityStatus = {
   Complete: 0,
+  Partial: 1,
+  Stale: 2,
+  Missing: 3,
+  Conflicting: 4,
 } as const
 export type CensusQualityStatus = (typeof CensusQualityStatus)[keyof typeof CensusQualityStatus]
 
@@ -1202,6 +1208,8 @@ export type OccupancyMovementImportRow = {
   movementType: OccupancyMovementType
   fromFacilityId?: string
   toFacilityId?: string
+  fromFacilityUnitId?: string
+  toFacilityUnitId?: string
   occurredAtUtc: string
   externalEventId: string
 }

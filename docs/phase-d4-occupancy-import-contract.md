@@ -18,8 +18,8 @@ Rules:
 - `externalEventId` is idempotent per source.
 - `sourceSystem` and `externalEventId` are trimmed before comparison and persistence.
 - Duplicate rows inside the same request are counted in the immediate `duplicateRows` result and are not added to the database.
-- Events that already exist in the database are counted in `duplicateRows` using one bounded lookup per import request.
-- Concurrent imports rely on the SQL Server unique constraint as the final authority; a duplicate race is converted to `duplicateRows` and unrelated database errors are not swallowed.
+- Events that already exist in the database are counted in `duplicateRows` using an initial bounded lookup for the import request.
+- Concurrent imports rely on the SQL Server unique constraint as the final authority. When a duplicate race occurs, the service performs one recovery reload of the existing keys, converts rows that became persisted to `duplicateRows`, retries only rows that remain new, and does not swallow unrelated database errors.
 - Admission requires a target facility.
 - Release requires a source facility.
 - Internal transfer requires source and target units. Facility identifiers may be omitted when both units are in the requested facility.

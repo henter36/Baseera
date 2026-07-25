@@ -144,7 +144,7 @@ describe('FacilityOccupancyPage', () => {
   it('uses fresh query times when mutations invalidate occupancy data', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     renderPage()
-    await screen.findByText('مرتفع')
+    await waitFor(() => expect(summary).toHaveBeenCalled())
     expect(summary).toHaveBeenLastCalledWith('facility-a', { asOfUtc: '2026-07-24T10:00:00.000Z' })
 
     vi.setSystemTime(new Date('2026-07-24T10:05:00.000Z'))
@@ -167,7 +167,7 @@ describe('FacilityOccupancyPage', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     recordSnapshot.mockRejectedValueOnce(new ApiError(400, 'وقت الالتقاط مطلوب.'))
     renderPage()
-    await screen.findByText('مرتفع')
+    await waitFor(() => expect(summary).toHaveBeenCalled())
 
     await user.type(screen.getByLabelText('وقت الالتقاط'), '2026-07-24T14:30')
     await user.type(screen.getAllByLabelText('العدد')[1], '97')
@@ -180,7 +180,7 @@ describe('FacilityOccupancyPage', () => {
   it('maps movement imports with typed enum values and Riyadh UTC conversion', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     renderPage()
-    await screen.findByText('مرتفع')
+    await waitFor(() => expect(summary).toHaveBeenCalled())
 
     await user.type(screen.getByLabelText('نظام المصدر'), 'inmate-system')
     await user.type(screen.getByLabelText('مرجع الاستيراد'), 'batch-1')
