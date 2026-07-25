@@ -143,6 +143,17 @@
 - يمنع عرض هوية النزيل في Workspace، ولا يمنح `Workspaces.ViewFacility` حق الإشغال دون صلاحيات `Occupancy.*`.
 - لا ينفذ Region/HQ Workspaces، ولا بقية Resource Center خارج الطاقة الاستيعابية، ولا reconciliation workflow كامل.
 
+### Phase D.5 — Facility Resource Readiness Center: Core Assets (Issue #15 جزئيًا، استمرار #11)
+
+- يضيف Domain حقيقيًا للموارد الأساسية عبر `ResourceAsset` وprofiles للمركبات وأجهزة الاتصال والمعدات والأصول الثابتة.
+- يفصل الملكية عن الموقع التشغيلي عبر `ResourcePlacement`، ويحفظ تاريخ الحالة عبر `ResourceStatusEvent`.
+- يضيف أوامر صيانة وbaseline احتياج resource requirements، ويحسب الجاهزية والفجوات من سجلات مصدرية bounded.
+- يدمج الموارد في `facility-operations` داخل قسم الموارد، النبض التشغيلي، قائمة التدخل، Action Center، السجل، وجودة البيانات.
+- يضيف صفحة تشغيلية `/facilities/:facilityId/resources` لإدارة الموارد الأساسية دون CRUD عام.
+- مكتملة محليًا مع Migration واحدة ولقطات Phase D.5 الفعلية؛ تبقى مراجعة PR وCI/SonarCloud بوابات القبول النهائية.
+- لا ينفذ القوى البشرية أو الأسلحة/الذخائر أو العهد الحساسة أو المخزون والمستودعات العامة، ولا Region/HQ Workspaces.
+- لا يغلق Issue #15 أو Issue #11؛ هذه دفعة أولى للموارد الأساسية فقط.
+
 ## المرحلة E — المشاريع والاستراتيجية
 
 مشاريع متعددة المواقع، مبادرات، أهداف، مؤشرات، مستهدفات، لوحة أداء.

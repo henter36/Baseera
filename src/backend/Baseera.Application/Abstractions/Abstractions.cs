@@ -10,6 +10,7 @@ using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
+using Baseera.Domain.Resources;
 
 public interface IBaseeraDbContext
 {
@@ -87,6 +88,16 @@ public interface IBaseeraDbContext
     IQueryable<FacilityCapacityBaseline> FacilityCapacityBaselines { get; }
     IQueryable<InmateCensusSnapshot> InmateCensusSnapshots { get; }
     IQueryable<InmateMovementEvent> InmateMovementEvents { get; }
+    IQueryable<ResourceAsset> ResourceAssets { get; }
+    IQueryable<VehicleProfile> VehicleProfiles { get; }
+    IQueryable<CommunicationDeviceProfile> CommunicationDeviceProfiles { get; }
+    IQueryable<EquipmentProfile> EquipmentProfiles { get; }
+    IQueryable<FacilityAssetProfile> FacilityAssetProfiles { get; }
+    IQueryable<ResourceStatusEvent> ResourceStatusEvents { get; }
+    IQueryable<ResourcePlacement> ResourcePlacements { get; }
+    IQueryable<MaintenanceWorkOrder> MaintenanceWorkOrders { get; }
+    IQueryable<ResourceRequirement> ResourceRequirements { get; }
+    IQueryable<ResourceImportBatch> ResourceImportBatches { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
@@ -97,6 +108,7 @@ public interface IBaseeraDbContext
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);
+    Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default);
 }
 

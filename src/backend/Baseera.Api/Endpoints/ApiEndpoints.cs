@@ -16,17 +16,20 @@ using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Organization;
+using Baseera.Application.Resources;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Notes;
+using Baseera.Domain.Resources;
 using FluentValidation;
 
 public static class ApiEndpoints
 {
     private const string EntityIdRoute = "/{id:guid}";
     private const string ArchiveSuffix = "/archive";
+    private const string SummaryRoute = "/summary";
 
     public static RouteGroupBuilder MapBaseeraApi(this IEndpointRouteBuilder app)
     {
@@ -159,6 +162,7 @@ public static class ApiEndpoints
         MapWorkspaceEndpoints(api);
         MapFormComplianceEndpoints(api);
         MapOccupancyEndpoints(api);
+        MapResourceEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
         MapFormCampaignEndpoints(api);
@@ -171,7 +175,7 @@ public static class ApiEndpoints
     {
         var occupancy = api.MapGroup("/facilities/{facilityId:guid}/occupancy");
 
-        occupancy.MapGet("/summary", async (
+        occupancy.MapGet(SummaryRoute, async (
             Guid facilityId,
             DateTimeOffset? asOfUtc,
             IOccupancyQueryService service,
@@ -223,6 +227,137 @@ public static class ApiEndpoints
             CancellationToken ct) =>
             Results.Ok(await service.ImportMovementsAsync(facilityId, request, ct)))
             .RequireAuthorization(AuthPolicies.OccupancyImport);
+    }
+
+    private static void MapResourceEndpoints(RouteGroupBuilder api)
+    {
+        var resources = api.MapGroup("/facilities/{facilityId:guid}/resources");
+
+        resources.MapGet(SummaryRoute, async (
+            Guid facilityId,
+            IResourceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetSummaryAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesViewSummary);
+
+        resources.MapGet("/categories", async (
+            Guid facilityId,
+            IResourceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetCategoriesAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesViewAssets);
+
+        resources.MapGet("/exceptions", async (
+            Guid facilityId,
+            int? limit,
+            IResourceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetExceptionsAsync(facilityId, limit ?? 20, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesViewAssets);
+
+        resources.MapGet("/units", async (
+            Guid facilityId,
+            IResourceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetUnitDistributionAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesViewAssets);
+
+        resources.MapGet("/timeline", async (
+            Guid facilityId,
+            int? limit,
+            IResourceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetTimelineAsync(facilityId, limit ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesViewMaintenance);
+
+        resources.MapGet("/assets", async (
+            Guid facilityId,
+            ResourceType? resourceType,
+            string? search,
+            int? pageSize,
+            IResourceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListAssetsAsync(facilityId, resourceType, search, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesViewAssets);
+
+        resources.MapGet("/assets/{assetId:guid}", async (
+            Guid facilityId,
+            Guid assetId,
+            IResourceReadinessQueryService service,
+            CancellationToken ct) =>
+        {
+            var asset = await service.GetAssetAsync(facilityId, assetId, ct);
+            return asset is null ? Results.NotFound() : Results.Ok(asset);
+        })
+            .RequireAuthorization(AuthPolicies.ResourcesViewAssets);
+
+        resources.MapPost("/assets", async (
+            Guid facilityId,
+            ResourceAssetCreateRequest request,
+            IResourceAssetCommandService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateAssetAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/resources/assets/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.ResourcesManageAssets);
+
+        resources.MapPost("/assets/{assetId:guid}/status", async (
+            Guid facilityId,
+            Guid assetId,
+            ResourceStatusChangeRequest request,
+            IResourceAssetCommandService service,
+            CancellationToken ct) =>
+        {
+            await service.ChangeStatusAsync(facilityId, assetId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.ResourcesManageStatus);
+
+        resources.MapPost("/assets/{assetId:guid}/placements", async (
+            Guid facilityId,
+            Guid assetId,
+            ResourcePlacementRequest request,
+            IResourceAssetCommandService service,
+            CancellationToken ct) =>
+        {
+            await service.PlaceAssetAsync(facilityId, assetId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.ResourcesManagePlacements);
+
+        resources.MapPost("/maintenance", async (
+            Guid facilityId,
+            MaintenanceWorkOrderRequest request,
+            IMaintenanceWorkOrderService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateWorkOrderAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/resources/maintenance/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.ResourcesManageMaintenance);
+
+        resources.MapPost("/requirements", async (
+            Guid facilityId,
+            ResourceRequirementRequest request,
+            IResourceRequirementService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.RecordRequirementAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/resources/requirements/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.ResourcesManageRequirements);
+
+        resources.MapPost("/import/preview", async (
+            Guid facilityId,
+            ResourceImportPreviewRequest request,
+            IResourceImportService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.PreviewAsync(facilityId, request, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesImport);
+
+        resources.MapPost("/import/confirm", async (
+            Guid facilityId,
+            ResourceImportPreviewRequest request,
+            IResourceImportService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ConfirmAsync(facilityId, request, ct)))
+            .RequireAuthorization(AuthPolicies.ResourcesImport);
     }
 
     private static void MapFormsEndpoints(RouteGroupBuilder api)
@@ -763,7 +898,7 @@ public static class ApiEndpoints
     {
         var dashboard = api.MapGroup("/dashboard/operations");
 
-        dashboard.MapGet("/summary", async (
+        dashboard.MapGet(SummaryRoute, async (
             [AsParameters] OperationalDashboardQuery query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
@@ -857,7 +992,7 @@ public static class ApiEndpoints
     {
         var compliance = api.MapGroup("/form-compliance");
 
-        compliance.MapGet("/summary", async (
+        compliance.MapGet(SummaryRoute, async (
             [AsParameters] FormComplianceQuery query,
             IFormComplianceQueryService service,
             CancellationToken ct) =>

@@ -227,7 +227,7 @@ describe('FacilityWorkspacePage', () => {
     expect(within(urgentList).getAllByRole('listitem')).toHaveLength(4)
     expect(within(urgentList).getByRole('button', { name: /ملاحظة حرجة/ })).toBeEnabled()
     expect(screen.getByText('مسندة أو تحتاج إجراء')).toBeInTheDocument()
-    expect(screen.getByText('نواقص بيانات').nextElementSibling).toHaveTextContent('7')
+    expect(screen.getByText('نواقص بيانات').nextElementSibling).toHaveTextContent('6')
     expect(screen.getByTestId('router-location')).toHaveTextContent('/workspaces/facilities/facility-a')
   })
 
@@ -263,7 +263,8 @@ describe('FacilityWorkspacePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'الموارد والجاهزية' }))
 
     expect(screen.getByRole('heading', { name: 'الموارد والجاهزية' })).toBeInTheDocument()
-    expect(screen.getByText(/لا توجد حاليًا كيانات مركبات أو أسلحة أو أجهزة اتصال أو معدات/)).toBeInTheDocument()
+    expect(screen.getByText('حافلة نقل نزلاء')).toBeInTheDocument()
+    expect(screen.getByText('جاهزية الموارد')).toBeInTheDocument()
     expect(screen.getByTestId('router-location')).toHaveTextContent('section=resources')
   })
 
@@ -622,6 +623,95 @@ const shell = {
       allowedActions: [],
     },
     {
+      widgetKey: 'facility.resources',
+      generatedAtUtc: '2026-07-24T09:00:00Z',
+      dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+      freshness: { status: 2, labelAr: 'جزئية' },
+      confidence: { level: 2, labelAr: 'متوسطة' },
+      scopeSummary: { level: 1, labelAr: 'Facility', facilityId: 'facility-a', isSensitive: false },
+      isPartial: true,
+      warningMessages: ['توجد موارد حرجة غير جاهزة.'],
+      payload: {
+        summary: {
+          facilityId: 'facility-a',
+          totalRegistered: 6,
+          operational: 4,
+          available: 1,
+          standby: 1,
+          inUse: 2,
+          underMaintenance: 1,
+          outOfService: 1,
+          awaitingParts: 1,
+          unknown: 0,
+          retired: 0,
+          required: 17,
+          gap: 13,
+          surplus: 0,
+          readinessRate: 0.2353,
+          availabilityRate: 0.0588,
+          dataCompletenessRate: 0.9,
+          missionCriticalUnavailable: 2,
+          staleRecords: 1,
+          missingDataRecords: 0,
+          freshnessStatus: 'partial',
+          confidenceLevel: 'medium',
+          isPartial: true,
+          warnings: ['توجد موارد حرجة غير جاهزة.'],
+          generatedAtUtc: '2026-07-24T09:00:00Z',
+          dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+        },
+        categories: [{
+          resourceType: 0,
+          resourceTypeCode: 'Vehicle',
+          labelAr: 'المركبات',
+          total: 2,
+          operational: 1,
+          available: 0,
+          underMaintenance: 1,
+          outOfService: 0,
+          awaitingParts: 0,
+          required: 3,
+          gap: 2,
+          readinessRate: 0.3333,
+          freshnessStatus: 'current',
+          confidenceLevel: 'medium',
+        }],
+        exceptions: [{
+          type: 'CriticalResourceUnavailable',
+          resourceAssetId: 'resource-1',
+          resourceType: 0,
+          reference: 'VEH-A1-002',
+          titleAr: 'حافلة نقل نزلاء',
+          severityAr: 'حرجة',
+          priorityRank: 950,
+          reasonAr: 'المورد خارج الخدمة ويؤثر على الجاهزية.',
+          ownerAr: null,
+          dueAtUtc: null,
+          actionLabelAr: 'فتح المورد',
+        }],
+        unitDistribution: [{
+          facilityUnitId: 'unit-1',
+          unitNameAr: 'عنبر أ',
+          vehicles: 1,
+          communicationDevices: 1,
+          equipment: 1,
+          facilityAssets: 0,
+          readinessRate: 0.6667,
+          gap: 1,
+          criticalExceptions: 1,
+        }],
+        timeline: [],
+      },
+      drillDownTargets: [{
+        routeKey: 'facility.resources',
+        labelAr: 'فتح الموارد',
+        routeParameters: { facilityId: 'facility-a' },
+        preservedFilters: { facilityId: 'facility-a' },
+        requiredPermission: 'Resources.ViewSummary',
+      }],
+      allowedActions: [],
+    },
+    {
       widgetKey: 'facility.data-quality',
       generatedAtUtc: '2026-07-24T09:00:00Z',
       dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
@@ -634,7 +724,7 @@ const shell = {
         domains: [
           { key: 'structure', labelAr: 'الهيكل التنظيمي والوحدات', statusCode: 'complete', statusAr: 'متاح', confidenceAr: 'مرتفعة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'يدعم قراءة الوحدة والموقع.' },
           { key: 'occupancy', labelAr: 'الإشغال والنزلاء', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات نزلاء أو سعة معتمدة في النموذج الحالي.', followUpIssue: '#124' },
-          { key: 'resources', labelAr: 'القوى والموارد والجاهزية', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات مخزون موارد تشغيلية للقوى أو المركبات أو الأسلحة أو الاتصالات.', followUpIssue: '#15' },
+          { key: 'resources', labelAr: 'القوى والموارد والجاهزية', statusCode: 'partial', statusAr: 'جزئي', confidenceAr: 'متوسطة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'توجد موارد أساسية وجاهزية جزئية مع فجوات احتياج.', followUpIssue: '#15' },
           { key: 'incidents', labelAr: 'الوقوعات والحوادث', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.', followUpIssue: '#127' },
           { key: 'risks', labelAr: 'المخاطر والمعالجات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد Risk/RiskTreatment engine في النطاق الحالي.', followUpIssue: '#16' },
           { key: 'projects', labelAr: 'المشاريع والمبادرات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات Project أو Initiative مرتبطة بالسجن.', followUpIssue: '#126' },

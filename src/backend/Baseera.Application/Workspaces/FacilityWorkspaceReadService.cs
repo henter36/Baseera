@@ -4,6 +4,7 @@ using Baseera.Application.Abstractions;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Occupancy;
+using Baseera.Application.Resources;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Escalations;
 using Baseera.Domain.Identity;
@@ -19,10 +20,24 @@ internal interface IFacilityWorkspaceReadService
     Task<FacilityAlertsEscalationsPayload> GetAlertsEscalationsAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityFormCompliancePayload> GetFormComplianceAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken);
+    Task<ResourceWorkspacePayload> GetResourcesAsync(WorkspaceContext context, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Resource workspace read is not implemented by this test double.");
     Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityRecentActivityPayload> GetRecentActivityAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityDataQualityPayload> GetDataQualityAsync(WorkspaceContext context, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Groups facility-level operational domain query services so the workspace read service
+/// constructor stays within Sonar parameter limits without using a service locator.
+/// </summary>
+internal sealed class FacilityWorkspaceFacilityDomainQueries(
+    IOccupancyQueryService occupancy,
+    IResourceReadinessQueryService resources)
+{
+    public IOccupancyQueryService Occupancy { get; } = occupancy;
+    public IResourceReadinessQueryService Resources { get; } = resources;
 }
 
 internal sealed class FacilityWorkspaceReadService(
@@ -31,7 +46,7 @@ internal sealed class FacilityWorkspaceReadService(
     OperationalDashboardFilterBuilder dashboardFilters,
     IOperationalDashboardQueryService dashboard,
     IFormComplianceQueryService formCompliance,
-    IOccupancyQueryService occupancy,
+    FacilityWorkspaceFacilityDomainQueries facilityDomain,
     TimeProvider timeProvider) : IFacilityWorkspaceReadService
 {
     private const int PriorityLimit = 10;
@@ -69,7 +84,10 @@ internal sealed class FacilityWorkspaceReadService(
             var occupancyPayload = currentUser.HasPermission(PermissionCodes.OccupancyViewSummary)
                 ? await GetOccupancyAsync(context, cancellationToken)
                 : null;
-            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload);
+            var resourcePayload = currentUser.HasPermission(PermissionCodes.ResourcesViewSummary)
+                ? await GetResourcesAsync(context, cancellationToken)
+                : null;
+            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload);
         });
     }
 
@@ -106,10 +124,18 @@ internal sealed class FacilityWorkspaceReadService(
     public async Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
         return await GetOrAddAsync($"occupancy:{CacheKey(context)}", async () =>
-            await occupancy.GetWorkspacePayloadAsync(
+            await facilityDomain.Occupancy.GetWorkspacePayloadAsync(
                 FacilityWorkspaceContextGuard.RequireFacilityId(context),
                 context.FromUtc,
                 context.ToUtc,
+                cancellationToken));
+    }
+
+    public async Task<ResourceWorkspacePayload> GetResourcesAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"resources:{CacheKey(context)}", async () =>
+            await facilityDomain.Resources.GetWorkspacePayloadAsync(
+                FacilityWorkspaceContextGuard.RequireFacilityId(context),
                 cancellationToken));
     }
 
@@ -130,6 +156,10 @@ internal sealed class FacilityWorkspaceReadService(
             if (currentUser.HasPermission(PermissionCodes.OccupancyViewSummary))
             {
                 items.AddRange(await BuildOccupancyPriorityItemsAsync(context, now, cancellationToken));
+            }
+            if (currentUser.HasPermission(PermissionCodes.ResourcesViewSummary))
+            {
+                items.AddRange(await BuildResourcePriorityItemsAsync(context, cancellationToken));
             }
 
             return new FacilityPriorityQueuePayload(
@@ -158,6 +188,10 @@ internal sealed class FacilityWorkspaceReadService(
             if (currentUser.HasPermission(PermissionCodes.OccupancyViewMovements))
             {
                 events.AddRange(await BuildRecentOccupancyEventsAsync(context, cancellationToken));
+            }
+            if (currentUser.HasPermission(PermissionCodes.ResourcesViewMaintenance))
+            {
+                events.AddRange(await BuildRecentResourceEventsAsync(context, cancellationToken));
             }
 
             return new FacilityRecentActivityPayload(
@@ -229,7 +263,6 @@ internal sealed class FacilityWorkspaceReadService(
                 AvailableDomain("corrective-actions", "الإجراءات التصحيحية", metrics.CorrectiveActions.OpenActions, context.ToUtc, "يدخل في العمل العاجل وخط الحالة."),
                 AvailableDomain("escalations", "التصعيدات والتنبيهات", metrics.Alerts.OpenEscalations + metrics.Alerts.PersonalUnreadNotifications, metrics.Alerts.LastEscalationProcessedAtUtc ?? context.ToUtc, "التنبيهات الشخصية منفصلة عن حالة المنشأة."),
                 AvailableDomain("forms", "النماذج والالتزام", metrics.FormCompliance.TargetedForms, context.ToUtc, "يعتمد على قواعد لوحة الالتزام الحالية."),
-                MissingDomain("resources", "القوى والموارد والجاهزية", "لا توجد كيانات مخزون موارد تشغيلية للقوى أو المركبات أو الأسلحة أو الاتصالات.", "#15"),
                 MissingDomain("incidents", "الوقوعات والحوادث", "لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.", "#127"),
                 MissingDomain("risks", "المخاطر والمعالجات", "لا يوجد Risk/RiskTreatment engine في النطاق الحالي.", "#16"),
                 MissingDomain("projects", "المشاريع والمبادرات", "لا توجد كيانات Project أو Initiative مرتبطة بالسجن.", "#126"),
@@ -240,6 +273,14 @@ internal sealed class FacilityWorkspaceReadService(
             if (metrics.Occupancy is not null)
             {
                 domains.Insert(5, OccupancyDomain(metrics.Occupancy));
+            }
+            if (metrics.Resources is not null)
+            {
+                domains.Insert(6, ResourcesDomain(metrics.Resources));
+            }
+            else
+            {
+                domains.Insert(6, MissingDomain("resources", "الموارد والجاهزية", "لا يملك المستخدم صلاحية عرض الموارد أو لم تُحمّل بيانات المجال.", "#15"));
             }
 
             return new FacilityDataQualityPayload(domains);
@@ -593,6 +634,30 @@ internal sealed class FacilityWorkspaceReadService(
             .ToList();
     }
 
+    private async Task<IReadOnlyList<FacilityPriorityItemPayload>> BuildResourcePriorityItemsAsync(
+        WorkspaceContext context,
+        CancellationToken cancellationToken)
+    {
+        var payload = await GetResourcesAsync(context, cancellationToken);
+        return payload.Exceptions
+            .Take(PriorityLimit)
+            .Select(item => new FacilityPriorityItemPayload
+            {
+                Type = "resource",
+                Reference = item.Reference,
+                TitleAr = item.TitleAr,
+                SeverityAr = item.SeverityAr,
+                PriorityRank = item.PriorityRank,
+                ReasonAr = item.ReasonAr,
+                DueAtUtc = item.DueAtUtc,
+                OverdueDays = null,
+                OwnerAr = item.OwnerAr,
+                ActionLabelAr = item.ActionLabelAr,
+                DrillDownTarget = ResourceTarget(context, item.ResourceAssetId, PermissionCodes.ResourcesViewSummary)
+            })
+            .ToList();
+    }
+
     private async Task<IReadOnlyList<FacilityActivityItemPayload>> BuildRecentNoteEventsAsync(
         IQueryable<OperationalNote> notes,
         CancellationToken cancellationToken)
@@ -724,6 +789,26 @@ internal sealed class FacilityWorkspaceReadService(
         }).ToList();
     }
 
+    private async Task<IReadOnlyList<FacilityActivityItemPayload>> BuildRecentResourceEventsAsync(
+        WorkspaceContext context,
+        CancellationToken cancellationToken)
+    {
+        var payload = await GetResourcesAsync(context, cancellationToken);
+        return payload.Timeline
+            .Take(5)
+            .Select(item => new FacilityActivityItemPayload
+            {
+                EventType = item.EventType,
+                TitleAr = item.TitleAr,
+                DescriptionAr = item.DescriptionAr,
+                OccurredAtUtc = item.OccurredAtUtc,
+                EntityReference = item.EntityReference,
+                Tone = item.Tone,
+                DrillDownTarget = ResourceTarget(context, item.ResourceAssetId, PermissionCodes.ResourcesViewMaintenance)
+            })
+            .ToList();
+    }
+
     private IQueryable<EscalationOccurrence> BuildScopedEscalations(IQueryable<OperationalNote> notes, IQueryable<CorrectiveAction> actions)
     {
         var noteIds = notes.Select(note => note.Id);
@@ -812,6 +897,39 @@ internal sealed class FacilityWorkspaceReadService(
             FollowUpIssue = null
         };
 
+    private static FacilityDataQualityDomainPayload ResourcesDomain(ResourceWorkspacePayload payload)
+    {
+        var (statusCode, statusAr) = ResolveResourcesDataQualityStatus(payload.Summary);
+        return new()
+        {
+            Key = "resources",
+            LabelAr = "الموارد والجاهزية",
+            StatusCode = statusCode,
+            StatusAr = statusAr,
+            ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
+            LastUpdatedAtUtc = payload.Summary.DataEffectiveAtUtc,
+            ImpactAr = payload.Summary.Warnings.Count > 0
+                ? string.Join(" ", payload.Summary.Warnings)
+                : "يدخل في الحالة العامة والعمل العاجل وقسم الموارد.",
+            FollowUpIssue = null
+        };
+    }
+
+    private static (string StatusCode, string StatusAr) ResolveResourcesDataQualityStatus(ResourceSummaryDto summary)
+    {
+        if (summary.TotalRegistered == 0)
+        {
+            return ("missing", "مفقود");
+        }
+
+        if (summary.IsPartial)
+        {
+            return ("partial", "جزئي");
+        }
+
+        return ("complete", "متاح");
+    }
+
     private static DrillDownTarget NoteTarget(Guid noteId) =>
         new("notes.workspace", "فتح الملاحظة", new Dictionary<string, string> { ["noteId"] = noteId.ToString() }, new Dictionary<string, string>(), PermissionCodes.NotesView);
 
@@ -825,7 +943,7 @@ internal sealed class FacilityWorkspaceReadService(
         new(
             "form-compliance.facility",
             "فتح التزام النماذج",
-            new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+            new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             PermissionCodes.FormsViewComplianceDashboard);
 
@@ -836,10 +954,24 @@ internal sealed class FacilityWorkspaceReadService(
             unitId.HasValue
                 ? new Dictionary<string, string>
                 {
-                    ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
+                    [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
                     ["unitId"] = unitId.Value.ToString()
                 }
-                : new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+                : new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+            FacilityWorkspaceDrillDownFilters.Preserve(context),
+            requiredPermission);
+
+    private static DrillDownTarget ResourceTarget(WorkspaceContext context, Guid? assetId, string requiredPermission) =>
+        new(
+            "facility.resources",
+            assetId.HasValue ? "فتح المورد" : "فتح الموارد",
+            assetId.HasValue
+                ? new Dictionary<string, string>
+                {
+                    [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
+                    ["assetId"] = assetId.Value.ToString()
+                }
+                : new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             requiredPermission);
 
@@ -868,6 +1000,8 @@ internal static class FacilityWorkspaceConfidenceMapper
 
 internal static class FacilityWorkspaceDrillDownFilters
 {
+    internal const string FacilityIdParameterName = "facilityId";
+
     public static IReadOnlyDictionary<string, string> Preserve(WorkspaceContext context)
     {
         var filters = new Dictionary<string, string>
@@ -883,7 +1017,7 @@ internal static class FacilityWorkspaceDrillDownFilters
 
         if (context.FacilityId.HasValue)
         {
-            filters["facilityId"] = context.FacilityId.Value.ToString();
+            filters[FacilityIdParameterName] = context.FacilityId.Value.ToString();
         }
 
         return filters;

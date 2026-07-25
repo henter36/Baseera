@@ -256,6 +256,39 @@ internal sealed class FacilityOccupancyWorkspaceWidgetProvider(
     }
 }
 
+internal sealed class FacilityResourcesWorkspaceWidgetProvider(
+    IFacilityWorkspaceReadService readService,
+    TimeProvider timeProvider) : IWorkspaceWidgetProvider
+{
+    public WidgetDefinition Definition { get; } = FacilityWorkspaceWidgetDefinitions.Create(new FacilityWorkspaceWidgetDefinitionSpec
+    {
+        Key = FacilityWorkspaceDefinitionProvider.ResourcesWidgetKey,
+        TitleAr = "الموارد والجاهزية",
+        TitleEn = "Resource Readiness",
+        DescriptionAr = "جاهزية المركبات وأجهزة الاتصال والمعدات والمرافق والاحتياج دون عد مزدوج.",
+        Category = WidgetCategory.Workload,
+        RequiredPermission = PermissionCodes.ResourcesViewSummary,
+        DataCapability = "Resources.Readiness",
+        Size = WidgetSize.Wide
+    });
+
+    public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        var payload = await readService.GetResourcesAsync(context, cancellationToken);
+        var generatedAt = timeProvider.GetUtcNow();
+        var confidence = FacilityWorkspaceConfidenceMapper.ToLevel(payload.Summary.ConfidenceLevel);
+
+        return Envelope(
+            context,
+            Definition.Key,
+            generatedAt,
+            payload,
+            confidence,
+            [new DrillDownTarget("facility.resources", "فتح الموارد", new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() }, FacilityWorkspaceDrillDownFilters.Preserve(context), PermissionCodes.ResourcesViewSummary)],
+            payload.Summary.Warnings);
+    }
+}
+
 internal sealed class FacilityRecentActivityWorkspaceWidgetProvider(
     IFacilityWorkspaceReadService readService,
     TimeProvider timeProvider) : IWorkspaceWidgetProvider

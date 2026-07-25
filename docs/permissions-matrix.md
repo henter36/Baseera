@@ -159,6 +159,31 @@
 
 `Workspaces.ViewFacility` لا يمنح أي صلاحية إشغال بمفرده. Missing permission للـendpoint المباشر تعود `403`، وخارج النطاق يعود `404`.
 
+## صلاحيات جاهزية الموارد الأساسية (Phase D.5)
+
+تنطبق على المركبات وأجهزة الاتصال والمعدات التشغيلية/الأمنية غير المصنفة كأسلحة والأصول الثابتة فقط. لا تشمل القوى البشرية، الأسلحة، العهد الحساسة، المخزون العام، أو المشتريات المالية.
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Regional Coordinator | Facility Director | Facility Coordinator | Fleet Officer |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:---------------------:|:-----------------:|:--------------------:|:-------------:|
+| Resources.ViewSummary | عرض ملخص الجاهزية والفجوات | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ViewAssets | عرض سجلات الموارد غير الحساسة (مع صلاحية النوع) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ViewVehicles | عرض تفاصيل المركبات (يشمل لوحة المركبة) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ViewCommunicationDevices | عرض أجهزة الاتصال | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ViewEquipment | عرض المعدات التشغيلية والأمنية غير المصنفة كأسلحة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ViewFacilityAssets | عرض المرافق والأصول الثابتة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ManageAssets | إنشاء وتحديث تعريف المورد | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Resources.ManagePlacements | إدارة الموقع التشغيلي والموضع | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Resources.ManageStatus | تغيير حالة المورد | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Resources.ViewMaintenance | عرض الصيانة والسجل المرتبط | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ManageMaintenance | إنشاء أوامر الصيانة وإدارتها | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Resources.ViewRequirements | عرض baseline الاحتياج والفجوة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ManageRequirements | إدارة احتياجات الموارد | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Resources.Import | استيراد الموارد مع preview/confirm | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+| Resources.Export | تصدير بيانات الموارد | ✓ | | ✓ | | | | | |
+| Resources.Reconcile | مصالحة بيانات الموارد مستقبلًا | ✓ | | ✓ | ✓ | | ✓ | | ✓ |
+
+`Workspaces.ViewFacility` لا يمنح أي صلاحية موارد بمفرده. المستخدم غير المخول لا يرى قسم الموارد أو أعداده داخل مساحة السجن، والـendpoint المباشر يعيد `403` عند نقص الصلاحية و`404` عند الخروج من النطاق.
+
 Capabilities النوع:
 
 - CanView

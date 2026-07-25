@@ -27,6 +27,7 @@ const WORKSPACE_ROUTE_MAP = {
   'escalations.occurrences': '/settings/escalations/occurrences',
   'form-compliance.facility': '/form-compliance/facilities/:facilityId',
   'facility.occupancy': '/facilities/:facilityId/occupancy',
+  'facility.resources': '/facilities/:facilityId/resources',
 } as const
 
 export function WorkspaceShell({

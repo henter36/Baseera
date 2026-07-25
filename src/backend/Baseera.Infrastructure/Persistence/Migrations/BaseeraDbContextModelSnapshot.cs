@@ -24,6 +24,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
             modelBuilder.HasSequence("CorrectiveActionReferenceSequence");
 
+            modelBuilder.HasSequence("MaintenanceWorkOrderNumberSequence");
+
             modelBuilder.HasSequence("OperationalNoteReferenceSequence");
 
             modelBuilder.Entity("Baseera.Domain.Attachments.Attachment", b =>
@@ -4651,6 +4653,790 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.ToTable("Regions", (string)null);
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Resources.CommunicationDeviceProfile", b =>
+                {
+                    b.Property<Guid>("ResourceAssetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BatteryCondition")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("CallSign")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("CoverageStatus")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("DeviceCategory")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("EncryptionCapability")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("FrequencyGroup")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("NetworkType")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("SimOrLineReference")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.HasKey("ResourceAssetId");
+
+                    b.HasIndex("AssignedUnitId");
+
+                    b.ToTable("CommunicationDeviceProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.EquipmentProfile", b =>
+                {
+                    b.Property<Guid>("ResourceAssetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CalibrationDueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("CalibrationRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("EquipmentCategory")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("InspectionDueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("InspectionRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Portable")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("QuantityUnit")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<bool>("SafetyCritical")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Specification")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("ResourceAssetId");
+
+                    b.HasIndex("EquipmentCategory", "CalibrationDueAtUtc");
+
+                    b.HasIndex("EquipmentCategory", "InspectionDueAtUtc");
+
+                    b.ToTable("EquipmentProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.FacilityAssetProfile", b =>
+                {
+                    b.Property<Guid>("ResourceAssetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AssetCategory")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("BuildingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CapacityUnit")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<decimal?>("CapacityValue")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("FixedAsset")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("InspectionDueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("InstalledAtLocation")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("RequiresPeriodicInspection")
+                        .HasColumnType("bit");
+
+                    b.HasKey("ResourceAssetId");
+
+                    b.HasIndex("BuildingId");
+
+                    b.HasIndex("FacilityUnitId");
+
+                    b.ToTable("FacilityAssetProfiles", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FacilityAssetProfiles_Capacity_NonNegative", "[CapacityValue] IS NULL OR [CapacityValue] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.MaintenanceWorkOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedToUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CompletionSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("DowntimeMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ExpectedCompletionAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaintenanceType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("PartsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProblemDescription")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("ReportedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("ReportedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ResourceAssetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("StartedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VendorReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset?>("WaitingForPartsSinceUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("WorkOrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("ReportedByUserId");
+
+                    b.HasIndex("OrganizationId", "WorkOrderNumber")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("ResourceAssetId", "Status", "ExpectedCompletionAtUtc");
+
+                    b.ToTable("MaintenanceWorkOrders", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MaintenanceWorkOrders_AwaitingParts_Date", "[PartsRequired] = 0 OR [WaitingForPartsSinceUtc] IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_MaintenanceWorkOrders_Dates", "[CompletedAtUtc] IS NULL OR [CompletedAtUtc] >= [ReportedAtUtc]");
+
+                            t.HasCheckConstraint("CK_MaintenanceWorkOrders_Downtime_NonNegative", "[DowntimeMinutes] IS NULL OR [DowntimeMinutes] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("AcquisitionDateUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AssetCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset?>("CommissionedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Condition")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Criticality")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CurrentStatus")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("CustodianUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset?>("ExpectedEndOfLifeUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("LastVerifiedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LastVerifiedBy")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int?>("ManufactureYear")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Manufacturer")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid?>("OperationalFacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OperationalFacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OwnershipOrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ResourceType")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SerialNumber")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustodianUserId");
+
+                    b.HasIndex("OwnershipOrganizationId");
+
+                    b.HasIndex("OperationalFacilityId", "OperationalFacilityUnitId");
+
+                    b.HasIndex("OperationalFacilityUnitId", "CurrentStatus");
+
+                    b.HasIndex("OrganizationId", "AssetCode")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("OperationalFacilityId", "ResourceType", "CurrentStatus");
+
+                    b.ToTable("ResourceAssets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourceAssets_ManufactureYear", "[ManufactureYear] IS NULL OR ([ManufactureYear] >= 1950 AND [ManufactureYear] <= 2100)");
+
+                            t.HasCheckConstraint("CK_ResourceAssets_UnitRequiresFacility", "[OperationalFacilityUnitId] IS NULL OR [OperationalFacilityId] IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AppliedRows")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DuplicateRows")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("RejectedRows")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("SourceSystem")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("SubmittedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("SubmittedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ValidRows")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubmittedByUserId");
+
+                    b.HasIndex("FacilityId", "SourceSystem", "SourceReference", "FileHash")
+                        .IsUnique();
+
+                    b.ToTable("ResourceImportBatches", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourceImportBatches_AppliedRows", "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
+
+                            t.HasCheckConstraint("CK_ResourceImportBatches_Status", "[Status] IN (N'Previewed', N'Confirmed')");
+                            t.HasCheckConstraint("CK_ResourceImportBatches_ConfirmedState", "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] = N'Previewed' AND [AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)");
+
+                            t.HasCheckConstraint("CK_ResourceImportBatches_RowTotals", "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourcePlacement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedToUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AssignmentType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("OperationalFacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OperationalFacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OwnershipOrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("ResourceAssetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("OwnershipOrganizationId");
+
+                    b.HasIndex("ResourceAssetId")
+                        .IsUnique()
+                        .HasFilter("[EffectiveToUtc] IS NULL");
+
+                    b.HasIndex("OperationalFacilityId", "OperationalFacilityUnitId", "EffectiveFromUtc");
+
+                    b.ToTable("ResourcePlacements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourcePlacements_EffectiveRange", "[EffectiveToUtc] IS NULL OR [EffectiveToUtc] > [EffectiveFromUtc]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ApprovalReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MinimumOperationalQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RequiredQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ResourceCategory")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("ResourceType")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("FacilityId", "ResourceType", "ResourceCategory")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ResourceRequirements_FacilityOpen")
+                        .HasFilter("[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NULL");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "ResourceType", "ResourceCategory")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ResourceRequirements_UnitOpen")
+                        .HasFilter("[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NOT NULL");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "ResourceType", "ResourceCategory", "EffectiveFromUtc");
+
+                    b.ToTable("ResourceRequirements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ResourceRequirements_EffectiveRange", "[EffectiveToUtc] IS NULL OR [EffectiveToUtc] > [EffectiveFromUtc]");
+
+                            t.HasCheckConstraint("CK_ResourceRequirements_Quantities", "[RequiredQuantity] >= 0 AND [MinimumOperationalQuantity] >= 0 AND [MinimumOperationalQuantity] <= [RequiredQuantity]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceStatusEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("NewStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("PreviousStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("RecordedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RelatedMaintenanceWorkOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("RelatedNoteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ResourceAssetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("ResourceAssetId", "OccurredAtUtc");
+
+                    b.ToTable("ResourceStatusEvents", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.VehicleProfile", b =>
+                {
+                    b.Property<Guid>("ResourceAssetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("FuelType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("InspectionExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("InsuranceExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal?>("Odometer")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset?>("OdometerRecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("OperationalRole")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int?>("PassengerCapacity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlateNumber")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int?>("PrisonerTransportCapacity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("RegistrationExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("TrackerExternalId")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<bool>("TrackerInstalled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("VehicleCategory")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VehicleIdentificationNumber")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.HasKey("ResourceAssetId");
+
+                    b.HasIndex("PlateNumber")
+                        .HasFilter("[PlateNumber] <> ''");
+
+                    b.ToTable("VehicleProfiles", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_VehicleProfiles_Odometer_NonNegative", "[Odometer] IS NULL OR [Odometer] >= 0");
+
+                            t.HasCheckConstraint("CK_VehicleProfiles_PassengerCapacity_NonNegative", "[PassengerCapacity] IS NULL OR [PassengerCapacity] >= 0");
+
+                            t.HasCheckConstraint("CK_VehicleProfiles_PrisonerTransportCapacity_NonNegative", "[PrisonerTransportCapacity] IS NULL OR [PrisonerTransportCapacity] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Baseera.Domain.CorrectiveActions.CorrectiveAction", b =>
                 {
                     b.HasOne("Baseera.Domain.Identity.User", "CancelledByUser")
@@ -6210,6 +6996,250 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Resources.CommunicationDeviceProfile", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "AssignedUnit")
+                        .WithMany()
+                        .HasForeignKey("AssignedUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Resources.ResourceAsset", "ResourceAsset")
+                        .WithOne("CommunicationDeviceProfile")
+                        .HasForeignKey("Baseera.Domain.Resources.CommunicationDeviceProfile", "ResourceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AssignedUnit");
+
+                    b.Navigation("ResourceAsset");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.EquipmentProfile", b =>
+                {
+                    b.HasOne("Baseera.Domain.Resources.ResourceAsset", "ResourceAsset")
+                        .WithOne("EquipmentProfile")
+                        .HasForeignKey("Baseera.Domain.Resources.EquipmentProfile", "ResourceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ResourceAsset");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.FacilityAssetProfile", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Building", "Building")
+                        .WithMany()
+                        .HasForeignKey("BuildingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Resources.ResourceAsset", "ResourceAsset")
+                        .WithOne("FacilityAssetProfile")
+                        .HasForeignKey("Baseera.Domain.Resources.FacilityAssetProfile", "ResourceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Building");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("ResourceAsset");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.MaintenanceWorkOrder", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "AssignedToUser")
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "ReportedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReportedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Resources.ResourceAsset", "ResourceAsset")
+                        .WithMany("MaintenanceWorkOrders")
+                        .HasForeignKey("ResourceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AssignedToUser");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("ReportedByUser");
+
+                    b.Navigation("ResourceAsset");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceAsset", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "CustodianUser")
+                        .WithMany()
+                        .HasForeignKey("CustodianUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "OperationalFacility")
+                        .WithMany()
+                        .HasForeignKey("OperationalFacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "OwnershipOrganization")
+                        .WithMany()
+                        .HasForeignKey("OwnershipOrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "OperationalFacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("OperationalFacilityId", "OperationalFacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CustodianUser");
+
+                    b.Navigation("OperationalFacility");
+
+                    b.Navigation("OperationalFacilityUnit");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("OwnershipOrganization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceImportBatch", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "SubmittedByUser")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("SubmittedByUser");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourcePlacement", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "AssignedToUser")
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "OperationalFacility")
+                        .WithMany()
+                        .HasForeignKey("OperationalFacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "OwnershipOrganization")
+                        .WithMany()
+                        .HasForeignKey("OwnershipOrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Resources.ResourceAsset", "ResourceAsset")
+                        .WithMany("Placements")
+                        .HasForeignKey("ResourceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "OperationalFacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("OperationalFacilityId", "OperationalFacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AssignedToUser");
+
+                    b.Navigation("OperationalFacility");
+
+                    b.Navigation("OperationalFacilityUnit");
+
+                    b.Navigation("OwnershipOrganization");
+
+                    b.Navigation("ResourceAsset");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceRequirement", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceStatusEvent", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "RecordedByUser")
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Resources.ResourceAsset", "ResourceAsset")
+                        .WithMany("StatusEvents")
+                        .HasForeignKey("ResourceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RecordedByUser");
+
+                    b.Navigation("ResourceAsset");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.VehicleProfile", b =>
+                {
+                    b.HasOne("Baseera.Domain.Resources.ResourceAsset", "ResourceAsset")
+                        .WithOne("VehicleProfile")
+                        .HasForeignKey("Baseera.Domain.Resources.VehicleProfile", "ResourceAssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ResourceAsset");
+                });
+
             modelBuilder.Entity("Baseera.Domain.CorrectiveActions.CorrectiveAction", b =>
                 {
                     b.Navigation("Assignments");
@@ -6362,6 +7392,23 @@ namespace Baseera.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Baseera.Domain.Organization.Region", b =>
                 {
                     b.Navigation("Facilities");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceAsset", b =>
+                {
+                    b.Navigation("CommunicationDeviceProfile");
+
+                    b.Navigation("EquipmentProfile");
+
+                    b.Navigation("FacilityAssetProfile");
+
+                    b.Navigation("MaintenanceWorkOrders");
+
+                    b.Navigation("Placements");
+
+                    b.Navigation("StatusEvents");
+
+                    b.Navigation("VehicleProfile");
                 });
 #pragma warning restore 612, 618
         }
