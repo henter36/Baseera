@@ -55,9 +55,13 @@ public sealed record MovementSummaryDto
     public required int InternalTransfers { get; init; }
     public required int TemporaryLeave { get; init; }
     public required int Returns { get; init; }
+    public required int Death { get; init; }
+    public required int HospitalTransfers { get; init; }
+    public required int CourtTransfers { get; init; }
+    public required int Corrections { get; init; }
+    public required int OtherMovements { get; init; }
     public required int NetMovement { get; init; }
     public required IReadOnlyList<MovementTrendPointDto> DailyTrend { get; init; }
-    public required int RejectedMovements { get; init; }
 }
 
 public sealed record MovementTrendPointDto(DateOnly Date, int Admissions, int Releases, int TransfersIn, int TransfersOut, int Net);
@@ -88,7 +92,7 @@ public sealed record OccupancyCapacityRequest
     public Guid? FacilityUnitId { get; init; }
     public CapacityType CapacityType { get; init; } = CapacityType.ApprovedOperational;
     public int ApprovedCapacity { get; init; }
-    public DateTimeOffset EffectiveFromUtc { get; init; }
+    public required DateTimeOffset EffectiveFromUtc { get; init; }
     public DateTimeOffset? EffectiveToUtc { get; init; }
     public string? ApprovalReference { get; init; }
     public DateTimeOffset? ApprovalDateUtc { get; init; }
@@ -100,7 +104,7 @@ public sealed record OccupancyCapacityRequest
 public sealed record OccupancySnapshotRequest
 {
     public Guid? FacilityUnitId { get; init; }
-    public DateTimeOffset CapturedAtUtc { get; init; }
+    public required DateTimeOffset CapturedAtUtc { get; init; }
     public int InmateCount { get; init; }
     public int? MaleCount { get; init; }
     public int? FemaleCount { get; init; }

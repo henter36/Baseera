@@ -79,7 +79,7 @@ public sealed class OccupancyService(
 
         var status = OccupancyClassifier.Classify(capacity, snapshot?.InmateCount, options);
         var source = ResolveSource(snapshot);
-        var warnings = BuildSummaryWarnings(capacity, snapshot, units);
+        var warnings = BuildSummaryWarnings(capacity, snapshot, units, asOfUtc);
         var rate = OccupancyClassifier.Rate(capacity, snapshot?.InmateCount);
         int? available = capacity.HasValue && snapshot is not null ? capacity.Value - snapshot.InmateCount : null;
         return new OccupancySummaryDto
@@ -146,46 +146,42 @@ public sealed class OccupancyService(
             .ToListAsync(cancellationToken);
         var counts = events.ToDictionary(e => e.Type, e => e.Count);
 
-        var daily = await db.InmateMovementEvents.AsNoTracking()
+        var dailyByType = await db.InmateMovementEvents.AsNoTracking()
             .Where(e => e.FacilityId == facilityId
                 && !e.IsReversed
                 && e.OccurredAtUtc >= fromUtc
                 && e.OccurredAtUtc <= toUtc)
-            .GroupBy(e => new { e.OccurredAtUtc.Year, e.OccurredAtUtc.Month, e.OccurredAtUtc.Day })
+            .GroupBy(e => new { e.OccurredAtUtc.Year, e.OccurredAtUtc.Month, e.OccurredAtUtc.Day, e.MovementType })
             .Select(g => new
             {
                 g.Key.Year,
                 g.Key.Month,
                 g.Key.Day,
-                Admissions = g.Count(e => e.MovementType == MovementType.Admission || e.MovementType == MovementType.TransferIn || e.MovementType == MovementType.ReturnFromLeave),
-                Releases = g.Count(e => e.MovementType == MovementType.Release || e.MovementType == MovementType.TransferOut || e.MovementType == MovementType.Death || e.MovementType == MovementType.TemporaryLeave),
-                TransfersIn = g.Count(e => e.MovementType == MovementType.TransferIn),
-                TransfersOut = g.Count(e => e.MovementType == MovementType.TransferOut)
+                g.Key.MovementType,
+                Count = g.Count()
             })
             .OrderBy(g => g.Year).ThenBy(g => g.Month).ThenBy(g => g.Day)
             .Take(60)
             .ToListAsync(cancellationToken);
 
-        var admissions = Count(counts, MovementType.Admission) + Count(counts, MovementType.TransferIn) + Count(counts, MovementType.ReturnFromLeave);
-        var releases = Count(counts, MovementType.Release) + Count(counts, MovementType.TransferOut) + Count(counts, MovementType.TemporaryLeave) + Count(counts, MovementType.Death);
+        var admissions = CountByFlow(counts, MovementFlow.Inflow);
+        var releases = CountByFlow(counts, MovementFlow.Outflow);
         return new MovementSummaryDto
         {
-            Admissions = Count(counts, MovementType.Admission),
-            Releases = Count(counts, MovementType.Release),
+            Admissions = admissions,
+            Releases = releases,
             TransferIn = Count(counts, MovementType.TransferIn),
             TransferOut = Count(counts, MovementType.TransferOut),
             InternalTransfers = Count(counts, MovementType.InternalTransfer),
             TemporaryLeave = Count(counts, MovementType.TemporaryLeave),
             Returns = Count(counts, MovementType.ReturnFromLeave),
+            Death = Count(counts, MovementType.Death),
+            HospitalTransfers = Count(counts, MovementType.HospitalTransfer),
+            CourtTransfers = Count(counts, MovementType.CourtTransfer),
+            Corrections = Count(counts, MovementType.Correction),
+            OtherMovements = Count(counts, MovementType.Other),
             NetMovement = admissions - releases,
-            DailyTrend = daily.Select(d => new MovementTrendPointDto(
-                new DateOnly(d.Year, d.Month, d.Day),
-                d.Admissions,
-                d.Releases,
-                d.TransfersIn,
-                d.TransfersOut,
-                d.Admissions - d.Releases)).ToList(),
-            RejectedMovements = 0
+            DailyTrend = BuildDailyTrend(dailyByType.Select(row => new DailyMovementProjection(row.Year, row.Month, row.Day, row.MovementType, row.Count)).ToList())
         };
     }
 
@@ -269,14 +265,16 @@ public sealed class OccupancyService(
     {
         Require(PermissionCodes.OccupancyImport);
         var facility = await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
+        var sourceSystem = NormalizeRequired(request.SourceSystem, "نظام المصدر مطلوب.");
         if (request.Rows.Count > 100)
         {
             throw new ArgumentException("حد الاستيراد في الطلب الواحد هو 100 حركة.");
         }
 
-        var accepted = 0;
         var duplicates = 0;
         var rejected = new List<string>();
+        var seenInRequest = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var candidates = new List<MovementImportCandidate>();
         foreach (var row in request.Rows)
         {
             var validation = ValidateMovementRow(facilityId, row);
@@ -286,41 +284,66 @@ public sealed class OccupancyService(
                 continue;
             }
 
-            var duplicate = await db.InmateMovementEvents.AnyAsync(e =>
-                e.SourceType == OccupancySourceType.Import
-                && e.SourceReference == request.SourceSystem
-                && e.ExternalEventId == row.ExternalEventId,
-                cancellationToken);
-            if (duplicate)
+            await EnsureInternalTransferUnitsBelongAsync(facilityId, row, cancellationToken);
+            var externalEventId = NormalizeRequired(row.ExternalEventId, "معرف الحدث الخارجي مطلوب.");
+            var idempotencyKey = $"{sourceSystem}\u001f{externalEventId}";
+            if (!seenInRequest.Add(idempotencyKey))
             {
                 duplicates++;
                 continue;
             }
 
-            db.Add(new InmateMovementEvent
-            {
-                OrganizationId = facility.OrganizationId,
-                FacilityId = facilityId,
-                InmateReferenceHash = row.InmateReferenceHash.Trim(),
-                MovementType = row.MovementType,
-                FromFacilityId = row.FromFacilityId,
-                ToFacilityId = row.ToFacilityId,
-                FromFacilityUnitId = row.FromFacilityUnitId,
-                ToFacilityUnitId = row.ToFacilityUnitId,
-                OccurredAtUtc = row.OccurredAtUtc,
-                RecordedAtUtc = timeProvider.GetUtcNow(),
-                SourceType = OccupancySourceType.Import,
-                SourceReference = request.SourceSystem.Trim(),
-                ExternalEventId = row.ExternalEventId.Trim(),
-                ReasonCode = row.ReasonCode,
-                CreatedBy = currentUser.ExternalSubject
-            });
-            accepted++;
+            candidates.Add(new MovementImportCandidate(row, externalEventId));
         }
 
-        await db.SaveChangesAsync(cancellationToken);
-        await AuditAsync("Occupancy.MovementImported", "InmateMovementEvent", facilityId, cancellationToken);
+        if (candidates.Count == 0)
+        {
+            return new OccupancyImportResult(0, duplicates, rejected);
+        }
+
+        var existingIds = await LoadExistingMovementEventIdsAsync(sourceSystem, candidates.Select(candidate => candidate.ExternalEventId).ToArray(), cancellationToken);
+        var newCandidates = candidates.Where(candidate => !existingIds.Contains(candidate.ExternalEventId)).ToList();
+        duplicates += candidates.Count - newCandidates.Count;
+
+        var accepted = await SaveMovementCandidatesAsync(facility, sourceSystem, newCandidates, cancellationToken);
+        duplicates += newCandidates.Count - accepted;
         return new OccupancyImportResult(accepted, duplicates, rejected);
+    }
+
+    private async Task<int> SaveMovementCandidatesAsync(
+        FacilityScopeProjection facility,
+        string sourceSystem,
+        List<MovementImportCandidate> candidates,
+        CancellationToken cancellationToken)
+    {
+        var remaining = candidates;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (remaining.Count == 0)
+            {
+                return 0;
+            }
+
+            foreach (var candidate in remaining)
+            {
+                db.Add(CreateMovementEvent(facility, sourceSystem, candidate));
+            }
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                await AuditAsync("Occupancy.MovementImported", "InmateMovementEvent", facility.Id, cancellationToken);
+                return remaining.Count;
+            }
+            catch (DbUpdateException ex) when (SqlServerOccupancyUniqueConstraintDetector.IsMovementImportDuplicate(ex) && attempt == 0)
+            {
+                db.ClearChanges();
+                var existingIds = await LoadExistingMovementEventIdsAsync(sourceSystem, remaining.Select(candidate => candidate.ExternalEventId).ToArray(), cancellationToken);
+                remaining = remaining.Where(candidate => !existingIds.Contains(candidate.ExternalEventId)).ToList();
+            }
+        }
+
+        return 0;
     }
 
     private IQueryable<FacilityCapacityBaseline> LatestCapacityQuery(Guid facilityId, Guid? unitId, DateTimeOffset asOfUtc) =>
@@ -464,6 +487,62 @@ public sealed class OccupancyService(
         };
     }
 
+    private async Task<HashSet<string>> LoadExistingMovementEventIdsAsync(
+        string sourceSystem,
+        IReadOnlyCollection<string> externalEventIds,
+        CancellationToken cancellationToken)
+    {
+        if (externalEventIds.Count == 0)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var rows = await db.InmateMovementEvents.AsNoTracking()
+            .Where(e => e.SourceType == OccupancySourceType.Import
+                && e.SourceReference == sourceSystem
+                && e.ExternalEventId != null
+                && externalEventIds.Contains(e.ExternalEventId))
+            .Select(e => e.ExternalEventId)
+            .ToListAsync(cancellationToken);
+
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in rows)
+        {
+            if (id is not null)
+            {
+                result.Add(id);
+            }
+        }
+
+        return result;
+    }
+
+    private InmateMovementEvent CreateMovementEvent(
+        FacilityScopeProjection facility,
+        string sourceSystem,
+        MovementImportCandidate candidate)
+    {
+        var row = candidate.Row;
+        return new InmateMovementEvent
+        {
+            OrganizationId = facility.OrganizationId,
+            FacilityId = facility.Id,
+            InmateReferenceHash = NormalizeRequired(row.InmateReferenceHash, "مرجع النزيل المموه مطلوب."),
+            MovementType = row.MovementType,
+            FromFacilityId = row.FromFacilityId,
+            ToFacilityId = row.ToFacilityId,
+            FromFacilityUnitId = row.FromFacilityUnitId,
+            ToFacilityUnitId = row.ToFacilityUnitId,
+            OccurredAtUtc = row.OccurredAtUtc,
+            RecordedAtUtc = timeProvider.GetUtcNow(),
+            SourceType = OccupancySourceType.Import,
+            SourceReference = sourceSystem,
+            ExternalEventId = candidate.ExternalEventId,
+            ReasonCode = row.ReasonCode,
+            CreatedBy = currentUser.ExternalSubject
+        };
+    }
+
     private async Task<FacilityScopeProjection> EnsureFacilityVisibleAsync(Guid facilityId, CancellationToken cancellationToken)
     {
         if (!scope.CanAccessFacility(facilityId))
@@ -493,6 +572,17 @@ public sealed class OccupancyService(
         }
     }
 
+    private async Task EnsureInternalTransferUnitsBelongAsync(Guid facilityId, InmateMovementImportRow row, CancellationToken cancellationToken)
+    {
+        if (row.MovementType != MovementType.InternalTransfer)
+        {
+            return;
+        }
+
+        await EnsureUnitBelongsAsync(facilityId, row.FromFacilityUnitId, cancellationToken);
+        await EnsureUnitBelongsAsync(facilityId, row.ToFacilityUnitId, cancellationToken);
+    }
+
     private void Require(string permission)
     {
         if (!currentUser.HasPermission(permission))
@@ -504,34 +594,51 @@ public sealed class OccupancyService(
     private static void ValidateCapacity(OccupancyCapacityRequest request)
     {
         if (request.ApprovedCapacity <= 0) throw new ArgumentException("الطاقة المعتمدة يجب أن تكون أكبر من صفر.");
+        if (request.EffectiveFromUtc == default) throw new ArgumentException("تاريخ بداية سريان الطاقة مطلوب.");
         if (request.EffectiveToUtc.HasValue && request.EffectiveToUtc <= request.EffectiveFromUtc) throw new ArgumentException("نهاية السريان يجب أن تكون بعد بدايته.");
         if (string.IsNullOrWhiteSpace(request.SourceReference)) throw new ArgumentException("مرجع المصدر مطلوب.");
     }
 
     private static void ValidateSnapshot(OccupancySnapshotRequest request)
     {
+        if (request.CapturedAtUtc == default) throw new ArgumentException("وقت التقاط Snapshot الإشغال مطلوب.");
         if (request.InmateCount < 0) throw new ArgumentException("عدد النزلاء لا يمكن أن يكون سالبًا.");
         if (string.IsNullOrWhiteSpace(request.SourceReference)) throw new ArgumentException("مرجع المصدر مطلوب.");
+    }
+
+    private static string NormalizeRequired(string value, string message)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException(message);
+        }
+
+        return value.Trim();
     }
 
     private static string? ValidateMovementRow(Guid facilityId, InmateMovementImportRow row)
     {
         if (string.IsNullOrWhiteSpace(row.InmateReferenceHash)) return "مرجع النزيل المموه مطلوب.";
         if (string.IsNullOrWhiteSpace(row.ExternalEventId)) return "معرف الحدث الخارجي مطلوب.";
+        if (row.OccurredAtUtc == default) return "وقت الحركة مطلوب.";
         if (row.MovementType == MovementType.Admission && row.ToFacilityId is null) return "الدخول يتطلب وجهة.";
         if (row.MovementType == MovementType.Release && row.FromFacilityId is null) return "الإفراج يتطلب مصدرًا.";
         if (row.MovementType == MovementType.InternalTransfer && (row.FromFacilityUnitId is null || row.ToFacilityUnitId is null)) return "النقل الداخلي يتطلب وحدتين.";
-        if (row.FromFacilityId == row.ToFacilityId && row.FromFacilityUnitId == row.ToFacilityUnitId) return "لا يمكن تسجيل نقل إلى نفس النطاق.";
-        if (row.FromFacilityId != facilityId && row.ToFacilityId != facilityId) return "الحركة لا تخص السجن المطلوب.";
+        var hasMovementScope = row.FromFacilityId.HasValue
+            || row.ToFacilityId.HasValue
+            || row.FromFacilityUnitId.HasValue
+            || row.ToFacilityUnitId.HasValue;
+        if (hasMovementScope && row.FromFacilityId == row.ToFacilityId && row.FromFacilityUnitId == row.ToFacilityUnitId) return "لا يمكن تسجيل نقل إلى نفس النطاق.";
+        if ((row.FromFacilityId.HasValue || row.ToFacilityId.HasValue) && row.FromFacilityId != facilityId && row.ToFacilityId != facilityId) return "الحركة لا تخص السجن المطلوب.";
         return null;
     }
 
-    private IReadOnlyList<string> BuildSummaryWarnings(int? capacity, SnapshotProjection? snapshot, OccupancyUnitBreakdownDto units)
+    private static IReadOnlyList<string> BuildSummaryWarnings(int? capacity, SnapshotProjection? snapshot, OccupancyUnitBreakdownDto units, DateTimeOffset asOfUtc)
     {
         var warnings = new List<string>();
         if (!capacity.HasValue) warnings.Add("لا توجد طاقة تشغيلية معتمدة للسجن.");
         if (snapshot is null) warnings.Add("لا يوجد Snapshot إشغال موثوق للسجن.");
-        if (snapshot is not null && Freshness(snapshot.CapturedAtUtc, timeProvider.GetUtcNow()) == "stale") warnings.Add("آخر Snapshot إشغال قديم.");
+        if (snapshot is not null && Freshness(snapshot.CapturedAtUtc, asOfUtc) == "stale") warnings.Add("آخر Snapshot إشغال قديم.");
         if (units.Units.Any(u => u.StatusCode == OccupancyStatusCodes.Unknown)) warnings.Add("بعض الوحدات لا تحتوي طاقة أو عددًا موثوقًا.");
         return warnings;
     }
@@ -602,6 +709,28 @@ public sealed class OccupancyService(
     private static int Count(IReadOnlyDictionary<MovementType, int> counts, MovementType type) =>
         counts.TryGetValue(type, out var count) ? count : 0;
 
+    private static int CountByFlow(IReadOnlyDictionary<MovementType, int> counts, MovementFlow flow) =>
+        counts.Where(item => MovementClassifier.Flow(item.Key) == flow).Sum(item => item.Value);
+
+    private static IReadOnlyList<MovementTrendPointDto> BuildDailyTrend(IReadOnlyList<DailyMovementProjection> rows) =>
+        rows.GroupBy(row => new { row.Year, row.Month, row.Day })
+            .OrderBy(group => group.Key.Year)
+            .ThenBy(group => group.Key.Month)
+            .ThenBy(group => group.Key.Day)
+            .Select(group =>
+            {
+                var admissions = group.Where(row => MovementClassifier.Flow(row.MovementType) == MovementFlow.Inflow).Sum(row => row.Count);
+                var releases = group.Where(row => MovementClassifier.Flow(row.MovementType) == MovementFlow.Outflow).Sum(row => row.Count);
+                return new MovementTrendPointDto(
+                    new DateOnly(group.Key.Year, group.Key.Month, group.Key.Day),
+                    admissions,
+                    releases,
+                    group.Where(row => row.MovementType == MovementType.TransferIn).Sum(row => row.Count),
+                    group.Where(row => row.MovementType == MovementType.TransferOut).Sum(row => row.Count),
+                    admissions - releases);
+            })
+            .ToList();
+
     private static MovementSummaryDto EmptyMovementSummary() =>
         new()
         {
@@ -612,9 +741,13 @@ public sealed class OccupancyService(
             InternalTransfers = 0,
             TemporaryLeave = 0,
             Returns = 0,
+            Death = 0,
+            HospitalTransfers = 0,
+            CourtTransfers = 0,
+            Corrections = 0,
+            OtherMovements = 0,
             NetMovement = 0,
-            DailyTrend = [],
-            RejectedMovements = 0
+            DailyTrend = []
         };
 
     private static OccupancySourceDisplay ResolveSource(SnapshotProjection? snapshot)
@@ -651,6 +784,8 @@ public sealed class OccupancyService(
     private sealed record UnitCapacityProjection(Guid? UnitId, int ApprovedCapacity, DateTimeOffset EffectiveFromUtc);
     private sealed record UnitSnapshotProjection(Guid? UnitId, int InmateCount, DateTimeOffset CapturedAtUtc, bool IsAuthoritative);
     private sealed record UnitOpenNotesProjection(Guid? UnitId, int Count);
+    private sealed record DailyMovementProjection(int Year, int Month, int Day, MovementType MovementType, int Count);
+    private sealed record MovementImportCandidate(InmateMovementImportRow Row, string ExternalEventId);
 }
 
 internal static class OccupancyStatusCodes
@@ -689,5 +824,49 @@ internal static class OccupancyClassifier
         }
 
         return Math.Round(current.Value / (decimal)capacity.Value, 4);
+    }
+}
+
+internal enum MovementFlow
+{
+    Inflow,
+    Outflow,
+    Neutral
+}
+
+internal static class MovementClassifier
+{
+    public static MovementFlow Flow(MovementType type) =>
+        type switch
+        {
+            MovementType.Admission or MovementType.TransferIn or MovementType.ReturnFromLeave => MovementFlow.Inflow,
+            MovementType.Release or MovementType.TransferOut or MovementType.TemporaryLeave or MovementType.Death => MovementFlow.Outflow,
+            _ => MovementFlow.Neutral
+        };
+}
+
+internal static class SqlServerOccupancyUniqueConstraintDetector
+{
+    private const string MovementImportUniqueIndex = "IX_InmateMovementEvents_SourceType_SourceReference_ExternalEventId";
+
+    public static bool IsMovementImportDuplicate(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            var number = current.GetType().GetProperty("Number")?.GetValue(current);
+            if (number is not (2601 or 2627))
+            {
+                continue;
+            }
+
+            if (current.Message.Contains(MovementImportUniqueIndex, StringComparison.OrdinalIgnoreCase)
+                || (current.Message.Contains("SourceReference", StringComparison.OrdinalIgnoreCase)
+                    && current.Message.Contains("ExternalEventId", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

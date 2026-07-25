@@ -808,8 +808,8 @@ public static class DatabaseInitializer
             return;
         }
 
-        var effectiveFrom = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var capturedAt = new DateTimeOffset(2026, 7, 24, 6, 0, 0, TimeSpan.Zero);
+        var capturedAt = DateTimeOffset.UtcNow;
+        var effectiveFrom = capturedAt.AddMonths(-6);
         db.FacilityCapacityBaselines.AddRange(
             DemoCapacity(null, 300, "CAP-FAC-A1", effectiveFrom),
             DemoCapacity(SeedIds.FacilityA1UnitNorth, 120, "CAP-A1-N", effectiveFrom),

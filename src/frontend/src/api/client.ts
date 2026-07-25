@@ -1130,6 +1130,11 @@ export type OccupancyMovementSummaryPayload = {
   internalTransfers: number
   temporaryLeave: number
   returns: number
+  death: number
+  hospitalTransfers: number
+  courtTransfers: number
+  corrections: number
+  otherMovements: number
   netMovement: number
   dailyTrend: Array<{
     date: string
@@ -1139,7 +1144,78 @@ export type OccupancyMovementSummaryPayload = {
     transfersOut: number
     net: number
   }>
-  rejectedMovements: number
+}
+
+export const OccupancyCapacityType = {
+  ApprovedOperational: 0,
+} as const
+export type OccupancyCapacityType = (typeof OccupancyCapacityType)[keyof typeof OccupancyCapacityType]
+
+export const OccupancySourceType = {
+  Manual: 0,
+  Import: 2,
+} as const
+export type OccupancySourceType = (typeof OccupancySourceType)[keyof typeof OccupancySourceType]
+
+export const CensusQualityStatus = {
+  Complete: 0,
+} as const
+export type CensusQualityStatus = (typeof CensusQualityStatus)[keyof typeof CensusQualityStatus]
+
+export const OccupancyMovementType = {
+  Admission: 0,
+  Release: 1,
+  TransferIn: 2,
+  TransferOut: 3,
+  InternalTransfer: 4,
+  TemporaryLeave: 5,
+  ReturnFromLeave: 6,
+  HospitalTransfer: 7,
+  CourtTransfer: 8,
+  Death: 9,
+  Correction: 10,
+  Other: 99,
+} as const
+export type OccupancyMovementType = (typeof OccupancyMovementType)[keyof typeof OccupancyMovementType]
+
+export type OccupancyCapacityRequest = {
+  facilityUnitId?: string | null
+  capacityType: OccupancyCapacityType
+  approvedCapacity: number
+  effectiveFromUtc: string
+  sourceType: OccupancySourceType
+  sourceReference: string
+}
+
+export type OccupancySnapshotRequest = {
+  facilityUnitId?: string | null
+  capturedAtUtc: string
+  inmateCount: number
+  sourceType: OccupancySourceType
+  sourceReference: string
+  isAuthoritative: boolean
+  qualityStatus: CensusQualityStatus
+}
+
+export type OccupancyMovementImportRow = {
+  inmateReferenceHash: string
+  movementType: OccupancyMovementType
+  fromFacilityId?: string
+  toFacilityId?: string
+  occurredAtUtc: string
+  externalEventId: string
+}
+
+export type OccupancyMovementImportRequest = {
+  sourceSystem: string
+  importReference: string
+  rows: OccupancyMovementImportRow[]
+}
+
+export type OccupancyImportResult = {
+  acceptedRows: number
+  duplicateRows: number
+  rejectedRows: string[]
 }
 
 export type OccupancyWorkspacePayload = {
@@ -2399,12 +2475,12 @@ export const api = {
       request<{ units: OccupancyUnitPayload[] }>(`/api/v1/facilities/${facilityId}/occupancy/units?${buildSimpleQuery(filters)}`),
     movementsSummary: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
       request<OccupancyMovementSummaryPayload>(`/api/v1/facilities/${facilityId}/occupancy/movements/summary?${buildSimpleQuery(filters)}`),
-    recordCapacity: (facilityId: string, body: Record<string, unknown>) =>
+    recordCapacity: (facilityId: string, body: OccupancyCapacityRequest) =>
       postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/occupancy/capacity`, body),
-    recordSnapshot: (facilityId: string, body: Record<string, unknown>) =>
+    recordSnapshot: (facilityId: string, body: OccupancySnapshotRequest) =>
       postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/occupancy/snapshots`, body),
-    importMovements: (facilityId: string, body: Record<string, unknown>) =>
-      postJson<{ acceptedRows: number; duplicateRows: number; rejectedRows: string[] }>(`/api/v1/facilities/${facilityId}/occupancy/movements/import`, body),
+    importMovements: (facilityId: string, body: OccupancyMovementImportRequest) =>
+      postJson<OccupancyImportResult>(`/api/v1/facilities/${facilityId}/occupancy/movements/import`, body),
   },
 
   formCompliance: {

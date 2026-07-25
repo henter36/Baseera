@@ -1625,6 +1625,7 @@ code {
 }
 
 .unit-load-list button,
+.unit-load-list article,
 .data-quality-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1733,7 +1734,8 @@ code {
   gap: 0.55rem;
 }
 
-.occupancy-units button {
+.occupancy-units button,
+.occupancy-units article {
   grid-template-columns: minmax(11rem, 1.1fr) minmax(10rem, 1fr) auto;
 }
 
@@ -1753,9 +1755,13 @@ code {
 }
 
 .occupancy-units button[data-status="attention"] .unit-capacity-bar i,
-.occupancy-units button[data-status="high"] .unit-capacity-bar i { background: var(--command-warning); }
-.occupancy-units button[data-status="over-capacity"] .unit-capacity-bar i { background: var(--command-critical); }
-.occupancy-units button[data-status="unknown"] .unit-capacity-bar i { background: var(--command-border-strong); }
+.occupancy-units article[data-status="attention"] .unit-capacity-bar i,
+.occupancy-units button[data-status="high"] .unit-capacity-bar i,
+.occupancy-units article[data-status="high"] .unit-capacity-bar i { background: var(--command-warning); }
+.occupancy-units button[data-status="over-capacity"] .unit-capacity-bar i,
+.occupancy-units article[data-status="over-capacity"] .unit-capacity-bar i { background: var(--command-critical); }
+.occupancy-units button[data-status="unknown"] .unit-capacity-bar i,
+.occupancy-units article[data-status="unknown"] .unit-capacity-bar i { background: var(--command-border-strong); }
 
 .occupancy-admin {
   display: grid;
@@ -1978,6 +1984,7 @@ code {
   .status-rail div,
   .compact-detail-list li,
   .unit-load-list button,
+  .unit-load-list article,
   .data-quality-list button,
   .domain-unavailable {
     grid-template-columns: 1fr;

@@ -119,14 +119,6 @@
 
 ### Phase D.2 — Facility Command Center UX (Issue #11 استمرار جزئي)
 
-### Phase D.4 — Facility Occupancy and Inmate Movement (Issue #124, استمرار #11)
-
-- يضيف Domain حقيقيًا للطاقة الاستيعابية وSnapshots الإحصائية وحركات النزلاء غير التعريفية.
-- يدمج الإشغال في `facility-operations` كمؤشر حقيقي في النبض التشغيلي، القسم الداخلي، قائمة التدخل، جودة البيانات، والسجل المحدود.
-- يضيف إدارة محدودة للإشغال عبر `/facilities/:facilityId/occupancy` لتسجيل الطاقة وSnapshot واستيراد الحركة المنضبط.
-- يمنع عرض هوية النزيل في Workspace، ولا يمنح `Workspaces.ViewFacility` حق الإشغال دون صلاحيات `Occupancy.*`.
-- لا ينفذ Region/HQ Workspaces، ولا بقية Resource Center خارج الطاقة الاستيعابية، ولا reconciliation workflow كامل.
-
 - إعادة تصميم تجربة `facility-operations` من Dashboard كروت إلى مركز قيادة وتشغيل.
 - Command Header، Situation Overview، Operational Pulse، Intervention Queue، Context Panel، وAction Center.
 - فتح تفاصيل الملاحظات والإجراءات والتصعيدات والنماذج والأحداث داخل نفس مساحة العمل قدر الإمكان.
@@ -142,6 +134,14 @@
 - مكتملة تقنيًا ضمن النماذج الحالية وقيد القبول النهائي؛ لا تعني إغلاق Issue #11.
 - لا تنفذ كامل محركات الإشغال والموارد والوقوعات والمخاطر والمشاريع والخطط والقرارات؛ تستمر المجالات الناقصة عبر Issues #15 و#16 و#18 و#19 و#124 و#125 و#126 و#127 و#128.
 - لا ينفذ Region/Headquarters Workspaces، ولا يضيف migration أو AI أو محركات موارد/مخاطر/مشاريع كاملة.
+
+### Phase D.4 — Facility Occupancy and Inmate Movement (Issue #124, استمرار #11)
+
+- يضيف Domain حقيقيًا للطاقة الاستيعابية وSnapshots الإحصائية وحركات النزلاء غير التعريفية.
+- يدمج الإشغال في `facility-operations` كمؤشر حقيقي في النبض التشغيلي، القسم الداخلي، قائمة التدخل، جودة البيانات، والسجل المحدود.
+- يضيف إدارة محدودة للإشغال عبر `/facilities/:facilityId/occupancy` لتسجيل الطاقة وSnapshot واستيراد الحركة المنضبط.
+- يمنع عرض هوية النزيل في Workspace، ولا يمنح `Workspaces.ViewFacility` حق الإشغال دون صلاحيات `Occupancy.*`.
+- لا ينفذ Region/HQ Workspaces، ولا بقية Resource Center خارج الطاقة الاستيعابية، ولا reconciliation workflow كامل.
 
 ## المرحلة E — المشاريع والاستراتيجية
 

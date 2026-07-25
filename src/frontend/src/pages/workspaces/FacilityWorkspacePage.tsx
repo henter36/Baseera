@@ -1569,7 +1569,11 @@ function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefine
   if (panel.type === 'corrective-action') return `/corrective-actions?id=${encodeURIComponent(panel.entityId)}`
   if (panel.type === 'form-assignment') return `/form-compliance/facilities/${shell.context.facilityId ?? ''}`
   if (panel.type === 'escalation') return '/settings/escalations/occurrences'
-  if (panel.type === 'facility-unit') return `/facilities/${shell.context.facilityId ?? ''}/occupancy`
+  if (panel.type === 'facility-unit') {
+    return summary && 'dataSourceAr' in summary
+      ? `/facilities/${shell.context.facilityId ?? ''}/occupancy`
+      : null
+  }
   if (summary && 'drillDownTarget' in summary) return routeFromTarget(summary.drillDownTarget)
   return null
 }

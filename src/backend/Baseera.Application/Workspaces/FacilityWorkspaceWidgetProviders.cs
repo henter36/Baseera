@@ -243,13 +243,7 @@ internal sealed class FacilityOccupancyWorkspaceWidgetProvider(
     {
         var payload = await readService.GetOccupancyAsync(context, cancellationToken);
         var generatedAt = timeProvider.GetUtcNow();
-        var confidence = payload.Summary.ConfidenceLevel switch
-        {
-            "high" => ConfidenceLevel.High,
-            "medium" => ConfidenceLevel.Medium,
-            "low" => ConfidenceLevel.Low,
-            _ => ConfidenceLevel.Unknown
-        };
+        var confidence = FacilityWorkspaceConfidenceMapper.ToLevel(payload.Summary.ConfidenceLevel);
 
         return Envelope(
             context,

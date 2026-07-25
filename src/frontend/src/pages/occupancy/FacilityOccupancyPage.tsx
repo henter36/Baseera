@@ -1,12 +1,52 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
-import { api } from '../../api/client'
+import {
+  ApiError,
+  api,
+  CensusQualityStatus,
+  OccupancyCapacityType,
+  OccupancyMovementType,
+  OccupancySourceType,
+  type OccupancyCapacityRequest,
+  type OccupancyMovementImportRequest,
+  type OccupancySnapshotRequest,
+} from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import { WorkspaceEmpty, WorkspaceError, WorkspaceLoading, WorkspaceUnauthorized } from '../../workspaces/WorkspaceShell'
+import { riyadhDateTimeLocalToUtc } from './occupancyDateTime'
 
 const nowIso = () => new Date().toISOString()
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
+
+function currentFilters() {
+  const toUtc = nowIso()
+  return {
+    asOfUtc: toUtc,
+    fromUtc: new Date(Date.parse(toUtc) - THIRTY_DAYS_MS).toISOString(),
+    toUtc,
+  }
+}
+
+function mutationErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.message) {
+    return error.message
+  }
+
+  return 'تعذر تنفيذ العملية. تحقق من البيانات وحاول مرة أخرى.'
+}
+
+function movementTypeFromForm(value: FormDataEntryValue | null): OccupancyMovementType {
+  const parsed = Number(value)
+  for (const supported of Object.values(OccupancyMovementType)) {
+    if (parsed === supported) {
+      return supported
+    }
+  }
+
+  throw new Error('نوع الحركة غير مدعوم.')
+}
 
 export function FacilityOccupancyPage() {
   const { facilityId } = useParams()
@@ -18,54 +58,79 @@ export function FacilityOccupancyPage() {
   const canImport = usePermission('Occupancy.Import')
   const queryClient = useQueryClient()
   const [message, setMessage] = useState('')
-  const filters = useMemo(() => ({ asOfUtc: nowIso(), fromUtc: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), toUtc: nowIso() }), [])
+  const [errorMessage, setErrorMessage] = useState('')
 
   const summary = useQuery({
-    queryKey: ['occupancy-admin', facilityId, filters],
-    queryFn: () => Promise.all([
-      api.occupancy.summary(facilityId!, { asOfUtc: filters.asOfUtc }),
-      canViewUnits ? api.occupancy.units(facilityId!, { asOfUtc: filters.asOfUtc }) : Promise.resolve({ units: [] }),
-      canViewMovements
-        ? api.occupancy.movementsSummary(facilityId!, { fromUtc: filters.fromUtc, toUtc: filters.toUtc })
-        : Promise.resolve({
-          admissions: 0,
-          releases: 0,
-          transferIn: 0,
-          transferOut: 0,
-          internalTransfers: 0,
-          temporaryLeave: 0,
-          returns: 0,
-          netMovement: 0,
-          dailyTrend: [],
-          rejectedMovements: 0,
-        }),
-    ]),
+    queryKey: ['occupancy-admin', facilityId, canViewUnits, canViewMovements],
+    queryFn: () => {
+      const filters = currentFilters()
+      return Promise.all([
+        api.occupancy.summary(facilityId!, { asOfUtc: filters.asOfUtc }),
+        canViewUnits ? api.occupancy.units(facilityId!, { asOfUtc: filters.asOfUtc }) : Promise.resolve({ units: [] }),
+        canViewMovements
+          ? api.occupancy.movementsSummary(facilityId!, { fromUtc: filters.fromUtc, toUtc: filters.toUtc })
+          : Promise.resolve({
+            admissions: 0,
+            releases: 0,
+            transferIn: 0,
+            transferOut: 0,
+            internalTransfers: 0,
+            temporaryLeave: 0,
+            returns: 0,
+            death: 0,
+            hospitalTransfers: 0,
+            courtTransfers: 0,
+            corrections: 0,
+            otherMovements: 0,
+            netMovement: 0,
+            dailyTrend: [],
+          }),
+      ])
+    },
     enabled: canView && Boolean(facilityId),
   })
 
   const capacityMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.occupancy.recordCapacity(facilityId!, body),
+    mutationFn: (body: OccupancyCapacityRequest) => api.occupancy.recordCapacity(facilityId!, body),
+    onMutate: () => {
+      setMessage('')
+      setErrorMessage('')
+    },
     onSuccess: () => {
+      setErrorMessage('')
       setMessage('تم تسجيل الطاقة المعتمدة كسجل تاريخي جديد.')
       queryClient.invalidateQueries({ queryKey: ['occupancy-admin', facilityId] })
       queryClient.invalidateQueries({ queryKey: ['workspace'] })
     },
+    onError: (error) => setErrorMessage(mutationErrorMessage(error)),
   })
   const snapshotMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.occupancy.recordSnapshot(facilityId!, body),
+    mutationFn: (body: OccupancySnapshotRequest) => api.occupancy.recordSnapshot(facilityId!, body),
+    onMutate: () => {
+      setMessage('')
+      setErrorMessage('')
+    },
     onSuccess: () => {
+      setErrorMessage('')
       setMessage('تم تسجيل Snapshot الإشغال دون حفظ هوية نزيل.')
       queryClient.invalidateQueries({ queryKey: ['occupancy-admin', facilityId] })
       queryClient.invalidateQueries({ queryKey: ['workspace'] })
     },
+    onError: (error) => setErrorMessage(mutationErrorMessage(error)),
   })
   const importMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.occupancy.importMovements(facilityId!, body),
+    mutationFn: (body: OccupancyMovementImportRequest) => api.occupancy.importMovements(facilityId!, body),
+    onMutate: () => {
+      setMessage('')
+      setErrorMessage('')
+    },
     onSuccess: (result) => {
+      setErrorMessage('')
       setMessage(`تم قبول ${result.acceptedRows} حركة، وتجاهل ${result.duplicateRows} مكررة.`)
       queryClient.invalidateQueries({ queryKey: ['occupancy-admin', facilityId] })
       queryClient.invalidateQueries({ queryKey: ['workspace'] })
     },
+    onError: (error) => setErrorMessage(mutationErrorMessage(error)),
   })
 
   if (!facilityId) return <WorkspaceEmpty message="معرّف السجن مطلوب." />
@@ -88,6 +153,7 @@ export function FacilityOccupancyPage() {
       </header>
 
       {message && <output className="context-action-note" aria-live="polite">{message}</output>}
+      {errorMessage && <p className="context-action-note" role="alert">{errorMessage}</p>}
 
       <section className="occupancy-command-strip" data-status={overview.statusCode}>
         <div>
@@ -111,11 +177,16 @@ export function FacilityOccupancyPage() {
         <ul className="unit-load-list occupancy-units" aria-label="وحدات الإشغال">
           {units.units.map((unit) => (
             <li key={unit.unitId}>
-              <button type="button" data-status={unit.statusCode}>
+              <article data-status={unit.statusCode}>
                 <span className="unit-load-title"><strong>{unit.unitNameAr}</strong><small>{unit.unitCode} · {unit.statusAr}</small></span>
-                <span className="unit-capacity-bar"><i style={{ inlineSize: `${Math.min(120, Math.round((unit.occupancyRate ?? 0) * 100))}%` }} /></span>
+                <span
+                  className="unit-capacity-bar"
+                  aria-label={`نسبة إشغال وحدة ${unit.unitNameAr}: ${Math.round((unit.occupancyRate ?? 0) * 100)}%`}
+                >
+                  <i style={{ inlineSize: `${Math.min(120, Math.round((unit.occupancyRate ?? 0) * 100))}%` }} />
+                </span>
                 <span className="unit-load-values"><b>{unit.currentCount ?? '-'}</b><small>عدد</small><b>{unit.approvedCapacity ?? '-'}</b><small>طاقة</small></span>
-              </button>
+              </article>
             </li>
           ))}
         </ul>
@@ -134,14 +205,14 @@ function Metric({ label, value }: Readonly<{ label: string; value: string | numb
   return <div className="command-metric" data-tone="info"><span>{label}</span><strong>{value}</strong></div>
 }
 
-function CapacityForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Record<string, unknown>) => void; pending: boolean }>) {
+function CapacityForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: OccupancyCapacityRequest) => void; pending: boolean }>) {
   return (
     <form className="inline-action-form" onSubmit={(event) => submitForm(event, (data) => onSubmit({
       approvedCapacity: Number(data.get('approvedCapacity')),
-      effectiveFromUtc: data.get('effectiveFromUtc'),
-      sourceReference: data.get('sourceReference'),
-      capacityType: 0,
-      sourceType: 0,
+      effectiveFromUtc: riyadhDateTimeLocalToUtc(String(data.get('effectiveFromUtc'))),
+      sourceReference: String(data.get('sourceReference')),
+      capacityType: OccupancyCapacityType.ApprovedOperational,
+      sourceType: OccupancySourceType.Manual,
     }))}>
       <h2>تسجيل طاقة معتمدة</h2>
       <label>العدد<input name="approvedCapacity" type="number" min="1" required /></label>
@@ -152,15 +223,15 @@ function CapacityForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Record<
   )
 }
 
-function SnapshotForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Record<string, unknown>) => void; pending: boolean }>) {
+function SnapshotForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: OccupancySnapshotRequest) => void; pending: boolean }>) {
   return (
     <form className="inline-action-form" onSubmit={(event) => submitForm(event, (data) => onSubmit({
-      capturedAtUtc: data.get('capturedAtUtc'),
+      capturedAtUtc: riyadhDateTimeLocalToUtc(String(data.get('capturedAtUtc'))),
       inmateCount: Number(data.get('inmateCount')),
-      sourceReference: data.get('sourceReference'),
-      sourceType: 0,
+      sourceReference: String(data.get('sourceReference')),
+      sourceType: OccupancySourceType.Manual,
       isAuthoritative: true,
-      qualityStatus: 0,
+      qualityStatus: CensusQualityStatus.Complete,
     }))}>
       <h2>تسجيل Snapshot</h2>
       <label>وقت الالتقاط<input name="capturedAtUtc" type="datetime-local" required /></label>
@@ -171,25 +242,25 @@ function SnapshotForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Record<
   )
 }
 
-function MovementImportForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: Record<string, unknown>) => void; pending: boolean }>) {
+function MovementImportForm({ onSubmit, pending }: Readonly<{ onSubmit: (body: OccupancyMovementImportRequest) => void; pending: boolean }>) {
   return (
     <form className="inline-action-form" onSubmit={(event) => submitForm(event, (data) => onSubmit({
-      sourceSystem: data.get('sourceSystem'),
-      importReference: data.get('importReference'),
+      sourceSystem: String(data.get('sourceSystem')),
+      importReference: String(data.get('importReference')),
       rows: [{
-        inmateReferenceHash: data.get('inmateReferenceHash'),
-        movementType: Number(data.get('movementType')),
-        toFacilityId: data.get('toFacilityId') || undefined,
-        fromFacilityId: data.get('fromFacilityId') || undefined,
-        occurredAtUtc: data.get('occurredAtUtc'),
-        externalEventId: data.get('externalEventId'),
+        inmateReferenceHash: String(data.get('inmateReferenceHash')),
+        movementType: movementTypeFromForm(data.get('movementType')),
+        toFacilityId: String(data.get('toFacilityId') || '') || undefined,
+        fromFacilityId: String(data.get('fromFacilityId') || '') || undefined,
+        occurredAtUtc: riyadhDateTimeLocalToUtc(String(data.get('occurredAtUtc'))),
+        externalEventId: String(data.get('externalEventId')),
       }],
     }))}>
       <h2>استيراد حركة مضبوطة</h2>
       <label>نظام المصدر<input name="sourceSystem" required /></label>
       <label>مرجع الاستيراد<input name="importReference" required /></label>
       <label>Hash النزيل<input name="inmateReferenceHash" required /></label>
-      <label>نوع الحركة<select name="movementType" defaultValue="0"><option value="0">دخول</option><option value="1">إفراج</option><option value="2">نقل إلى السجن</option><option value="3">نقل خارج السجن</option></select></label>
+      <label>نوع الحركة<select name="movementType" defaultValue={String(OccupancyMovementType.Admission)}><option value={String(OccupancyMovementType.Admission)}>دخول</option><option value={String(OccupancyMovementType.Release)}>إفراج</option><option value={String(OccupancyMovementType.TransferIn)}>نقل إلى السجن</option><option value={String(OccupancyMovementType.TransferOut)}>نقل خارج السجن</option></select></label>
       <label>من سجن<input name="fromFacilityId" /></label>
       <label>إلى سجن<input name="toFacilityId" /></label>
       <label>وقت الحركة<input name="occurredAtUtc" type="datetime-local" required /></label>

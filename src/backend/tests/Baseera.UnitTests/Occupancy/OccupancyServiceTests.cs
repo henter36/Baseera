@@ -185,12 +185,60 @@ public sealed class OccupancyServiceTests : IDisposable
 
         var summary = await Service().GetMovementSummaryAsync(SeedIds.FacilityA1, now.AddDays(-2), now, CancellationToken.None);
 
-        Assert.Equal(1, summary.Admissions);
+        Assert.Equal(2, summary.Admissions);
         Assert.Equal(1, summary.TransferIn);
         Assert.Equal(1, summary.Releases);
         Assert.Equal(1, summary.InternalTransfers);
         Assert.Equal(1, summary.NetMovement);
         Assert.DoesNotContain("hash", string.Join(" ", summary.DailyTrend));
+    }
+
+    [Fact]
+    public async Task Movement_summary_uses_one_flow_classification_for_totals_daily_trend_and_net()
+    {
+        db.InmateMovementEvents.AddRange(
+            Movement("FLOW-1", MovementType.Admission, now.AddDays(-1), to: SeedIds.FacilityA1),
+            Movement("FLOW-2", MovementType.TransferIn, now.AddDays(-1), to: SeedIds.FacilityA1),
+            Movement("FLOW-3", MovementType.ReturnFromLeave, now.AddDays(-1), to: SeedIds.FacilityA1),
+            Movement("FLOW-4", MovementType.Release, now.AddDays(-1), from: SeedIds.FacilityA1),
+            Movement("FLOW-5", MovementType.TransferOut, now.AddDays(-1), from: SeedIds.FacilityA1),
+            Movement("FLOW-6", MovementType.TemporaryLeave, now.AddDays(-1), from: SeedIds.FacilityA1),
+            Movement("FLOW-7", MovementType.Death, now.AddDays(-1), from: SeedIds.FacilityA1),
+            Movement("FLOW-8", MovementType.InternalTransfer, now.AddDays(-1), fromUnit: SeedIds.FacilityA1UnitNorth, toUnit: SeedIds.FacilityA1UnitSouth),
+            Movement("FLOW-9", MovementType.HospitalTransfer, now.AddDays(-1)),
+            Movement("FLOW-10", MovementType.CourtTransfer, now.AddDays(-1)),
+            Movement("FLOW-11", MovementType.Correction, now.AddDays(-1)),
+            Movement("FLOW-12", MovementType.Other, now.AddDays(-1)));
+        await db.SaveChangesAsync();
+
+        var summary = await Service().GetMovementSummaryAsync(SeedIds.FacilityA1, now.AddDays(-2), now, CancellationToken.None);
+        var day = Assert.Single(summary.DailyTrend);
+
+        Assert.Equal(3, summary.Admissions);
+        Assert.Equal(4, summary.Releases);
+        Assert.Equal(-1, summary.NetMovement);
+        Assert.Equal(summary.Admissions, day.Admissions);
+        Assert.Equal(summary.Releases, day.Releases);
+        Assert.Equal(summary.NetMovement, day.Net);
+        Assert.Equal(1, summary.Death);
+        Assert.Equal(1, summary.HospitalTransfers);
+        Assert.Equal(1, summary.CourtTransfers);
+        Assert.Equal(1, summary.Corrections);
+        Assert.Equal(1, summary.OtherMovements);
+    }
+
+    [Fact]
+    public async Task Summary_staleness_uses_query_as_of_instead_of_wall_clock()
+    {
+        var capturedAt = new DateTimeOffset(2026, 1, 1, 8, 0, 0, TimeSpan.Zero);
+        db.FacilityCapacityBaselines.Add(Capacity(null, 100, capturedAt.AddDays(-10)));
+        db.InmateCensusSnapshots.Add(Snapshot(null, 90, capturedAt, true, "historical"));
+        await db.SaveChangesAsync();
+
+        var summary = await Service().GetSummaryAsync(SeedIds.FacilityA1, capturedAt.AddHours(12), CancellationToken.None);
+
+        Assert.Equal("current", summary.FreshnessStatus);
+        Assert.DoesNotContain(summary.Warnings, warning => warning.Contains("قديم", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -223,6 +271,110 @@ public sealed class OccupancyServiceTests : IDisposable
         Assert.Equal(1, second.DuplicateRows);
     }
 
+    [Fact]
+    public async Task Import_counts_duplicate_rows_inside_same_request_without_rejecting_batch()
+    {
+        var request = ImportRequest([
+            ImportRow("duplicate-event", MovementType.Admission, to: SeedIds.FacilityA1),
+            ImportRow(" duplicate-event ", MovementType.Admission, to: SeedIds.FacilityA1)
+        ]);
+
+        var result = await Service().ImportMovementsAsync(SeedIds.FacilityA1, request, CancellationToken.None);
+
+        Assert.Equal(1, result.AcceptedRows);
+        Assert.Equal(1, result.DuplicateRows);
+        Assert.Empty(result.RejectedRows);
+        Assert.Equal(1, db.InmateMovementEvents.Count(e => e.ExternalEventId == "duplicate-event"));
+    }
+
+    [Fact]
+    public async Task Import_allows_internal_transfer_with_unit_scope_only()
+    {
+        AddUnits();
+        var request = ImportRequest([
+            ImportRow(
+                "internal-unit-only",
+                MovementType.InternalTransfer,
+                fromUnit: SeedIds.FacilityA1UnitNorth,
+                toUnit: SeedIds.FacilityA1UnitSouth)
+        ]);
+
+        var result = await Service().ImportMovementsAsync(SeedIds.FacilityA1, request, CancellationToken.None);
+
+        Assert.Equal(1, result.AcceptedRows);
+        Assert.Empty(result.RejectedRows);
+    }
+
+    [Fact]
+    public async Task Import_rejects_internal_transfer_with_missing_unit()
+    {
+        var request = ImportRequest([
+            ImportRow("internal-missing-unit", MovementType.InternalTransfer, fromUnit: SeedIds.FacilityA1UnitNorth)
+        ]);
+
+        var result = await Service().ImportMovementsAsync(SeedIds.FacilityA1, request, CancellationToken.None);
+
+        Assert.Equal(0, result.AcceptedRows);
+        Assert.Single(result.RejectedRows);
+    }
+
+    [Fact]
+    public async Task Import_rejects_movement_with_unrelated_facility_identifier()
+    {
+        var request = ImportRequest([
+            ImportRow("wrong-facility", MovementType.Admission, to: SeedIds.FacilityB1)
+        ]);
+
+        var result = await Service().ImportMovementsAsync(SeedIds.FacilityA1, request, CancellationToken.None);
+
+        Assert.Equal(0, result.AcceptedRows);
+        Assert.Single(result.RejectedRows);
+    }
+
+    [Fact]
+    public async Task Import_allows_neutral_non_transfer_without_facility_identifiers()
+    {
+        var request = ImportRequest([
+            ImportRow("neutral-correction", MovementType.Correction)
+        ]);
+
+        var result = await Service().ImportMovementsAsync(SeedIds.FacilityA1, request, CancellationToken.None);
+
+        Assert.Equal(1, result.AcceptedRows);
+        Assert.Empty(result.RejectedRows);
+    }
+
+    [Fact]
+    public async Task Commands_reject_default_required_timestamps()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Service().RecordCapacityAsync(
+            SeedIds.FacilityA1,
+            new OccupancyCapacityRequest
+            {
+                ApprovedCapacity = 10,
+                EffectiveFromUtc = default,
+                SourceReference = "capacity"
+            },
+            CancellationToken.None));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => Service().RecordSnapshotAsync(
+            SeedIds.FacilityA1,
+            new OccupancySnapshotRequest
+            {
+                CapturedAtUtc = default,
+                InmateCount = 10,
+                SourceReference = "snapshot"
+            },
+            CancellationToken.None));
+
+        var import = await Service().ImportMovementsAsync(
+            SeedIds.FacilityA1,
+            ImportRequest([ImportRow("missing-time", MovementType.Admission, to: SeedIds.FacilityA1, occurredAt: DateTimeOffset.MinValue)]),
+            CancellationToken.None);
+
+        Assert.Single(import.RejectedRows);
+    }
+
     private OccupancyService Service(IReadOnlyList<string>? permissions = null) =>
         new(
             db,
@@ -253,6 +405,14 @@ public sealed class OccupancyServiceTests : IDisposable
         db.Organizations.Add(new Organization { Id = SeedIds.Organization, Code = "HQ", NameAr = "رئيسي" });
         db.Regions.Add(new Region { Id = SeedIds.RegionA, OrganizationId = SeedIds.Organization, Code = "A", NameAr = "أ" });
         db.Facilities.Add(new Facility { Id = SeedIds.FacilityA1, RegionId = SeedIds.RegionA, Code = "A1", NameAr = "سجن أ1", IsActive = true });
+        db.SaveChanges();
+    }
+
+    private void AddUnits()
+    {
+        db.FacilityUnits.AddRange(
+            new FacilityUnit { Id = SeedIds.FacilityA1UnitNorth, FacilityId = SeedIds.FacilityA1, Code = "N", NameAr = "الشمال", IsActive = true },
+            new FacilityUnit { Id = SeedIds.FacilityA1UnitSouth, FacilityId = SeedIds.FacilityA1, Code = "S", NameAr = "الجنوب", IsActive = true });
         db.SaveChanges();
     }
 
@@ -301,6 +461,34 @@ public sealed class OccupancyServiceTests : IDisposable
             OccurredAtUtc = occurredAt,
             RecordedAtUtc = occurredAt.AddMinutes(1),
             SourceReference = "test",
+            ExternalEventId = id
+        };
+
+    private InmateMovementImportRequest ImportRequest(IReadOnlyList<InmateMovementImportRow> rows) =>
+        new()
+        {
+            SourceSystem = " inmate-system ",
+            ImportReference = Guid.NewGuid().ToString("N"),
+            Rows = rows
+        };
+
+    private InmateMovementImportRow ImportRow(
+        string id,
+        MovementType type,
+        Guid? from = null,
+        Guid? to = null,
+        Guid? fromUnit = null,
+        Guid? toUnit = null,
+        DateTimeOffset? occurredAt = null) =>
+        new()
+        {
+            InmateReferenceHash = $"hash-{id}",
+            MovementType = type,
+            FromFacilityId = from,
+            ToFacilityId = to,
+            FromFacilityUnitId = fromUnit,
+            ToFacilityUnitId = toUnit,
+            OccurredAtUtc = occurredAt ?? now,
             ExternalEventId = id
         };
 

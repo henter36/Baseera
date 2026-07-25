@@ -585,7 +585,10 @@ internal sealed class FacilityWorkspaceReadService(
                 OverdueDays = DaysOverdue(item.DueAtUtc, now),
                 OwnerAr = null,
                 ActionLabelAr = item.ActionLabelAr,
-                DrillDownTarget = OccupancyTarget(context, item.UnitId)
+                DrillDownTarget = OccupancyTarget(
+                    context,
+                    item.UnitId,
+                    item.UnitId.HasValue ? PermissionCodes.OccupancyViewUnitBreakdown : PermissionCodes.OccupancyViewSummary)
             })
             .ToList();
     }
@@ -717,7 +720,7 @@ internal sealed class FacilityWorkspaceReadService(
             OccurredAtUtc = row.CapturedAtUtc,
             EntityReference = row.FacilityUnitId?.ToString() ?? facilityId.ToString(),
             Tone = "info",
-            DrillDownTarget = OccupancyTarget(context, row.FacilityUnitId)
+            DrillDownTarget = OccupancyTarget(context, row.FacilityUnitId, PermissionCodes.OccupancyViewMovements)
         }).ToList();
     }
 
@@ -801,13 +804,7 @@ internal sealed class FacilityWorkspaceReadService(
             LabelAr = "الإشغال والنزلاء",
             StatusCode = payload.Summary.IsPartial ? "partial" : "complete",
             StatusAr = payload.Summary.IsPartial ? "جزئي" : "متاح",
-            ConfidenceAr = payload.Summary.ConfidenceLevel switch
-            {
-                "high" => "مرتفعة",
-                "medium" => "متوسطة",
-                "low" => "منخفضة",
-                _ => "غير معروفة"
-            },
+            ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
             LastUpdatedAtUtc = payload.Summary.LatestSnapshotAtUtc,
             ImpactAr = payload.Summary.IsPartial
                 ? string.Join(" ", payload.Summary.Warnings)
@@ -832,7 +829,7 @@ internal sealed class FacilityWorkspaceReadService(
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             PermissionCodes.FormsViewComplianceDashboard);
 
-    private static DrillDownTarget OccupancyTarget(WorkspaceContext context, Guid? unitId) =>
+    private static DrillDownTarget OccupancyTarget(WorkspaceContext context, Guid? unitId, string requiredPermission) =>
         new(
             "facility.occupancy",
             unitId.HasValue ? "فتح وحدة الإشغال" : "فتح الإشغال",
@@ -844,8 +841,29 @@ internal sealed class FacilityWorkspaceReadService(
                 }
                 : new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
-            PermissionCodes.OccupancyViewSummary);
+            requiredPermission);
 
+}
+
+internal static class FacilityWorkspaceConfidenceMapper
+{
+    public static ConfidenceLevel ToLevel(string? code) =>
+        code switch
+        {
+            "high" => ConfidenceLevel.High,
+            "medium" => ConfidenceLevel.Medium,
+            "low" => ConfidenceLevel.Low,
+            _ => ConfidenceLevel.Unknown
+        };
+
+    public static string ToArabic(string? code) =>
+        code switch
+        {
+            "high" => "مرتفعة",
+            "medium" => "متوسطة",
+            "low" => "منخفضة",
+            _ => "غير معروفة"
+        };
 }
 
 internal static class FacilityWorkspaceDrillDownFilters
