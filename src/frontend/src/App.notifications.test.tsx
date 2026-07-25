@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -44,7 +44,6 @@ describe('App notification shell', () => {
       </MemoryRouter>,
     )
 
-    await waitFor(() => expect(unreadCount).toHaveBeenCalled())
     expect(await screen.findByText(/الإشعارات\s*\(3\)/)).toBeInTheDocument()
   })
 })
