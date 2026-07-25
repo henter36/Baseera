@@ -5116,10 +5116,11 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_ResourceImportBatches_AppliedRows", "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
 
-                            t.HasCheckConstraint("CK_ResourceImportBatches_Status", "[Status] IN (N'Previewed', N'Confirmed')");
                             t.HasCheckConstraint("CK_ResourceImportBatches_ConfirmedState", "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] = N'Previewed' AND [AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)");
 
                             t.HasCheckConstraint("CK_ResourceImportBatches_RowTotals", "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0");
+
+                            t.HasCheckConstraint("CK_ResourceImportBatches_Status", "[Status] IN (N'Previewed', N'Confirmed')");
                         });
                 });
 
@@ -5435,6 +5436,1086 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_VehicleProfiles_PrisonerTransportCapacity_NonNegative", "[PrisonerTransportCapacity] IS NULL OR [PrisonerTransportCapacity] >= 0");
                         });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.CriticalPositionRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Criticality")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("RequiredAlternateCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RequiredPrimaryCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RoleDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("ShiftDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleDefinitionId");
+
+                    b.HasIndex("ShiftDefinitionId");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId");
+
+                    b.HasIndex("FacilityId", "RoleDefinitionId", "ShiftDefinitionId", "EffectiveFromUtc");
+
+                    b.ToTable("CriticalPositionRequirements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CriticalPositionRequirements_Counts", "[RequiredPrimaryCount] >= 0 AND [RequiredAlternateCount] >= 0");
+
+                            t.HasCheckConstraint("CK_CriticalPositionRequirements_EffectiveRange", "[EffectiveToUtc] IS NULL OR [EffectiveToUtc] > [EffectiveFromUtc]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.DutyRoster", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly>("DutyDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("PublishedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("PublishedBy")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("ShiftDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ShiftDefinitionId");
+
+                    b.HasIndex("FacilityId", "ShiftDefinitionId", "DutyDate")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DutyRosters_FacilityShiftDate_NoUnit")
+                        .HasFilter("[IsDeleted] = 0 AND [FacilityUnitId] IS NULL");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "ShiftDefinitionId", "DutyDate")
+                        .IsUnique()
+                        .HasDatabaseName("IX_DutyRosters_FacilityUnitShiftDate")
+                        .HasFilter("[IsDeleted] = 0 AND [FacilityUnitId] IS NOT NULL");
+
+                    b.ToTable("DutyRosters", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DutyRosters_PublishedState", "([Status] = N'Published' AND [PublishedAtUtc] IS NOT NULL) OR ([Status] = N'Draft' AND [PublishedAtUtc] IS NULL AND [PublishedBy] IS NULL)");
+
+                            t.HasCheckConstraint("CK_DutyRosters_Status", "[Status] IN (N'Draft', N'Published')");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.DutyRosterAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CheckInAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("CheckOutAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("DutyRosterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid?>("ReplacementForAssignmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RoleDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("WorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReplacementForAssignmentId");
+
+                    b.HasIndex("RoleDefinitionId");
+
+                    b.HasIndex("WorkforceMemberId");
+
+                    b.HasIndex("DutyRosterId", "WorkforceMemberId", "RoleDefinitionId");
+
+                    b.ToTable("DutyRosterAssignments", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.ShiftDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("CrossesMidnight")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<TimeOnly>("EndLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<TimeOnly>("StartLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<string>("Timezone")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("FacilityId", "Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("ShiftDefinitions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ShiftDefinitions_CrossesMidnight", "([CrossesMidnight] = 1 AND [EndLocalTime] <= [StartLocalTime]) OR ([CrossesMidnight] = 0 AND [EndLocalTime] > [StartLocalTime])");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.StaffingRequirement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ApprovalReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MinimumSafeHeadcount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RequiredHeadcount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RoleDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("ShiftDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("RoleDefinitionId");
+
+                    b.HasIndex("ShiftDefinitionId");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "RoleDefinitionId", "ShiftDefinitionId", "EffectiveFromUtc");
+
+                    b.ToTable("StaffingRequirements", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StaffingRequirements_EffectiveRange", "[EffectiveToUtc] IS NULL OR [EffectiveToUtc] > [EffectiveFromUtc]");
+
+                            t.HasCheckConstraint("CK_StaffingRequirements_Quantities", "[RequiredHeadcount] >= 0 AND [MinimumSafeHeadcount] >= 0 AND [MinimumSafeHeadcount] <= [RequiredHeadcount]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("AssignmentType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("RoleDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("WorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleDefinitionId");
+
+                    b.HasIndex("WorkforceMemberId", "IsPrimary", "EffectiveFromUtc");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "RoleDefinitionId", "EffectiveFromUtc");
+
+                    b.ToTable("WorkforceAssignments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_WorkforceAssignments_EffectiveRange", "[EffectiveToUtc] IS NULL OR [EffectiveToUtc] > [EffectiveFromUtc]");
+
+                            t.HasCheckConstraint("CK_WorkforceAssignments_UnitRequiresFacility", "[FacilityUnitId] IS NULL OR [FacilityId] IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceAvailabilityEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AffectsOperationalAvailability")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("AvailabilityType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("EndsAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RecordedBy")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("RestrictionCodesCsv")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StartsAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("WorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkforceMemberId", "StartsAtUtc", "EndsAtUtc");
+
+                    b.ToTable("WorkforceAvailabilityEvents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_WorkforceAvailabilityEvents_EffectiveRange", "[EndsAtUtc] IS NULL OR [EndsAtUtc] > [StartsAtUtc]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AppliedRows")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DuplicateRows")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("RejectedRows")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("SourceSystem")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("SubmittedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("SubmittedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ValidRows")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubmittedByUserId");
+
+                    b.HasIndex("FacilityId", "SourceSystem", "SourceReference", "FileHash")
+                        .IsUnique();
+
+                    b.ToTable("WorkforceImportBatches", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_WorkforceImportBatches_AppliedRows", "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
+
+                            t.HasCheckConstraint("CK_WorkforceImportBatches_ConfirmedState", "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] = N'Previewed' AND [AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)");
+
+                            t.HasCheckConstraint("CK_WorkforceImportBatches_RowTotals", "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0");
+
+                            t.HasCheckConstraint("CK_WorkforceImportBatches_Status", "[Status] IN (N'Previewed', N'Confirmed')");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AdministrativeOrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("CurrentOperationalFacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentOperationalUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("EmployeeNumber")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("EmploymentStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExternalPersonnelId")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTimeOffset?>("HireDateUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("HomeFacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsOperational")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSensitiveRole")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("JobTitle")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset?>("LastVerifiedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PrimarySpecialty")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("RankOrGrade")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("ServiceStartDateUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SupervisorWorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AdministrativeOrganizationId");
+
+                    b.HasIndex("HomeFacilityId");
+
+                    b.HasIndex("SupervisorWorkforceMemberId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CurrentOperationalFacilityId", "CurrentOperationalUnitId");
+
+                    b.HasIndex("CurrentOperationalFacilityId", "EmploymentStatus");
+
+                    b.HasIndex("OrganizationId", "EmployeeNumber")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("OrganizationId", "ExternalPersonnelId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0 AND [ExternalPersonnelId] IS NOT NULL");
+
+                    b.ToTable("WorkforceMembers", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_WorkforceMembers_NoSelfSupervision", "[SupervisorWorkforceMemberId] IS NULL OR [SupervisorWorkforceMemberId] <> [Id]");
+
+                            t.HasCheckConstraint("CK_WorkforceMembers_UnitRequiresFacility", "[CurrentOperationalUnitId] IS NULL OR [CurrentOperationalFacilityId] IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceQualification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AttachmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("ExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("IssuedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Issuer")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("QualificationType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid?>("RoleDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("VerifiedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("VerifiedBy")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("WorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleDefinitionId");
+
+                    b.HasIndex("WorkforceMemberId", "QualificationType", "Status");
+
+                    b.ToTable("WorkforceQualifications", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceReadinessSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Absent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Assigned")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CapturedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Confidence")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<decimal?>("CoverageRate")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("CoverageStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Freshness")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Gap")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InTraining")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinimumSafe")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OnLeave")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OperationallyAvailable")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Overtime")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Present")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("QualificationCoverage")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<int>("Qualified")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Required")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Restricted")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("RoleDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SafeGap")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Scheduled")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ShiftDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Unqualified")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleDefinitionId");
+
+                    b.HasIndex("ShiftDefinitionId");
+
+                    b.HasIndex("FacilityId", "CapturedAtUtc");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "ShiftDefinitionId", "RoleDefinitionId", "CapturedAtUtc");
+
+                    b.ToTable("WorkforceReadinessSnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceRoleDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("CanCoverMultipleUnits")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Criticality")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSensitive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsShiftBased")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("RequiresActiveFitness")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequiresCertification")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequiresSecurityClearance")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("WorkforceRoleDefinitions", (string)null);
                 });
 
             modelBuilder.Entity("Baseera.Domain.CorrectiveActions.CorrectiveAction", b =>
@@ -7240,6 +8321,343 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("ResourceAsset");
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Workforce.CriticalPositionRequirement", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceRoleDefinition", "RoleDefinition")
+                        .WithMany()
+                        .HasForeignKey("RoleDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.ShiftDefinition", "ShiftDefinition")
+                        .WithMany()
+                        .HasForeignKey("ShiftDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("RoleDefinition");
+
+                    b.Navigation("ShiftDefinition");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.DutyRoster", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.ShiftDefinition", "ShiftDefinition")
+                        .WithMany()
+                        .HasForeignKey("ShiftDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("ShiftDefinition");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.DutyRosterAssignment", b =>
+                {
+                    b.HasOne("Baseera.Domain.Workforce.DutyRoster", "DutyRoster")
+                        .WithMany("Assignments")
+                        .HasForeignKey("DutyRosterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.DutyRosterAssignment", "ReplacementForAssignment")
+                        .WithMany()
+                        .HasForeignKey("ReplacementForAssignmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceRoleDefinition", "RoleDefinition")
+                        .WithMany()
+                        .HasForeignKey("RoleDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "WorkforceMember")
+                        .WithMany()
+                        .HasForeignKey("WorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DutyRoster");
+
+                    b.Navigation("ReplacementForAssignment");
+
+                    b.Navigation("RoleDefinition");
+
+                    b.Navigation("WorkforceMember");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.ShiftDefinition", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.StaffingRequirement", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceRoleDefinition", "RoleDefinition")
+                        .WithMany()
+                        .HasForeignKey("RoleDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.ShiftDefinition", "ShiftDefinition")
+                        .WithMany()
+                        .HasForeignKey("ShiftDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("RoleDefinition");
+
+                    b.Navigation("ShiftDefinition");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceAssignment", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceRoleDefinition", "RoleDefinition")
+                        .WithMany()
+                        .HasForeignKey("RoleDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "WorkforceMember")
+                        .WithMany("Assignments")
+                        .HasForeignKey("WorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("RoleDefinition");
+
+                    b.Navigation("WorkforceMember");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceAvailabilityEvent", b =>
+                {
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "WorkforceMember")
+                        .WithMany("AvailabilityEvents")
+                        .HasForeignKey("WorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("WorkforceMember");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceImportBatch", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "SubmittedByUser")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("SubmittedByUser");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceMember", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Organization", "AdministrativeOrganization")
+                        .WithMany()
+                        .HasForeignKey("AdministrativeOrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "CurrentOperationalFacility")
+                        .WithMany()
+                        .HasForeignKey("CurrentOperationalFacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "HomeFacility")
+                        .WithMany()
+                        .HasForeignKey("HomeFacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "SupervisorWorkforceMember")
+                        .WithMany()
+                        .HasForeignKey("SupervisorWorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Identity.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "CurrentOperationalUnit")
+                        .WithMany()
+                        .HasForeignKey("CurrentOperationalFacilityId", "CurrentOperationalUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AdministrativeOrganization");
+
+                    b.Navigation("CurrentOperationalFacility");
+
+                    b.Navigation("CurrentOperationalUnit");
+
+                    b.Navigation("HomeFacility");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("SupervisorWorkforceMember");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceQualification", b =>
+                {
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceRoleDefinition", "RoleDefinition")
+                        .WithMany()
+                        .HasForeignKey("RoleDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "WorkforceMember")
+                        .WithMany("Qualifications")
+                        .HasForeignKey("WorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RoleDefinition");
+
+                    b.Navigation("WorkforceMember");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceReadinessSnapshot", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceRoleDefinition", "RoleDefinition")
+                        .WithMany()
+                        .HasForeignKey("RoleDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Workforce.ShiftDefinition", "ShiftDefinition")
+                        .WithMany()
+                        .HasForeignKey("ShiftDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("RoleDefinition");
+
+                    b.Navigation("ShiftDefinition");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceRoleDefinition", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+                });
+
             modelBuilder.Entity("Baseera.Domain.CorrectiveActions.CorrectiveAction", b =>
                 {
                     b.Navigation("Assignments");
@@ -7409,6 +8827,20 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("StatusEvents");
 
                     b.Navigation("VehicleProfile");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.DutyRoster", b =>
+                {
+                    b.Navigation("Assignments");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Workforce.WorkforceMember", b =>
+                {
+                    b.Navigation("Assignments");
+
+                    b.Navigation("AvailabilityEvents");
+
+                    b.Navigation("Qualifications");
                 });
 #pragma warning restore 612, 618
         }

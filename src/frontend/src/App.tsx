@@ -48,6 +48,7 @@ import { FormResponseReviewsPage, FormResponseReviewDetailPage } from './pages/f
 import { FacilityWorkspacePage } from './pages/workspaces/FacilityWorkspacePage'
 import { FacilityOccupancyPage } from './pages/occupancy/FacilityOccupancyPage'
 import { FacilityResourcesPage } from './pages/resources/FacilityResourcesPage'
+import { FacilityWorkforcePage } from './pages/workforce/FacilityWorkforcePage'
 import { ReferenceWorkspacePage } from './pages/workspaces/ReferenceWorkspacePage'
 
 function isReferenceWorkspaceNavEnabled() {
@@ -140,6 +141,7 @@ export default function App() {
       <Route path="/workspaces/facilities/:facilityId" element={<Protected><FacilityWorkspacePage /></Protected>} />
       <Route path="/facilities/:facilityId/occupancy" element={<Protected><FacilityOccupancyPage /></Protected>} />
       <Route path="/facilities/:facilityId/resources" element={<Protected><FacilityResourcesPage /></Protected>} />
+      <Route path="/facilities/:facilityId/workforce" element={<Protected><FacilityWorkforcePage /></Protected>} />
       <Route path="/notes/new" element={<Protected><NoteCreatePage /></Protected>} />
       <Route path="/notes/:id" element={<Protected><NoteDetailPage /></Protected>} />
       <Route path="/notes/:id/edit" element={<Protected><NoteEditPage /></Protected>} />

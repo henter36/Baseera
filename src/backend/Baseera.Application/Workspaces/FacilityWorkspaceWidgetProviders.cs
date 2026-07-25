@@ -289,6 +289,39 @@ internal sealed class FacilityResourcesWorkspaceWidgetProvider(
     }
 }
 
+internal sealed class FacilityWorkforceWorkspaceWidgetProvider(
+    IFacilityWorkspaceReadService readService,
+    TimeProvider timeProvider) : IWorkspaceWidgetProvider
+{
+    public WidgetDefinition Definition { get; } = FacilityWorkspaceWidgetDefinitions.Create(new FacilityWorkspaceWidgetDefinitionSpec
+    {
+        Key = FacilityWorkspaceDefinitionProvider.WorkforceWidgetKey,
+        TitleAr = "القوى البشرية والتغطية",
+        TitleEn = "Workforce Coverage",
+        DescriptionAr = "تغطية المناوبات والاحتياج التشغيلي والمواقع الحرجة دون كشف أسماء في الملخص.",
+        Category = WidgetCategory.Workload,
+        RequiredPermission = PermissionCodes.WorkforceViewSummary,
+        DataCapability = "Workforce.Readiness",
+        Size = WidgetSize.Wide
+    });
+
+    public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        var payload = await readService.GetWorkforceAsync(context, cancellationToken);
+        var generatedAt = timeProvider.GetUtcNow();
+        var confidence = FacilityWorkspaceConfidenceMapper.ToLevel(payload.Summary.ConfidenceLevel);
+
+        return Envelope(
+            context,
+            Definition.Key,
+            generatedAt,
+            payload,
+            confidence,
+            [new DrillDownTarget("facility.workforce", "فتح القوى البشرية", new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() }, FacilityWorkspaceDrillDownFilters.Preserve(context), PermissionCodes.WorkforceViewSummary)],
+            payload.Summary.Warnings);
+    }
+}
+
 internal sealed class FacilityRecentActivityWorkspaceWidgetProvider(
     IFacilityWorkspaceReadService readService,
     TimeProvider timeProvider) : IWorkspaceWidgetProvider

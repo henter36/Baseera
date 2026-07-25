@@ -17,6 +17,7 @@ using Baseera.Application.Notes;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Organization;
 using Baseera.Application.Resources;
+using Baseera.Application.Workforce;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
@@ -163,6 +164,7 @@ public static class ApiEndpoints
         MapFormComplianceEndpoints(api);
         MapOccupancyEndpoints(api);
         MapResourceEndpoints(api);
+        MapWorkforceEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
         MapFormCampaignEndpoints(api);
@@ -358,6 +360,176 @@ public static class ApiEndpoints
             CancellationToken ct) =>
             Results.Ok(await service.ConfirmAsync(facilityId, request, ct)))
             .RequireAuthorization(AuthPolicies.ResourcesImport);
+    }
+
+    private static void MapWorkforceEndpoints(RouteGroupBuilder api)
+    {
+        var workforce = api.MapGroup("/facilities/{facilityId:guid}/workforce");
+
+        workforce.MapGet(SummaryRoute, async (
+            Guid facilityId,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetSummaryAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewSummary);
+
+        workforce.MapGet("/coverage", async (
+            Guid facilityId,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetCoverageAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewCoverage);
+
+        workforce.MapGet("/units", async (
+            Guid facilityId,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetUnitsAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewCoverage);
+
+        workforce.MapGet("/roles", async (
+            Guid facilityId,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetRolesAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewMembers);
+
+        workforce.MapGet("/members", async (
+            Guid facilityId,
+            string? search,
+            int? pageSize,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListMembersAsync(facilityId, search, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewMembers);
+
+        workforce.MapGet("/members/{memberId:guid}", async (
+            Guid facilityId,
+            Guid memberId,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+        {
+            var member = await service.GetMemberAsync(facilityId, memberId, ct);
+            return member is null ? Results.NotFound() : Results.Ok(member);
+        }).RequireAuthorization(AuthPolicies.WorkforceViewMembers);
+
+        workforce.MapPost("/members", async (
+            Guid facilityId,
+            WorkforceMemberCreateRequest request,
+            IWorkforceMemberCommandService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateMemberAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/workforce/members/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.WorkforceManageMembers);
+
+        workforce.MapPost("/assignments", async (
+            Guid facilityId,
+            WorkforceAssignmentRequest request,
+            IWorkforceMemberCommandService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateAssignmentAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/workforce/assignments/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.WorkforceManageAssignments);
+
+        workforce.MapPost("/qualifications", async (
+            Guid facilityId,
+            WorkforceQualificationRequest request,
+            IWorkforceMemberCommandService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateQualificationAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/workforce/qualifications/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.WorkforceManageQualifications);
+
+        workforce.MapGet("/requirements", async (
+            Guid facilityId,
+            IStaffingRequirementService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListRequirementsAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewCoverage);
+
+        workforce.MapPost("/requirements", async (
+            Guid facilityId,
+            StaffingRequirementRequest request,
+            IStaffingRequirementService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.RecordRequirementAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/workforce/requirements/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.WorkforceManageRequirements);
+
+        workforce.MapGet("/rosters", async (
+            Guid facilityId,
+            IDutyRosterService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListRostersAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewCoverage);
+
+        workforce.MapPost("/rosters", async (
+            Guid facilityId,
+            DutyRosterCreateRequest request,
+            IDutyRosterService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateRosterAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/workforce/rosters/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.WorkforceManageRosters);
+
+        workforce.MapPost("/rosters/{rosterId:guid}/assignments", async (
+            Guid facilityId,
+            Guid rosterId,
+            DutyRosterAssignmentRequest request,
+            IDutyRosterService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.AddAssignmentAsync(facilityId, rosterId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/workforce/rosters/{rosterId}/assignments/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.WorkforceManageRosters);
+
+        workforce.MapPost("/rosters/{rosterId:guid}/publish", async (
+            Guid facilityId,
+            Guid rosterId,
+            IDutyRosterService service,
+            CancellationToken ct) =>
+        {
+            await service.PublishAsync(facilityId, rosterId, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.WorkforceManageRosters);
+
+        workforce.MapPost("/availability", async (
+            Guid facilityId,
+            WorkforceAvailabilityRequest request,
+            IWorkforceAvailabilityService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.RecordAvailabilityAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/workforce/availability/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.WorkforceRecordAvailability);
+
+        workforce.MapPost("/import/preview", async (
+            Guid facilityId,
+            WorkforceImportPreviewRequest request,
+            IWorkforceImportService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.PreviewAsync(facilityId, request, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceImport);
+
+        workforce.MapPost("/import/confirm", async (
+            Guid facilityId,
+            WorkforceImportPreviewRequest request,
+            IWorkforceImportService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ConfirmAsync(facilityId, request, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceImport);
+
+        workforce.MapGet("/data-quality", async (
+            Guid facilityId,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetDataQualityAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewSummary);
     }
 
     private static void MapFormsEndpoints(RouteGroupBuilder api)

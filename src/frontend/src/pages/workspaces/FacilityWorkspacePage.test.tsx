@@ -250,6 +250,7 @@ describe('FacilityWorkspacePage', () => {
       'التشغيل والوقوعات',
       'الإشغال والنزلاء',
       'الموارد والجاهزية',
+      'القوى البشرية والتغطية',
       'المخاطر والمعالجات',
       'المشاريع والمبادرات',
       'الخطط والطوارئ',
@@ -266,7 +267,14 @@ describe('FacilityWorkspacePage', () => {
     expect(screen.getByText('حافلة نقل نزلاء')).toBeInTheDocument()
     expect(screen.getByText('جاهزية الموارد')).toBeInTheDocument()
     expect(screen.getByTestId('router-location')).toHaveTextContent('section=resources')
-  })
+
+    fireEvent.click(screen.getByRole('button', { name: 'القوى البشرية والتغطية' }))
+
+    expect(screen.getByRole('heading', { name: 'القوى البشرية والتغطية' })).toBeInTheDocument()
+    expect(screen.getByText('تغطية القوى البشرية')).toBeInTheDocument()
+    expect(screen.getByText('ضابط برج')).toBeInTheDocument()
+    expect(screen.getByTestId('router-location')).toHaveTextContent('section=workforce')
+  }, 15_000)
 
   it('opens facility unit and data quality gaps in the context panel', async () => {
     renderPage('/workspaces/facilities/facility-a?section=occupancy')
@@ -712,6 +720,101 @@ const shell = {
       allowedActions: [],
     },
     {
+      widgetKey: 'facility.workforce',
+      generatedAtUtc: '2026-07-24T09:00:00Z',
+      dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+      freshness: { status: 2, labelAr: 'جزئية' },
+      confidence: { level: 2, labelAr: 'متوسطة' },
+      scopeSummary: { level: 1, labelAr: 'Facility', facilityId: 'facility-a', isSensitive: false },
+      isPartial: true,
+      warningMessages: ['توجد فجوات تغطية في أدوار حرجة.'],
+      payload: {
+        summary: {
+          facilityId: 'facility-a',
+          totalMembers: 12,
+          operationallyEligible: 10,
+          required: 14,
+          minimumSafe: 11,
+          scheduled: 9,
+          present: 8,
+          operationallyAvailable: 9,
+          onLeave: 2,
+          inTraining: 1,
+          restricted: 0,
+          gap: 5,
+          safeGap: 2,
+          coverageRate: 0.6429,
+          qualificationCoverage: 0.8,
+          coverageStatus: 1,
+          criticalPositionsAtRisk: 1,
+          staleRecords: 1,
+          missingDataRecords: 0,
+          freshnessStatus: 'partial',
+          confidenceLevel: 'medium',
+          isPartial: true,
+          warnings: ['توجد فجوات تغطية في أدوار حرجة.'],
+          fatigueIndicators: [],
+          generatedAtUtc: '2026-07-24T09:00:00Z',
+          dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+        },
+        coverage: [{
+          roleDefinitionId: 'role-tower',
+          roleCode: 'TOWER',
+          roleNameAr: 'ضابط برج',
+          facilityUnitId: 'unit-1',
+          unitNameAr: 'عنبر أ',
+          shiftDefinitionId: 'shift-day',
+          shiftCode: 'DAY',
+          required: 3,
+          minimumSafe: 2,
+          scheduled: 2,
+          present: 1,
+          operationallyAvailable: 2,
+          gap: 1,
+          safeGap: 0,
+          coverageRate: 0.6667,
+          coverageStatus: 1,
+        }],
+        units: [{
+          facilityUnitId: 'unit-1',
+          unitNameAr: 'عنبر أ',
+          required: 6,
+          operationallyAvailable: 4,
+          gap: 2,
+          coverageRate: 0.6667,
+          coverageStatus: 1,
+        }],
+        roles: [{
+          id: 'role-tower',
+          code: 'TOWER',
+          nameAr: 'ضابط برج',
+          nameEn: 'Tower Officer',
+          category: 1,
+          criticality: 3,
+          requiresCertification: true,
+          isShiftBased: true,
+          isSensitive: false,
+        }],
+        dataQuality: {
+          totalMembers: 12,
+          missingEmployeeNumber: 0,
+          unknownEmploymentStatus: 1,
+          missingHomeOrOperationalFacility: 0,
+          staleVerification: 1,
+          openImportIssues: 0,
+          warnings: ['سجلات تحقق قديمة'],
+        },
+      },
+      drillDownTargets: [{
+        routeKey: 'facility.workforce',
+        labelAr: 'فتح القوى البشرية',
+        routeParameters: { facilityId: 'facility-a' },
+        preservedFilters: { facilityId: 'facility-a' },
+        requiredPermission: 'Workforce.ViewSummary',
+      }],
+      allowedActions: [],
+    },
+    {
       widgetKey: 'facility.data-quality',
       generatedAtUtc: '2026-07-24T09:00:00Z',
       dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
@@ -725,6 +828,7 @@ const shell = {
           { key: 'structure', labelAr: 'الهيكل التنظيمي والوحدات', statusCode: 'complete', statusAr: 'متاح', confidenceAr: 'مرتفعة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'يدعم قراءة الوحدة والموقع.' },
           { key: 'occupancy', labelAr: 'الإشغال والنزلاء', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات نزلاء أو سعة معتمدة في النموذج الحالي.', followUpIssue: '#124' },
           { key: 'resources', labelAr: 'القوى والموارد والجاهزية', statusCode: 'partial', statusAr: 'جزئي', confidenceAr: 'متوسطة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'توجد موارد أساسية وجاهزية جزئية مع فجوات احتياج.', followUpIssue: '#15' },
+          { key: 'workforce', labelAr: 'القوى البشرية والتغطية', statusCode: 'partial', statusAr: 'جزئي', confidenceAr: 'متوسطة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'توجد فجوات تغطية في أدوار حرجة.', followUpIssue: '#133' },
           { key: 'incidents', labelAr: 'الوقوعات والحوادث', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.', followUpIssue: '#127' },
           { key: 'risks', labelAr: 'المخاطر والمعالجات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد Risk/RiskTreatment engine في النطاق الحالي.', followUpIssue: '#16' },
           { key: 'projects', labelAr: 'المشاريع والمبادرات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات Project أو Initiative مرتبطة بالسجن.', followUpIssue: '#126' },

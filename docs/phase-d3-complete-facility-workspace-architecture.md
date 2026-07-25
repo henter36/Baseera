@@ -11,8 +11,8 @@ Backend changes:
 
 Frontend changes:
 
-- `FacilityWorkspacePage` now provides 12 internal sections.
-- The command-center shell remains the D.2 shell, but the section deck now covers operations, occupancy, resources, risks, projects, compliance, plans, decisions, timeline, and data quality.
+- `FacilityWorkspacePage` provides internal sections including operations, occupancy, resources, القوى البشرية والتغطية (`workforce`), risks, projects, compliance, plans, decisions, timeline, and data quality (D.3 base expanded by D.4/D.5/D.5.1).
+- The command-center shell remains the D.2 shell.
 - Missing domains are rendered as safe gap states, not fake dashboards.
 
 No EF migration is introduced.

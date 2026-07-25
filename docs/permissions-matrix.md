@@ -184,6 +184,28 @@
 
 `Workspaces.ViewFacility` لا يمنح أي صلاحية موارد بمفرده. المستخدم غير المخول لا يرى قسم الموارد أو أعداده داخل مساحة السجن، والـendpoint المباشر يعيد `403` عند نقص الصلاحية و`404` عند الخروج من النطاق.
 
+## صلاحيات جاهزية القوى البشرية (Phase D.5.1)
+
+تنطبق على أعضاء القوى البشرية التشغيلية والتغطية والمناوبات فقط. لا تشمل الأسلحة، الرواتب، أو تجميع Region/HQ.
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Regional Coordinator | Facility Director | Facility Coordinator | Workforce Officer |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:---------------------:|:-----------------:|:--------------------:|:-----------------:|
+| Workforce.ViewSummary | عرض ملخص التغطية وجودة البيانات وwidget المساحة | ✓ | ✓ | ✓ | | | ✓ | | ✓ |
+| Workforce.ViewCoverage | عرض التغطية والوحدات والمتطلبات والجداول | ✓ | ✓ | ✓ | | | ✓ | | ✓ |
+| Workforce.ViewMembers | عرض الأعضاء والأدوار التشغيلية | ✓ | ✓ | ✓ | | | ✓ | | ✓ |
+| Workforce.ViewSensitiveRestrictions | عرض أكواد القيود التشغيلية الحساسة | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.ManageMembers | إنشاء أعضاء القوى البشرية | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.ManageAssignments | إدارة التكليفات التشغيلية | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.ManageQualifications | إدارة المؤهلات والاعتمادات | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.ManageRequirements | إدارة احتياجات التغطية | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.ManageRosters | إنشاء ونشر جداول المناوبات | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.RecordAvailability | تسجيل التوفر والغياب والقيود | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.Import | استيراد القوى البشرية مع preview/confirm | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.Export | تصدير بيانات القوى البشرية (صلاحية مُعدّة؛ واجهة التصدير غير مشحونة في هذه الشريحة) | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.Reconcile | مصالحة بيانات القوى البشرية (خدمة تطبيقية؛ بدون endpoint HTTP في هذه الشريحة) | ✓ | | ✓ | | | ✓ | | ✓ |
+
+`Workspaces.ViewFacility` لا يمنح أي صلاحية قوى بشرية بمفرده. المستخدم غير المخول لا يرى قسم `القوى البشرية والتغطية` أو أعداده، والـendpoint المباشر يعيد `403` عند نقص الصلاحية و`404` عند الخروج من النطاق. بذرة التطوير الحالية تمنح مجموعة الملخص لـ HQ Executive ومجموعة الإدارة لـ Decision Support Director وFacility Director وWorkforce Officer؛ Regional/Facility Coordinator لا يحصلان على `Workforce.*` في هذه البذرة.
+
 Capabilities النوع:
 
 - CanView
@@ -258,7 +280,9 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 
 ## صلاحيات مسجّلة للوحدات اللاحقة (Seed فقط في A)
 
-`Vehicles.*`, `Armament.*`, `Incidents.*`, `Projects.*`, `Strategy.*`, `Reports.ExportSensitive`, `Plans.*`, `Workforce.*`, `Decisions.*`, `PrisonerFollowUp.*`
+`Vehicles.*`, `Armament.*`, `Incidents.*`, `Projects.*`, `Strategy.*`, `Reports.ExportSensitive`, `Plans.*`, `Decisions.*`, `PrisonerFollowUp.*`
+
+ملاحظة: `Workforce.*` مفعّلة في Phase D.5.1 — انظر قسم «صلاحيات جاهزية القوى البشرية» أعلاه. `Resources.*` مفعّلة في Phase D.5 و`Occupancy.*` في Phase D.4.
 
 ## قواعد فصل الواجبات (SoD)
 
