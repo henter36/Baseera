@@ -14,6 +14,7 @@ using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Forms.Responses;
 using Baseera.Application.Identity;
 using Baseera.Application.Notes;
+using Baseera.Application.Occupancy;
 using Baseera.Application.Organization;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.Attachments;
@@ -157,12 +158,71 @@ public static class ApiEndpoints
         MapOperationalDashboardEndpoints(api);
         MapWorkspaceEndpoints(api);
         MapFormComplianceEndpoints(api);
+        MapOccupancyEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
         MapFormCampaignEndpoints(api);
         MapFormResponseEndpoints(api);
 
         return api;
+    }
+
+    private static void MapOccupancyEndpoints(RouteGroupBuilder api)
+    {
+        var occupancy = api.MapGroup("/facilities/{facilityId:guid}/occupancy");
+
+        occupancy.MapGet("/summary", async (
+            Guid facilityId,
+            DateTimeOffset? asOfUtc,
+            IOccupancyQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetSummaryAsync(facilityId, asOfUtc ?? DateTimeOffset.UtcNow, ct)))
+            .RequireAuthorization(AuthPolicies.OccupancyViewSummary);
+
+        occupancy.MapGet("/units", async (
+            Guid facilityId,
+            DateTimeOffset? asOfUtc,
+            IOccupancyQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetUnitBreakdownAsync(facilityId, asOfUtc ?? DateTimeOffset.UtcNow, ct)))
+            .RequireAuthorization(AuthPolicies.OccupancyViewUnitBreakdown);
+
+        occupancy.MapGet("/movements/summary", async (
+            Guid facilityId,
+            DateTimeOffset fromUtc,
+            DateTimeOffset toUtc,
+            IOccupancyQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetMovementSummaryAsync(facilityId, fromUtc, toUtc, ct)))
+            .RequireAuthorization(AuthPolicies.OccupancyViewMovements);
+
+        occupancy.MapPost("/capacity", async (
+            Guid facilityId,
+            OccupancyCapacityRequest request,
+            IOccupancyCommandService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.RecordCapacityAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/occupancy/capacity/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.OccupancyManageCapacity);
+
+        occupancy.MapPost("/snapshots", async (
+            Guid facilityId,
+            OccupancySnapshotRequest request,
+            IOccupancyCommandService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.RecordSnapshotAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/occupancy/snapshots/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.OccupancyRecordSnapshot);
+
+        occupancy.MapPost("/movements/import", async (
+            Guid facilityId,
+            InmateMovementImportRequest request,
+            IOccupancyCommandService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ImportMovementsAsync(facilityId, request, ct)))
+            .RequireAuthorization(AuthPolicies.OccupancyImport);
     }
 
     private static void MapFormsEndpoints(RouteGroupBuilder api)

@@ -544,6 +544,9 @@ public sealed class BusinessCalendarTests
         public IQueryable<Domain.Escalations.Notification> Notifications => Empty<Domain.Escalations.Notification>();
         public IQueryable<Domain.Escalations.NotificationDeliveryAttempt> NotificationDeliveryAttempts => Empty<Domain.Escalations.NotificationDeliveryAttempt>();
         public IQueryable<Domain.Escalations.BackgroundJobLease> BackgroundJobLeases => Empty<Domain.Escalations.BackgroundJobLease>();
+        public IQueryable<Domain.Occupancy.FacilityCapacityBaseline> FacilityCapacityBaselines => Empty<Domain.Occupancy.FacilityCapacityBaseline>();
+        public IQueryable<Domain.Occupancy.InmateCensusSnapshot> InmateCensusSnapshots => Empty<Domain.Occupancy.InmateCensusSnapshot>();
+        public IQueryable<Domain.Occupancy.InmateMovementEvent> InmateMovementEvents => Empty<Domain.Occupancy.InmateMovementEvent>();
         public IQueryable<FormDefinition> FormDefinitions => Empty<FormDefinition>();
         public IQueryable<FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<FormReviewDecision> FormReviewDecisions => Empty<FormReviewDecision>();

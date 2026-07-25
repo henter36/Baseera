@@ -3894,6 +3894,337 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.ToTable("UserNoteTypeOverrides");
                 });
 
+            modelBuilder.Entity("Baseera.Domain.Occupancy.FacilityCapacityBaseline", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ApprovalDateUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ApprovalReference")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("ApprovedCapacity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CapacityType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FacilityUnitId");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("FacilityId", "IsDeleted");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "CapacityType", "EffectiveFromUtc");
+
+                    b.ToTable("FacilityCapacityBaselines", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FacilityCapacityBaselines_Capacity_Positive", "[ApprovedCapacity] > 0");
+
+                            t.HasCheckConstraint("CK_FacilityCapacityBaselines_EffectiveRange", "[EffectiveToUtc] IS NULL OR [EffectiveToUtc] > [EffectiveFromUtc]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Occupancy.InmateCensusSnapshot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("AdultCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CapturedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("FemaleCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ImportedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("InmateCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsAuthoritative")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("IsolationCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("JuvenileCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MaleCount")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MedicalCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("QualityNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("QualityStatus")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceVersion")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FacilityUnitId");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("FacilityId", "IsDeleted");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "CapturedAtUtc");
+
+                    b.HasIndex("FacilityId", "IsAuthoritative", "CapturedAtUtc");
+
+                    b.ToTable("InmateCensusSnapshots", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_InmateCensusSnapshots_Adult_NonNegative", "[AdultCount] IS NULL OR [AdultCount] >= 0");
+
+                            t.HasCheckConstraint("CK_InmateCensusSnapshots_Count_NonNegative", "[InmateCount] >= 0");
+
+                            t.HasCheckConstraint("CK_InmateCensusSnapshots_Female_NonNegative", "[FemaleCount] IS NULL OR [FemaleCount] >= 0");
+
+                            t.HasCheckConstraint("CK_InmateCensusSnapshots_Isolation_NonNegative", "[IsolationCount] IS NULL OR [IsolationCount] >= 0");
+
+                            t.HasCheckConstraint("CK_InmateCensusSnapshots_Juvenile_NonNegative", "[JuvenileCount] IS NULL OR [JuvenileCount] >= 0");
+
+                            t.HasCheckConstraint("CK_InmateCensusSnapshots_Male_NonNegative", "[MaleCount] IS NULL OR [MaleCount] >= 0");
+
+                            t.HasCheckConstraint("CK_InmateCensusSnapshots_Medical_NonNegative", "[MedicalCount] IS NULL OR [MedicalCount] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Occupancy.InmateMovementEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ExternalEventId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FromFacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FromFacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("InmateReferenceHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsReversed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MovementType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("ReversedByEventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ToFacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ToFacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromFacilityId");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("ReversedByEventId");
+
+                    b.HasIndex("ToFacilityId");
+
+                    b.HasIndex("FromFacilityUnitId", "OccurredAtUtc");
+
+                    b.HasIndex("ToFacilityUnitId", "OccurredAtUtc");
+
+                    b.HasIndex("FacilityId", "OccurredAtUtc", "MovementType");
+
+                    b.HasIndex("SourceType", "SourceReference", "ExternalEventId")
+                        .IsUnique()
+                        .HasFilter("[ExternalEventId] IS NOT NULL AND [IsDeleted] = 0");
+
+                    b.ToTable("InmateMovementEvents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_InmateMovementEvents_Admission_Target", "([MovementType] <> 0) OR ([ToFacilityId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_InmateMovementEvents_InternalTransfer_Units", "([MovementType] <> 4) OR ([FromFacilityUnitId] IS NOT NULL AND [ToFacilityUnitId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_InmateMovementEvents_NoSelfTransfer", "([FromFacilityId] IS NULL OR [ToFacilityId] IS NULL OR [FromFacilityId] <> [ToFacilityId] OR ISNULL([FromFacilityUnitId], '00000000-0000-0000-0000-000000000000') <> ISNULL([ToFacilityUnitId], '00000000-0000-0000-0000-000000000000'))");
+
+                            t.HasCheckConstraint("CK_InmateMovementEvents_Release_Source", "([MovementType] <> 1) OR ([FromFacilityId] IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Baseera.Domain.Organization.Building", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5691,6 +6022,112 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("UpdatedByUser");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Occupancy.FacilityCapacityBaseline", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Occupancy.InmateCensusSnapshot", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Occupancy.InmateMovementEvent", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "FromFacility")
+                        .WithMany()
+                        .HasForeignKey("FromFacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FromFacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FromFacilityUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Occupancy.InmateMovementEvent", "ReversedByEvent")
+                        .WithMany()
+                        .HasForeignKey("ReversedByEventId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "ToFacility")
+                        .WithMany()
+                        .HasForeignKey("ToFacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "ToFacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("ToFacilityUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FromFacility");
+
+                    b.Navigation("FromFacilityUnit");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("ReversedByEvent");
+
+                    b.Navigation("ToFacility");
+
+                    b.Navigation("ToFacilityUnit");
                 });
 
             modelBuilder.Entity("Baseera.Domain.Organization.Building", b =>

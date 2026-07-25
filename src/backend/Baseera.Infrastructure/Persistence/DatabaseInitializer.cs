@@ -4,6 +4,7 @@ using Baseera.Domain.Common;
 using Baseera.Domain.Forms;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
+using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -218,6 +219,27 @@ public static class DatabaseInitializer
             PermissionCodes.WorkspacesViewFacility,
             PermissionCodes.WorkspacesConfigureOwnView
         ];
+        string[] occupancySummary =
+        [
+            PermissionCodes.OccupancyViewSummary,
+            PermissionCodes.OccupancyViewUnitBreakdown,
+            PermissionCodes.OccupancyViewMovements
+        ];
+        string[] occupancyManager =
+        [
+            PermissionCodes.OccupancyViewSummary,
+            PermissionCodes.OccupancyViewUnitBreakdown,
+            PermissionCodes.OccupancyViewMovements,
+            PermissionCodes.OccupancyManageCapacity,
+            PermissionCodes.OccupancyRecordSnapshot,
+            PermissionCodes.OccupancyImport,
+            PermissionCodes.OccupancyReconcile
+        ];
+        string[] occupancySensitive =
+        [
+            PermissionCodes.OccupancyViewSensitiveMovements,
+            PermissionCodes.OccupancyExport
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -253,7 +275,8 @@ public static class DatabaseInitializer
             escalationViewer,
             ownNotifications,
             dashboardFull,
-            workspaceHeadquarters);
+            workspaceHeadquarters,
+            occupancySummary);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -271,7 +294,9 @@ public static class DatabaseInitializer
             escalationManager,
             ownNotifications,
             dashboardFull,
-            workspaceHeadquarters);
+            workspaceHeadquarters,
+            occupancyManager,
+            occupancySensitive);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -297,7 +322,8 @@ public static class DatabaseInitializer
             escalationViewer,
             ownNotifications,
             dashboardScoped,
-            workspaceRegion);
+            workspaceRegion,
+            occupancyManager);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -310,7 +336,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesCancel,
             caCoordinator,
             ownNotifications,
-            workspaceRegion);
+            workspaceRegion,
+            occupancySummary);
 
         var facilityDirector = roles.First(r => r.Code == RoleCodes.FacilityDirector);
         Grant(facilityDirector,
@@ -338,7 +365,8 @@ public static class DatabaseInitializer
             escalationViewer,
             ownNotifications,
             dashboardScoped,
-            workspaceFacility);
+            workspaceFacility,
+            occupancyManager);
 
         string[] formsDesigner =
         [
@@ -443,7 +471,16 @@ public static class DatabaseInitializer
             PermissionCodes.AttachmentsUpload,
             PermissionCodes.AttachmentsDownload,
             ownNotifications,
-            workspaceFacility);
+            workspaceFacility,
+            occupancySummary);
+
+        var prisonerCaseOfficer = roles.First(r => r.Code == RoleCodes.PrisonerCaseOfficer);
+        Grant(prisonerCaseOfficer,
+            PermissionCodes.OrganizationView,
+            workspaceFacility,
+            occupancyManager,
+            occupancySensitive,
+            ownNotifications);
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -746,8 +783,103 @@ public static class DatabaseInitializer
             await db.SaveChangesAsync(cancellationToken);
         }
 
+        await EnsureDemoOccupancyAsync(db, cancellationToken);
         await EnsureDevAdminAsync(db, cancellationToken);
     }
+
+    private static async Task EnsureDemoOccupancyAsync(BaseeraDbContext db, CancellationToken cancellationToken)
+    {
+        if (!await db.Facilities.AnyAsync(f => f.Id == SeedIds.FacilityA1, cancellationToken))
+        {
+            return;
+        }
+
+        if (!await db.FacilityUnits.AnyAsync(u => u.FacilityId == SeedIds.FacilityA1, cancellationToken))
+        {
+            db.FacilityUnits.AddRange(
+                new FacilityUnit { Id = SeedIds.FacilityA1UnitNorth, FacilityId = SeedIds.FacilityA1, Code = "A1-N", NameAr = "عنبر الشمال" },
+                new FacilityUnit { Id = SeedIds.FacilityA1UnitSouth, FacilityId = SeedIds.FacilityA1, Code = "A1-S", NameAr = "عنبر الجنوب" },
+                new FacilityUnit { Id = SeedIds.FacilityA1UnitMedical, FacilityId = SeedIds.FacilityA1, Code = "A1-M", NameAr = "وحدة العزل الطبي" });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        if (await db.FacilityCapacityBaselines.AnyAsync(c => c.FacilityId == SeedIds.FacilityA1, cancellationToken))
+        {
+            return;
+        }
+
+        var capturedAt = DateTimeOffset.UtcNow;
+        var effectiveFrom = capturedAt.AddMonths(-6);
+        db.FacilityCapacityBaselines.AddRange(
+            DemoCapacity(null, 300, "CAP-FAC-A1", effectiveFrom),
+            DemoCapacity(SeedIds.FacilityA1UnitNorth, 120, "CAP-A1-N", effectiveFrom),
+            DemoCapacity(SeedIds.FacilityA1UnitSouth, 120, "CAP-A1-S", effectiveFrom),
+            DemoCapacity(SeedIds.FacilityA1UnitMedical, 24, "CAP-A1-M", effectiveFrom));
+        db.InmateCensusSnapshots.AddRange(
+            DemoSnapshot(null, 286, "CEN-FAC-A1-20260724", capturedAt),
+            DemoSnapshot(SeedIds.FacilityA1UnitNorth, 118, "CEN-A1-N-20260724", capturedAt),
+            DemoSnapshot(SeedIds.FacilityA1UnitSouth, 129, "CEN-A1-S-20260724", capturedAt),
+            DemoSnapshot(SeedIds.FacilityA1UnitMedical, 21, "CEN-A1-M-20260724", capturedAt));
+        db.InmateMovementEvents.AddRange(
+            DemoMovement("MOV-A1-001", MovementType.Admission, null, SeedIds.FacilityA1, null, SeedIds.FacilityA1UnitNorth, capturedAt.AddHours(-8)),
+            DemoMovement("MOV-A1-002", MovementType.Release, SeedIds.FacilityA1, null, SeedIds.FacilityA1UnitSouth, null, capturedAt.AddHours(-5)),
+            DemoMovement("MOV-A1-003", MovementType.InternalTransfer, SeedIds.FacilityA1, SeedIds.FacilityA1, SeedIds.FacilityA1UnitNorth, SeedIds.FacilityA1UnitMedical, capturedAt.AddHours(-3)));
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static FacilityCapacityBaseline DemoCapacity(Guid? unitId, int capacity, string reference, DateTimeOffset effectiveFrom) =>
+        new()
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            FacilityUnitId = unitId,
+            CapacityType = CapacityType.ApprovedOperational,
+            ApprovedCapacity = capacity,
+            EffectiveFromUtc = effectiveFrom,
+            SourceType = OccupancySourceType.Manual,
+            SourceReference = reference,
+            ApprovalReference = reference,
+            ApprovalDateUtc = effectiveFrom
+        };
+
+    private static InmateCensusSnapshot DemoSnapshot(Guid? unitId, int count, string reference, DateTimeOffset capturedAt) =>
+        new()
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            FacilityUnitId = unitId,
+            CapturedAtUtc = capturedAt,
+            InmateCount = count,
+            SourceType = OccupancySourceType.Manual,
+            SourceReference = reference,
+            IsAuthoritative = true,
+            QualityStatus = CensusQualityStatus.Complete
+        };
+
+    private static InmateMovementEvent DemoMovement(
+        string externalEventId,
+        MovementType type,
+        Guid? fromFacilityId,
+        Guid? toFacilityId,
+        Guid? fromUnitId,
+        Guid? toUnitId,
+        DateTimeOffset occurredAt) =>
+        new()
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            InmateReferenceHash = $"demo-hash-{externalEventId}",
+            MovementType = type,
+            FromFacilityId = fromFacilityId,
+            ToFacilityId = toFacilityId,
+            FromFacilityUnitId = fromUnitId,
+            ToFacilityUnitId = toUnitId,
+            OccurredAtUtc = occurredAt,
+            RecordedAtUtc = occurredAt.AddMinutes(5),
+            SourceType = OccupancySourceType.Import,
+            SourceReference = "demo-census",
+            ExternalEventId = externalEventId
+        };
 
     private static async Task EnsureDevAdminAsync(BaseeraDbContext db, CancellationToken cancellationToken)
     {
@@ -793,6 +925,7 @@ public static class DatabaseInitializer
     private const string NotificationsModule = "Notifications";
     private const string DashboardModule = "Dashboard";
     private const string WorkspacesModule = "Workspaces";
+    private const string OccupancyModule = "Occupancy";
     private const string FormsModule = "Forms";
 
     private static List<Permission> BuildPermissions()
@@ -917,7 +1050,16 @@ public static class DatabaseInitializer
             (PermissionCodes.WorkspacesViewFacility, "عرض مساحة عمل المنشأة", WorkspacesModule),
             (PermissionCodes.WorkspacesViewRegion, "عرض مساحة عمل المنطقة", WorkspacesModule),
             (PermissionCodes.WorkspacesViewHeadquarters, "عرض مساحة عمل المركز", WorkspacesModule),
-            (PermissionCodes.WorkspacesConfigureOwnView, "تخصيص العرض الشخصي لمساحة العمل", WorkspacesModule)
+            (PermissionCodes.WorkspacesConfigureOwnView, "تخصيص العرض الشخصي لمساحة العمل", WorkspacesModule),
+            (PermissionCodes.OccupancyViewSummary, "عرض ملخص الإشغال", OccupancyModule),
+            (PermissionCodes.OccupancyViewUnitBreakdown, "عرض تفصيل إشغال الوحدات", OccupancyModule),
+            (PermissionCodes.OccupancyViewMovements, "عرض ملخص حركة النزلاء", OccupancyModule),
+            (PermissionCodes.OccupancyViewSensitiveMovements, "عرض تفاصيل حركة نزلاء حساسة", OccupancyModule),
+            (PermissionCodes.OccupancyManageCapacity, "إدارة الطاقة الاستيعابية", OccupancyModule),
+            (PermissionCodes.OccupancyRecordSnapshot, "تسجيل Snapshot إشغال", OccupancyModule),
+            (PermissionCodes.OccupancyImport, "استيراد بيانات إشغال وحركة", OccupancyModule),
+            (PermissionCodes.OccupancyExport, "تصدير بيانات الإشغال", OccupancyModule),
+            (PermissionCodes.OccupancyReconcile, "مصالحة بيانات الإشغال", OccupancyModule)
         ];
 
         return items.Select(i => new Permission
@@ -979,6 +1121,9 @@ public static class SeedIds
     public static readonly Guid FacilityA1 = Guid.Parse("33333333-3333-3333-3333-333333333301");
     public static readonly Guid FacilityA2 = Guid.Parse("33333333-3333-3333-3333-333333333302");
     public static readonly Guid FacilityB1 = Guid.Parse("33333333-3333-3333-3333-333333333303");
+    public static readonly Guid FacilityA1UnitNorth = Guid.Parse("33333333-3333-3333-3333-333333333311");
+    public static readonly Guid FacilityA1UnitSouth = Guid.Parse("33333333-3333-3333-3333-333333333312");
+    public static readonly Guid FacilityA1UnitMedical = Guid.Parse("33333333-3333-3333-3333-333333333313");
     public static readonly Guid NoteTypeSecurity = Guid.Parse("44444444-4444-4444-4444-444444444401");
     public static readonly Guid NoteTypeTechnical = Guid.Parse("44444444-4444-4444-4444-444444444402");
     public static readonly Guid NoteTypeOperational = Guid.Parse("44444444-4444-4444-4444-444444444403");

@@ -1,5 +1,7 @@
 namespace Baseera.Application.Workspaces;
 
+using Baseera.Application.Occupancy;
+
 public sealed record FacilityWorkspaceHeaderPayload
 {
     public required Guid FacilityId { get; init; }
@@ -142,4 +144,5 @@ internal sealed record FacilityWorkspaceMetrics(
     FacilityNotesOverviewPayload Notes,
     FacilityCorrectiveActionsPayload CorrectiveActions,
     FacilityAlertsEscalationsPayload Alerts,
-    FacilityFormCompliancePayload FormCompliance);
+    FacilityFormCompliancePayload FormCompliance,
+    OccupancyWorkspacePayload? Occupancy);

@@ -3,11 +3,13 @@ using Baseera.Application.Common;
 using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Notes;
+using Baseera.Application.Occupancy;
 using Baseera.Domain.Attachments;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
+using Baseera.Domain.Occupancy;
 using Baseera.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -431,6 +433,11 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         await new FacilityDataQualityWorkspaceWidgetProvider(dataQualityRead, time).LoadAsync(context, CancellationToken.None);
         Assert.Equal(1, dataQualityRead.DataQualityCalls);
         Assert.Equal(0, dataQualityRead.MetricsCalls);
+
+        var occupancyRead = new StrictFacilityReadService(FacilityReadMethod.Occupancy);
+        await new FacilityOccupancyWorkspaceWidgetProvider(occupancyRead, time).LoadAsync(context, CancellationToken.None);
+        Assert.Equal(1, occupancyRead.OccupancyCalls);
+        Assert.Equal(0, occupancyRead.MetricsCalls);
     }
 
     [Fact]
@@ -499,11 +506,62 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 new NoteTypeAccessService(db, currentUser)),
             new FakeOperationalDashboardQueryService(),
             new FakeFormComplianceQueryService(),
+            new ThrowingOccupancyQueryService(),
             time);
 
         var payload = await readService.GetCorrectiveActionsAsync(FacilityWorkspaceContext(), CancellationToken.None);
 
         Assert.Equal(4, payload.AverageClosureHours);
+    }
+
+    [Fact]
+    public async Task Facility_occupancy_activity_drill_down_uses_movement_permission()
+    {
+        db.Organizations.Add(new Baseera.Domain.Organization.Organization { Id = SeedIds.Organization, Code = "ORG", NameAr = "منظمة" });
+        db.Regions.Add(new Baseera.Domain.Organization.Region { Id = SeedIds.RegionA, OrganizationId = SeedIds.Organization, Code = "R", NameAr = "منطقة" });
+        db.Facilities.Add(new Baseera.Domain.Organization.Facility { Id = SeedIds.FacilityA1, RegionId = SeedIds.RegionA, Code = "F", NameAr = "سجن" });
+        db.InmateCensusSnapshots.Add(new InmateCensusSnapshot
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            CapturedAtUtc = new DateTimeOffset(2026, 7, 23, 23, 50, 0, TimeSpan.Zero),
+            InmateCount = 82,
+            SourceReference = "snapshot",
+            IsAuthoritative = true,
+            QualityStatus = CensusQualityStatus.Complete
+        });
+        db.SaveChanges();
+
+        var currentUser = new FakeCurrentUser(
+            true,
+            Guid.NewGuid(),
+            "facility-activity",
+            "facility-activity",
+            [
+                PermissionCodes.NotesView,
+                PermissionCodes.CorrectiveActionsView,
+                PermissionCodes.FormsViewComplianceDashboard,
+                PermissionCodes.EscalationsViewOccurrences,
+                PermissionCodes.OccupancyViewMovements
+            ],
+            [new UserScopeSnapshot(ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null)]);
+        var readService = new FacilityWorkspaceReadService(
+            db,
+            currentUser,
+            new OperationalDashboardFilterBuilder(
+                db,
+                currentUser,
+                new NoteScopeService(new Baseera.Application.Security.OrganizationalScopeService(currentUser, db), currentUser, db),
+                new NoteTypeAccessService(db, currentUser)),
+            new FakeOperationalDashboardQueryService(),
+            new FakeFormComplianceQueryService(),
+            new ThrowingOccupancyQueryService(),
+            time);
+
+        var payload = await readService.GetRecentActivityAsync(FacilityWorkspaceContext(), CancellationToken.None);
+        var occupancy = Assert.Single(payload.Items, item => item.EventType == "occupancy.snapshot");
+
+        Assert.Equal(PermissionCodes.OccupancyViewMovements, occupancy.DrillDownTarget.RequiredPermission);
     }
 
     [Fact]
@@ -635,7 +693,8 @@ public sealed class WorkspaceFrameworkTests : IDisposable
             notes,
             actions,
             alerts,
-            forms);
+            forms,
+            null);
 
     private static WorkspaceContext FacilityWorkspaceContext(Guid? facilityId = null, bool omitFacilityId = false) =>
         new(
@@ -681,6 +740,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         CorrectiveActions,
         AlertsEscalations,
         FormCompliance,
+        Occupancy,
         PriorityQueue,
         RecentActivity,
         Structure,
@@ -694,6 +754,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         public int CorrectiveActionsCalls { get; private set; }
         public int AlertsEscalationsCalls { get; private set; }
         public int FormComplianceCalls { get; private set; }
+        public int OccupancyCalls { get; private set; }
         public int StructureCalls { get; private set; }
         public int DataQualityCalls { get; private set; }
 
@@ -740,6 +801,55 @@ public sealed class WorkspaceFrameworkTests : IDisposable
             FormComplianceCalls += 1;
             EnsureAllowed(FacilityReadMethod.FormCompliance);
             return Task.FromResult(EmptyFormCompliance());
+        }
+
+        public Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken)
+        {
+            OccupancyCalls += 1;
+            EnsureAllowed(FacilityReadMethod.Occupancy);
+            return Task.FromResult(new OccupancyWorkspacePayload
+            {
+                Summary = new OccupancySummaryDto
+                {
+                    FacilityId = SeedIds.FacilityA1,
+                    ApprovedCapacity = 100,
+                    CurrentCount = 82,
+                    OccupancyRate = 0.82m,
+                    AvailablePlaces = 18,
+                    OverCapacityCount = 0,
+                    StatusCode = "normal",
+                    StatusAr = "طبيعي",
+                    UnitCount = 0,
+                    OverloadedUnits = 0,
+                    EmptyUnits = 0,
+                    LatestSnapshotAtUtc = new DateTimeOffset(2026, 7, 24, 0, 0, 0, TimeSpan.Zero),
+                    SourceCode = "authoritative-snapshot",
+                    SourceAr = "Snapshot رسمي",
+                    FreshnessStatus = "current",
+                    ConfidenceLevel = "high",
+                    IsPartial = false,
+                    Warnings = []
+                },
+                UnitBreakdown = new OccupancyUnitBreakdownDto([]),
+                MovementSummary = new MovementSummaryDto
+                {
+                    Admissions = 0,
+                    Releases = 0,
+                    TransferIn = 0,
+                    TransferOut = 0,
+                    InternalTransfers = 0,
+                    TemporaryLeave = 0,
+                    Returns = 0,
+                    Death = 0,
+                    HospitalTransfers = 0,
+                    CourtTransfers = 0,
+                    Corrections = 0,
+                    OtherMovements = 0,
+                    NetMovement = 0,
+                    DailyTrend = []
+                },
+                Interventions = []
+            });
         }
 
         public Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken)
@@ -960,6 +1070,21 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 PageSize = query.PageSize ?? 20,
                 TotalCount = 0
             });
+    }
+
+    private sealed class ThrowingOccupancyQueryService : IOccupancyQueryService
+    {
+        public Task<OccupancyWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
+
+        public Task<OccupancySummaryDto> GetSummaryAsync(Guid facilityId, DateTimeOffset asOfUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
+
+        public Task<OccupancyUnitBreakdownDto> GetUnitBreakdownAsync(Guid facilityId, DateTimeOffset asOfUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
+
+        public Task<MovementSummaryDto> GetMovementSummaryAsync(Guid facilityId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Occupancy should not be queried in this test.");
     }
 
     private sealed class FakeOperationalDashboardQueryService : IOperationalDashboardQueryService

@@ -104,6 +104,9 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Escalations.Notification> Notifications => Enumerable.Empty<Domain.Escalations.Notification>().AsQueryable();
         public IQueryable<Domain.Escalations.NotificationDeliveryAttempt> NotificationDeliveryAttempts => Enumerable.Empty<Domain.Escalations.NotificationDeliveryAttempt>().AsQueryable();
         public IQueryable<Domain.Escalations.BackgroundJobLease> BackgroundJobLeases => Enumerable.Empty<Domain.Escalations.BackgroundJobLease>().AsQueryable();
+        public IQueryable<Domain.Occupancy.FacilityCapacityBaseline> FacilityCapacityBaselines => Enumerable.Empty<Domain.Occupancy.FacilityCapacityBaseline>().AsQueryable();
+        public IQueryable<Domain.Occupancy.InmateCensusSnapshot> InmateCensusSnapshots => Enumerable.Empty<Domain.Occupancy.InmateCensusSnapshot>().AsQueryable();
+        public IQueryable<Domain.Occupancy.InmateMovementEvent> InmateMovementEvents => Enumerable.Empty<Domain.Occupancy.InmateMovementEvent>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitions => Enumerable.Empty<Domain.Forms.FormDefinition>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<Domain.Forms.FormReviewDecision> FormReviewDecisions => Enumerable.Empty<Domain.Forms.FormReviewDecision>().AsQueryable();

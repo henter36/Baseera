@@ -192,6 +192,15 @@ public static class PermissionCodes
     public const string WorkspacesViewRegion = "Workspaces.ViewRegion";
     public const string WorkspacesViewHeadquarters = "Workspaces.ViewHeadquarters";
     public const string WorkspacesConfigureOwnView = "Workspaces.ConfigureOwnView";
+    public const string OccupancyViewSummary = "Occupancy.ViewSummary";
+    public const string OccupancyViewUnitBreakdown = "Occupancy.ViewUnitBreakdown";
+    public const string OccupancyViewMovements = "Occupancy.ViewMovements";
+    public const string OccupancyViewSensitiveMovements = "Occupancy.ViewSensitiveMovements";
+    public const string OccupancyManageCapacity = "Occupancy.ManageCapacity";
+    public const string OccupancyRecordSnapshot = "Occupancy.RecordSnapshot";
+    public const string OccupancyImport = "Occupancy.Import";
+    public const string OccupancyExport = "Occupancy.Export";
+    public const string OccupancyReconcile = "Occupancy.Reconcile";
 }
 
 public static class RoleCodes

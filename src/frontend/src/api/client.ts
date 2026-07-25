@@ -1082,6 +1082,169 @@ export type FacilityFormCompliancePayload = {
   pendingReviewForms: number
 }
 
+export type OccupancySummaryPayload = {
+  facilityId: string
+  approvedCapacity?: number | null
+  currentCount?: number | null
+  occupancyRate?: number | null
+  availablePlaces?: number | null
+  overCapacityCount?: number | null
+  statusCode: string
+  statusAr: string
+  unitCount: number
+  overloadedUnits: number
+  emptyUnits: number
+  latestSnapshotAtUtc?: string | null
+  sourceCode: string
+  sourceAr: string
+  freshnessStatus: string
+  confidenceLevel: string
+  isPartial: boolean
+  warnings: string[]
+}
+
+export type OccupancyUnitPayload = {
+  unitId: string
+  unitNameAr: string
+  unitCode: string
+  approvedCapacity?: number | null
+  currentCount?: number | null
+  occupancyRate?: number | null
+  availablePlaces?: number | null
+  overloadCount?: number | null
+  statusCode: string
+  statusAr: string
+  lastUpdatedAtUtc?: string | null
+  dataSourceAr: string
+  openNotesCount: number
+  openIncidentsCount: number
+  riskCount: number
+  alertReasons: string[]
+}
+
+export type OccupancyMovementSummaryPayload = {
+  admissions: number
+  releases: number
+  transferIn: number
+  transferOut: number
+  internalTransfers: number
+  temporaryLeave: number
+  returns: number
+  death: number
+  hospitalTransfers: number
+  courtTransfers: number
+  corrections: number
+  otherMovements: number
+  netMovement: number
+  dailyTrend: Array<{
+    date: string
+    admissions: number
+    releases: number
+    transfersIn: number
+    transfersOut: number
+    net: number
+  }>
+}
+
+export const OccupancyCapacityType = {
+  ApprovedOperational: 0,
+} as const
+export type OccupancyCapacityType = (typeof OccupancyCapacityType)[keyof typeof OccupancyCapacityType]
+
+export const OccupancySourceType = {
+  Manual: 0,
+  ExternalSystem: 1,
+  Import: 2,
+  Reconciliation: 3,
+} as const
+export type OccupancySourceType = (typeof OccupancySourceType)[keyof typeof OccupancySourceType]
+
+export const CensusQualityStatus = {
+  Complete: 0,
+  Partial: 1,
+  Stale: 2,
+  Missing: 3,
+  Conflicting: 4,
+} as const
+export type CensusQualityStatus = (typeof CensusQualityStatus)[keyof typeof CensusQualityStatus]
+
+export const OccupancyMovementType = {
+  Admission: 0,
+  Release: 1,
+  TransferIn: 2,
+  TransferOut: 3,
+  InternalTransfer: 4,
+  TemporaryLeave: 5,
+  ReturnFromLeave: 6,
+  HospitalTransfer: 7,
+  CourtTransfer: 8,
+  Death: 9,
+  Correction: 10,
+  Other: 99,
+} as const
+export type OccupancyMovementType = (typeof OccupancyMovementType)[keyof typeof OccupancyMovementType]
+
+export type OccupancyCapacityRequest = {
+  facilityUnitId?: string | null
+  capacityType: OccupancyCapacityType
+  approvedCapacity: number
+  effectiveFromUtc: string
+  sourceType: OccupancySourceType
+  sourceReference: string
+}
+
+export type OccupancySnapshotRequest = {
+  facilityUnitId?: string | null
+  capturedAtUtc: string
+  inmateCount: number
+  sourceType: OccupancySourceType
+  sourceReference: string
+  isAuthoritative: boolean
+  qualityStatus: CensusQualityStatus
+}
+
+export type OccupancyMovementImportRow = {
+  inmateReferenceHash: string
+  movementType: OccupancyMovementType
+  fromFacilityId?: string
+  toFacilityId?: string
+  fromFacilityUnitId?: string
+  toFacilityUnitId?: string
+  occurredAtUtc: string
+  externalEventId: string
+}
+
+export type OccupancyMovementImportRequest = {
+  sourceSystem: string
+  importReference: string
+  rows: OccupancyMovementImportRow[]
+}
+
+export type OccupancyImportResult = {
+  acceptedRows: number
+  duplicateRows: number
+  rejectedRows: string[]
+}
+
+export type OccupancyWorkspacePayload = {
+  summary: OccupancySummaryPayload
+  unitBreakdown: {
+    units: OccupancyUnitPayload[]
+  }
+  movementSummary: OccupancyMovementSummaryPayload
+  interventions: Array<{
+    type: string
+    reference: string
+    titleAr: string
+    severityAr: string
+    priorityRank: number
+    reasonAr: string
+    actionLabelAr: string
+    unitId?: string | null
+    dueAtUtc?: string | null
+  }>
+}
+
 export type FacilityPriorityQueuePayload = {
   limit: number
   items: Array<{
@@ -1150,6 +1313,7 @@ export type WorkspaceWidgetPayload =
   | FacilityCorrectiveActionsPayload
   | FacilityAlertsEscalationsPayload
   | FacilityFormCompliancePayload
+  | OccupancyWorkspacePayload
   | FacilityPriorityQueuePayload
   | FacilityRecentActivityPayload
   | FacilityStructurePayload
@@ -2310,6 +2474,21 @@ export const api = {
     widget: (workspaceKey: string, widgetKey: string, filters: WorkspaceFilters = {}) =>
       request<{ definition: WorkspaceWidgetDefinition; data: WorkspaceWidgetEnvelope }>(
         `/api/v1/workspaces/${workspaceKey}/widgets/${widgetKey}?${buildSimpleQuery(filters)}`),
+  },
+
+  occupancy: {
+    summary: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<OccupancySummaryPayload>(`/api/v1/facilities/${facilityId}/occupancy/summary?${buildSimpleQuery(filters)}`),
+    units: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<{ units: OccupancyUnitPayload[] }>(`/api/v1/facilities/${facilityId}/occupancy/units?${buildSimpleQuery(filters)}`),
+    movementsSummary: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<OccupancyMovementSummaryPayload>(`/api/v1/facilities/${facilityId}/occupancy/movements/summary?${buildSimpleQuery(filters)}`),
+    recordCapacity: (facilityId: string, body: OccupancyCapacityRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/occupancy/capacity`, body),
+    recordSnapshot: (facilityId: string, body: OccupancySnapshotRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/occupancy/snapshots`, body),
+    importMovements: (facilityId: string, body: OccupancyMovementImportRequest) =>
+      postJson<OccupancyImportResult>(`/api/v1/facilities/${facilityId}/occupancy/movements/import`, body),
   },
 
   formCompliance: {
