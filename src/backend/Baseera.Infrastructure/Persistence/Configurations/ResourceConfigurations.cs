@@ -11,6 +11,7 @@ internal sealed class ResourceAssetConfiguration : IEntityTypeConfiguration<Reso
         builder.ToTable("ResourceAssets", table =>
         {
             table.HasCheckConstraint("CK_ResourceAssets_ManufactureYear", "[ManufactureYear] IS NULL OR ([ManufactureYear] >= 1950 AND [ManufactureYear] <= 2100)");
+            table.HasCheckConstraint("CK_ResourceAssets_UnitRequiresFacility", "[OperationalFacilityUnitId] IS NULL OR [OperationalFacilityId] IS NOT NULL");
         });
         builder.HasKey(asset => asset.Id);
         builder.Property(asset => asset.AssetCode).HasMaxLength(80).IsRequired();
@@ -28,7 +29,14 @@ internal sealed class ResourceAssetConfiguration : IEntityTypeConfiguration<Reso
         builder.HasOne(asset => asset.Organization).WithMany().HasForeignKey(asset => asset.OrganizationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(asset => asset.OwnershipOrganization).WithMany().HasForeignKey(asset => asset.OwnershipOrganizationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(asset => asset.OperationalFacility).WithMany().HasForeignKey(asset => asset.OperationalFacilityId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(asset => asset.OperationalFacilityUnit).WithMany().HasForeignKey(asset => asset.OperationalFacilityUnitId).OnDelete(DeleteBehavior.Restrict);
+        // Composite FK ensures unit belongs to the same facility when both keys are set.
+        // OperationalFacilityId is nullable; CK_ResourceAssets_UnitRequiresFacility + application EnsureUnitInFacilityAsync cover partial states.
+        builder.HasOne(asset => asset.OperationalFacilityUnit)
+            .WithMany()
+            .HasForeignKey(asset => new { asset.OperationalFacilityId, asset.OperationalFacilityUnitId })
+            .HasPrincipalKey(unit => new { unit.FacilityId, unit.Id })
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(asset => asset.CustodianUser).WithMany().HasForeignKey(asset => asset.CustodianUserId).OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
@@ -67,6 +75,8 @@ internal sealed class CommunicationDeviceProfileConfiguration : IEntityTypeConfi
         builder.Property(profile => profile.BatteryCondition).HasMaxLength(80);
         builder.Property(profile => profile.CoverageStatus).HasMaxLength(80);
         builder.HasOne(profile => profile.ResourceAsset).WithOne(asset => asset.CommunicationDeviceProfile).HasForeignKey<CommunicationDeviceProfile>(profile => profile.ResourceAssetId).OnDelete(DeleteBehavior.Restrict);
+        // AssignedUnitId cannot use a composite facility-unit FK: the profile has no FacilityId column.
+        // Facility membership is enforced in application services when assigning units.
         builder.HasOne(profile => profile.AssignedUnit).WithMany().HasForeignKey(profile => profile.AssignedUnitId).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -98,6 +108,8 @@ internal sealed class FacilityAssetProfileConfiguration : IEntityTypeConfigurati
         builder.Property(profile => profile.CapacityUnit).HasMaxLength(40);
         builder.HasOne(profile => profile.ResourceAsset).WithOne(asset => asset.FacilityAssetProfile).HasForeignKey<FacilityAssetProfile>(profile => profile.ResourceAssetId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(profile => profile.Building).WithMany().HasForeignKey(profile => profile.BuildingId).OnDelete(DeleteBehavior.Restrict);
+        // FacilityUnitId cannot use a composite facility-unit FK: the profile has no FacilityId column.
+        // Facility membership is enforced in application services when assigning units.
         builder.HasOne(profile => profile.FacilityUnit).WithMany().HasForeignKey(profile => profile.FacilityUnitId).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -136,7 +148,12 @@ internal sealed class ResourcePlacementConfiguration : IEntityTypeConfiguration<
         builder.HasOne(placement => placement.ResourceAsset).WithMany(asset => asset.Placements).HasForeignKey(placement => placement.ResourceAssetId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(placement => placement.OwnershipOrganization).WithMany().HasForeignKey(placement => placement.OwnershipOrganizationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(placement => placement.OperationalFacility).WithMany().HasForeignKey(placement => placement.OperationalFacilityId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(placement => placement.OperationalFacilityUnit).WithMany().HasForeignKey(placement => placement.OperationalFacilityUnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(placement => placement.OperationalFacilityUnit)
+            .WithMany()
+            .HasForeignKey(placement => new { placement.OperationalFacilityId, placement.OperationalFacilityUnitId })
+            .HasPrincipalKey(unit => new { unit.FacilityId, unit.Id })
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(placement => placement.AssignedToUser).WithMany().HasForeignKey(placement => placement.AssignedToUserId).OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
@@ -182,9 +199,22 @@ internal sealed class ResourceRequirementConfiguration : IEntityTypeConfiguratio
         builder.Property(requirement => requirement.ApprovalReference).HasMaxLength(160);
         builder.Property(requirement => requirement.Notes).HasMaxLength(1000);
         builder.HasIndex(requirement => new { requirement.FacilityId, requirement.FacilityUnitId, requirement.ResourceType, requirement.ResourceCategory, requirement.EffectiveFromUtc });
+        builder.HasIndex(requirement => new { requirement.FacilityId, requirement.ResourceType, requirement.ResourceCategory })
+            .IsUnique()
+            .HasDatabaseName("IX_ResourceRequirements_FacilityOpen")
+            .HasFilter("[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NULL");
+        builder.HasIndex(requirement => new { requirement.FacilityId, requirement.FacilityUnitId, requirement.ResourceType, requirement.ResourceCategory })
+            .IsUnique()
+            .HasDatabaseName("IX_ResourceRequirements_UnitOpen")
+            .HasFilter("[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NOT NULL");
         builder.HasOne(requirement => requirement.Organization).WithMany().HasForeignKey(requirement => requirement.OrganizationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(requirement => requirement.Facility).WithMany().HasForeignKey(requirement => requirement.FacilityId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(requirement => requirement.FacilityUnit).WithMany().HasForeignKey(requirement => requirement.FacilityUnitId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(requirement => requirement.FacilityUnit)
+            .WithMany()
+            .HasForeignKey(requirement => new { requirement.FacilityId, requirement.FacilityUnitId })
+            .HasPrincipalKey(unit => new { unit.FacilityId, unit.Id })
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
 }
@@ -195,7 +225,15 @@ internal sealed class ResourceImportBatchConfiguration : IEntityTypeConfiguratio
     {
         builder.ToTable("ResourceImportBatches", table =>
         {
-            table.HasCheckConstraint("CK_ResourceImportBatches_Counts", "[TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0 AND [AppliedRows] >= 0");
+            table.HasCheckConstraint(
+                "CK_ResourceImportBatches_RowTotals",
+                "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0");
+            table.HasCheckConstraint(
+                "CK_ResourceImportBatches_AppliedRows",
+                "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
+            table.HasCheckConstraint(
+                "CK_ResourceImportBatches_ConfirmedState",
+                "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] <> N'Confirmed' AND ([Status] <> N'Previewed' OR ([AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)))");
         });
         builder.HasKey(batch => batch.Id);
         builder.Property(batch => batch.SourceSystem).HasMaxLength(120).IsRequired();
@@ -203,6 +241,8 @@ internal sealed class ResourceImportBatchConfiguration : IEntityTypeConfiguratio
         builder.Property(batch => batch.FileHash).HasMaxLength(128).IsRequired();
         builder.Property(batch => batch.Status).HasMaxLength(40).IsRequired();
         builder.HasIndex(batch => new { batch.FacilityId, batch.SourceSystem, batch.SourceReference, batch.FileHash }).IsUnique();
+        builder.HasOne(batch => batch.Facility).WithMany().HasForeignKey(batch => batch.FacilityId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(batch => batch.SubmittedByUser).WithMany().HasForeignKey(batch => batch.SubmittedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
 }

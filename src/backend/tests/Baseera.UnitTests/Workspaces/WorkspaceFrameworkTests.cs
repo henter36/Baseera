@@ -567,6 +567,52 @@ public sealed class WorkspaceFrameworkTests : IDisposable
     }
 
     [Fact]
+    public async Task Facility_resource_priority_and_activity_use_distinct_target_permissions()
+    {
+        db.Organizations.Add(new Baseera.Domain.Organization.Organization { Id = SeedIds.Organization, Code = "ORG", NameAr = "منظمة" });
+        db.Regions.Add(new Baseera.Domain.Organization.Region { Id = SeedIds.RegionA, OrganizationId = SeedIds.Organization, Code = "R", NameAr = "منطقة" });
+        db.Facilities.Add(new Baseera.Domain.Organization.Facility { Id = SeedIds.FacilityA1, RegionId = SeedIds.RegionA, Code = "F", NameAr = "سجن" });
+        db.SaveChanges();
+
+        var assetId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var resourceService = new FakeResourceReadinessQueryService(assetId);
+        var currentUser = new FakeCurrentUser(
+            true,
+            Guid.NewGuid(),
+            "facility-resource-targets",
+            "facility-resource-targets",
+            [
+                PermissionCodes.NotesView,
+                PermissionCodes.CorrectiveActionsView,
+                PermissionCodes.FormsViewComplianceDashboard,
+                PermissionCodes.EscalationsViewOccurrences,
+                PermissionCodes.ResourcesViewSummary,
+                PermissionCodes.ResourcesViewMaintenance
+            ],
+            [new UserScopeSnapshot(ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null)]);
+        var readService = new FacilityWorkspaceReadService(
+            db,
+            currentUser,
+            new OperationalDashboardFilterBuilder(
+                db,
+                currentUser,
+                new NoteScopeService(new Baseera.Application.Security.OrganizationalScopeService(currentUser, db), currentUser, db),
+                new NoteTypeAccessService(db, currentUser)),
+            new FakeOperationalDashboardQueryService(),
+            new FakeFormComplianceQueryService(),
+            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), resourceService),
+            time);
+
+        var priority = await readService.GetPriorityQueueAsync(FacilityWorkspaceContext(), CancellationToken.None);
+        var activity = await readService.GetRecentActivityAsync(FacilityWorkspaceContext(), CancellationToken.None);
+        var resourcePriority = Assert.Single(priority.Items, item => item.Type == "resource");
+        var resourceActivity = Assert.Single(activity.Items, item => item.EventType == "resource-status-changed");
+
+        Assert.Equal(PermissionCodes.ResourcesViewSummary, resourcePriority.DrillDownTarget.RequiredPermission);
+        Assert.Equal(PermissionCodes.ResourcesViewMaintenance, resourceActivity.DrillDownTarget.RequiredPermission);
+    }
+
+    [Fact]
     public async Task Facility_workspace_rejects_unsupported_region_level()
     {
         var user = new FakeCurrentUser(
@@ -1112,8 +1158,95 @@ public sealed class WorkspaceFrameworkTests : IDisposable
         public Task<IReadOnlyList<ResourceAssetListItemDto>> ListAssetsAsync(Guid facilityId, ResourceType? resourceType, string? search, int pageSize, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Resources should not be queried in this test.");
 
-        public Task<ResourceAssetDetailDto> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken) =>
+        public Task<ResourceAssetDetailDto?> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Resources should not be queried in this test.");
+    }
+
+    private sealed class FakeResourceReadinessQueryService(Guid assetId) : IResourceReadinessQueryService
+    {
+        public Task<ResourceWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            Task.FromResult(new ResourceWorkspacePayload
+            {
+                Summary = new ResourceSummaryDto
+                {
+                    FacilityId = facilityId,
+                    TotalRegistered = 1,
+                    Operational = 0,
+                    Available = 0,
+                    Standby = 0,
+                    InUse = 0,
+                    UnderMaintenance = 0,
+                    OutOfService = 1,
+                    AwaitingParts = 0,
+                    Unknown = 0,
+                    Retired = 0,
+                    Required = 1,
+                    Gap = 1,
+                    Surplus = 0,
+                    ReadinessRate = 0m,
+                    AvailabilityRate = 0m,
+                    DataCompletenessRate = 1m,
+                    MissionCriticalUnavailable = 1,
+                    StaleRecords = 0,
+                    MissingDataRecords = 0,
+                    FreshnessStatus = "current",
+                    ConfidenceLevel = "high",
+                    IsPartial = false,
+                    Warnings = [],
+                    GeneratedAtUtc = DateTimeOffset.UtcNow
+                },
+                Categories = [],
+                Exceptions =
+                [
+                    new ResourceExceptionDto
+                    {
+                        Type = "CriticalResourceUnavailable",
+                        ResourceAssetId = assetId,
+                        ResourceType = ResourceType.Vehicle,
+                        Reference = "VEH-1",
+                        TitleAr = "مركبة",
+                        SeverityAr = "حرجة",
+                        PriorityRank = 950,
+                        ReasonAr = "خارج الخدمة",
+                        ActionLabelAr = "فتح المورد"
+                    }
+                ],
+                UnitDistribution = [],
+                Timeline =
+                [
+                    new ResourceActivityDto
+                    {
+                        EventType = "resource-status-changed",
+                        TitleAr = "تغيرت حالة مورد",
+                        DescriptionAr = "إلى خارج الخدمة",
+                        OccurredAtUtc = DateTimeOffset.UtcNow,
+                        EntityReference = "VEH-1",
+                        Tone = "danger",
+                        ResourceAssetId = assetId
+                    }
+                ]
+            });
+
+        public Task<ResourceSummaryDto> GetSummaryAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ResourceCategoryReadinessDto>> GetCategoriesAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ResourceExceptionDto>> GetExceptionsAsync(Guid facilityId, int limit, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ResourceUnitDistributionDto>> GetUnitDistributionAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ResourceActivityDto>> GetTimelineAsync(Guid facilityId, int limit, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<ResourceAssetListItemDto>> ListAssetsAsync(Guid facilityId, ResourceType? resourceType, string? search, int pageSize, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<ResourceAssetDetailDto?> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeOperationalDashboardQueryService : IOperationalDashboardQueryService

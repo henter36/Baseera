@@ -14,7 +14,7 @@ public interface IResourceReadinessQueryService
     Task<IReadOnlyList<ResourceUnitDistributionDto>> GetUnitDistributionAsync(Guid facilityId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ResourceActivityDto>> GetTimelineAsync(Guid facilityId, int limit, CancellationToken cancellationToken);
     Task<IReadOnlyList<ResourceAssetListItemDto>> ListAssetsAsync(Guid facilityId, ResourceType? resourceType, string? search, int pageSize, CancellationToken cancellationToken);
-    Task<ResourceAssetDetailDto> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken);
+    Task<ResourceAssetDetailDto?> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken);
 }
 
 public interface IResourceAssetCommandService
@@ -311,7 +311,18 @@ public sealed class ResourceReadinessService(
         var query = AssetsInFacility(facilityId);
         if (resourceType.HasValue)
         {
+            RequireResourceTypePermission(resourceType.Value);
             query = query.Where(asset => asset.ResourceType == resourceType.Value);
+        }
+        else
+        {
+            var viewableTypes = ResourceAccessPolicy.ViewableResourceTypes(currentUser.Permissions).ToArray();
+            if (viewableTypes.Length == 0)
+            {
+                throw new UnauthorizedAccessException("لا تملك صلاحية عرض هذا النوع من الموارد.");
+            }
+
+            query = query.Where(asset => viewableTypes.Contains(asset.ResourceType));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -332,6 +343,7 @@ public sealed class ResourceReadinessService(
             .Distinct()
             .ToListAsync(cancellationToken);
         var maintenanceSet = maintenanceAssetIds.ToHashSet();
+        var canViewVehiclePlates = CanViewResourceType(ResourceType.Vehicle);
 
         var rows = await query
             .OrderBy(asset => asset.ResourceType)
@@ -352,10 +364,14 @@ public sealed class ResourceReadinessService(
                 asset.LastVerifiedAtUtc))
             .ToListAsync(cancellationToken);
 
-        return rows.Select(row => ToListItem(row, maintenanceSet.Contains(row.Id))).ToList();
+        return rows
+            .Select(row => ToListItem(
+                row with { PlateNumber = canViewVehiclePlates ? row.PlateNumber : null },
+                maintenanceSet.Contains(row.Id)))
+            .ToList();
     }
 
-    public async Task<ResourceAssetDetailDto> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken)
+    public async Task<ResourceAssetDetailDto?> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken)
     {
         Require(PermissionCodes.ResourcesViewAssets);
         await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
@@ -374,8 +390,17 @@ public sealed class ResourceReadinessService(
                 a.OperationalFacilityUnit == null ? null : a.OperationalFacilityUnit.NameAr,
                 a.CustodianUser == null ? null : a.CustodianUser.DisplayNameAr,
                 a.LastVerifiedAtUtc))
-            .FirstOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("المورد غير موجود.");
+            .FirstOrDefaultAsync(cancellationToken);
+        if (asset is null)
+        {
+            return null;
+        }
+
+        RequireResourceTypePermission(asset.ResourceType);
+        if (!CanViewResourceType(ResourceType.Vehicle))
+        {
+            asset = asset with { PlateNumber = null };
+        }
 
         var maintenance = await db.MaintenanceWorkOrders
             .AsNoTracking()
@@ -433,9 +458,10 @@ public sealed class ResourceReadinessService(
             await EnsureUnitInFacilityAsync(facilityId, request.OperationalFacilityUnitId.Value, cancellationToken);
         }
 
+        var assetCode = ResourceAccessPolicy.NormalizeAssetCode(request.AssetCode);
         var exists = await db.ResourceAssets.AnyAsync(
             asset => asset.OrganizationId == facility.OrganizationId
-                && asset.AssetCode == request.AssetCode.Trim()
+                && asset.AssetCode == assetCode
                 && !asset.IsDeleted,
             cancellationToken);
         if (exists)
@@ -448,7 +474,7 @@ public sealed class ResourceReadinessService(
         {
             OrganizationId = facility.OrganizationId,
             ResourceType = request.ResourceType,
-            AssetCode = request.AssetCode.Trim(),
+            AssetCode = assetCode,
             DisplayName = request.DisplayName.Trim(),
             SerialNumber = string.IsNullOrWhiteSpace(request.SerialNumber) ? null : request.SerialNumber.Trim(),
             Manufacturer = request.Manufacturer,
@@ -491,7 +517,15 @@ public sealed class ResourceReadinessService(
             SourceReference = request.SourceReference,
             Reason = "موضع افتتاحي"
         });
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ResourceAccessPolicy.IsResourceAssetsUniqueViolation(ex))
+        {
+            throw new InvalidOperationException("كود المورد مستخدم مسبقًا داخل المنظمة.", ex);
+        }
+
         await AuditAsync("ResourceCreated", "ResourceAsset", asset.Id, cancellationToken);
         return asset.Id;
     }
@@ -565,7 +599,7 @@ public sealed class ResourceReadinessService(
     {
         Require(PermissionCodes.ResourcesManageMaintenance);
         var asset = await LoadAssetForUpdateAsync(facilityId, request.ResourceAssetId, cancellationToken);
-        var sequence = await db.MaintenanceWorkOrders.CountAsync(cancellationToken) + 1;
+        var sequence = await db.NextMaintenanceWorkOrderSequenceValueAsync(cancellationToken);
         var order = new MaintenanceWorkOrder
         {
             OrganizationId = asset.OrganizationId,
@@ -602,13 +636,32 @@ public sealed class ResourceReadinessService(
             await EnsureUnitInFacilityAsync(facilityId, request.FacilityUnitId.Value, cancellationToken);
         }
 
+        var category = request.ResourceCategory.Trim();
+        var overlapping = await db.ResourceRequirements
+            .AsNoTracking()
+            .Where(requirement => !requirement.IsDeleted
+                && requirement.FacilityId == facilityId
+                && requirement.FacilityUnitId == request.FacilityUnitId
+                && requirement.ResourceType == request.ResourceType
+                && requirement.ResourceCategory == category)
+            .Select(requirement => new { requirement.EffectiveFromUtc, requirement.EffectiveToUtc })
+            .ToListAsync(cancellationToken);
+        if (overlapping.Any(existing => ResourceAccessPolicy.PeriodsOverlap(
+                existing.EffectiveFromUtc,
+                existing.EffectiveToUtc,
+                request.EffectiveFromUtc,
+                request.EffectiveToUtc)))
+        {
+            throw new InvalidOperationException("يوجد احتياج فعّال متداخل لنفس نوع وفئة المورد.");
+        }
+
         var requirement = new ResourceRequirement
         {
             OrganizationId = facility.OrganizationId,
             FacilityId = facilityId,
             FacilityUnitId = request.FacilityUnitId,
             ResourceType = request.ResourceType,
-            ResourceCategory = request.ResourceCategory.Trim(),
+            ResourceCategory = category,
             RequiredQuantity = request.RequiredQuantity,
             MinimumOperationalQuantity = request.MinimumOperationalQuantity,
             EffectiveFromUtc = request.EffectiveFromUtc,
@@ -797,22 +850,53 @@ public sealed class ResourceReadinessService(
         }
 
         var facility = await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
-        var existingCodes = await AssetsInFacility(facilityId)
+        var sourceSystem = request.SourceSystem.Trim();
+        var sourceReference = request.SourceReference.Trim();
+        var fileHash = request.FileHash.Trim();
+
+        if (apply)
+        {
+            var prior = await FindConfirmedImportAsync(facilityId, sourceSystem, sourceReference, fileHash, cancellationToken);
+            if (prior is not null)
+            {
+                return prior;
+            }
+        }
+
+        var existingCodes = await db.ResourceAssets
+            .AsNoTracking()
+            .Where(asset => asset.OrganizationId == facility.OrganizationId && !asset.IsDeleted)
             .Select(asset => asset.AssetCode)
             .ToListAsync(cancellationToken);
-        var codeSet = existingCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var requestCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var codeSet = existingCodes
+            .Select(ResourceAccessPolicy.NormalizeAssetCode)
+            .ToHashSet(StringComparer.Ordinal);
+        var requestCodes = new HashSet<string>(StringComparer.Ordinal);
         var errors = new List<string>();
         var valid = 0;
         var duplicate = 0;
+        var now = timeProvider.GetUtcNow();
 
         foreach (var row in request.Rows)
         {
-            var code = row.AssetCode.Trim();
-            if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(row.DisplayName))
+            if (string.IsNullOrWhiteSpace(row.AssetCode) || string.IsNullOrWhiteSpace(row.DisplayName))
             {
                 errors.Add($"صف {row.AssetCode}: كود المورد والاسم مطلوبان.");
                 continue;
+            }
+
+            var code = ResourceAccessPolicy.NormalizeAssetCode(row.AssetCode);
+            if (row.OperationalFacilityUnitId.HasValue)
+            {
+                try
+                {
+                    await EnsureUnitInFacilityAsync(facilityId, row.OperationalFacilityUnitId.Value, cancellationToken);
+                }
+                catch (KeyNotFoundException)
+                {
+                    errors.Add($"صف {row.AssetCode}: الوحدة غير موجودة داخل السجن.");
+                    continue;
+                }
             }
 
             if (!requestCodes.Add(code) || codeSet.Contains(code))
@@ -827,6 +911,7 @@ public sealed class ResourceReadinessService(
                 continue;
             }
 
+            codeSet.Add(code);
             db.Add(new ResourceAsset
             {
                 OrganizationId = facility.OrganizationId,
@@ -836,14 +921,31 @@ public sealed class ResourceReadinessService(
                 SerialNumber = row.SerialNumber,
                 OwnershipOrganizationId = facility.OrganizationId,
                 OperationalFacilityId = facilityId,
+                OperationalFacilityUnitId = row.OperationalFacilityUnitId,
                 CurrentStatus = row.CurrentStatus,
                 Condition = row.Condition,
                 Criticality = row.Criticality,
                 SourceType = ResourceSourceType.Import,
-                SourceReference = request.SourceReference,
-                LastVerifiedAtUtc = timeProvider.GetUtcNow(),
+                SourceReference = sourceReference,
+                LastVerifiedAtUtc = now,
                 LastVerifiedBy = currentUser.DisplayName
             });
+        }
+
+        var rejected = errors.Count;
+        var applied = apply ? valid : 0;
+        var status = apply ? "Confirmed" : "Previewed";
+        var confirmedAt = apply ? now : (DateTimeOffset?)null;
+        if (!ResourceAccessPolicy.IsValidImportBatchCounts(
+                request.Rows.Count,
+                valid,
+                rejected,
+                duplicate,
+                applied,
+                status,
+                confirmedAt))
+        {
+            throw new InvalidOperationException("إحصاءات دفعة الاستيراد غير متسقة.");
         }
 
         if (apply && valid > 0)
@@ -851,24 +953,72 @@ public sealed class ResourceReadinessService(
             db.Add(new ResourceImportBatch
             {
                 FacilityId = facilityId,
-                SourceSystem = request.SourceSystem.Trim(),
-                SourceReference = request.SourceReference.Trim(),
-                FileHash = request.FileHash.Trim(),
+                SourceSystem = sourceSystem,
+                SourceReference = sourceReference,
+                FileHash = fileHash,
                 SubmittedByUserId = currentUser.UserId,
-                SubmittedAtUtc = timeProvider.GetUtcNow(),
-                Status = "Confirmed",
+                SubmittedAtUtc = now,
+                Status = status,
                 TotalRows = request.Rows.Count,
                 ValidRows = valid,
-                RejectedRows = errors.Count,
+                RejectedRows = rejected,
                 DuplicateRows = duplicate,
-                ConfirmedAtUtc = timeProvider.GetUtcNow(),
-                AppliedRows = valid
+                ConfirmedAtUtc = confirmedAt,
+                AppliedRows = applied
             });
-            await db.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException ex) when (ResourceAccessPolicy.IsResourceImportBatchesUniqueViolation(ex))
+            {
+                db.ClearChanges();
+                var raced = await FindConfirmedImportAsync(facilityId, sourceSystem, sourceReference, fileHash, cancellationToken);
+                if (raced is not null)
+                {
+                    return raced;
+                }
+
+                throw;
+            }
+            catch (DbUpdateException ex) when (ResourceAccessPolicy.IsResourceAssetsUniqueViolation(ex))
+            {
+                throw new InvalidOperationException("كود المورد مستخدم مسبقًا داخل المنظمة.", ex);
+            }
+
             await AuditAsync("ResourceImportConfirmed", "ResourceImportBatch", facilityId, cancellationToken);
         }
 
-        return new ResourceImportResult(request.Rows.Count, valid, errors.Count, duplicate, apply ? valid : 0, errors);
+        return new ResourceImportResult(request.Rows.Count, valid, rejected, duplicate, applied, errors);
+    }
+
+    private async Task<ResourceImportResult?> FindConfirmedImportAsync(
+        Guid facilityId,
+        string sourceSystem,
+        string sourceReference,
+        string fileHash,
+        CancellationToken cancellationToken)
+    {
+        var batch = await db.ResourceImportBatches
+            .AsNoTracking()
+            .Where(b => b.FacilityId == facilityId
+                && b.SourceSystem == sourceSystem
+                && b.SourceReference == sourceReference
+                && b.FileHash == fileHash
+                && b.Status == "Confirmed")
+            .FirstOrDefaultAsync(cancellationToken);
+        if (batch is null)
+        {
+            return null;
+        }
+
+        return new ResourceImportResult(
+            batch.TotalRows,
+            batch.ValidRows,
+            batch.RejectedRows,
+            batch.DuplicateRows,
+            batch.AppliedRows,
+            Array.Empty<string>());
     }
 
     private static void ValidateAssetRequest(ResourceAssetCreateRequest request)
@@ -881,6 +1031,17 @@ public sealed class ResourceReadinessService(
         if (request.ManufactureYear is < 1950 or > 2100)
         {
             throw new ArgumentException("سنة التصنيع غير صحيحة.");
+        }
+    }
+
+    private bool CanViewResourceType(ResourceType resourceType) =>
+        ResourceAccessPolicy.CanViewResourceType(currentUser.Permissions, resourceType);
+
+    private void RequireResourceTypePermission(ResourceType resourceType)
+    {
+        if (!CanViewResourceType(resourceType))
+        {
+            throw new UnauthorizedAccessException("لا تملك صلاحية عرض هذا النوع من الموارد.");
         }
     }
 

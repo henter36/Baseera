@@ -467,11 +467,21 @@ public class ResourceRequirement : SoftDeletableEntity
 
 public class ResourceImportBatch : EntityBase
 {
+    private Facility? facility;
+
     public Guid FacilityId { get; set; }
+    public Facility Facility
+    {
+        get => facility ?? throw new InvalidOperationException("Facility navigation has not been loaded.");
+        set => facility = value;
+    }
+
     public string SourceSystem { get; set; } = string.Empty;
     public string SourceReference { get; set; } = string.Empty;
     public string FileHash { get; set; } = string.Empty;
     public Guid? SubmittedByUserId { get; set; }
+    public User? SubmittedByUser { get; set; }
+
     public DateTimeOffset SubmittedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public string Status { get; set; } = "Previewed";
     public int TotalRows { get; set; }

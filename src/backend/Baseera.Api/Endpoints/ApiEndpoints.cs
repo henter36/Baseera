@@ -285,7 +285,10 @@ public static class ApiEndpoints
             Guid assetId,
             IResourceReadinessQueryService service,
             CancellationToken ct) =>
-            Results.Ok(await service.GetAssetAsync(facilityId, assetId, ct)))
+        {
+            var asset = await service.GetAssetAsync(facilityId, assetId, ct);
+            return asset is null ? Results.NotFound() : Results.Ok(asset);
+        })
             .RequireAuthorization(AuthPolicies.ResourcesViewAssets);
 
         resources.MapPost("/assets", async (

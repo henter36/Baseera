@@ -211,6 +211,34 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         return rows.Single().Value;
     }
 
+    public async Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default)
+    {
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            var numbers = await MaintenanceWorkOrders
+                .IgnoreQueryFilters()
+                .Select(order => order.WorkOrderNumber)
+                .ToListAsync(cancellationToken);
+            long max = 0;
+            foreach (var number in numbers)
+            {
+                if (number.StartsWith("MWO-", StringComparison.OrdinalIgnoreCase)
+                    && long.TryParse(number.AsSpan(4), out var parsed)
+                    && parsed > max)
+                {
+                    max = parsed;
+                }
+            }
+
+            return max + 1;
+        }
+
+        var rows = await Database
+            .SqlQueryRaw<SequenceValueRow>("SELECT NEXT VALUE FOR [MaintenanceWorkOrderNumberSequence] AS [Value]")
+            .ToListAsync(cancellationToken);
+        return rows.Single().Value;
+    }
+
     public async Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default)
     {
         if (formDefinitionId == Guid.Empty)
@@ -248,6 +276,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
             .StartsAt(1)
             .IncrementsBy(1);
         modelBuilder.HasSequence<long>("CorrectiveActionReferenceSequence")
+            .StartsAt(1)
+            .IncrementsBy(1);
+        modelBuilder.HasSequence<long>("MaintenanceWorkOrderNumberSequence")
             .StartsAt(1)
             .IncrementsBy(1);
 
@@ -293,7 +324,13 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<InmateCensusSnapshot>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<InmateMovementEvent>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<ResourceAsset>().HasQueryFilter(e => !e.IsDeleted);
-        modelBuilder.Entity<MaintenanceWorkOrder>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<VehicleProfile>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
+        modelBuilder.Entity<CommunicationDeviceProfile>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
+        modelBuilder.Entity<EquipmentProfile>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
+        modelBuilder.Entity<FacilityAssetProfile>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
+        modelBuilder.Entity<ResourceStatusEvent>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
+        modelBuilder.Entity<ResourcePlacement>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
+        modelBuilder.Entity<MaintenanceWorkOrder>().HasQueryFilter(e => !e.IsDeleted && !e.ResourceAsset.IsDeleted);
         modelBuilder.Entity<ResourceRequirement>().HasQueryFilter(e => !e.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
@@ -332,6 +369,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
+        ResourceStatusEventAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(this);
     }
 
@@ -462,6 +500,21 @@ internal static class NoteRoutingAppendOnlyGuard
     }
 }
 
+internal static class ResourceStatusEventAppendOnlyGuard
+{
+    public static void EnsureEntriesAreAppendOnly(DbContext context)
+    {
+        var invalidEntries = context.ChangeTracker
+            .Entries<ResourceStatusEvent>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidEntries.Any())
+        {
+            throw new InvalidOperationException("ResourceStatusEvent is append-only and cannot be modified or deleted.");
+        }
+    }
+}
+
 public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
 {
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
@@ -473,6 +526,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            ResourceStatusEventAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(eventData.Context);
         }
 
@@ -491,6 +545,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             CorrectiveActionStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             EscalationAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
+            ResourceStatusEventAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(eventData.Context);
         }
 

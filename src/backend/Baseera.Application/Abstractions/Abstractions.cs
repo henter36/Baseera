@@ -88,16 +88,16 @@ public interface IBaseeraDbContext
     IQueryable<FacilityCapacityBaseline> FacilityCapacityBaselines { get; }
     IQueryable<InmateCensusSnapshot> InmateCensusSnapshots { get; }
     IQueryable<InmateMovementEvent> InmateMovementEvents { get; }
-    IQueryable<ResourceAsset> ResourceAssets => Array.Empty<ResourceAsset>().AsQueryable();
-    IQueryable<VehicleProfile> VehicleProfiles => Array.Empty<VehicleProfile>().AsQueryable();
-    IQueryable<CommunicationDeviceProfile> CommunicationDeviceProfiles => Array.Empty<CommunicationDeviceProfile>().AsQueryable();
-    IQueryable<EquipmentProfile> EquipmentProfiles => Array.Empty<EquipmentProfile>().AsQueryable();
-    IQueryable<FacilityAssetProfile> FacilityAssetProfiles => Array.Empty<FacilityAssetProfile>().AsQueryable();
-    IQueryable<ResourceStatusEvent> ResourceStatusEvents => Array.Empty<ResourceStatusEvent>().AsQueryable();
-    IQueryable<ResourcePlacement> ResourcePlacements => Array.Empty<ResourcePlacement>().AsQueryable();
-    IQueryable<MaintenanceWorkOrder> MaintenanceWorkOrders => Array.Empty<MaintenanceWorkOrder>().AsQueryable();
-    IQueryable<ResourceRequirement> ResourceRequirements => Array.Empty<ResourceRequirement>().AsQueryable();
-    IQueryable<ResourceImportBatch> ResourceImportBatches => Array.Empty<ResourceImportBatch>().AsQueryable();
+    IQueryable<ResourceAsset> ResourceAssets { get; }
+    IQueryable<VehicleProfile> VehicleProfiles { get; }
+    IQueryable<CommunicationDeviceProfile> CommunicationDeviceProfiles { get; }
+    IQueryable<EquipmentProfile> EquipmentProfiles { get; }
+    IQueryable<FacilityAssetProfile> FacilityAssetProfiles { get; }
+    IQueryable<ResourceStatusEvent> ResourceStatusEvents { get; }
+    IQueryable<ResourcePlacement> ResourcePlacements { get; }
+    IQueryable<MaintenanceWorkOrder> MaintenanceWorkOrders { get; }
+    IQueryable<ResourceRequirement> ResourceRequirements { get; }
+    IQueryable<ResourceImportBatch> ResourceImportBatches { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
@@ -108,6 +108,7 @@ public interface IBaseeraDbContext
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);
+    Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default);
 }
 

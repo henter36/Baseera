@@ -63,6 +63,7 @@ internal sealed class FacilityUnitConfiguration : IEntityTypeConfiguration<Facil
     {
         builder.ToTable("FacilityUnits");
         builder.HasKey(x => x.Id);
+        builder.HasAlternateKey(x => new { x.FacilityId, x.Id });
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
         builder.HasIndex(x => new { x.FacilityId, x.Code }).IsUnique().HasFilter("[IsDeleted] = 0");

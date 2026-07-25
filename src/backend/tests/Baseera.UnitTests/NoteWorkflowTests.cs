@@ -107,6 +107,16 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Occupancy.FacilityCapacityBaseline> FacilityCapacityBaselines => Enumerable.Empty<Domain.Occupancy.FacilityCapacityBaseline>().AsQueryable();
         public IQueryable<Domain.Occupancy.InmateCensusSnapshot> InmateCensusSnapshots => Enumerable.Empty<Domain.Occupancy.InmateCensusSnapshot>().AsQueryable();
         public IQueryable<Domain.Occupancy.InmateMovementEvent> InmateMovementEvents => Enumerable.Empty<Domain.Occupancy.InmateMovementEvent>().AsQueryable();
+        public IQueryable<Domain.Resources.ResourceAsset> ResourceAssets => Enumerable.Empty<Domain.Resources.ResourceAsset>().AsQueryable();
+        public IQueryable<Domain.Resources.VehicleProfile> VehicleProfiles => Enumerable.Empty<Domain.Resources.VehicleProfile>().AsQueryable();
+        public IQueryable<Domain.Resources.CommunicationDeviceProfile> CommunicationDeviceProfiles => Enumerable.Empty<Domain.Resources.CommunicationDeviceProfile>().AsQueryable();
+        public IQueryable<Domain.Resources.EquipmentProfile> EquipmentProfiles => Enumerable.Empty<Domain.Resources.EquipmentProfile>().AsQueryable();
+        public IQueryable<Domain.Resources.FacilityAssetProfile> FacilityAssetProfiles => Enumerable.Empty<Domain.Resources.FacilityAssetProfile>().AsQueryable();
+        public IQueryable<Domain.Resources.ResourceStatusEvent> ResourceStatusEvents => Enumerable.Empty<Domain.Resources.ResourceStatusEvent>().AsQueryable();
+        public IQueryable<Domain.Resources.ResourcePlacement> ResourcePlacements => Enumerable.Empty<Domain.Resources.ResourcePlacement>().AsQueryable();
+        public IQueryable<Domain.Resources.MaintenanceWorkOrder> MaintenanceWorkOrders => Enumerable.Empty<Domain.Resources.MaintenanceWorkOrder>().AsQueryable();
+        public IQueryable<Domain.Resources.ResourceRequirement> ResourceRequirements => Enumerable.Empty<Domain.Resources.ResourceRequirement>().AsQueryable();
+        public IQueryable<Domain.Resources.ResourceImportBatch> ResourceImportBatches => Enumerable.Empty<Domain.Resources.ResourceImportBatch>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitions => Enumerable.Empty<Domain.Forms.FormDefinition>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<Domain.Forms.FormReviewDecision> FormReviewDecisions => Enumerable.Empty<Domain.Forms.FormReviewDecision>().AsQueryable();
@@ -143,6 +153,7 @@ public sealed class NoteScopeShapeTests
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
+        public Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default) => Task.FromResult(1);
     }
 }

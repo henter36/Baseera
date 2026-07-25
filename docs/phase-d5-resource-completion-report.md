@@ -1,6 +1,6 @@
 # Phase D.5 Resource Readiness Completion Report
 
-Status: implementation complete locally on `phase-d5-facility-resource-readiness-core`; remote CI, SonarCloud, CodeRabbit review, and PR acceptance remain pending after push.
+Status: integrity fixes for CodeRabbit/D.5 review are implemented on `phase-d5-facility-resource-readiness-core` (type-scoped asset visibility, org-scoped asset codes, import idempotency, work-order sequences, composite facility-unit FKs, append-only status events). Remote CI, SonarCloud, CodeRabbit review, and PR acceptance remain pending after push.
 
 Phase D.5 partially implements Issue #15 and continues Issue #11. It adds the core resources model, resource readiness calculations, Facility Workspace integration, and resource administration route for vehicles, communication devices, operational/security equipment excluding weapons, and facility assets.
 

@@ -166,8 +166,8 @@
 | الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Regional Coordinator | Facility Director | Facility Coordinator | Fleet Officer |
 |----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:---------------------:|:-----------------:|:--------------------:|:-------------:|
 | Resources.ViewSummary | عرض ملخص الجاهزية والفجوات | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Resources.ViewAssets | عرض سجلات الموارد غير الحساسة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Resources.ViewVehicles | عرض تفاصيل المركبات | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ViewAssets | عرض سجلات الموارد غير الحساسة (مع صلاحية النوع) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Resources.ViewVehicles | عرض تفاصيل المركبات (يشمل لوحة المركبة) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Resources.ViewCommunicationDevices | عرض أجهزة الاتصال | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Resources.ViewEquipment | عرض المعدات التشغيلية والأمنية غير المصنفة كأسلحة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Resources.ViewFacilityAssets | عرض المرافق والأصول الثابتة | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |

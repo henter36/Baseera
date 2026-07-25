@@ -11,6 +11,14 @@ namespace Baseera.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.CreateSequence(
+                name: "MaintenanceWorkOrderNumberSequence");
+
+            migrationBuilder.AddUniqueConstraint(
+                name: "AK_FacilityUnits_FacilityId_Id",
+                table: "FacilityUnits",
+                columns: new[] { "FacilityId", "Id" });
+
             migrationBuilder.CreateTable(
                 name: "ResourceAssets",
                 columns: table => new
@@ -51,6 +59,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_ResourceAssets", x => x.Id);
                     table.CheckConstraint("CK_ResourceAssets_ManufactureYear", "[ManufactureYear] IS NULL OR ([ManufactureYear] >= 1950 AND [ManufactureYear] <= 2100)");
+                    table.CheckConstraint("CK_ResourceAssets_UnitRequiresFacility", "[OperationalFacilityUnitId] IS NULL OR [OperationalFacilityId] IS NOT NULL");
                     table.ForeignKey(
                         name: "FK_ResourceAssets_Facilities_OperationalFacilityId",
                         column: x => x.OperationalFacilityId,
@@ -58,10 +67,10 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_ResourceAssets_FacilityUnits_OperationalFacilityUnitId",
-                        column: x => x.OperationalFacilityUnitId,
+                        name: "FK_ResourceAssets_FacilityUnits_OperationalFacilityId_OperationalFacilityUnitId",
+                        columns: x => new { x.OperationalFacilityId, x.OperationalFacilityUnitId },
                         principalTable: "FacilityUnits",
-                        principalColumn: "Id",
+                        principalColumns: new[] { "FacilityId", "Id" },
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_ResourceAssets_Organizations_OrganizationId",
@@ -110,7 +119,21 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ResourceImportBatches", x => x.Id);
-                    table.CheckConstraint("CK_ResourceImportBatches_Counts", "[TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0 AND [AppliedRows] >= 0");
+                    table.CheckConstraint("CK_ResourceImportBatches_AppliedRows", "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
+                    table.CheckConstraint("CK_ResourceImportBatches_ConfirmedState", "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] <> N'Confirmed' AND ([Status] <> N'Previewed' OR ([AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)))");
+                    table.CheckConstraint("CK_ResourceImportBatches_RowTotals", "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0");
+                    table.ForeignKey(
+                        name: "FK_ResourceImportBatches_Facilities_FacilityId",
+                        column: x => x.FacilityId,
+                        principalTable: "Facilities",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ResourceImportBatches_Users_SubmittedByUserId",
+                        column: x => x.SubmittedByUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -151,10 +174,10 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_ResourceRequirements_FacilityUnits_FacilityUnitId",
-                        column: x => x.FacilityUnitId,
+                        name: "FK_ResourceRequirements_FacilityUnits_FacilityId_FacilityUnitId",
+                        columns: x => new { x.FacilityId, x.FacilityUnitId },
                         principalTable: "FacilityUnits",
-                        principalColumn: "Id",
+                        principalColumns: new[] { "FacilityId", "Id" },
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_ResourceRequirements_Organizations_OrganizationId",
@@ -357,10 +380,10 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "FK_ResourcePlacements_FacilityUnits_OperationalFacilityUnitId",
-                        column: x => x.OperationalFacilityUnitId,
+                        name: "FK_ResourcePlacements_FacilityUnits_OperationalFacilityId_OperationalFacilityUnitId",
+                        columns: x => new { x.OperationalFacilityId, x.OperationalFacilityUnitId },
                         principalTable: "FacilityUnits",
-                        principalColumn: "Id",
+                        principalColumns: new[] { "FacilityId", "Id" },
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_ResourcePlacements_Organizations_OwnershipOrganizationId",
@@ -509,6 +532,11 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 column: "CustodianUserId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ResourceAssets_OperationalFacilityId_OperationalFacilityUnitId",
+                table: "ResourceAssets",
+                columns: new[] { "OperationalFacilityId", "OperationalFacilityUnitId" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ResourceAssets_OperationalFacilityId_ResourceType_CurrentStatus",
                 table: "ResourceAssets",
                 columns: new[] { "OperationalFacilityId", "ResourceType", "CurrentStatus" });
@@ -537,6 +565,11 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_ResourceImportBatches_SubmittedByUserId",
+                table: "ResourceImportBatches",
+                column: "SubmittedByUserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ResourcePlacements_AssignedToUserId",
                 table: "ResourcePlacements",
                 column: "AssignedToUserId");
@@ -545,11 +578,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 name: "IX_ResourcePlacements_OperationalFacilityId_OperationalFacilityUnitId_EffectiveFromUtc",
                 table: "ResourcePlacements",
                 columns: new[] { "OperationalFacilityId", "OperationalFacilityUnitId", "EffectiveFromUtc" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_ResourcePlacements_OperationalFacilityUnitId",
-                table: "ResourcePlacements",
-                column: "OperationalFacilityUnitId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ResourcePlacements_OwnershipOrganizationId",
@@ -569,14 +597,23 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 columns: new[] { "FacilityId", "FacilityUnitId", "ResourceType", "ResourceCategory", "EffectiveFromUtc" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_ResourceRequirements_FacilityUnitId",
+                name: "IX_ResourceRequirements_FacilityOpen",
                 table: "ResourceRequirements",
-                column: "FacilityUnitId");
+                columns: new[] { "FacilityId", "ResourceType", "ResourceCategory" },
+                unique: true,
+                filter: "[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ResourceRequirements_OrganizationId",
                 table: "ResourceRequirements",
                 column: "OrganizationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ResourceRequirements_UnitOpen",
+                table: "ResourceRequirements",
+                columns: new[] { "FacilityId", "FacilityUnitId", "ResourceType", "ResourceCategory" },
+                unique: true,
+                filter: "[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ResourceStatusEvents_RecordedByUserId",
@@ -627,6 +664,13 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropTable(
                 name: "ResourceAssets");
+
+            migrationBuilder.DropUniqueConstraint(
+                name: "AK_FacilityUnits_FacilityId_Id",
+                table: "FacilityUnits");
+
+            migrationBuilder.DropSequence(
+                name: "MaintenanceWorkOrderNumberSequence");
         }
     }
 }

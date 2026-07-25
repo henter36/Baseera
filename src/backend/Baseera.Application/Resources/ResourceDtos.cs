@@ -223,6 +223,7 @@ public sealed record ResourceImportRow
     public ResourceStatus CurrentStatus { get; init; } = ResourceStatus.Unknown;
     public ResourceCondition Condition { get; init; } = ResourceCondition.Unknown;
     public ResourceCriticality Criticality { get; init; } = ResourceCriticality.Medium;
+    public Guid? OperationalFacilityUnitId { get; init; }
 }
 
 public sealed record ResourceImportResult(int TotalRows, int ValidRows, int RejectedRows, int DuplicateRows, int AppliedRows, IReadOnlyList<string> Errors);

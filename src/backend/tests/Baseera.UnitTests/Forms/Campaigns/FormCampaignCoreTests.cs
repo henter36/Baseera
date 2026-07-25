@@ -547,6 +547,16 @@ public sealed class BusinessCalendarTests
         public IQueryable<Domain.Occupancy.FacilityCapacityBaseline> FacilityCapacityBaselines => Empty<Domain.Occupancy.FacilityCapacityBaseline>();
         public IQueryable<Domain.Occupancy.InmateCensusSnapshot> InmateCensusSnapshots => Empty<Domain.Occupancy.InmateCensusSnapshot>();
         public IQueryable<Domain.Occupancy.InmateMovementEvent> InmateMovementEvents => Empty<Domain.Occupancy.InmateMovementEvent>();
+        public IQueryable<Domain.Resources.ResourceAsset> ResourceAssets => Empty<Domain.Resources.ResourceAsset>();
+        public IQueryable<Domain.Resources.VehicleProfile> VehicleProfiles => Empty<Domain.Resources.VehicleProfile>();
+        public IQueryable<Domain.Resources.CommunicationDeviceProfile> CommunicationDeviceProfiles => Empty<Domain.Resources.CommunicationDeviceProfile>();
+        public IQueryable<Domain.Resources.EquipmentProfile> EquipmentProfiles => Empty<Domain.Resources.EquipmentProfile>();
+        public IQueryable<Domain.Resources.FacilityAssetProfile> FacilityAssetProfiles => Empty<Domain.Resources.FacilityAssetProfile>();
+        public IQueryable<Domain.Resources.ResourceStatusEvent> ResourceStatusEvents => Empty<Domain.Resources.ResourceStatusEvent>();
+        public IQueryable<Domain.Resources.ResourcePlacement> ResourcePlacements => Empty<Domain.Resources.ResourcePlacement>();
+        public IQueryable<Domain.Resources.MaintenanceWorkOrder> MaintenanceWorkOrders => Empty<Domain.Resources.MaintenanceWorkOrder>();
+        public IQueryable<Domain.Resources.ResourceRequirement> ResourceRequirements => Empty<Domain.Resources.ResourceRequirement>();
+        public IQueryable<Domain.Resources.ResourceImportBatch> ResourceImportBatches => Empty<Domain.Resources.ResourceImportBatch>();
         public IQueryable<FormDefinition> FormDefinitions => Empty<FormDefinition>();
         public IQueryable<FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<FormReviewDecision> FormReviewDecisions => Empty<FormReviewDecision>();
@@ -576,6 +586,7 @@ public sealed class BusinessCalendarTests
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
+        public Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default) => Task.FromResult(1);
 
         private static IQueryable<T> Empty<T>() => Enumerable.Empty<T>().AsQueryable();

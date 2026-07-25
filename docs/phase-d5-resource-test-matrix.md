@@ -6,13 +6,18 @@ Implemented automated coverage:
 - Zero requirement does not imply 100% readiness.
 - Retired and transferred exclusion.
 - Maintenance transition guard.
+- Resource access policy (type permissions, asset-code normalize, period overlap, import counts, unique violation detection).
+- Workspace resource drill-down permissions (`ViewSummary` priority / `ViewMaintenance` activity).
 - Backend build with EF model and migration.
 - Frontend typecheck for resource contracts and pages.
 
-Planned CI/integration coverage:
+Integration coverage (requires `BASEERA_TEST_CONNECTION`):
 
-- SQL migration apply.
 - Facility scope and 403/404 endpoints.
-- Summary/detail parity.
-- Import duplicate behavior.
-- Workspace widget visibility and no unauthorized counts.
+- Type-permission filtering on list/get.
+- Organization-scoped duplicate asset code → 409.
+- Import confirm idempotency.
+- Concurrent maintenance work-order number uniqueness.
+- Soft-delete hides dependents; status events append-only.
+- Cross-facility unit rejection; overlapping requirements → 409.
+- Workspace widget visibility.

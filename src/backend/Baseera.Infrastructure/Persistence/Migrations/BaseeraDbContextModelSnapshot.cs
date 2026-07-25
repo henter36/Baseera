@@ -24,6 +24,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
             modelBuilder.HasSequence("CorrectiveActionReferenceSequence");
 
+            modelBuilder.HasSequence("MaintenanceWorkOrderNumberSequence");
+
             modelBuilder.HasSequence("OperationalNoteReferenceSequence");
 
             modelBuilder.Entity("Baseera.Domain.Attachments.Attachment", b =>
@@ -5014,6 +5016,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OwnershipOrganizationId");
 
+                    b.HasIndex("OperationalFacilityId", "OperationalFacilityUnitId");
+
                     b.HasIndex("OperationalFacilityUnitId", "CurrentStatus");
 
                     b.HasIndex("OrganizationId", "AssetCode")
@@ -5025,6 +5029,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.ToTable("ResourceAssets", null, t =>
                         {
                             t.HasCheckConstraint("CK_ResourceAssets_ManufactureYear", "[ManufactureYear] IS NULL OR ([ManufactureYear] >= 1950 AND [ManufactureYear] <= 2100)");
+
+                            t.HasCheckConstraint("CK_ResourceAssets_UnitRequiresFacility", "[OperationalFacilityUnitId] IS NULL OR [OperationalFacilityId] IS NOT NULL");
                         });
                 });
 
@@ -5101,12 +5107,18 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("SubmittedByUserId");
+
                     b.HasIndex("FacilityId", "SourceSystem", "SourceReference", "FileHash")
                         .IsUnique();
 
                     b.ToTable("ResourceImportBatches", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ResourceImportBatches_Counts", "[TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0 AND [AppliedRows] >= 0");
+                            t.HasCheckConstraint("CK_ResourceImportBatches_AppliedRows", "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
+
+                            t.HasCheckConstraint("CK_ResourceImportBatches_ConfirmedState", "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] <> N'Confirmed' AND ([Status] <> N'Previewed' OR ([AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)))");
+
+                            t.HasCheckConstraint("CK_ResourceImportBatches_RowTotals", "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0");
                         });
                 });
 
@@ -5169,8 +5181,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AssignedToUserId");
-
-                    b.HasIndex("OperationalFacilityUnitId");
 
                     b.HasIndex("OwnershipOrganizationId");
 
@@ -5263,9 +5273,17 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FacilityUnitId");
-
                     b.HasIndex("OrganizationId");
+
+                    b.HasIndex("FacilityId", "ResourceType", "ResourceCategory")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ResourceRequirements_FacilityOpen")
+                        .HasFilter("[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NULL");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId", "ResourceType", "ResourceCategory")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ResourceRequirements_UnitOpen")
+                        .HasFilter("[IsDeleted] = 0 AND [EffectiveToUtc] IS NULL AND [FacilityUnitId] IS NOT NULL");
 
                     b.HasIndex("FacilityId", "FacilityUnitId", "ResourceType", "ResourceCategory", "EffectiveFromUtc");
 
@@ -7076,11 +7094,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .HasForeignKey("OperationalFacilityId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "OperationalFacilityUnit")
-                        .WithMany()
-                        .HasForeignKey("OperationalFacilityUnitId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
@@ -7093,6 +7106,12 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "OperationalFacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("OperationalFacilityId", "OperationalFacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("CustodianUser");
 
                     b.Navigation("OperationalFacility");
@@ -7102,6 +7121,24 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("Organization");
 
                     b.Navigation("OwnershipOrganization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.Resources.ResourceImportBatch", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "SubmittedByUser")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("SubmittedByUser");
                 });
 
             modelBuilder.Entity("Baseera.Domain.Resources.ResourcePlacement", b =>
@@ -7117,11 +7154,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "OperationalFacilityUnit")
-                        .WithMany()
-                        .HasForeignKey("OperationalFacilityUnitId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Baseera.Domain.Organization.Organization", "OwnershipOrganization")
                         .WithMany()
                         .HasForeignKey("OwnershipOrganizationId")
@@ -7133,6 +7165,12 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ResourceAssetId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "OperationalFacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("OperationalFacilityId", "OperationalFacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AssignedToUser");
 
@@ -7153,16 +7191,17 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
-                        .WithMany()
-                        .HasForeignKey("FacilityUnitId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Facility");
 

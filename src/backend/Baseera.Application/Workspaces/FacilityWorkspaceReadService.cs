@@ -653,7 +653,7 @@ internal sealed class FacilityWorkspaceReadService(
                 OverdueDays = null,
                 OwnerAr = item.OwnerAr,
                 ActionLabelAr = item.ActionLabelAr,
-                DrillDownTarget = ResourceTarget(context, item.ResourceAssetId)
+                DrillDownTarget = ResourceTarget(context, item.ResourceAssetId, PermissionCodes.ResourcesViewSummary)
             })
             .ToList();
     }
@@ -804,7 +804,7 @@ internal sealed class FacilityWorkspaceReadService(
                 OccurredAtUtc = item.OccurredAtUtc,
                 EntityReference = item.EntityReference,
                 Tone = item.Tone,
-                DrillDownTarget = ResourceTarget(context, item.ResourceAssetId)
+                DrillDownTarget = ResourceTarget(context, item.ResourceAssetId, PermissionCodes.ResourcesViewMaintenance)
             })
             .ToList();
     }
@@ -961,7 +961,7 @@ internal sealed class FacilityWorkspaceReadService(
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             requiredPermission);
 
-    private static DrillDownTarget ResourceTarget(WorkspaceContext context, Guid? assetId) =>
+    private static DrillDownTarget ResourceTarget(WorkspaceContext context, Guid? assetId, string requiredPermission) =>
         new(
             "facility.resources",
             assetId.HasValue ? "فتح المورد" : "فتح الموارد",
@@ -973,7 +973,7 @@ internal sealed class FacilityWorkspaceReadService(
                 }
                 : new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
-            PermissionCodes.ResourcesViewAssets);
+            requiredPermission);
 
 }
 

@@ -18,3 +18,5 @@ Endpoints:
 - `POST /api/v1/facilities/{facilityId}/resources/import/confirm`
 
 Missing permission returns 403. Out-of-scope facility or asset returns 404.
+
+`GET .../assets/{assetId}` returns 404 when the asset is missing or outside facility scope, and 403 when the caller lacks the asset type view permission. Asset codes are organization-scoped (normalized uppercase); duplicate create returns 409. Plate numbers are redacted unless the caller has `Resources.ViewVehicles`.
