@@ -15,6 +15,7 @@ using Baseera.Application.Identity;
 using Baseera.Application.Notes;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Organization;
+using Baseera.Application.Resources;
 using Baseera.Application.Security;
 using Baseera.Application.Workspaces;
 using FluentValidation;
@@ -92,6 +93,12 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<OccupancyService>();
         services.AddScoped<IOccupancyQueryService>(sp => sp.GetRequiredService<OccupancyService>());
         services.AddScoped<IOccupancyCommandService>(sp => sp.GetRequiredService<OccupancyService>());
+        services.AddScoped<ResourceReadinessService>();
+        services.AddScoped<IResourceReadinessQueryService>(sp => sp.GetRequiredService<ResourceReadinessService>());
+        services.AddScoped<IResourceAssetCommandService>(sp => sp.GetRequiredService<ResourceReadinessService>());
+        services.AddScoped<IMaintenanceWorkOrderService>(sp => sp.GetRequiredService<ResourceReadinessService>());
+        services.AddScoped<IResourceRequirementService>(sp => sp.GetRequiredService<ResourceReadinessService>());
+        services.AddScoped<IResourceImportService>(sp => sp.GetRequiredService<ResourceReadinessService>());
         services.AddScoped<IFacilityWorkspaceReadService, FacilityWorkspaceReadService>();
         services.AddScoped<IWorkspaceDefinitionProvider, FacilityWorkspaceDefinitionProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityHeaderWorkspaceWidgetProvider>();
@@ -102,6 +109,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IWorkspaceWidgetProvider, FacilityFormComplianceWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityPriorityQueueWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityOccupancyWorkspaceWidgetProvider>();
+        services.AddScoped<IWorkspaceWidgetProvider, FacilityResourcesWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityRecentActivityWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityStructureWorkspaceWidgetProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityDataQualityWorkspaceWidgetProvider>();

@@ -1,0 +1,22 @@
+# Phase D.5 Resource Permissions
+
+Permissions:
+
+- `Resources.ViewSummary`
+- `Resources.ViewAssets`
+- `Resources.ViewVehicles`
+- `Resources.ViewCommunicationDevices`
+- `Resources.ViewEquipment`
+- `Resources.ViewFacilityAssets`
+- `Resources.ManageAssets`
+- `Resources.ManagePlacements`
+- `Resources.ManageStatus`
+- `Resources.ViewMaintenance`
+- `Resources.ManageMaintenance`
+- `Resources.ViewRequirements`
+- `Resources.ManageRequirements`
+- `Resources.Import`
+- `Resources.Export`
+- `Resources.Reconcile`
+
+Workspace permission does not grant resource access. Summary-only access must not expose sensitive identifiers such as vehicle plates where detailed asset access is absent.

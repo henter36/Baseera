@@ -1245,6 +1245,205 @@ export type OccupancyWorkspacePayload = {
   }>
 }
 
+export const ResourceType = {
+  Vehicle: 0,
+  CommunicationDevice: 1,
+  OperationalEquipment: 2,
+  SecurityEquipment: 3,
+  FacilityAsset: 4,
+} as const
+export type ResourceType = (typeof ResourceType)[keyof typeof ResourceType]
+
+export const ResourceStatus = {
+  Available: 0,
+  InUse: 1,
+  Standby: 2,
+  Reserved: 3,
+  UnderInspection: 4,
+  UnderMaintenance: 5,
+  OutOfService: 6,
+  AwaitingParts: 7,
+  Lost: 8,
+  Transferred: 9,
+  Retired: 10,
+  Unknown: 11,
+} as const
+export type ResourceStatus = (typeof ResourceStatus)[keyof typeof ResourceStatus]
+
+export const ResourceCondition = {
+  Excellent: 0,
+  Good: 1,
+  Fair: 2,
+  Poor: 3,
+  Unserviceable: 4,
+  Unknown: 5,
+} as const
+export type ResourceCondition = (typeof ResourceCondition)[keyof typeof ResourceCondition]
+
+export const ResourceCriticality = {
+  Low: 0,
+  Medium: 1,
+  High: 2,
+  MissionCritical: 3,
+} as const
+export type ResourceCriticality = (typeof ResourceCriticality)[keyof typeof ResourceCriticality]
+
+export const ResourceSourceType = {
+  Manual: 0,
+  Import: 1,
+  ExternalSystem: 2,
+  Audit: 3,
+  Other: 4,
+} as const
+export type ResourceSourceType = (typeof ResourceSourceType)[keyof typeof ResourceSourceType]
+
+export type ResourceSummaryPayload = {
+  facilityId: string
+  totalRegistered: number
+  operational: number
+  available: number
+  standby: number
+  inUse: number
+  underMaintenance: number
+  outOfService: number
+  awaitingParts: number
+  unknown: number
+  retired: number
+  required: number
+  gap: number
+  surplus: number
+  readinessRate?: number | null
+  availabilityRate?: number | null
+  dataCompletenessRate: number
+  missionCriticalUnavailable: number
+  staleRecords: number
+  missingDataRecords: number
+  freshnessStatus: string
+  confidenceLevel: string
+  isPartial: boolean
+  warnings: string[]
+  generatedAtUtc: string
+  dataEffectiveAtUtc?: string | null
+}
+
+export type ResourceCategoryReadinessPayload = {
+  resourceType: ResourceType
+  resourceTypeCode: string
+  labelAr: string
+  total: number
+  operational: number
+  available: number
+  underMaintenance: number
+  outOfService: number
+  awaitingParts: number
+  required: number
+  gap: number
+  readinessRate?: number | null
+  freshnessStatus: string
+  confidenceLevel: string
+}
+
+export type ResourceExceptionPayload = {
+  type: string
+  resourceAssetId?: string | null
+  resourceType?: ResourceType | null
+  reference: string
+  titleAr: string
+  severityAr: string
+  priorityRank: number
+  reasonAr: string
+  ownerAr?: string | null
+  dueAtUtc?: string | null
+  actionLabelAr: string
+}
+
+export type ResourceUnitDistributionPayload = {
+  facilityUnitId?: string | null
+  unitNameAr: string
+  vehicles: number
+  communicationDevices: number
+  equipment: number
+  facilityAssets: number
+  readinessRate?: number | null
+  gap: number
+  criticalExceptions: number
+}
+
+export type ResourceActivityPayload = {
+  eventType: string
+  titleAr: string
+  descriptionAr?: string | null
+  occurredAtUtc: string
+  entityReference: string
+  tone: WorkspaceVisualTone
+  resourceAssetId?: string | null
+}
+
+export type ResourceWorkspacePayload = {
+  summary: ResourceSummaryPayload
+  categories: ResourceCategoryReadinessPayload[]
+  exceptions: ResourceExceptionPayload[]
+  unitDistribution: ResourceUnitDistributionPayload[]
+  timeline: ResourceActivityPayload[]
+}
+
+export type ResourceAssetListItem = {
+  id: string
+  resourceType: ResourceType
+  assetCode: string
+  displayName: string
+  serialNumber?: string | null
+  plateNumber?: string | null
+  currentStatus: ResourceStatus
+  condition: ResourceCondition
+  criticality: ResourceCriticality
+  operationalFacilityUnitNameAr?: string | null
+  custodianNameAr?: string | null
+  lastVerifiedAtUtc?: string | null
+  hasOpenMaintenance: boolean
+  dataQualityIssues: string[]
+}
+
+export type ResourceAssetCreateRequest = {
+  resourceType: ResourceType
+  assetCode: string
+  displayName: string
+  serialNumber?: string | null
+  ownershipOrganizationId: string
+  operationalFacilityUnitId?: string | null
+  currentStatus: ResourceStatus
+  condition: ResourceCondition
+  criticality: ResourceCriticality
+  sourceType: ResourceSourceType
+  sourceReference?: string | null
+}
+
+export type ResourceImportRow = {
+  resourceType: ResourceType
+  assetCode: string
+  displayName: string
+  serialNumber?: string | null
+  currentStatus: ResourceStatus
+  condition: ResourceCondition
+  criticality: ResourceCriticality
+}
+
+export type ResourceImportPreviewRequest = {
+  sourceSystem: string
+  sourceReference: string
+  fileHash: string
+  rows: ResourceImportRow[]
+}
+
+export type ResourceImportResult = {
+  totalRows: number
+  validRows: number
+  rejectedRows: number
+  duplicateRows: number
+  appliedRows: number
+  errors: string[]
+}
+
 export type FacilityPriorityQueuePayload = {
   limit: number
   items: Array<{
@@ -2489,6 +2688,27 @@ export const api = {
       postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/occupancy/snapshots`, body),
     importMovements: (facilityId: string, body: OccupancyMovementImportRequest) =>
       postJson<OccupancyImportResult>(`/api/v1/facilities/${facilityId}/occupancy/movements/import`, body),
+  },
+
+  resources: {
+    summary: (facilityId: string) =>
+      request<ResourceSummaryPayload>(`/api/v1/facilities/${facilityId}/resources/summary`),
+    categories: (facilityId: string) =>
+      request<ResourceCategoryReadinessPayload[]>(`/api/v1/facilities/${facilityId}/resources/categories`),
+    exceptions: (facilityId: string, limit = 20) =>
+      request<ResourceExceptionPayload[]>(`/api/v1/facilities/${facilityId}/resources/exceptions?limit=${limit}`),
+    units: (facilityId: string) =>
+      request<ResourceUnitDistributionPayload[]>(`/api/v1/facilities/${facilityId}/resources/units`),
+    timeline: (facilityId: string, limit = 50) =>
+      request<ResourceActivityPayload[]>(`/api/v1/facilities/${facilityId}/resources/timeline?limit=${limit}`),
+    assets: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<ResourceAssetListItem[]>(`/api/v1/facilities/${facilityId}/resources/assets?${buildSimpleQuery(filters)}`),
+    createAsset: (facilityId: string, body: ResourceAssetCreateRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/resources/assets`, body),
+    importPreview: (facilityId: string, body: ResourceImportPreviewRequest) =>
+      postJson<ResourceImportResult>(`/api/v1/facilities/${facilityId}/resources/import/preview`, body),
+    importConfirm: (facilityId: string, body: ResourceImportPreviewRequest) =>
+      postJson<ResourceImportResult>(`/api/v1/facilities/${facilityId}/resources/import/confirm`, body),
   },
 
   formCompliance: {

@@ -10,6 +10,7 @@ using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
+using Baseera.Domain.Resources;
 
 public interface IBaseeraDbContext
 {
@@ -87,6 +88,16 @@ public interface IBaseeraDbContext
     IQueryable<FacilityCapacityBaseline> FacilityCapacityBaselines { get; }
     IQueryable<InmateCensusSnapshot> InmateCensusSnapshots { get; }
     IQueryable<InmateMovementEvent> InmateMovementEvents { get; }
+    IQueryable<ResourceAsset> ResourceAssets => Array.Empty<ResourceAsset>().AsQueryable();
+    IQueryable<VehicleProfile> VehicleProfiles => Array.Empty<VehicleProfile>().AsQueryable();
+    IQueryable<CommunicationDeviceProfile> CommunicationDeviceProfiles => Array.Empty<CommunicationDeviceProfile>().AsQueryable();
+    IQueryable<EquipmentProfile> EquipmentProfiles => Array.Empty<EquipmentProfile>().AsQueryable();
+    IQueryable<FacilityAssetProfile> FacilityAssetProfiles => Array.Empty<FacilityAssetProfile>().AsQueryable();
+    IQueryable<ResourceStatusEvent> ResourceStatusEvents => Array.Empty<ResourceStatusEvent>().AsQueryable();
+    IQueryable<ResourcePlacement> ResourcePlacements => Array.Empty<ResourcePlacement>().AsQueryable();
+    IQueryable<MaintenanceWorkOrder> MaintenanceWorkOrders => Array.Empty<MaintenanceWorkOrder>().AsQueryable();
+    IQueryable<ResourceRequirement> ResourceRequirements => Array.Empty<ResourceRequirement>().AsQueryable();
+    IQueryable<ResourceImportBatch> ResourceImportBatches => Array.Empty<ResourceImportBatch>().AsQueryable();
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;

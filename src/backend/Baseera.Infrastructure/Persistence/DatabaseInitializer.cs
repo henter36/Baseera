@@ -6,6 +6,7 @@ using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
+using Baseera.Domain.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -240,6 +241,35 @@ public static class DatabaseInitializer
             PermissionCodes.OccupancyViewSensitiveMovements,
             PermissionCodes.OccupancyExport
         ];
+        string[] resourceSummary =
+        [
+            PermissionCodes.ResourcesViewSummary,
+            PermissionCodes.ResourcesViewAssets,
+            PermissionCodes.ResourcesViewVehicles,
+            PermissionCodes.ResourcesViewCommunicationDevices,
+            PermissionCodes.ResourcesViewEquipment,
+            PermissionCodes.ResourcesViewFacilityAssets,
+            PermissionCodes.ResourcesViewMaintenance,
+            PermissionCodes.ResourcesViewRequirements
+        ];
+        string[] resourceManager =
+        [
+            PermissionCodes.ResourcesViewSummary,
+            PermissionCodes.ResourcesViewAssets,
+            PermissionCodes.ResourcesViewVehicles,
+            PermissionCodes.ResourcesViewCommunicationDevices,
+            PermissionCodes.ResourcesViewEquipment,
+            PermissionCodes.ResourcesViewFacilityAssets,
+            PermissionCodes.ResourcesManageAssets,
+            PermissionCodes.ResourcesManagePlacements,
+            PermissionCodes.ResourcesManageStatus,
+            PermissionCodes.ResourcesViewMaintenance,
+            PermissionCodes.ResourcesManageMaintenance,
+            PermissionCodes.ResourcesViewRequirements,
+            PermissionCodes.ResourcesManageRequirements,
+            PermissionCodes.ResourcesImport,
+            PermissionCodes.ResourcesReconcile
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -276,7 +306,8 @@ public static class DatabaseInitializer
             ownNotifications,
             dashboardFull,
             workspaceHeadquarters,
-            occupancySummary);
+            occupancySummary,
+            resourceSummary);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -296,7 +327,9 @@ public static class DatabaseInitializer
             dashboardFull,
             workspaceHeadquarters,
             occupancyManager,
-            occupancySensitive);
+            occupancySensitive,
+            resourceManager,
+            PermissionCodes.ResourcesExport);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -323,7 +356,8 @@ public static class DatabaseInitializer
             ownNotifications,
             dashboardScoped,
             workspaceRegion,
-            occupancyManager);
+            occupancyManager,
+            resourceManager);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -337,7 +371,8 @@ public static class DatabaseInitializer
             caCoordinator,
             ownNotifications,
             workspaceRegion,
-            occupancySummary);
+            occupancySummary,
+            resourceSummary);
 
         var facilityDirector = roles.First(r => r.Code == RoleCodes.FacilityDirector);
         Grant(facilityDirector,
@@ -366,7 +401,8 @@ public static class DatabaseInitializer
             ownNotifications,
             dashboardScoped,
             workspaceFacility,
-            occupancyManager);
+            occupancyManager,
+            resourceManager);
 
         string[] formsDesigner =
         [
@@ -472,7 +508,8 @@ public static class DatabaseInitializer
             PermissionCodes.AttachmentsDownload,
             ownNotifications,
             workspaceFacility,
-            occupancySummary);
+            occupancySummary,
+            resourceSummary);
 
         var prisonerCaseOfficer = roles.First(r => r.Code == RoleCodes.PrisonerCaseOfficer);
         Grant(prisonerCaseOfficer,
@@ -481,6 +518,12 @@ public static class DatabaseInitializer
             occupancyManager,
             occupancySensitive,
             ownNotifications);
+
+        var fleetOfficer = roles.First(r => r.Code == RoleCodes.FleetOfficer);
+        Grant(fleetOfficer,
+            PermissionCodes.OrganizationView,
+            workspaceFacility,
+            resourceManager);
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -784,6 +827,7 @@ public static class DatabaseInitializer
         }
 
         await EnsureDemoOccupancyAsync(db, cancellationToken);
+        await EnsureDemoResourcesAsync(db, cancellationToken);
         await EnsureDevAdminAsync(db, cancellationToken);
     }
 
@@ -881,6 +925,266 @@ public static class DatabaseInitializer
             ExternalEventId = externalEventId
         };
 
+    private static async Task EnsureDemoResourcesAsync(BaseeraDbContext db, CancellationToken cancellationToken)
+    {
+        if (!await db.Facilities.AnyAsync(f => f.Id == SeedIds.FacilityA1, cancellationToken))
+        {
+            return;
+        }
+
+        if (await db.ResourceAssets.AnyAsync(asset => asset.OperationalFacilityId == SeedIds.FacilityA1, cancellationToken))
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var verifiedAt = now.AddHours(-4);
+        var staleVerifiedAt = now.AddDays(-45);
+
+        var patrolVehicle = DemoResourceAsset(
+            ResourceType.Vehicle,
+            "VEH-A1-001",
+            "دورية نقل داخلية",
+            SeedIds.FacilityA1UnitNorth,
+            ResourceStatus.InUse,
+            ResourceCondition.Good,
+            ResourceCriticality.High,
+            verifiedAt);
+        var transportVehicle = DemoResourceAsset(
+            ResourceType.Vehicle,
+            "VEH-A1-002",
+            "حافلة نقل نزلاء",
+            SeedIds.FacilityA1UnitSouth,
+            ResourceStatus.UnderMaintenance,
+            ResourceCondition.Fair,
+            ResourceCriticality.MissionCritical,
+            verifiedAt);
+        var radioSet = DemoResourceAsset(
+            ResourceType.CommunicationDevice,
+            "COM-A1-010",
+            "جهاز اتصال مناوبة",
+            SeedIds.FacilityA1UnitNorth,
+            ResourceStatus.Available,
+            ResourceCondition.Good,
+            ResourceCriticality.High,
+            verifiedAt);
+        var screeningGate = DemoResourceAsset(
+            ResourceType.SecurityEquipment,
+            "SEC-A1-020",
+            "بوابة تفتيش إلكترونية",
+            SeedIds.FacilityA1UnitSouth,
+            ResourceStatus.AwaitingParts,
+            ResourceCondition.Poor,
+            ResourceCriticality.MissionCritical,
+            verifiedAt);
+        var kitchenEquipment = DemoResourceAsset(
+            ResourceType.OperationalEquipment,
+            "OPE-A1-030",
+            "معدات مطبخ تشغيلية",
+            null,
+            ResourceStatus.Unknown,
+            ResourceCondition.Unknown,
+            ResourceCriticality.Medium,
+            null);
+        var generator = DemoResourceAsset(
+            ResourceType.FacilityAsset,
+            "FAC-A1-040",
+            "مولد احتياطي رئيسي",
+            SeedIds.FacilityA1UnitMedical,
+            ResourceStatus.Standby,
+            ResourceCondition.Good,
+            ResourceCriticality.MissionCritical,
+            staleVerifiedAt);
+
+        db.ResourceAssets.AddRange(patrolVehicle, transportVehicle, radioSet, screeningGate, kitchenEquipment, generator);
+        db.VehicleProfiles.AddRange(
+            new VehicleProfile
+            {
+                ResourceAssetId = patrolVehicle.Id,
+                PlateNumber = "د و ر 101",
+                VehicleCategory = VehicleCategory.Patrol,
+                FuelType = FuelType.Gasoline,
+                Odometer = 48210,
+                OdometerRecordedAtUtc = verifiedAt,
+                RegistrationExpiresAtUtc = now.AddMonths(8),
+                InsuranceExpiresAtUtc = now.AddMonths(6),
+                InspectionExpiresAtUtc = now.AddMonths(2),
+                TrackerInstalled = true,
+                OperationalRole = "دوريات داخلية",
+                PassengerCapacity = 5
+            },
+            new VehicleProfile
+            {
+                ResourceAssetId = transportVehicle.Id,
+                PlateNumber = "ن ز ل 220",
+                VehicleCategory = VehicleCategory.PrisonerTransport,
+                FuelType = FuelType.Diesel,
+                Odometer = 118400,
+                OdometerRecordedAtUtc = verifiedAt,
+                RegistrationExpiresAtUtc = now.AddMonths(3),
+                InsuranceExpiresAtUtc = now.AddMonths(2),
+                InspectionExpiresAtUtc = now.AddDays(-5),
+                TrackerInstalled = true,
+                OperationalRole = "نقل نزلاء",
+                PassengerCapacity = 24,
+                PrisonerTransportCapacity = 16
+            });
+        db.CommunicationDeviceProfiles.Add(new CommunicationDeviceProfile
+        {
+            ResourceAssetId = radioSet.Id,
+            DeviceCategory = CommunicationDeviceCategory.HandheldRadio,
+            NetworkType = "TETRA",
+            CallSign = "A1-N-10",
+            FrequencyGroup = "Operations",
+            BatteryCondition = "جيدة",
+            CoverageStatus = "مغطى",
+            EncryptionCapability = true,
+            AssignedUnitId = SeedIds.FacilityA1UnitNorth
+        });
+        db.EquipmentProfiles.AddRange(
+            new EquipmentProfile
+            {
+                ResourceAssetId = screeningGate.Id,
+                EquipmentCategory = EquipmentCategory.Screening,
+                Specification = "بوابة تفتيش ثابتة",
+                CalibrationRequired = true,
+                CalibrationDueAtUtc = now.AddDays(-3),
+                InspectionRequired = true,
+                InspectionDueAtUtc = now.AddDays(-1),
+                Portable = false,
+                SafetyCritical = true
+            },
+            new EquipmentProfile
+            {
+                ResourceAssetId = kitchenEquipment.Id,
+                EquipmentCategory = EquipmentCategory.Kitchen,
+                Specification = "خط تجهيز وجبات",
+                QuantityUnit = "مجموعة",
+                CalibrationRequired = false,
+                InspectionRequired = true,
+                InspectionDueAtUtc = now.AddDays(20),
+                Portable = false,
+                SafetyCritical = false
+            });
+        db.FacilityAssetProfiles.Add(new FacilityAssetProfile
+        {
+            ResourceAssetId = generator.Id,
+            AssetCategory = FacilityAssetCategory.Generator,
+            FacilityUnitId = SeedIds.FacilityA1UnitMedical,
+            InstalledAtLocation = "غرفة الخدمات الطبية",
+            FixedAsset = true,
+            CapacityValue = 250,
+            CapacityUnit = "kVA",
+            RequiresPeriodicInspection = true,
+            InspectionDueAtUtc = now.AddDays(12)
+        });
+
+        var demoAssets = new[] { patrolVehicle, transportVehicle, radioSet, screeningGate, kitchenEquipment, generator };
+        db.ResourceStatusEvents.AddRange(demoAssets.Select(asset => new ResourceStatusEvent
+        {
+            ResourceAssetId = asset.Id,
+            PreviousStatus = null,
+            NewStatus = asset.CurrentStatus,
+            OccurredAtUtc = asset.LastVerifiedAtUtc ?? now,
+            Reason = "بيانات تطوير أولية لمركز الموارد",
+            SourceType = ResourceSourceType.Manual,
+            SourceReference = "demo-resource-seed",
+            RecordedAtUtc = now
+        }));
+        db.ResourcePlacements.AddRange(demoAssets.Select(asset => new ResourcePlacement
+        {
+            ResourceAssetId = asset.Id,
+            OwnershipOrganizationId = SeedIds.Organization,
+            OperationalFacilityId = SeedIds.FacilityA1,
+            OperationalFacilityUnitId = asset.OperationalFacilityUnitId,
+            EffectiveFromUtc = now.AddMonths(-3),
+            AssignmentType = ResourceAssignmentType.Permanent,
+            SourceReference = "demo-resource-seed",
+            Reason = "موضع تطوير افتتاحي"
+        }));
+        db.MaintenanceWorkOrders.AddRange(
+            new MaintenanceWorkOrder
+            {
+                OrganizationId = SeedIds.Organization,
+                ResourceAssetId = transportVehicle.Id,
+                WorkOrderNumber = "MWO-DEMO-0001",
+                MaintenanceType = MaintenanceType.Corrective,
+                Priority = MaintenancePriority.Critical,
+                Status = MaintenanceStatus.InProgress,
+                ReportedAtUtc = now.AddDays(-2),
+                ProblemDescription = "فحص فني عاجل لحافلة النقل بعد تعطل متكرر.",
+                ExpectedCompletionAtUtc = now.AddHours(-6),
+                PartsRequired = false
+            },
+            new MaintenanceWorkOrder
+            {
+                OrganizationId = SeedIds.Organization,
+                ResourceAssetId = screeningGate.Id,
+                WorkOrderNumber = "MWO-DEMO-0002",
+                MaintenanceType = MaintenanceType.Corrective,
+                Priority = MaintenancePriority.High,
+                Status = MaintenanceStatus.AwaitingParts,
+                ReportedAtUtc = now.AddDays(-5),
+                ProblemDescription = "تعطل حساس البوابة ويتطلب قطعة بديلة.",
+                ExpectedCompletionAtUtc = now.AddDays(-1),
+                PartsRequired = true,
+                WaitingForPartsSinceUtc = now.AddDays(-4)
+            });
+        db.ResourceRequirements.AddRange(
+            DemoRequirement(ResourceType.Vehicle, "PrisonerTransport", 3, 2, now.AddMonths(-6)),
+            DemoRequirement(ResourceType.CommunicationDevice, "HandheldRadio", 8, 6, now.AddMonths(-6)),
+            DemoRequirement(ResourceType.OperationalEquipment, "Kitchen", 2, 1, now.AddMonths(-6)),
+            DemoRequirement(ResourceType.SecurityEquipment, "Screening", 2, 2, now.AddMonths(-6)),
+            DemoRequirement(ResourceType.FacilityAsset, "Generator", 2, 1, now.AddMonths(-6)));
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static ResourceAsset DemoResourceAsset(
+        ResourceType type,
+        string code,
+        string name,
+        Guid? unitId,
+        ResourceStatus status,
+        ResourceCondition condition,
+        ResourceCriticality criticality,
+        DateTimeOffset? verifiedAt) =>
+        new()
+        {
+            OrganizationId = SeedIds.Organization,
+            ResourceType = type,
+            AssetCode = code,
+            DisplayName = name,
+            OwnershipOrganizationId = SeedIds.Organization,
+            OperationalFacilityId = SeedIds.FacilityA1,
+            OperationalFacilityUnitId = unitId,
+            CurrentStatus = status,
+            Condition = condition,
+            Criticality = criticality,
+            SourceType = ResourceSourceType.Manual,
+            SourceReference = "demo-resource-seed",
+            LastVerifiedAtUtc = verifiedAt,
+            LastVerifiedBy = "seed"
+        };
+
+    private static ResourceRequirement DemoRequirement(
+        ResourceType resourceType,
+        string category,
+        int required,
+        int minimum,
+        DateTimeOffset effectiveFrom) =>
+        new()
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            ResourceType = resourceType,
+            ResourceCategory = category,
+            RequiredQuantity = required,
+            MinimumOperationalQuantity = minimum,
+            EffectiveFromUtc = effectiveFrom,
+            SourceReference = "demo-resource-baseline",
+            ApprovalReference = "demo-resource-baseline"
+        };
+
     private static async Task EnsureDevAdminAsync(BaseeraDbContext db, CancellationToken cancellationToken)
     {
         const string subject = "dev-admin";
@@ -926,6 +1230,7 @@ public static class DatabaseInitializer
     private const string DashboardModule = "Dashboard";
     private const string WorkspacesModule = "Workspaces";
     private const string OccupancyModule = "Occupancy";
+    private const string ResourcesModule = "Resources";
     private const string FormsModule = "Forms";
 
     private static List<Permission> BuildPermissions()
@@ -1059,7 +1364,23 @@ public static class DatabaseInitializer
             (PermissionCodes.OccupancyRecordSnapshot, "تسجيل Snapshot إشغال", OccupancyModule),
             (PermissionCodes.OccupancyImport, "استيراد بيانات إشغال وحركة", OccupancyModule),
             (PermissionCodes.OccupancyExport, "تصدير بيانات الإشغال", OccupancyModule),
-            (PermissionCodes.OccupancyReconcile, "مصالحة بيانات الإشغال", OccupancyModule)
+            (PermissionCodes.OccupancyReconcile, "مصالحة بيانات الإشغال", OccupancyModule),
+            (PermissionCodes.ResourcesViewSummary, "عرض ملخص جاهزية الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesViewAssets, "عرض سجلات الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesViewVehicles, "عرض المركبات", ResourcesModule),
+            (PermissionCodes.ResourcesViewCommunicationDevices, "عرض أجهزة الاتصال", ResourcesModule),
+            (PermissionCodes.ResourcesViewEquipment, "عرض المعدات", ResourcesModule),
+            (PermissionCodes.ResourcesViewFacilityAssets, "عرض المرافق والأصول الثابتة", ResourcesModule),
+            (PermissionCodes.ResourcesManageAssets, "إدارة تعريف الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesManagePlacements, "إدارة مواقع الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesManageStatus, "إدارة حالات الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesViewMaintenance, "عرض صيانة الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesManageMaintenance, "إدارة صيانة الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesViewRequirements, "عرض احتياجات الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesManageRequirements, "إدارة احتياجات الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesImport, "استيراد الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesExport, "تصدير الموارد", ResourcesModule),
+            (PermissionCodes.ResourcesReconcile, "مصالحة بيانات الموارد", ResourcesModule)
         ];
 
         return items.Select(i => new Permission

@@ -15,6 +15,7 @@ import {
   type FacilityNotesOverviewPayload,
   type OccupancyUnitPayload,
   type OccupancyWorkspacePayload,
+  type ResourceWorkspacePayload,
   type FacilityPriorityQueuePayload,
   type FacilityRecentActivityPayload,
   type FacilityStructurePayload,
@@ -109,6 +110,7 @@ type CommandData = Readonly<{
   alerts?: FacilityAlertsEscalationsPayload
   forms?: FacilityFormCompliancePayload
   occupancy?: OccupancyWorkspacePayload
+  resources?: ResourceWorkspacePayload
   priority?: FacilityPriorityQueuePayload
   activity?: FacilityRecentActivityPayload
   structure?: FacilityStructurePayload
@@ -1104,24 +1106,66 @@ function OccupancyUnitRows({ units, openPanel }: Readonly<{ units: OccupancyUnit
 }
 
 function ResourcesReadinessSection({ data, openPanel }: Readonly<{ data: CommandData; openPanel: (panel: PanelState) => void }>) {
-  const resourceDomains: Array<Readonly<{ key: string; label: string; type: PanelType }>> = [
-    { key: 'resources', label: 'القوى البشرية والمركبات والأسلحة والاتصالات والمعدات', type: 'equipment' },
-  ]
+  const resources = data.resources
+  const resourceGap = domainFor(data, 'resources')
+  if (!resources) {
+    return (
+      <div className="command-section-stack">
+        <DomainUnavailableSection domain={resourceGap} panelType="equipment" openPanel={openPanel} compact />
+      </div>
+    )
+  }
+
   return (
     <div className="command-section-stack">
-      <div className="resource-rail">
-        {resourceDomains.map((item) => {
-          const domain = domainFor(data, item.key)
-          return (
-            <button key={item.key} type="button" data-status={domain?.statusCode ?? 'unavailable'} onClick={() => openPanel({ type: item.type, entityId: `domain-${item.key}` })}>
-              <span>{item.label}</span>
-              <strong>{domain?.statusAr ?? 'غير متاح'}</strong>
-              <small>{domain?.impactAr ?? 'لا توجد بيانات موارد جاهزة.'}</small>
-            </button>
-          )
-        })}
+      <div className="occupancy-command-strip" data-status={resources.summary.gap > 0 ? 'partial' : 'complete'}>
+        <div>
+          <span className="command-eyebrow">جاهزية الموارد</span>
+          <h3>{resources.summary.readinessRate == null ? 'لا يوجد baseline احتياج' : `${Math.round(resources.summary.readinessRate * 100)}% جاهزية`}</h3>
+          <p>{resources.summary.warnings.join(' ') || 'لا توجد تحذيرات موارد حالية.'}</p>
+        </div>
+        <strong>{resources.summary.operational}/{resources.summary.required || '-'}</strong>
       </div>
-      <div className="context-action-note">توجد مواقع أصول هيكلية فقط. لا توجد حاليًا كيانات مركبات أو أسلحة أو أجهزة اتصال أو معدات بحالة جاهزية وصيانة.</div>
+      <div className="readiness-rail">
+        <CommandMetric label="الإجمالي" value={resources.summary.totalRegistered} tone="info" />
+        <CommandMetric label="تشغيلي" value={resources.summary.operational} tone="ok" />
+        <CommandMetric label="تحت الصيانة" value={resources.summary.underMaintenance} tone="warn" />
+        <CommandMetric label="خارج الخدمة" value={resources.summary.outOfService} tone={resources.summary.outOfService > 0 ? 'danger' : 'ok'} />
+        <CommandMetric label="الفجوة" value={resources.summary.gap} tone={resources.summary.gap > 0 ? 'danger' : 'ok'} />
+      </div>
+      <div className="resource-rail">
+        {resources.categories.map((item) => (
+          <button key={item.resourceTypeCode} type="button" data-status={item.gap > 0 ? 'partial' : item.total > 0 ? 'complete' : 'missing'} onClick={() => openPanel({ type: resourcePanelType(item.resourceTypeCode), entityId: `domain-resources-${item.resourceTypeCode}` })}>
+            <span>{item.labelAr}</span>
+            <strong>{item.readinessRate == null ? '-' : `${Math.round(item.readinessRate * 100)}%`}</strong>
+            <small>{item.operational} تشغيلي · {item.underMaintenance} صيانة · فجوة {item.gap}</small>
+          </button>
+        ))}
+      </div>
+      {resources.exceptions.length > 0 && (
+        <ul className="priority-row-list" aria-label="استثناءات الموارد">
+          {resources.exceptions.map((item) => (
+            <li key={`${item.type}-${item.reference}`}>
+              <button type="button" className="priority-row compact" data-tone={item.priorityRank >= 900 ? 'danger' : 'warn'} onClick={() => openPanel({ type: resourcePanelType(item.resourceType == null ? undefined : String(item.resourceType)), entityId: item.resourceAssetId ?? `domain-resources-${item.type}` })}>
+                <span className="priority-band" />
+                <span><strong>{item.titleAr}</strong><small>{item.reference} · {item.reasonAr}</small></span>
+                <b>{item.severityAr}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {resources.unitDistribution.length > 0 && (
+        <div className="resource-unit-grid">
+          {resources.unitDistribution.map((unit) => (
+            <article key={unit.facilityUnitId ?? unit.unitNameAr}>
+              <span>{unit.unitNameAr}</span>
+              <strong>{unit.readinessRate == null ? '-' : `${Math.round(unit.readinessRate * 100)}%`}</strong>
+              <small>مركبات {unit.vehicles} · اتصال {unit.communicationDevices} · معدات {unit.equipment} · أصول {unit.facilityAssets}</small>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -1445,6 +1489,7 @@ function extractCommandData(shell: WorkspaceShellDto): CommandData {
     alerts: payloadFor<FacilityAlertsEscalationsPayload>(shell.widgets, 'facility.alerts-escalations'),
     forms: payloadFor<FacilityFormCompliancePayload>(shell.widgets, 'facility.form-compliance'),
     occupancy: payloadFor<OccupancyWorkspacePayload>(shell.widgets, 'facility.occupancy'),
+    resources: payloadFor<ResourceWorkspacePayload>(shell.widgets, 'facility.resources'),
     priority: payloadFor<FacilityPriorityQueuePayload>(shell.widgets, 'facility.priority-queue'),
     activity: payloadFor<FacilityRecentActivityPayload>(shell.widgets, 'facility.recent-activity'),
     structure: payloadFor<FacilityStructurePayload>(shell.widgets, 'facility.structure'),
@@ -1491,6 +1536,7 @@ function panelForPriorityItem(item: PriorityItem): PanelState {
   if (item.type === 'form') return { type: 'form-assignment', entityId: item.reference }
   if (item.type === 'escalation') return { type: 'escalation', entityId: item.reference }
   if (item.type === 'occupancy') return { type: 'facility-unit', entityId: item.drillDownTarget.routeParameters.unitId ?? 'domain-occupancy' }
+  if (item.type === 'resource') return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.reference }
   return { type: 'activity', entityId: item.reference }
 }
 
@@ -1509,6 +1555,9 @@ function panelForActivityItem(item: ActivityItem, index: number): PanelState {
   }
   if (item.drillDownTarget.routeKey === 'facility.occupancy') {
     return { type: 'facility-unit', entityId: item.drillDownTarget.routeParameters.unitId ?? 'domain-occupancy' }
+  }
+  if (item.drillDownTarget.routeKey === 'facility.resources') {
+    return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.entityReference }
   }
   return { type: 'activity', entityId: `${item.entityReference}-${index}` }
 }
@@ -1584,7 +1633,14 @@ function routeFromTarget(target: { routeKey: string; routeParameters: Record<str
   if (target.routeKey === 'form-compliance.facility') return `/form-compliance/facilities/${target.routeParameters.facilityId ?? ''}`
   if (target.routeKey === 'escalations.occurrences') return '/settings/escalations/occurrences'
   if (target.routeKey === 'facility.occupancy') return `/facilities/${target.routeParameters.facilityId ?? ''}/occupancy`
+  if (target.routeKey === 'facility.resources') return `/facilities/${target.routeParameters.facilityId ?? ''}/resources`
   return null
+}
+
+function resourcePanelType(resourceTypeCode?: string): PanelType {
+  if (resourceTypeCode === '0' || resourceTypeCode === 'Vehicle') return 'vehicle'
+  if (resourceTypeCode === '1' || resourceTypeCode === 'CommunicationDevice') return 'communication-device'
+  return 'equipment'
 }
 
 function executeNoteAction(action: NoteWorkspaceAllowedAction, data: NoteWorkspaceDetail, reason: string) {

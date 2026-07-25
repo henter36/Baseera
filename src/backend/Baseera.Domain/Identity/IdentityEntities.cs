@@ -201,6 +201,22 @@ public static class PermissionCodes
     public const string OccupancyImport = "Occupancy.Import";
     public const string OccupancyExport = "Occupancy.Export";
     public const string OccupancyReconcile = "Occupancy.Reconcile";
+    public const string ResourcesViewSummary = "Resources.ViewSummary";
+    public const string ResourcesViewAssets = "Resources.ViewAssets";
+    public const string ResourcesViewVehicles = "Resources.ViewVehicles";
+    public const string ResourcesViewCommunicationDevices = "Resources.ViewCommunicationDevices";
+    public const string ResourcesViewEquipment = "Resources.ViewEquipment";
+    public const string ResourcesViewFacilityAssets = "Resources.ViewFacilityAssets";
+    public const string ResourcesManageAssets = "Resources.ManageAssets";
+    public const string ResourcesManagePlacements = "Resources.ManagePlacements";
+    public const string ResourcesManageStatus = "Resources.ManageStatus";
+    public const string ResourcesViewMaintenance = "Resources.ViewMaintenance";
+    public const string ResourcesManageMaintenance = "Resources.ManageMaintenance";
+    public const string ResourcesViewRequirements = "Resources.ViewRequirements";
+    public const string ResourcesManageRequirements = "Resources.ManageRequirements";
+    public const string ResourcesImport = "Resources.Import";
+    public const string ResourcesExport = "Resources.Export";
+    public const string ResourcesReconcile = "Resources.Reconcile";
 }
 
 public static class RoleCodes

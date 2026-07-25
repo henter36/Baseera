@@ -1,6 +1,7 @@
 namespace Baseera.Application.Workspaces;
 
 using Baseera.Application.Occupancy;
+using Baseera.Application.Resources;
 
 public sealed record FacilityWorkspaceHeaderPayload
 {
@@ -145,4 +146,5 @@ internal sealed record FacilityWorkspaceMetrics(
     FacilityCorrectiveActionsPayload CorrectiveActions,
     FacilityAlertsEscalationsPayload Alerts,
     FacilityFormCompliancePayload FormCompliance,
-    OccupancyWorkspacePayload? Occupancy);
+    OccupancyWorkspacePayload? Occupancy,
+    ResourceWorkspacePayload? Resources = null);

@@ -10,6 +10,7 @@ using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
+using Baseera.Domain.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
@@ -75,6 +76,16 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<FacilityCapacityBaseline> FacilityCapacityBaselines => Set<FacilityCapacityBaseline>();
     public DbSet<InmateCensusSnapshot> InmateCensusSnapshots => Set<InmateCensusSnapshot>();
     public DbSet<InmateMovementEvent> InmateMovementEvents => Set<InmateMovementEvent>();
+    public DbSet<ResourceAsset> ResourceAssets => Set<ResourceAsset>();
+    public DbSet<VehicleProfile> VehicleProfiles => Set<VehicleProfile>();
+    public DbSet<CommunicationDeviceProfile> CommunicationDeviceProfiles => Set<CommunicationDeviceProfile>();
+    public DbSet<EquipmentProfile> EquipmentProfiles => Set<EquipmentProfile>();
+    public DbSet<FacilityAssetProfile> FacilityAssetProfiles => Set<FacilityAssetProfile>();
+    public DbSet<ResourceStatusEvent> ResourceStatusEvents => Set<ResourceStatusEvent>();
+    public DbSet<ResourcePlacement> ResourcePlacements => Set<ResourcePlacement>();
+    public DbSet<MaintenanceWorkOrder> MaintenanceWorkOrders => Set<MaintenanceWorkOrder>();
+    public DbSet<ResourceRequirement> ResourceRequirements => Set<ResourceRequirement>();
+    public DbSet<ResourceImportBatch> ResourceImportBatches => Set<ResourceImportBatch>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -147,6 +158,16 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<FacilityCapacityBaseline> Application.Abstractions.IBaseeraDbContext.FacilityCapacityBaselines => FacilityCapacityBaselines;
     IQueryable<InmateCensusSnapshot> Application.Abstractions.IBaseeraDbContext.InmateCensusSnapshots => InmateCensusSnapshots;
     IQueryable<InmateMovementEvent> Application.Abstractions.IBaseeraDbContext.InmateMovementEvents => InmateMovementEvents;
+    IQueryable<ResourceAsset> Application.Abstractions.IBaseeraDbContext.ResourceAssets => ResourceAssets;
+    IQueryable<VehicleProfile> Application.Abstractions.IBaseeraDbContext.VehicleProfiles => VehicleProfiles;
+    IQueryable<CommunicationDeviceProfile> Application.Abstractions.IBaseeraDbContext.CommunicationDeviceProfiles => CommunicationDeviceProfiles;
+    IQueryable<EquipmentProfile> Application.Abstractions.IBaseeraDbContext.EquipmentProfiles => EquipmentProfiles;
+    IQueryable<FacilityAssetProfile> Application.Abstractions.IBaseeraDbContext.FacilityAssetProfiles => FacilityAssetProfiles;
+    IQueryable<ResourceStatusEvent> Application.Abstractions.IBaseeraDbContext.ResourceStatusEvents => ResourceStatusEvents;
+    IQueryable<ResourcePlacement> Application.Abstractions.IBaseeraDbContext.ResourcePlacements => ResourcePlacements;
+    IQueryable<MaintenanceWorkOrder> Application.Abstractions.IBaseeraDbContext.MaintenanceWorkOrders => MaintenanceWorkOrders;
+    IQueryable<ResourceRequirement> Application.Abstractions.IBaseeraDbContext.ResourceRequirements => ResourceRequirements;
+    IQueryable<ResourceImportBatch> Application.Abstractions.IBaseeraDbContext.ResourceImportBatches => ResourceImportBatches;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -271,6 +292,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<FacilityCapacityBaseline>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<InmateCensusSnapshot>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<InmateMovementEvent>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<ResourceAsset>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<MaintenanceWorkOrder>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<ResourceRequirement>().HasQueryFilter(e => !e.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {

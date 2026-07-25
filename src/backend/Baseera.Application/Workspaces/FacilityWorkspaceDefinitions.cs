@@ -12,6 +12,7 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
     public const string AlertsEscalationsWidgetKey = "facility.alerts-escalations";
     public const string FormComplianceWidgetKey = "facility.form-compliance";
     public const string OccupancyWidgetKey = "facility.occupancy";
+    public const string ResourcesWidgetKey = "facility.resources";
     public const string PriorityQueueWidgetKey = "facility.priority-queue";
     public const string RecentActivityWidgetKey = "facility.recent-activity";
     public const string StructureWidgetKey = "facility.structure";
@@ -28,6 +29,7 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
             ExecutiveSummaryWidgetKey,
             PriorityQueueWidgetKey,
             OccupancyWidgetKey,
+            ResourcesWidgetKey,
             NotesOverviewWidgetKey,
             CorrectiveActionsWidgetKey,
             AlertsEscalationsWidgetKey,
@@ -42,13 +44,14 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
                 new WorkspaceLayoutItemDefinition(ExecutiveSummaryWidgetKey, 1, WidgetSize.Large, true),
                 new WorkspaceLayoutItemDefinition(PriorityQueueWidgetKey, 2, WidgetSize.Large, true),
                 new WorkspaceLayoutItemDefinition(OccupancyWidgetKey, 3, WidgetSize.Wide, false),
-                new WorkspaceLayoutItemDefinition(NotesOverviewWidgetKey, 4, WidgetSize.Medium, false),
-                new WorkspaceLayoutItemDefinition(CorrectiveActionsWidgetKey, 5, WidgetSize.Medium, false),
-                new WorkspaceLayoutItemDefinition(AlertsEscalationsWidgetKey, 6, WidgetSize.Medium, false),
-                new WorkspaceLayoutItemDefinition(FormComplianceWidgetKey, 7, WidgetSize.Medium, false),
-                new WorkspaceLayoutItemDefinition(StructureWidgetKey, 8, WidgetSize.Wide, false),
-                new WorkspaceLayoutItemDefinition(RecentActivityWidgetKey, 9, WidgetSize.Wide, false),
-                new WorkspaceLayoutItemDefinition(DataQualityWidgetKey, 10, WidgetSize.Wide, false)
+                new WorkspaceLayoutItemDefinition(ResourcesWidgetKey, 4, WidgetSize.Wide, false),
+                new WorkspaceLayoutItemDefinition(NotesOverviewWidgetKey, 5, WidgetSize.Medium, false),
+                new WorkspaceLayoutItemDefinition(CorrectiveActionsWidgetKey, 6, WidgetSize.Medium, false),
+                new WorkspaceLayoutItemDefinition(AlertsEscalationsWidgetKey, 7, WidgetSize.Medium, false),
+                new WorkspaceLayoutItemDefinition(FormComplianceWidgetKey, 8, WidgetSize.Medium, false),
+                new WorkspaceLayoutItemDefinition(StructureWidgetKey, 9, WidgetSize.Wide, false),
+                new WorkspaceLayoutItemDefinition(RecentActivityWidgetKey, 10, WidgetSize.Wide, false),
+                new WorkspaceLayoutItemDefinition(DataQualityWidgetKey, 11, WidgetSize.Wide, false)
             ],
             1),
         [
@@ -63,6 +66,7 @@ public sealed class FacilityWorkspaceDefinitionProvider : IWorkspaceDefinitionPr
             new DrillDownDefinition("escalations.occurrences", "حوادث التصعيد", PermissionCodes.EscalationsViewOccurrences),
             new DrillDownDefinition("form-compliance.facility", "التزام النماذج للسجن", PermissionCodes.FormsViewComplianceDashboard),
             new DrillDownDefinition("facility.occupancy", "إشغال السجن", PermissionCodes.OccupancyViewSummary),
+            new DrillDownDefinition("facility.resources", "موارد السجن", PermissionCodes.ResourcesViewSummary),
             new DrillDownDefinition("dashboard.operations", "لوحة المتابعة", PermissionCodes.DashboardViewOperational)
         ],
         new WorkspaceFeatureAvailability(false, false, false, false),
