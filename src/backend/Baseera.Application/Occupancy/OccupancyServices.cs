@@ -446,7 +446,7 @@ public sealed class OccupancyService(
         {
             if (row.UnitId.HasValue)
             {
-                result[row.UnitId.Value] = row.Count;
+                result[row.UnitId.Value] = row.OpenNotesCount;
             }
         }
 
@@ -727,14 +727,14 @@ public sealed class OccupancyService(
             .ThenBy(group => group.Key.Day)
             .Select(group =>
             {
-                var admissions = group.Where(row => MovementClassifier.Flow(row.MovementType) == MovementFlow.Inflow).Sum(row => row.Count);
-                var releases = group.Where(row => MovementClassifier.Flow(row.MovementType) == MovementFlow.Outflow).Sum(row => row.Count);
+                var admissions = group.Where(row => MovementClassifier.Flow(row.MovementType) == MovementFlow.Inflow).Sum(row => row.MovementCount);
+                var releases = group.Where(row => MovementClassifier.Flow(row.MovementType) == MovementFlow.Outflow).Sum(row => row.MovementCount);
                 return new MovementTrendPointDto(
                     new DateOnly(group.Key.Year, group.Key.Month, group.Key.Day),
                     admissions,
                     releases,
-                    group.Where(row => row.MovementType == MovementType.TransferIn).Sum(row => row.Count),
-                    group.Where(row => row.MovementType == MovementType.TransferOut).Sum(row => row.Count),
+                    group.Where(row => row.MovementType == MovementType.TransferIn).Sum(row => row.MovementCount),
+                    group.Where(row => row.MovementType == MovementType.TransferOut).Sum(row => row.MovementCount),
                     admissions - releases);
             })
             .ToList();
@@ -791,8 +791,8 @@ public sealed class OccupancyService(
     private sealed record UnitProjection(Guid Id, string UnitCode, string UnitNameAr);
     private sealed record UnitCapacityProjection(Guid? UnitId, int ApprovedCapacity, DateTimeOffset EffectiveFromUtc);
     private sealed record UnitSnapshotProjection(Guid? UnitId, int InmateCount, DateTimeOffset CapturedAtUtc, bool IsAuthoritative);
-    private sealed record UnitOpenNotesProjection(Guid? UnitId, int Count);
-    private sealed record DailyMovementProjection(int Year, int Month, int Day, MovementType MovementType, int Count);
+    private sealed record UnitOpenNotesProjection(Guid? UnitId, int OpenNotesCount);
+    private sealed record DailyMovementProjection(int Year, int Month, int Day, MovementType MovementType, int MovementCount);
     private sealed record MovementImportCandidate(InmateMovementImportRow Row, string ExternalEventId);
 }
 
