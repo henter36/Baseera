@@ -16,7 +16,8 @@
 | **Phase D.1** — مركز قرار السجن MVP | مكتملة ومقبولة ومُدمجة في `main` — [`docs/phase-d1-facility-workspace-completion-report.md`](docs/phase-d1-facility-workspace-completion-report.md) |
 | **Phase D.2** — إعادة تصميم مركز قيادة السجن | قيد المراجعة؛ لقطات الشاشة النهائية معلقة — [`docs/phase-d2-facility-command-center-completion-report.md`](docs/phase-d2-facility-command-center-completion-report.md) |
 | **Phase D.3** — توسعة مساحة عمليات السجن | مكتملة تقنيًا ضمن النماذج الحالية وقيد القبول النهائي — المجالات التشغيلية غير المتوفرة موثقة كفجوات ومتابعات لاحقة، ولا يُغلق Issue #11 — [`docs/phase-d3-complete-facility-workspace-completion-report.md`](docs/phase-d3-complete-facility-workspace-completion-report.md) |
-| **Phase D.4** — إشغال السجن وحركة النزلاء | قيد التنفيذ على Issue #124 ويستمر في Issue #11 — [`docs/phase-d4-occupancy-completion-report.md`](docs/phase-d4-occupancy-completion-report.md) |
+| **Phase D.4** — إشغال السجن وحركة النزلاء | مكتملة ضمن Issue #124 وتستمر في Issue #11 — [`docs/phase-d4-occupancy-completion-report.md`](docs/phase-d4-occupancy-completion-report.md) |
+| **Phase D.5** — مركز جاهزية الموارد الأساسية | مكتملة محليًا كدفعة أولى من Issue #15 وتنتظر مراجعة PR؛ لا تغلق Issue #15 أو Issue #11 — [`docs/phase-d5-resource-completion-report.md`](docs/phase-d5-resource-completion-report.md) |
 
 ## المتطلبات
 
@@ -87,4 +88,5 @@ npm run build             # إنتاج: Entra إلزامي
 
 - `facility-operations`: مركز قرار السجن ضمن Phase D.1/D.2/D.3، متاح عبر `/workspaces/facilities/:facilityId` ويستخدم Workspace Framework وبيانات حقيقية فقط. D.3 توسعة مكتملة لمساحة عمليات السجن ضمن البيانات والنماذج الموجودة حاليًا؛ تعرض المجالات غير المتاحة كفجوات جودة بيانات صريحة بدل بيانات تجريبية، ولا تنفذ كامل محركات الإشغال والموارد والوقوعات والمخاطر والمشاريع والخطط والقرارات. لا تعني هذه المرحلة إغلاق Issue #11؛ تستمر المجالات الناقصة عبر Issues #15 و#16 و#18 و#19 و#124 و#125 و#126 و#127 و#128.
 - Phase D.4 يستبدل فجوة الإشغال ضمن مساحة السجن بنموذج حقيقي للطاقة الاستيعابية وSnapshots وحركة النزلاء، مع عدم عرض هوية النزيل في Workspace. تبقى Issue #11 مفتوحة لبقية مجالات السجن، وتقتصر صلة #15 على الطاقة الاستيعابية فقط.
+- Phase D.5 يستبدل فجوة الموارد الأساسية بنموذج ResourceAsset حقيقي للمركبات وأجهزة الاتصال والمعدات التشغيلية/الأمنية غير المصنفة كأسلحة والأصول الثابتة، مع status history وplacement وmaintenance وrequirements وresource gaps. لا ينفذ القوى البشرية أو الأسلحة أو العهد الحساسة أو المخزون العام، وتبقى Issues #15 و#11 مفتوحة.
 - `reference`: مساحة مرجعية للتطوير من Phase D.0، مفعّلة حسب feature flag.
