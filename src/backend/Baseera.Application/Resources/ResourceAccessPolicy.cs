@@ -21,19 +21,10 @@ public static class ResourceAccessPolicy
         return required is not null && permissions.Contains(required);
     }
 
-    public static IReadOnlyList<ResourceType> ViewableResourceTypes(IReadOnlyCollection<string> permissions)
-    {
-        var types = new List<ResourceType>(5);
-        foreach (ResourceType type in Enum.GetValues<ResourceType>())
-        {
-            if (CanViewResourceType(permissions, type))
-            {
-                types.Add(type);
-            }
-        }
-
-        return types;
-    }
+    public static IReadOnlyList<ResourceType> ViewableResourceTypes(IReadOnlyCollection<string> permissions) =>
+        Enum.GetValues<ResourceType>()
+            .Where(type => CanViewResourceType(permissions, type))
+            .ToArray();
 
     public static string NormalizeAssetCode(string value) =>
         value.Trim().ToUpperInvariant();
@@ -47,6 +38,24 @@ public static class ResourceAccessPolicy
         var existingEnd = existingTo ?? DateTimeOffset.MaxValue;
         var candidateEnd = candidateTo ?? DateTimeOffset.MaxValue;
         return existingFrom < candidateEnd && candidateFrom < existingEnd;
+    }
+
+    public static bool IsValidImportBatchState(
+        string status,
+        int appliedRows,
+        DateTimeOffset? confirmedAtUtc)
+    {
+        if (string.Equals(status, ResourceImportBatchStatuses.Confirmed, StringComparison.Ordinal))
+        {
+            return confirmedAtUtc.HasValue;
+        }
+
+        if (string.Equals(status, ResourceImportBatchStatuses.Previewed, StringComparison.Ordinal))
+        {
+            return appliedRows == 0 && confirmedAtUtc is null;
+        }
+
+        return false;
     }
 
     public static bool IsValidImportBatchCounts(
@@ -73,17 +82,7 @@ public static class ResourceAccessPolicy
             return false;
         }
 
-        if (string.Equals(status, "Confirmed", StringComparison.Ordinal))
-        {
-            return confirmedAtUtc.HasValue;
-        }
-
-        if (string.Equals(status, "Previewed", StringComparison.Ordinal))
-        {
-            return appliedRows == 0 && confirmedAtUtc is null;
-        }
-
-        return false;
+        return IsValidImportBatchState(status, appliedRows, confirmedAtUtc);
     }
 
     public static bool IsResourceAssetsUniqueViolation(Exception exception)

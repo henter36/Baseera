@@ -142,7 +142,18 @@ public sealed class ResourceReadinessIntegrationTests(BaseeraApiFactory factory)
         var assets = await listResponse.Content.ReadFromJsonAsync<List<AssetListItemResponse>>(JsonOptions);
         Assert.NotNull(assets);
         Assert.NotEmpty(assets!);
+        Assert.Contains(assets, asset => asset.ResourceType == ResourceType.CommunicationDevice);
+        Assert.DoesNotContain(assets, asset => asset.ResourceType == ResourceType.Vehicle);
         Assert.All(assets, asset => Assert.Equal(ResourceType.CommunicationDevice, asset.ResourceType));
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            Assert.True(await db.ResourceAssets.AnyAsync(a =>
+                a.OperationalFacilityId == SeedIds.FacilityA1 && a.ResourceType == ResourceType.Vehicle));
+            Assert.True(await db.ResourceAssets.AnyAsync(a =>
+                a.OperationalFacilityId == SeedIds.FacilityA1 && a.ResourceType == ResourceType.CommunicationDevice));
+        }
 
         var vehicleFilter = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/resources/assets?resourceType=0");
         Assert.Equal(HttpStatusCode.Forbidden, vehicleFilter.StatusCode);
@@ -406,6 +417,29 @@ public sealed class ResourceReadinessIntegrationTests(BaseeraApiFactory factory)
         var reload = await db.ResourceStatusEvents.FirstAsync(e => e.Id == statusEvent.Id);
         db.Remove(reload);
         await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Unsupported_import_batch_status_is_rejected_by_database()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        db.ResourceImportBatches.Add(new ResourceImportBatch
+        {
+            FacilityId = SeedIds.FacilityA1,
+            SourceSystem = "test",
+            SourceReference = $"unsupported-{Guid.NewGuid():N}",
+            FileHash = Guid.NewGuid().ToString("N"),
+            Status = "Pending",
+            TotalRows = 0,
+            ValidRows = 0,
+            RejectedRows = 0,
+            DuplicateRows = 0,
+            AppliedRows = 0
+        });
+
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        Assert.Contains("CK_ResourceImportBatches", ex.InnerException?.Message + ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [IntegrationConnectionFact]

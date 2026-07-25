@@ -483,11 +483,17 @@ public class ResourceImportBatch : EntityBase
     public User? SubmittedByUser { get; set; }
 
     public DateTimeOffset SubmittedAtUtc { get; set; } = DateTimeOffset.UtcNow;
-    public string Status { get; set; } = "Previewed";
+    public string Status { get; set; } = ResourceImportBatchStatuses.Previewed;
     public int TotalRows { get; set; }
     public int ValidRows { get; set; }
     public int RejectedRows { get; set; }
     public int DuplicateRows { get; set; }
     public DateTimeOffset? ConfirmedAtUtc { get; set; }
     public int AppliedRows { get; set; }
+}
+
+public static class ResourceImportBatchStatuses
+{
+    public const string Previewed = "Previewed";
+    public const string Confirmed = "Confirmed";
 }

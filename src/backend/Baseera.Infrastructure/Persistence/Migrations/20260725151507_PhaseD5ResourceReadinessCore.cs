@@ -120,6 +120,7 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_ResourceImportBatches", x => x.Id);
                     table.CheckConstraint("CK_ResourceImportBatches_AppliedRows", "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
+                    table.CheckConstraint("CK_ResourceImportBatches_Status", "[Status] IN (N'Previewed', N'Confirmed')");
                     table.CheckConstraint("CK_ResourceImportBatches_ConfirmedState", "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] = N'Previewed' AND [AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)");
                     table.CheckConstraint("CK_ResourceImportBatches_RowTotals", "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0 AND [ValidRows] >= 0 AND [RejectedRows] >= 0 AND [DuplicateRows] >= 0");
                     table.ForeignKey(

@@ -679,15 +679,36 @@ public sealed class ResourceReadinessService(
     public async Task<ResourceImportResult> PreviewAsync(Guid facilityId, ResourceImportPreviewRequest request, CancellationToken cancellationToken)
     {
         Require(PermissionCodes.ResourcesImport);
-        await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
-        return await ValidateImportAsync(facilityId, request, apply: false, cancellationToken);
+        ValidateImportRequest(request);
+        var context = await BuildImportContextAsync(facilityId, request, cancellationToken);
+        var validation = ValidateImportRows(context, request);
+        EnsureImportBatchCounts(validation, ResourceImportBatchStatuses.Previewed, appliedRows: 0, confirmedAtUtc: null);
+        return ToImportResult(validation, appliedRows: 0);
     }
 
     public async Task<ResourceImportResult> ConfirmAsync(Guid facilityId, ResourceImportPreviewRequest request, CancellationToken cancellationToken)
     {
         Require(PermissionCodes.ResourcesImport);
-        await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
-        return await ValidateImportAsync(facilityId, request, apply: true, cancellationToken);
+        ValidateImportRequest(request);
+
+        var sourceSystem = request.SourceSystem.Trim();
+        var sourceReference = request.SourceReference.Trim();
+        var fileHash = request.FileHash.Trim();
+        var existing = await FindConfirmedImportAsync(facilityId, sourceSystem, sourceReference, fileHash, cancellationToken);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var context = await BuildImportContextAsync(facilityId, request, cancellationToken);
+        var validation = ValidateImportRows(context, request);
+        if (validation.ValidRows.Count == 0)
+        {
+            EnsureImportBatchCounts(validation, ResourceImportBatchStatuses.Previewed, appliedRows: 0, confirmedAtUtc: null);
+            return ToImportResult(validation, appliedRows: 0);
+        }
+
+        return await ApplyImportAsync(context, validation, cancellationToken);
     }
 
     private IQueryable<ResourceAsset> AssetsInFacility(Guid facilityId) =>
@@ -842,40 +863,64 @@ public sealed class ResourceReadinessService(
         new("OPEN_MAINTENANCE", "فتح أمر صيانة", currentUser.HasPermission(PermissionCodes.ResourcesManageMaintenance), "تحتاج صلاحية إدارة الصيانة.")
     ];
 
-    private async Task<ResourceImportResult> ValidateImportAsync(Guid facilityId, ResourceImportPreviewRequest request, bool apply, CancellationToken cancellationToken)
+    private static void ValidateImportRequest(ResourceImportPreviewRequest request)
     {
         if (request.Rows.Count > 500)
         {
             throw new ArgumentException("الحد الأقصى للاستيراد 500 صف.");
         }
+    }
 
+    private async Task<ImportContext> BuildImportContextAsync(
+        Guid facilityId,
+        ResourceImportPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
         var facility = await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
-        var sourceSystem = request.SourceSystem.Trim();
-        var sourceReference = request.SourceReference.Trim();
-        var fileHash = request.FileHash.Trim();
+        var existingCodes = await LoadExistingOrganizationAssetCodesAsync(facility.OrganizationId, cancellationToken);
+        var activeUnitIds = await LoadActiveFacilityUnitIdsAsync(facilityId, cancellationToken);
+        return new ImportContext(
+            facilityId,
+            facility.OrganizationId,
+            request.SourceSystem.Trim(),
+            request.SourceReference.Trim(),
+            request.FileHash.Trim(),
+            existingCodes,
+            activeUnitIds,
+            timeProvider.GetUtcNow());
+    }
 
-        if (apply)
-        {
-            var prior = await FindConfirmedImportAsync(facilityId, sourceSystem, sourceReference, fileHash, cancellationToken);
-            if (prior is not null)
-            {
-                return prior;
-            }
-        }
-
+    private async Task<HashSet<string>> LoadExistingOrganizationAssetCodesAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken)
+    {
         var existingCodes = await db.ResourceAssets
             .AsNoTracking()
-            .Where(asset => asset.OrganizationId == facility.OrganizationId && !asset.IsDeleted)
+            .Where(asset => asset.OrganizationId == organizationId && !asset.IsDeleted)
             .Select(asset => asset.AssetCode)
             .ToListAsync(cancellationToken);
-        var codeSet = existingCodes
+        return existingCodes
             .Select(ResourceAccessPolicy.NormalizeAssetCode)
             .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private async Task<HashSet<Guid>> LoadActiveFacilityUnitIdsAsync(Guid facilityId, CancellationToken cancellationToken)
+    {
+        var unitIds = await db.FacilityUnits
+            .AsNoTracking()
+            .Where(unit => unit.FacilityId == facilityId && unit.IsActive)
+            .Select(unit => unit.Id)
+            .ToListAsync(cancellationToken);
+        return unitIds.ToHashSet();
+    }
+
+    private static ImportValidationSummary ValidateImportRows(ImportContext context, ResourceImportPreviewRequest request)
+    {
         var requestCodes = new HashSet<string>(StringComparer.Ordinal);
+        var knownCodes = new HashSet<string>(context.ExistingAssetCodes, StringComparer.Ordinal);
         var errors = new List<string>();
-        var valid = 0;
+        var validRows = new List<NormalizedImportRow>();
         var duplicate = 0;
-        var now = timeProvider.GetUtcNow();
 
         foreach (var row in request.Rows)
         {
@@ -886,111 +931,150 @@ public sealed class ResourceReadinessService(
             }
 
             var code = ResourceAccessPolicy.NormalizeAssetCode(row.AssetCode);
-            if (row.OperationalFacilityUnitId.HasValue)
+            if (row.OperationalFacilityUnitId.HasValue
+                && !context.ActiveFacilityUnitIds.Contains(row.OperationalFacilityUnitId.Value))
             {
-                try
-                {
-                    await EnsureUnitInFacilityAsync(facilityId, row.OperationalFacilityUnitId.Value, cancellationToken);
-                }
-                catch (KeyNotFoundException)
-                {
-                    errors.Add($"صف {row.AssetCode}: الوحدة غير موجودة داخل السجن.");
-                    continue;
-                }
+                errors.Add($"صف {row.AssetCode}: الوحدة غير موجودة داخل السجن.");
+                continue;
             }
 
-            if (!requestCodes.Add(code) || codeSet.Contains(code))
+            if (!requestCodes.Add(code) || knownCodes.Contains(code))
             {
                 duplicate++;
                 continue;
             }
 
-            valid++;
-            if (!apply)
-            {
-                continue;
-            }
+            knownCodes.Add(code);
+            validRows.Add(new NormalizedImportRow(
+                row.ResourceType,
+                code,
+                row.DisplayName.Trim(),
+                row.SerialNumber,
+                row.OperationalFacilityUnitId,
+                row.CurrentStatus,
+                row.Condition,
+                row.Criticality));
+        }
 
-            codeSet.Add(code);
+        return new ImportValidationSummary(
+            request.Rows.Count,
+            validRows,
+            errors.Count,
+            duplicate,
+            errors);
+    }
+
+    private void AddImportedAssets(ImportContext context, ImportValidationSummary validation)
+    {
+        foreach (var row in validation.ValidRows)
+        {
             db.Add(new ResourceAsset
             {
-                OrganizationId = facility.OrganizationId,
+                OrganizationId = context.OrganizationId,
                 ResourceType = row.ResourceType,
-                AssetCode = code,
-                DisplayName = row.DisplayName.Trim(),
+                AssetCode = row.AssetCode,
+                DisplayName = row.DisplayName,
                 SerialNumber = row.SerialNumber,
-                OwnershipOrganizationId = facility.OrganizationId,
-                OperationalFacilityId = facilityId,
+                OwnershipOrganizationId = context.OrganizationId,
+                OperationalFacilityId = context.FacilityId,
                 OperationalFacilityUnitId = row.OperationalFacilityUnitId,
                 CurrentStatus = row.CurrentStatus,
                 Condition = row.Condition,
                 Criticality = row.Criticality,
                 SourceType = ResourceSourceType.Import,
-                SourceReference = sourceReference,
-                LastVerifiedAtUtc = now,
+                SourceReference = context.SourceReference,
+                LastVerifiedAtUtc = context.NowUtc,
                 LastVerifiedBy = currentUser.DisplayName
             });
         }
+    }
 
-        var rejected = errors.Count;
-        var applied = apply ? valid : 0;
-        var status = apply ? "Confirmed" : "Previewed";
-        var confirmedAt = apply ? now : (DateTimeOffset?)null;
+    private static ResourceImportBatch CreateConfirmedImportBatch(
+        ImportContext context,
+        ImportValidationSummary validation,
+        Guid? submittedByUserId) =>
+        new()
+        {
+            FacilityId = context.FacilityId,
+            SourceSystem = context.SourceSystem,
+            SourceReference = context.SourceReference,
+            FileHash = context.FileHash,
+            SubmittedByUserId = submittedByUserId,
+            SubmittedAtUtc = context.NowUtc,
+            Status = ResourceImportBatchStatuses.Confirmed,
+            TotalRows = validation.TotalRows,
+            ValidRows = validation.ValidRows.Count,
+            RejectedRows = validation.RejectedRows,
+            DuplicateRows = validation.DuplicateRows,
+            ConfirmedAtUtc = context.NowUtc,
+            AppliedRows = validation.ValidRows.Count
+        };
+
+    private async Task<ResourceImportResult> ApplyImportAsync(
+        ImportContext context,
+        ImportValidationSummary validation,
+        CancellationToken cancellationToken)
+    {
+        EnsureImportBatchCounts(validation, ResourceImportBatchStatuses.Confirmed, validation.ValidRows.Count, context.NowUtc);
+        AddImportedAssets(context, validation);
+        db.Add(CreateConfirmedImportBatch(context, validation, currentUser.UserId));
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ResourceAccessPolicy.IsResourceImportBatchesUniqueViolation(ex))
+        {
+            db.ClearChanges();
+            var raced = await FindConfirmedImportAsync(
+                context.FacilityId,
+                context.SourceSystem,
+                context.SourceReference,
+                context.FileHash,
+                cancellationToken);
+            if (raced is not null)
+            {
+                return raced;
+            }
+
+            throw;
+        }
+        catch (DbUpdateException ex) when (ResourceAccessPolicy.IsResourceAssetsUniqueViolation(ex))
+        {
+            throw new InvalidOperationException("كود المورد مستخدم مسبقًا داخل المنظمة.", ex);
+        }
+
+        await AuditAsync("ResourceImportConfirmed", "ResourceImportBatch", context.FacilityId, cancellationToken);
+        return ToImportResult(validation, appliedRows: validation.ValidRows.Count);
+    }
+
+    private static void EnsureImportBatchCounts(
+        ImportValidationSummary validation,
+        string status,
+        int appliedRows,
+        DateTimeOffset? confirmedAtUtc)
+    {
         if (!ResourceAccessPolicy.IsValidImportBatchCounts(
-                request.Rows.Count,
-                valid,
-                rejected,
-                duplicate,
-                applied,
+                validation.TotalRows,
+                validation.ValidRows.Count,
+                validation.RejectedRows,
+                validation.DuplicateRows,
+                appliedRows,
                 status,
-                confirmedAt))
+                confirmedAtUtc))
         {
             throw new InvalidOperationException("إحصاءات دفعة الاستيراد غير متسقة.");
         }
-
-        if (apply && valid > 0)
-        {
-            db.Add(new ResourceImportBatch
-            {
-                FacilityId = facilityId,
-                SourceSystem = sourceSystem,
-                SourceReference = sourceReference,
-                FileHash = fileHash,
-                SubmittedByUserId = currentUser.UserId,
-                SubmittedAtUtc = now,
-                Status = status,
-                TotalRows = request.Rows.Count,
-                ValidRows = valid,
-                RejectedRows = rejected,
-                DuplicateRows = duplicate,
-                ConfirmedAtUtc = confirmedAt,
-                AppliedRows = applied
-            });
-            try
-            {
-                await db.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateException ex) when (ResourceAccessPolicy.IsResourceImportBatchesUniqueViolation(ex))
-            {
-                db.ClearChanges();
-                var raced = await FindConfirmedImportAsync(facilityId, sourceSystem, sourceReference, fileHash, cancellationToken);
-                if (raced is not null)
-                {
-                    return raced;
-                }
-
-                throw;
-            }
-            catch (DbUpdateException ex) when (ResourceAccessPolicy.IsResourceAssetsUniqueViolation(ex))
-            {
-                throw new InvalidOperationException("كود المورد مستخدم مسبقًا داخل المنظمة.", ex);
-            }
-
-            await AuditAsync("ResourceImportConfirmed", "ResourceImportBatch", facilityId, cancellationToken);
-        }
-
-        return new ResourceImportResult(request.Rows.Count, valid, rejected, duplicate, applied, errors);
     }
+
+    private static ResourceImportResult ToImportResult(ImportValidationSummary validation, int appliedRows) =>
+        new(
+            validation.TotalRows,
+            validation.ValidRows.Count,
+            validation.RejectedRows,
+            validation.DuplicateRows,
+            appliedRows,
+            validation.Errors);
 
     private async Task<ResourceImportResult?> FindConfirmedImportAsync(
         Guid facilityId,
@@ -1005,7 +1089,7 @@ public sealed class ResourceReadinessService(
                 && b.SourceSystem == sourceSystem
                 && b.SourceReference == sourceReference
                 && b.FileHash == fileHash
-                && b.Status == "Confirmed")
+                && b.Status == ResourceImportBatchStatuses.Confirmed)
             .FirstOrDefaultAsync(cancellationToken);
         if (batch is null)
         {
@@ -1096,6 +1180,33 @@ public sealed class ResourceReadinessService(
             _ => "يتطلب متابعة."
         };
     }
+
+    private sealed record ImportContext(
+        Guid FacilityId,
+        Guid OrganizationId,
+        string SourceSystem,
+        string SourceReference,
+        string FileHash,
+        HashSet<string> ExistingAssetCodes,
+        HashSet<Guid> ActiveFacilityUnitIds,
+        DateTimeOffset NowUtc);
+
+    private sealed record NormalizedImportRow(
+        ResourceType ResourceType,
+        string AssetCode,
+        string DisplayName,
+        string? SerialNumber,
+        Guid? OperationalFacilityUnitId,
+        ResourceStatus CurrentStatus,
+        ResourceCondition Condition,
+        ResourceCriticality Criticality);
+
+    private sealed record ImportValidationSummary(
+        int TotalRows,
+        IReadOnlyList<NormalizedImportRow> ValidRows,
+        int RejectedRows,
+        int DuplicateRows,
+        IReadOnlyList<string> Errors);
 
     private sealed record ResourceStatusCounts(
         int Total,

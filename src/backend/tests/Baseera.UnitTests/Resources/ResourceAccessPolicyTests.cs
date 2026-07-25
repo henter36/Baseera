@@ -17,6 +17,30 @@ public sealed class ResourceAccessPolicyTests
         Assert.Equal(expected, ResourceAccessPolicy.ViewPermissionFor(type));
 
     [Fact]
+    public void ViewableResourceTypes_returns_only_granted_types_in_enum_order()
+    {
+        var vehiclesOnly = new[] { PermissionCodes.ResourcesViewVehicles };
+        Assert.Equal([ResourceType.Vehicle], ResourceAccessPolicy.ViewableResourceTypes(vehiclesOnly));
+
+        var equipmentOnly = new[] { PermissionCodes.ResourcesViewEquipment };
+        Assert.Equal(
+            [ResourceType.OperationalEquipment, ResourceType.SecurityEquipment],
+            ResourceAccessPolicy.ViewableResourceTypes(equipmentOnly));
+
+        var multiple = new[]
+        {
+            PermissionCodes.ResourcesViewVehicles,
+            PermissionCodes.ResourcesViewCommunicationDevices,
+            PermissionCodes.ResourcesViewFacilityAssets
+        };
+        Assert.Equal(
+            [ResourceType.Vehicle, ResourceType.CommunicationDevice, ResourceType.FacilityAsset],
+            ResourceAccessPolicy.ViewableResourceTypes(multiple));
+
+        Assert.Empty(ResourceAccessPolicy.ViewableResourceTypes([]));
+    }
+
+    [Fact]
     public void CanViewResourceType_and_ViewableResourceTypes_respect_grants()
     {
         var permissions = new[]
@@ -58,16 +82,32 @@ public sealed class ResourceAccessPolicyTests
     }
 
     [Fact]
+    public void IsValidImportBatchState_accepts_only_supported_statuses()
+    {
+        Assert.True(ResourceAccessPolicy.IsValidImportBatchState(ResourceImportBatchStatuses.Confirmed, 3, DateTimeOffset.UtcNow));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState(ResourceImportBatchStatuses.Confirmed, 3, null));
+        Assert.True(ResourceAccessPolicy.IsValidImportBatchState(ResourceImportBatchStatuses.Previewed, 0, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState(ResourceImportBatchStatuses.Previewed, 1, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState(ResourceImportBatchStatuses.Previewed, 0, DateTimeOffset.UtcNow));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState("Pending", 0, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState("Completed", 0, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState("", 0, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState("confirmed", 1, DateTimeOffset.UtcNow));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchState("previewed", 0, null));
+    }
+
+    [Fact]
     public void IsValidImportBatchCounts_enforces_totals_and_status_invariants()
     {
-        Assert.True(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, "Previewed", null));
-        Assert.True(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 3, "Confirmed", DateTimeOffset.UtcNow));
-        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 0, 0, "Previewed", null));
-        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 4, "Confirmed", DateTimeOffset.UtcNow));
-        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 3, "Confirmed", null));
-        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 1, "Previewed", null));
-        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, "Previewed", DateTimeOffset.UtcNow));
+        Assert.True(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, ResourceImportBatchStatuses.Previewed, null));
+        Assert.True(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 3, ResourceImportBatchStatuses.Confirmed, DateTimeOffset.UtcNow));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 0, 0, ResourceImportBatchStatuses.Previewed, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 4, ResourceImportBatchStatuses.Confirmed, DateTimeOffset.UtcNow));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 3, ResourceImportBatchStatuses.Confirmed, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 1, ResourceImportBatchStatuses.Previewed, null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, ResourceImportBatchStatuses.Previewed, DateTimeOffset.UtcNow));
         Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, "Unknown", null));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, "Pending", null));
     }
 
     [Fact]

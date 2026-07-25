@@ -232,6 +232,9 @@ internal sealed class ResourceImportBatchConfiguration : IEntityTypeConfiguratio
                 "CK_ResourceImportBatches_AppliedRows",
                 "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
             table.HasCheckConstraint(
+                "CK_ResourceImportBatches_Status",
+                "[Status] IN (N'Previewed', N'Confirmed')");
+            table.HasCheckConstraint(
                 "CK_ResourceImportBatches_ConfirmedState",
                 "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] = N'Previewed' AND [AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)");
         });
