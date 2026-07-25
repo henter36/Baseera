@@ -29,6 +29,7 @@ public static class ApiEndpoints
 {
     private const string EntityIdRoute = "/{id:guid}";
     private const string ArchiveSuffix = "/archive";
+    private const string SummaryRoute = "/summary";
 
     public static RouteGroupBuilder MapBaseeraApi(this IEndpointRouteBuilder app)
     {
@@ -174,7 +175,7 @@ public static class ApiEndpoints
     {
         var occupancy = api.MapGroup("/facilities/{facilityId:guid}/occupancy");
 
-        occupancy.MapGet("/summary", async (
+        occupancy.MapGet(SummaryRoute, async (
             Guid facilityId,
             DateTimeOffset? asOfUtc,
             IOccupancyQueryService service,
@@ -232,7 +233,7 @@ public static class ApiEndpoints
     {
         var resources = api.MapGroup("/facilities/{facilityId:guid}/resources");
 
-        resources.MapGet("/summary", async (
+        resources.MapGet(SummaryRoute, async (
             Guid facilityId,
             IResourceReadinessQueryService service,
             CancellationToken ct) =>
@@ -894,7 +895,7 @@ public static class ApiEndpoints
     {
         var dashboard = api.MapGroup("/dashboard/operations");
 
-        dashboard.MapGet("/summary", async (
+        dashboard.MapGet(SummaryRoute, async (
             [AsParameters] OperationalDashboardQuery query,
             IOperationalDashboardQueryService service,
             CancellationToken ct) =>
@@ -988,7 +989,7 @@ public static class ApiEndpoints
     {
         var compliance = api.MapGroup("/form-compliance");
 
-        compliance.MapGet("/summary", async (
+        compliance.MapGet(SummaryRoute, async (
             [AsParameters] FormComplianceQuery query,
             IFormComplianceQueryService service,
             CancellationToken ct) =>

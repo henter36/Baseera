@@ -159,12 +159,15 @@ public sealed class ResourceReadinessService(
             MissionCriticalUnavailable = rows.MissionCriticalUnavailable,
             StaleRecords = rows.StaleRecords,
             MissingDataRecords = rows.MissingData,
-            FreshnessStatus = rows.Total == 0 ? "missing" : rows.StaleRecords > 0 ? "partial" : "current",
-            ConfidenceLevel = rows.Total == 0 ? "unknown" : warnings.Count > 0 ? "medium" : "high",
+            FreshnessStatus = ResourceReadinessPolicy.ResolveFreshnessStatus(rows.Total, rows.StaleRecords),
+            ConfidenceLevel = ResourceReadinessPolicy.ResolveConfidenceLevel(rows.Total, warnings.Count),
             IsPartial = warnings.Count > 0,
             Warnings = warnings,
             GeneratedAtUtc = now,
-            DataEffectiveAtUtc = await AssetsInFacility(facilityId).MaxAsync(a => (DateTimeOffset?)a.LastVerifiedAtUtc, cancellationToken)
+            DataEffectiveAtUtc = await AssetsInFacility(facilityId)
+                .Select(a => a.LastVerifiedAtUtc)
+                .DefaultIfEmpty()
+                .MaxAsync(cancellationToken)
         };
     }
 
@@ -714,8 +717,8 @@ public sealed class ResourceReadinessService(
             Required = required,
             Gap = readiness.Gap,
             ReadinessRate = readiness.ReadinessRate,
-            FreshnessStatus = row.Total == 0 ? "missing" : row.StaleRecords > 0 ? "partial" : "current",
-            ConfidenceLevel = row.Total == 0 ? "unknown" : row.StaleRecords > 0 ? "medium" : "high"
+            FreshnessStatus = ResourceReadinessPolicy.ResolveFreshnessStatus(row.Total, row.StaleRecords),
+            ConfidenceLevel = ResourceReadinessPolicy.ResolveConfidenceLevel(row.Total, row.StaleRecords)
         };
     }
 

@@ -1134,13 +1134,16 @@ function ResourcesReadinessSection({ data, openPanel }: Readonly<{ data: Command
         <CommandMetric label="الفجوة" value={resources.summary.gap} tone={resources.summary.gap > 0 ? 'danger' : 'ok'} />
       </div>
       <div className="resource-rail">
-        {resources.categories.map((item) => (
-          <button key={item.resourceTypeCode} type="button" data-status={item.gap > 0 ? 'partial' : item.total > 0 ? 'complete' : 'missing'} onClick={() => openPanel({ type: resourcePanelType(item.resourceTypeCode), entityId: `domain-resources-${item.resourceTypeCode}` })}>
-            <span>{item.labelAr}</span>
-            <strong>{item.readinessRate == null ? '-' : `${Math.round(item.readinessRate * 100)}%`}</strong>
-            <small>{item.operational} تشغيلي · {item.underMaintenance} صيانة · فجوة {item.gap}</small>
-          </button>
-        ))}
+        {resources.categories.map((item) => {
+          const railStatus = resourceCategoryRailStatus(item.gap, item.total)
+          return (
+            <button key={item.resourceTypeCode} type="button" data-status={railStatus} onClick={() => openPanel({ type: resourcePanelType(item.resourceTypeCode), entityId: `domain-resources-${item.resourceTypeCode}` })}>
+              <span>{item.labelAr}</span>
+              <strong>{item.readinessRate == null ? '-' : `${Math.round(item.readinessRate * 100)}%`}</strong>
+              <small>{item.operational} تشغيلي · {item.underMaintenance} صيانة · فجوة {item.gap}</small>
+            </button>
+          )
+        })}
       </div>
       {resources.exceptions.length > 0 && (
         <ul className="priority-row-list" aria-label="استثناءات الموارد">
@@ -1635,6 +1638,12 @@ function routeFromTarget(target: { routeKey: string; routeParameters: Record<str
   if (target.routeKey === 'facility.occupancy') return `/facilities/${target.routeParameters.facilityId ?? ''}/occupancy`
   if (target.routeKey === 'facility.resources') return `/facilities/${target.routeParameters.facilityId ?? ''}/resources`
   return null
+}
+
+function resourceCategoryRailStatus(gap: number, total: number) {
+  if (gap > 0) return 'partial'
+  if (total > 0) return 'complete'
+  return 'missing'
 }
 
 function resourcePanelType(resourceTypeCode?: string): PanelType {

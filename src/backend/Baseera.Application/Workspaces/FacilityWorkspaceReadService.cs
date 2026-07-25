@@ -28,15 +28,26 @@ internal interface IFacilityWorkspaceReadService
     Task<FacilityDataQualityPayload> GetDataQualityAsync(WorkspaceContext context, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Groups facility-level operational domain query services so the workspace read service
+/// constructor stays within Sonar parameter limits without using a service locator.
+/// </summary>
+internal sealed class FacilityWorkspaceFacilityDomainQueries(
+    IOccupancyQueryService occupancy,
+    IResourceReadinessQueryService resources)
+{
+    public IOccupancyQueryService Occupancy { get; } = occupancy;
+    public IResourceReadinessQueryService Resources { get; } = resources;
+}
+
 internal sealed class FacilityWorkspaceReadService(
     IBaseeraDbContext db,
     ICurrentUser currentUser,
     OperationalDashboardFilterBuilder dashboardFilters,
     IOperationalDashboardQueryService dashboard,
     IFormComplianceQueryService formCompliance,
-    IOccupancyQueryService occupancy,
-    TimeProvider timeProvider,
-    IResourceReadinessQueryService? resources = null) : IFacilityWorkspaceReadService
+    FacilityWorkspaceFacilityDomainQueries facilityDomain,
+    TimeProvider timeProvider) : IFacilityWorkspaceReadService
 {
     private const int PriorityLimit = 10;
     private const int RecentActivityLimit = 10;
@@ -73,7 +84,7 @@ internal sealed class FacilityWorkspaceReadService(
             var occupancyPayload = currentUser.HasPermission(PermissionCodes.OccupancyViewSummary)
                 ? await GetOccupancyAsync(context, cancellationToken)
                 : null;
-            var resourcePayload = resources is not null && currentUser.HasPermission(PermissionCodes.ResourcesViewSummary)
+            var resourcePayload = currentUser.HasPermission(PermissionCodes.ResourcesViewSummary)
                 ? await GetResourcesAsync(context, cancellationToken)
                 : null;
             return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload);
@@ -113,7 +124,7 @@ internal sealed class FacilityWorkspaceReadService(
     public async Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
         return await GetOrAddAsync($"occupancy:{CacheKey(context)}", async () =>
-            await occupancy.GetWorkspacePayloadAsync(
+            await facilityDomain.Occupancy.GetWorkspacePayloadAsync(
                 FacilityWorkspaceContextGuard.RequireFacilityId(context),
                 context.FromUtc,
                 context.ToUtc,
@@ -123,7 +134,7 @@ internal sealed class FacilityWorkspaceReadService(
     public async Task<ResourceWorkspacePayload> GetResourcesAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
         return await GetOrAddAsync($"resources:{CacheKey(context)}", async () =>
-            await (resources ?? throw new NotSupportedException("Resource readiness service is not registered.")).GetWorkspacePayloadAsync(
+            await facilityDomain.Resources.GetWorkspacePayloadAsync(
                 FacilityWorkspaceContextGuard.RequireFacilityId(context),
                 cancellationToken));
     }
@@ -886,13 +897,15 @@ internal sealed class FacilityWorkspaceReadService(
             FollowUpIssue = null
         };
 
-    private static FacilityDataQualityDomainPayload ResourcesDomain(ResourceWorkspacePayload payload) =>
-        new()
+    private static FacilityDataQualityDomainPayload ResourcesDomain(ResourceWorkspacePayload payload)
+    {
+        var (statusCode, statusAr) = ResolveResourcesDataQualityStatus(payload.Summary);
+        return new()
         {
             Key = "resources",
             LabelAr = "الموارد والجاهزية",
-            StatusCode = payload.Summary.TotalRegistered == 0 ? "missing" : payload.Summary.IsPartial ? "partial" : "complete",
-            StatusAr = payload.Summary.TotalRegistered == 0 ? "مفقود" : payload.Summary.IsPartial ? "جزئي" : "متاح",
+            StatusCode = statusCode,
+            StatusAr = statusAr,
             ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
             LastUpdatedAtUtc = payload.Summary.DataEffectiveAtUtc,
             ImpactAr = payload.Summary.Warnings.Count > 0
@@ -900,6 +913,22 @@ internal sealed class FacilityWorkspaceReadService(
                 : "يدخل في الحالة العامة والعمل العاجل وقسم الموارد.",
             FollowUpIssue = null
         };
+    }
+
+    private static (string StatusCode, string StatusAr) ResolveResourcesDataQualityStatus(ResourceSummaryDto summary)
+    {
+        if (summary.TotalRegistered == 0)
+        {
+            return ("missing", "مفقود");
+        }
+
+        if (summary.IsPartial)
+        {
+            return ("partial", "جزئي");
+        }
+
+        return ("complete", "متاح");
+    }
 
     private static DrillDownTarget NoteTarget(Guid noteId) =>
         new("notes.workspace", "فتح الملاحظة", new Dictionary<string, string> { ["noteId"] = noteId.ToString() }, new Dictionary<string, string>(), PermissionCodes.NotesView);
@@ -914,7 +943,7 @@ internal sealed class FacilityWorkspaceReadService(
         new(
             "form-compliance.facility",
             "فتح التزام النماذج",
-            new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+            new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             PermissionCodes.FormsViewComplianceDashboard);
 
@@ -925,10 +954,10 @@ internal sealed class FacilityWorkspaceReadService(
             unitId.HasValue
                 ? new Dictionary<string, string>
                 {
-                    ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
+                    [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
                     ["unitId"] = unitId.Value.ToString()
                 }
-                : new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+                : new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             requiredPermission);
 
@@ -939,10 +968,10 @@ internal sealed class FacilityWorkspaceReadService(
             assetId.HasValue
                 ? new Dictionary<string, string>
                 {
-                    ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
+                    [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString(),
                     ["assetId"] = assetId.Value.ToString()
                 }
-                : new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+                : new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             PermissionCodes.ResourcesViewAssets);
 
@@ -971,6 +1000,8 @@ internal static class FacilityWorkspaceConfidenceMapper
 
 internal static class FacilityWorkspaceDrillDownFilters
 {
+    internal const string FacilityIdParameterName = "facilityId";
+
     public static IReadOnlyDictionary<string, string> Preserve(WorkspaceContext context)
     {
         var filters = new Dictionary<string, string>
@@ -986,7 +1017,7 @@ internal static class FacilityWorkspaceDrillDownFilters
 
         if (context.FacilityId.HasValue)
         {
-            filters["facilityId"] = context.FacilityId.Value.ToString();
+            filters[FacilityIdParameterName] = context.FacilityId.Value.ToString();
         }
 
         return filters;

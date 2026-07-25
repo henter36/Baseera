@@ -99,6 +99,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IMaintenanceWorkOrderService>(sp => sp.GetRequiredService<ResourceReadinessService>());
         services.AddScoped<IResourceRequirementService>(sp => sp.GetRequiredService<ResourceReadinessService>());
         services.AddScoped<IResourceImportService>(sp => sp.GetRequiredService<ResourceReadinessService>());
+        services.AddScoped<FacilityWorkspaceFacilityDomainQueries>();
         services.AddScoped<IFacilityWorkspaceReadService, FacilityWorkspaceReadService>();
         services.AddScoped<IWorkspaceDefinitionProvider, FacilityWorkspaceDefinitionProvider>();
         services.AddScoped<IWorkspaceWidgetProvider, FacilityHeaderWorkspaceWidgetProvider>();

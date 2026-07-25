@@ -155,9 +155,6 @@ public class ResourceAsset : SoftDeletableEntity, IScopedEntity
 {
     private Organization? organization;
     private Organization? ownershipOrganization;
-    private Facility? operationalFacility;
-    private FacilityUnit? operationalFacilityUnit;
-    private User? custodianUser;
 
     public Guid OrganizationId { get; set; }
     public Organization Organization
@@ -184,25 +181,13 @@ public class ResourceAsset : SoftDeletableEntity, IScopedEntity
     }
 
     public Guid? OperationalFacilityId { get; set; }
-    public Facility? OperationalFacility
-    {
-        get => operationalFacility;
-        set => operationalFacility = value;
-    }
+    public Facility? OperationalFacility { get; set; }
 
     public Guid? OperationalFacilityUnitId { get; set; }
-    public FacilityUnit? OperationalFacilityUnit
-    {
-        get => operationalFacilityUnit;
-        set => operationalFacilityUnit = value;
-    }
+    public FacilityUnit? OperationalFacilityUnit { get; set; }
 
     public Guid? CustodianUserId { get; set; }
-    public User? CustodianUser
-    {
-        get => custodianUser;
-        set => custodianUser = value;
-    }
+    public User? CustodianUser { get; set; }
 
     public ResourceStatus CurrentStatus { get; set; } = ResourceStatus.Unknown;
     public ResourceCondition Condition { get; set; } = ResourceCondition.Unknown;
@@ -220,7 +205,23 @@ public class ResourceAsset : SoftDeletableEntity, IScopedEntity
     public ICollection<ResourcePlacement> Placements { get; set; } = new List<ResourcePlacement>();
     public ICollection<MaintenanceWorkOrder> MaintenanceWorkOrders { get; set; } = new List<MaintenanceWorkOrder>();
 
-    public ScopeType ScopeType => OperationalFacilityUnitId.HasValue ? ScopeType.FacilityUnit : OperationalFacilityId.HasValue ? ScopeType.Facility : ScopeType.Headquarters;
+    public ScopeType ScopeType
+    {
+        get
+        {
+            if (OperationalFacilityUnitId.HasValue)
+            {
+                return ScopeType.FacilityUnit;
+            }
+
+            if (OperationalFacilityId.HasValue)
+            {
+                return ScopeType.Facility;
+            }
+
+            return ScopeType.Headquarters;
+        }
+    }
     Guid? IScopedEntity.RegionId => OperationalFacility?.RegionId;
     Guid? IScopedEntity.FacilityId => OperationalFacilityId;
     Guid? IScopedEntity.FacilityUnitId => OperationalFacilityUnitId;
@@ -256,7 +257,6 @@ public class VehicleProfile
 public class CommunicationDeviceProfile
 {
     private ResourceAsset? resourceAsset;
-    private FacilityUnit? assignedUnit;
 
     public Guid ResourceAssetId { get; set; }
     public ResourceAsset ResourceAsset
@@ -274,11 +274,7 @@ public class CommunicationDeviceProfile
     public string? CoverageStatus { get; set; }
     public bool? EncryptionCapability { get; set; }
     public Guid? AssignedUnitId { get; set; }
-    public FacilityUnit? AssignedUnit
-    {
-        get => assignedUnit;
-        set => assignedUnit = value;
-    }
+    public FacilityUnit? AssignedUnit { get; set; }
 }
 
 public class EquipmentProfile
@@ -306,8 +302,6 @@ public class EquipmentProfile
 public class FacilityAssetProfile
 {
     private ResourceAsset? resourceAsset;
-    private Building? building;
-    private FacilityUnit? facilityUnit;
 
     public Guid ResourceAssetId { get; set; }
     public ResourceAsset ResourceAsset
@@ -318,18 +312,10 @@ public class FacilityAssetProfile
 
     public FacilityAssetCategory AssetCategory { get; set; }
     public Guid? BuildingId { get; set; }
-    public Building? Building
-    {
-        get => building;
-        set => building = value;
-    }
+    public Building? Building { get; set; }
 
     public Guid? FacilityUnitId { get; set; }
-    public FacilityUnit? FacilityUnit
-    {
-        get => facilityUnit;
-        set => facilityUnit = value;
-    }
+    public FacilityUnit? FacilityUnit { get; set; }
 
     public string? InstalledAtLocation { get; set; }
     public bool FixedAsset { get; set; } = true;
@@ -342,7 +328,6 @@ public class FacilityAssetProfile
 public class ResourceStatusEvent : EntityBase
 {
     private ResourceAsset? resourceAsset;
-    private User? recordedByUser;
 
     public Guid ResourceAssetId { get; set; }
     public ResourceAsset ResourceAsset
@@ -359,11 +344,7 @@ public class ResourceStatusEvent : EntityBase
     public ResourceSourceType SourceType { get; set; } = ResourceSourceType.Manual;
     public string? SourceReference { get; set; }
     public Guid? RecordedByUserId { get; set; }
-    public User? RecordedByUser
-    {
-        get => recordedByUser;
-        set => recordedByUser = value;
-    }
+    public User? RecordedByUser { get; set; }
 
     public DateTimeOffset RecordedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public Guid? RelatedMaintenanceWorkOrderId { get; set; }
@@ -375,8 +356,6 @@ public class ResourcePlacement : EntityBase
     private ResourceAsset? resourceAsset;
     private Organization? ownershipOrganization;
     private Facility? operationalFacility;
-    private FacilityUnit? operationalFacilityUnit;
-    private User? assignedToUser;
 
     public Guid ResourceAssetId { get; set; }
     public ResourceAsset ResourceAsset
@@ -400,18 +379,10 @@ public class ResourcePlacement : EntityBase
     }
 
     public Guid? OperationalFacilityUnitId { get; set; }
-    public FacilityUnit? OperationalFacilityUnit
-    {
-        get => operationalFacilityUnit;
-        set => operationalFacilityUnit = value;
-    }
+    public FacilityUnit? OperationalFacilityUnit { get; set; }
 
     public Guid? AssignedToUserId { get; set; }
-    public User? AssignedToUser
-    {
-        get => assignedToUser;
-        set => assignedToUser = value;
-    }
+    public User? AssignedToUser { get; set; }
 
     public DateTimeOffset EffectiveFromUtc { get; set; }
     public DateTimeOffset? EffectiveToUtc { get; set; }
@@ -424,8 +395,6 @@ public class MaintenanceWorkOrder : SoftDeletableEntity
 {
     private Organization? organization;
     private ResourceAsset? resourceAsset;
-    private User? reportedByUser;
-    private User? assignedToUser;
 
     public Guid OrganizationId { get; set; }
     public Organization Organization
@@ -447,19 +416,11 @@ public class MaintenanceWorkOrder : SoftDeletableEntity
     public MaintenanceStatus Status { get; set; } = MaintenanceStatus.Open;
     public DateTimeOffset ReportedAtUtc { get; set; }
     public Guid? ReportedByUserId { get; set; }
-    public User? ReportedByUser
-    {
-        get => reportedByUser;
-        set => reportedByUser = value;
-    }
+    public User? ReportedByUser { get; set; }
 
     public string ProblemDescription { get; set; } = string.Empty;
     public Guid? AssignedToUserId { get; set; }
-    public User? AssignedToUser
-    {
-        get => assignedToUser;
-        set => assignedToUser = value;
-    }
+    public User? AssignedToUser { get; set; }
 
     public string? VendorReference { get; set; }
     public DateTimeOffset? StartedAtUtc { get; set; }
@@ -475,7 +436,6 @@ public class ResourceRequirement : SoftDeletableEntity
 {
     private Organization? organization;
     private Facility? facility;
-    private FacilityUnit? facilityUnit;
 
     public Guid OrganizationId { get; set; }
     public Organization Organization
@@ -492,11 +452,7 @@ public class ResourceRequirement : SoftDeletableEntity
     }
 
     public Guid? FacilityUnitId { get; set; }
-    public FacilityUnit? FacilityUnit
-    {
-        get => facilityUnit;
-        set => facilityUnit = value;
-    }
+    public FacilityUnit? FacilityUnit { get; set; }
 
     public ResourceType ResourceType { get; set; }
     public string ResourceCategory { get; set; } = string.Empty;

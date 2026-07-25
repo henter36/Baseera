@@ -143,7 +143,7 @@ export function FacilityResourcesPage() {
             <button
               key={category.resourceTypeCode}
               type="button"
-              data-status={category.gap > 0 ? 'partial' : category.total > 0 ? 'complete' : 'missing'}
+              data-status={categoryRailStatus(category.gap, category.total)}
               onClick={() => {
                 const params = new URLSearchParams(searchParams)
                 params.set('type', String(category.resourceType))
@@ -175,7 +175,7 @@ export function FacilityResourcesPage() {
           <ul className="unit-load-list resource-assets" aria-label="سجلات الموارد">
             {assets.map((asset) => (
               <li key={asset.id}>
-                <article data-status={asset.currentStatus === ResourceStatus.OutOfService ? 'unavailable' : asset.currentStatus === ResourceStatus.Unknown ? 'missing' : 'complete'}>
+                <article data-status={assetRailStatus(asset.currentStatus)}>
                   <span className="unit-load-title"><strong>{asset.displayName}</strong><small>{asset.assetCode} · {resourceTypeLabel(asset.resourceType)}</small></span>
                   <span>{statusLabel(asset.currentStatus)}</span>
                   <span className="unit-load-values"><b>{asset.operationalFacilityUnitNameAr ?? '-'}</b><small>الموقع</small><b>{asset.hasOpenMaintenance ? 'نعم' : 'لا'}</b><small>صيانة</small></span>
@@ -222,7 +222,8 @@ function ResourceCreateForm({ pending, onSubmit }: Readonly<{ pending: boolean; 
       sourceReference: getOptionalFormString(data, 'sourceReference'),
     }))}>
       <h2>إضافة مورد أساسي</h2>
-      <label>الفئة
+      <label>
+        <span>الفئة</span>
         <select name="resourceType" defaultValue={ResourceType.Vehicle}>
           <option value={ResourceType.Vehicle}>مركبة</option>
           <option value={ResourceType.CommunicationDevice}>جهاز اتصال</option>
@@ -275,7 +276,8 @@ function ResourceImportForm({
         <label>النظام المصدر<input name="sourceSystem" required defaultValue="manual-csv" /></label>
         <label>مرجع الاستيراد<input name="sourceReference" required defaultValue="D5-demo-import" /></label>
         <label>بصمة الملف<input name="fileHash" required defaultValue="phase-d5-demo-hash" /></label>
-        <label>الفئة
+        <label>
+          <span>الفئة</span>
           <select name="resourceType" defaultValue={ResourceType.OperationalEquipment}>
             <option value={ResourceType.Vehicle}>مركبة</option>
             <option value={ResourceType.CommunicationDevice}>جهاز اتصال</option>
@@ -287,7 +289,8 @@ function ResourceImportForm({
         <label>كود المورد<input name="assetCode" required defaultValue={`IMP-${Date.now().toString().slice(-6)}`} /></label>
         <label>الاسم<input name="displayName" required defaultValue="مورد مستورد للمعاينة" /></label>
         <label>الرقم التسلسلي<input name="serialNumber" /></label>
-        <label>الحالة
+        <label>
+          <span>الحالة</span>
           <select name="currentStatus" defaultValue={ResourceStatus.Available}>
             <option value={ResourceStatus.Available}>متاح</option>
             <option value={ResourceStatus.UnderMaintenance}>تحت الصيانة</option>
@@ -342,4 +345,16 @@ function statusLabel(status: ResourceStatus) {
   if (status === ResourceStatus.OutOfService) return 'خارج الخدمة'
   if (status === ResourceStatus.AwaitingParts) return 'بانتظار قطع'
   return 'غير معروف'
+}
+
+function categoryRailStatus(gap: number, total: number) {
+  if (gap > 0) return 'partial'
+  if (total > 0) return 'complete'
+  return 'missing'
+}
+
+function assetRailStatus(status: ResourceStatus) {
+  if (status === ResourceStatus.OutOfService) return 'unavailable'
+  if (status === ResourceStatus.Unknown) return 'missing'
+  return 'complete'
 }

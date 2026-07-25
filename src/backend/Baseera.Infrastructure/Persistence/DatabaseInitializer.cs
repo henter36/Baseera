@@ -941,60 +941,42 @@ public static class DatabaseInitializer
         var verifiedAt = now.AddHours(-4);
         var staleVerifiedAt = now.AddDays(-45);
 
-        var patrolVehicle = DemoResourceAsset(
+        var patrolVehicle = DemoResourceAsset(new DemoResourceAssetSeed(
             ResourceType.Vehicle,
             "VEH-A1-001",
             "دورية نقل داخلية",
             SeedIds.FacilityA1UnitNorth,
-            ResourceStatus.InUse,
-            ResourceCondition.Good,
-            ResourceCriticality.High,
-            verifiedAt);
-        var transportVehicle = DemoResourceAsset(
+            new DemoResourceAssetState(ResourceStatus.InUse, ResourceCondition.Good, ResourceCriticality.High, verifiedAt)));
+        var transportVehicle = DemoResourceAsset(new DemoResourceAssetSeed(
             ResourceType.Vehicle,
             "VEH-A1-002",
             "حافلة نقل نزلاء",
             SeedIds.FacilityA1UnitSouth,
-            ResourceStatus.UnderMaintenance,
-            ResourceCondition.Fair,
-            ResourceCriticality.MissionCritical,
-            verifiedAt);
-        var radioSet = DemoResourceAsset(
+            new DemoResourceAssetState(ResourceStatus.UnderMaintenance, ResourceCondition.Fair, ResourceCriticality.MissionCritical, verifiedAt)));
+        var radioSet = DemoResourceAsset(new DemoResourceAssetSeed(
             ResourceType.CommunicationDevice,
             "COM-A1-010",
             "جهاز اتصال مناوبة",
             SeedIds.FacilityA1UnitNorth,
-            ResourceStatus.Available,
-            ResourceCondition.Good,
-            ResourceCriticality.High,
-            verifiedAt);
-        var screeningGate = DemoResourceAsset(
+            new DemoResourceAssetState(ResourceStatus.Available, ResourceCondition.Good, ResourceCriticality.High, verifiedAt)));
+        var screeningGate = DemoResourceAsset(new DemoResourceAssetSeed(
             ResourceType.SecurityEquipment,
             "SEC-A1-020",
             "بوابة تفتيش إلكترونية",
             SeedIds.FacilityA1UnitSouth,
-            ResourceStatus.AwaitingParts,
-            ResourceCondition.Poor,
-            ResourceCriticality.MissionCritical,
-            verifiedAt);
-        var kitchenEquipment = DemoResourceAsset(
+            new DemoResourceAssetState(ResourceStatus.AwaitingParts, ResourceCondition.Poor, ResourceCriticality.MissionCritical, verifiedAt)));
+        var kitchenEquipment = DemoResourceAsset(new DemoResourceAssetSeed(
             ResourceType.OperationalEquipment,
             "OPE-A1-030",
             "معدات مطبخ تشغيلية",
             null,
-            ResourceStatus.Unknown,
-            ResourceCondition.Unknown,
-            ResourceCriticality.Medium,
-            null);
-        var generator = DemoResourceAsset(
+            new DemoResourceAssetState(ResourceStatus.Unknown, ResourceCondition.Unknown, ResourceCriticality.Medium, null)));
+        var generator = DemoResourceAsset(new DemoResourceAssetSeed(
             ResourceType.FacilityAsset,
             "FAC-A1-040",
             "مولد احتياطي رئيسي",
             SeedIds.FacilityA1UnitMedical,
-            ResourceStatus.Standby,
-            ResourceCondition.Good,
-            ResourceCriticality.MissionCritical,
-            staleVerifiedAt);
+            new DemoResourceAssetState(ResourceStatus.Standby, ResourceCondition.Good, ResourceCriticality.MissionCritical, staleVerifiedAt)));
 
         db.ResourceAssets.AddRange(patrolVehicle, transportVehicle, radioSet, screeningGate, kitchenEquipment, generator);
         db.VehicleProfiles.AddRange(
@@ -1139,30 +1121,35 @@ public static class DatabaseInitializer
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static ResourceAsset DemoResourceAsset(
-        ResourceType type,
-        string code,
-        string name,
-        Guid? unitId,
-        ResourceStatus status,
-        ResourceCondition condition,
-        ResourceCriticality criticality,
-        DateTimeOffset? verifiedAt) =>
+    private sealed record DemoResourceAssetState(
+        ResourceStatus Status,
+        ResourceCondition Condition,
+        ResourceCriticality Criticality,
+        DateTimeOffset? VerifiedAt);
+
+    private sealed record DemoResourceAssetSeed(
+        ResourceType Type,
+        string Code,
+        string Name,
+        Guid? UnitId,
+        DemoResourceAssetState State);
+
+    private static ResourceAsset DemoResourceAsset(DemoResourceAssetSeed seed) =>
         new()
         {
             OrganizationId = SeedIds.Organization,
-            ResourceType = type,
-            AssetCode = code,
-            DisplayName = name,
+            ResourceType = seed.Type,
+            AssetCode = seed.Code,
+            DisplayName = seed.Name,
             OwnershipOrganizationId = SeedIds.Organization,
             OperationalFacilityId = SeedIds.FacilityA1,
-            OperationalFacilityUnitId = unitId,
-            CurrentStatus = status,
-            Condition = condition,
-            Criticality = criticality,
+            OperationalFacilityUnitId = seed.UnitId,
+            CurrentStatus = seed.State.Status,
+            Condition = seed.State.Condition,
+            Criticality = seed.State.Criticality,
             SourceType = ResourceSourceType.Manual,
             SourceReference = "demo-resource-seed",
-            LastVerifiedAtUtc = verifiedAt,
+            LastVerifiedAtUtc = seed.State.VerifiedAt,
             LastVerifiedBy = "seed"
         };
 

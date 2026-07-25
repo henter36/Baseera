@@ -1,6 +1,7 @@
 namespace Baseera.UnitTests.Resources;
 
 using Baseera.Application.Resources;
+using Baseera.Domain.Common;
 using Baseera.Domain.Resources;
 
 public sealed class ResourceReadinessPolicyTests
@@ -74,6 +75,46 @@ public sealed class ResourceReadinessPolicyTests
 
         Assert.Null(result.ReadinessRate);
         Assert.Equal(0, result.Gap);
+    }
+
+    [Theory]
+    [InlineData(0, 0, "missing")]
+    [InlineData(0, 5, "missing")]
+    [InlineData(3, 1, "partial")]
+    [InlineData(3, 0, "current")]
+    public void ResolveFreshnessStatus_UsesTotalAndStalePriority(int total, int stale, string expected) =>
+        Assert.Equal(expected, ResourceReadinessPolicy.ResolveFreshnessStatus(total, stale));
+
+    [Theory]
+    [InlineData(0, 0, "unknown")]
+    [InlineData(0, 5, "unknown")]
+    [InlineData(3, 1, "medium")]
+    [InlineData(3, 0, "high")]
+    public void ResolveConfidenceLevel_UsesTotalAndMediumSignalPriority(int total, int mediumSignal, string expected) =>
+        Assert.Equal(expected, ResourceReadinessPolicy.ResolveConfidenceLevel(total, mediumSignal));
+
+    [Fact]
+    public void ResourceAsset_ScopeType_PrefersFacilityUnitThenFacilityThenHeadquarters()
+    {
+        var unitScoped = new ResourceAsset
+        {
+            OperationalFacilityId = Guid.NewGuid(),
+            OperationalFacilityUnitId = Guid.NewGuid()
+        };
+        var facilityScoped = new ResourceAsset
+        {
+            OperationalFacilityId = Guid.NewGuid(),
+            OperationalFacilityUnitId = null
+        };
+        var headquartersScoped = new ResourceAsset
+        {
+            OperationalFacilityId = null,
+            OperationalFacilityUnitId = null
+        };
+
+        Assert.Equal(ScopeType.FacilityUnit, unitScoped.ScopeType);
+        Assert.Equal(ScopeType.Facility, facilityScoped.ScopeType);
+        Assert.Equal(ScopeType.Headquarters, headquartersScoped.ScopeType);
     }
 
     [Fact]

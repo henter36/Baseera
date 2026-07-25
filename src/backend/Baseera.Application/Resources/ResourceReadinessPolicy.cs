@@ -60,6 +60,39 @@ public static class ResourceReadinessPolicy
             Math.Clamp(completeness, 0m, 1m));
     }
 
+    public static string ResolveFreshnessStatus(int total, int staleRecords)
+    {
+        if (total == 0)
+        {
+            return "missing";
+        }
+
+        if (staleRecords > 0)
+        {
+            return "partial";
+        }
+
+        return "current";
+    }
+
+    /// <param name="mediumSignalCount">
+    /// Summary uses warning count; category readiness uses stale record count.
+    /// </param>
+    public static string ResolveConfidenceLevel(int total, int mediumSignalCount)
+    {
+        if (total == 0)
+        {
+            return "unknown";
+        }
+
+        if (mediumSignalCount > 0)
+        {
+            return "medium";
+        }
+
+        return "high";
+    }
+
     private static decimal Rate(int numerator, int denominator) =>
         denominator <= 0
             ? 0m

@@ -4,7 +4,9 @@ using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Notes;
 using Baseera.Application.Occupancy;
+using Baseera.Application.Resources;
 using Baseera.Domain.Attachments;
+using Baseera.Domain.Resources;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Common;
@@ -506,7 +508,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 new NoteTypeAccessService(db, currentUser)),
             new FakeOperationalDashboardQueryService(),
             new FakeFormComplianceQueryService(),
-            new ThrowingOccupancyQueryService(),
+            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), new ThrowingResourceReadinessQueryService()),
             time);
 
         var payload = await readService.GetCorrectiveActionsAsync(FacilityWorkspaceContext(), CancellationToken.None);
@@ -555,7 +557,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 new NoteTypeAccessService(db, currentUser)),
             new FakeOperationalDashboardQueryService(),
             new FakeFormComplianceQueryService(),
-            new ThrowingOccupancyQueryService(),
+            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), new ThrowingResourceReadinessQueryService()),
             time);
 
         var payload = await readService.GetRecentActivityAsync(FacilityWorkspaceContext(), CancellationToken.None);
@@ -1085,6 +1087,33 @@ public sealed class WorkspaceFrameworkTests : IDisposable
 
         public Task<MovementSummaryDto> GetMovementSummaryAsync(Guid facilityId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Occupancy should not be queried in this test.");
+    }
+
+    private sealed class ThrowingResourceReadinessQueryService : IResourceReadinessQueryService
+    {
+        public Task<ResourceWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
+
+        public Task<ResourceSummaryDto> GetSummaryAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
+
+        public Task<IReadOnlyList<ResourceCategoryReadinessDto>> GetCategoriesAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
+
+        public Task<IReadOnlyList<ResourceExceptionDto>> GetExceptionsAsync(Guid facilityId, int limit, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
+
+        public Task<IReadOnlyList<ResourceUnitDistributionDto>> GetUnitDistributionAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
+
+        public Task<IReadOnlyList<ResourceActivityDto>> GetTimelineAsync(Guid facilityId, int limit, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
+
+        public Task<IReadOnlyList<ResourceAssetListItemDto>> ListAssetsAsync(Guid facilityId, ResourceType? resourceType, string? search, int pageSize, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
+
+        public Task<ResourceAssetDetailDto> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Resources should not be queried in this test.");
     }
 
     private sealed class FakeOperationalDashboardQueryService : IOperationalDashboardQueryService
