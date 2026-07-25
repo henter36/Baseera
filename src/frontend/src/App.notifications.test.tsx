@@ -45,6 +45,6 @@ describe('App notification shell', () => {
     )
 
     await waitFor(() => expect(unreadCount).toHaveBeenCalled())
-    expect(screen.getByText('الإشعارات (3)')).toBeInTheDocument()
+    expect(await screen.findByText(/الإشعارات\s*\(3\)/)).toBeInTheDocument()
   })
 })

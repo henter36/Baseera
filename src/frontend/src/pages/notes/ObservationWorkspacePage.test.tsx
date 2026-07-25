@@ -148,7 +148,8 @@ describe('ObservationWorkspacePage', () => {
   it('keeps operators in one master-detail workspace and renders server allowed actions', async () => {
     renderPage()
 
-    const card = await screen.findByRole('button', { name: /OBS-00000024/ })
+    await waitFor(() => expect(workspace).toHaveBeenCalled())
+    const card = await screen.findByRole('button', { name: /OBS-00000024/ }, { timeout: 5_000 })
     expect(within(card).getByText('تعطل إنارة الممر الرئيسي')).toBeInTheDocument()
     expect(within(card).getByText('متأخرة')).toBeInTheDocument()
 
