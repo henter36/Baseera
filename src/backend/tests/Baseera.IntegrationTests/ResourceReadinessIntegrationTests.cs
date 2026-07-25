@@ -141,7 +141,8 @@ public sealed class ResourceReadinessIntegrationTests(BaseeraApiFactory factory)
         listResponse.EnsureSuccessStatusCode();
         var assets = await listResponse.Content.ReadFromJsonAsync<List<AssetListItemResponse>>(JsonOptions);
         Assert.NotNull(assets);
-        Assert.All(assets!, asset => Assert.Equal(ResourceType.CommunicationDevice, asset.ResourceType));
+        Assert.NotEmpty(assets!);
+        Assert.All(assets, asset => Assert.Equal(ResourceType.CommunicationDevice, asset.ResourceType));
 
         var vehicleFilter = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/resources/assets?resourceType=0");
         Assert.Equal(HttpStatusCode.Forbidden, vehicleFilter.StatusCode);

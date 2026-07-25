@@ -83,7 +83,7 @@ public static class ResourceAccessPolicy
             return appliedRows == 0 && confirmedAtUtc is null;
         }
 
-        return true;
+        return false;
     }
 
     public static bool IsResourceAssetsUniqueViolation(Exception exception)

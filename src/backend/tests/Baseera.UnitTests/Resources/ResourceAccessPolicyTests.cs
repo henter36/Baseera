@@ -67,6 +67,7 @@ public sealed class ResourceAccessPolicyTests
         Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 3, "Confirmed", null));
         Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 1, "Previewed", null));
         Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, "Previewed", DateTimeOffset.UtcNow));
+        Assert.False(ResourceAccessPolicy.IsValidImportBatchCounts(5, 3, 1, 1, 0, "Unknown", null));
     }
 
     [Fact]

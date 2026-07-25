@@ -233,7 +233,7 @@ internal sealed class ResourceImportBatchConfiguration : IEntityTypeConfiguratio
                 "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
             table.HasCheckConstraint(
                 "CK_ResourceImportBatches_ConfirmedState",
-                "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] <> N'Confirmed' AND ([Status] <> N'Previewed' OR ([AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)))");
+                "([Status] = N'Confirmed' AND [ConfirmedAtUtc] IS NOT NULL) OR ([Status] = N'Previewed' AND [AppliedRows] = 0 AND [ConfirmedAtUtc] IS NULL)");
         });
         builder.HasKey(batch => batch.Id);
         builder.Property(batch => batch.SourceSystem).HasMaxLength(120).IsRequired();
