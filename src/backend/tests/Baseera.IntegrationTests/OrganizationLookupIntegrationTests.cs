@@ -13,11 +13,14 @@ namespace Baseera.IntegrationTests;
 /// Minimal cascading-form lookups added to close Phase B.1 gaps: facility units (scoped,
 /// soft-delete filtered) and departments (organization-wide, soft-delete filtered).
 /// </summary>
-public sealed class OrganizationLookupIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(CoreIntegrationCollection.Name)]
+public sealed class OrganizationLookupIntegrationTests : IntegrationTestBase<CoreIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
 
-    public OrganizationLookupIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public OrganizationLookupIntegrationTests(CoreIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Facility_units_endpoint_requires_facility_id()

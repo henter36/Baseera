@@ -11,8 +11,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class ResourceReadinessIntegrationTests(BaseeraApiFactory factory) : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class ResourceReadinessIntegrationTests(OperationsIntegrationFixture fixture)
+    : IntegrationTestBase<OperationsIntegrationFixture>(fixture)
 {
+    private BaseeraApiFactory factory => Factory;
+
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     [IntegrationConnectionFact]

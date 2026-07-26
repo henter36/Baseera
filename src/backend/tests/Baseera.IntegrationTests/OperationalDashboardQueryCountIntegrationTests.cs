@@ -12,7 +12,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class OperationalDashboardQueryCountIntegrationTests
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class OperationalDashboardQueryCountIntegrationTests(OperationsIntegrationFixture fixture)
+    : IntegrationTestBase<OperationsIntegrationFixture>(fixture)
 {
     private const int SummaryQueryMax = 18;
     private const int TrendsQueryMax = 14;
@@ -108,11 +110,10 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
     [IntegrationConnectionFact]
     public async Task Trends_returns_expected_counts_and_zero_empty_buckets()
     {
-        await using var factory = new BaseeraApiFactory();
-        await SeedDashboardAdminAsync(factory, "dash-trends-correctness-admin");
+        await SeedDashboardAdminAsync(Factory, "dash-trends-correctness-admin");
 
-        var admin = factory.CreateAuthenticatedClient("dash-trends-correctness-admin");
-        await SeedTrendSampleDataAsync(factory);
+        var admin = Factory.CreateAuthenticatedClient("dash-trends-correctness-admin");
+        await SeedTrendSampleDataAsync(Factory);
 
         var trends = await admin.GetFromJsonAsync<TrendsEnvelope>(
             "/api/v1/dashboard/operations/trends?periodDays=7");
@@ -131,11 +132,10 @@ public sealed class OperationalDashboardQueryCountIntegrationTests
     [IntegrationConnectionFact]
     public async Task Breakdowns_severity_and_status_include_corrective_actions_overdue()
     {
-        await using var factory = new BaseeraApiFactory();
-        await SeedDashboardAdminAsync(factory, "dash-breakdown-ca-admin");
+        await SeedDashboardAdminAsync(Factory, "dash-breakdown-ca-admin");
 
-        var admin = factory.CreateAuthenticatedClient("dash-breakdown-ca-admin");
-        await SeedBreakdownCorrectiveActionSampleAsync(factory, admin);
+        var admin = Factory.CreateAuthenticatedClient("dash-breakdown-ca-admin");
+        await SeedBreakdownCorrectiveActionSampleAsync(Factory, admin);
 
         var severity = await admin.GetFromJsonAsync<BreakdownEnvelope>(
             "/api/v1/dashboard/operations/breakdowns?breakdownBy=3");

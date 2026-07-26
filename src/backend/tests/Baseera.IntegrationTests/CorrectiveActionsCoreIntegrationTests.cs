@@ -13,12 +13,15 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class CorrectiveActionsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class CorrectiveActionsCoreIntegrationTests : IntegrationTestBase<OperationsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public CorrectiveActionsCoreIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public CorrectiveActionsCoreIntegrationTests(OperationsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Create_list_and_detail_are_scoped_to_parent_note()

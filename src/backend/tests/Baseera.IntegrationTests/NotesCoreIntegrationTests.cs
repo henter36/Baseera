@@ -12,12 +12,15 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class NotesCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class NotesCoreIntegrationTests : IntegrationTestBase<OperationsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public NotesCoreIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public NotesCoreIntegrationTests(OperationsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Region_user_cannot_see_other_region_note()

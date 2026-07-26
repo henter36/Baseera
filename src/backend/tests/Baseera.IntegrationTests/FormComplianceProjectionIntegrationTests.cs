@@ -4,11 +4,14 @@ using Baseera.Domain.Identity;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class FormComplianceProjectionIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(FormsIntegrationCollection.Name)]
+public sealed class FormComplianceProjectionIntegrationTests : IntegrationTestBase<FormsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
 
-    public FormComplianceProjectionIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public FormComplianceProjectionIntegrationTests(FormsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task FormCompliance_source_projection_endpoints_translate()

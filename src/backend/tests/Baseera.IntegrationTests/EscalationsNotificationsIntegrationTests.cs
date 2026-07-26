@@ -16,8 +16,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class EscalationsNotificationsIntegrationTests(BaseeraApiFactory factory) : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class EscalationsNotificationsIntegrationTests(OperationsIntegrationFixture fixture)
+    : IntegrationTestBase<OperationsIntegrationFixture>(fixture)
 {
+    private BaseeraApiFactory factory => Factory;
+
     [IntegrationConnectionFact]
     public async Task Due_soon_note_run_creates_in_app_notification_once()
     {

@@ -8,11 +8,14 @@ using Baseera.Infrastructure.Persistence;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class PhaseA1HardeningIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(CoreIntegrationCollection.Name)]
+public sealed class PhaseA1HardeningIntegrationTests : IntegrationTestBase<CoreIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
 
-    public PhaseA1HardeningIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public PhaseA1HardeningIntegrationTests(CoreIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Inactive_user_is_forbidden()

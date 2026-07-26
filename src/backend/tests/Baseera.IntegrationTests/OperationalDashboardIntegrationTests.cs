@@ -16,12 +16,15 @@ namespace Baseera.IntegrationTests;
 /// Integration coverage for operational dashboard KPIs, scope isolation, permission gates,
 /// sensitive/type filtering, and priority queue limits.
 /// </summary>
-public sealed class OperationalDashboardIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class OperationalDashboardIntegrationTests : IntegrationTestBase<OperationsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public OperationalDashboardIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public OperationalDashboardIntegrationTests(OperationsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Summary_overdue_count_matches_notes_overdue_only_total_count_for_scoped_user()
