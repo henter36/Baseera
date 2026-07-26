@@ -42,12 +42,17 @@ public sealed class FormCampaignScheduleRequestValidator : AbstractValidator<For
         RuleFor(x => x.ResponseWindowMinutes).GreaterThan(0);
         RuleFor(x => x.GracePeriodMinutes).GreaterThanOrEqualTo(0);
         RuleFor(x => x.CloseAfterMinutes).GreaterThanOrEqualTo(0);
-        RuleFor(x => x.IntervalDays.GetValueOrDefault()).InclusiveBetween(1, FormRecurrenceCalculator.MaxIntervalDays)
+        RuleFor(x => x.IntervalDays)
+            .InclusiveBetween(1, FormRecurrenceCalculator.MaxIntervalDays)
             .When(x => x.IntervalDays.HasValue);
-        RuleFor(x => x.IntervalWeeks.GetValueOrDefault()).InclusiveBetween(1, FormRecurrenceCalculator.MaxIntervalWeeks)
+        RuleFor(x => x.IntervalWeeks)
+            .InclusiveBetween(1, FormRecurrenceCalculator.MaxIntervalWeeks)
             .When(x => x.IntervalWeeks.HasValue);
-        RuleFor(x => x.DayOfMonth.GetValueOrDefault()).InclusiveBetween(1, 31).When(x => x.DayOfMonth.HasValue);
-        RuleFor(x => x.MaxOccurrences.GetValueOrDefault()).InclusiveBetween(1, FormRecurrenceCalculator.MaxOccurrences)
+        RuleFor(x => x.DayOfMonth)
+            .InclusiveBetween(1, 31)
+            .When(x => x.DayOfMonth.HasValue);
+        RuleFor(x => x.MaxOccurrences)
+            .InclusiveBetween(1, FormRecurrenceCalculator.MaxOccurrences)
             .When(x => x.MaxOccurrences.HasValue);
         RuleFor(x => x.CustomDatesLocal)
             .NotEmpty()

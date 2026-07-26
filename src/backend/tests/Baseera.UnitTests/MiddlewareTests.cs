@@ -65,6 +65,23 @@ public sealed class MiddlewareTests
     }
 
     [Fact]
+    public async Task Response_write_cancellation_is_not_converted_to_application_error()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        var context = CreateContext();
+        context.RequestAborted = cancellation.Token;
+        context.Response.Body = new RequestAbortedWriteStream();
+        var middleware = new ExceptionHandlingMiddleware(
+            _ => Task.FromException(new InvalidOperationException("conflict")),
+            NullLogger<ExceptionHandlingMiddleware>.Instance);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+    }
+
+    [Fact]
     public async Task Form_response_validation_maps_to_unprocessable_entity_with_issues()
     {
         var issue = new FormResponseValidationIssueDto("Required", "$.field", "field", "الحقل مطلوب.", "Error");
@@ -118,6 +135,23 @@ public sealed class MiddlewareTests
         Assert.Equal(StatusCodes.Status403Forbidden, document.RootElement.GetProperty("status").GetInt32());
     }
 
+    [Fact]
+    public async Task Provisioned_user_middleware_ignores_client_abort_during_error_write()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+        var context = CreateContext();
+        context.RequestAborted = cancellation.Token;
+        context.Response.Body = new RequestAbortedWriteStream();
+        context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "subject")], "test"));
+        var currentUser = new CurrentUser(new HttpContextAccessor { HttpContext = context });
+        var middleware = new ProvisionedUserMiddleware(_ => Task.CompletedTask);
+
+        await middleware.InvokeAsync(context, currentUser);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+    }
+
     public static TheoryData<Exception, HttpStatusCode, string> ExceptionMappings()
     {
         return new TheoryData<Exception, HttpStatusCode, string>
@@ -141,5 +175,15 @@ public sealed class MiddlewareTests
     {
         context.Response.Body.Position = 0;
         return await JsonDocument.ParseAsync(context.Response.Body);
+    }
+
+    private sealed class RequestAbortedWriteStream : MemoryStream
+    {
+        public override ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default)
+            => cancellationToken.IsCancellationRequested
+                ? ValueTask.FromException(new OperationCanceledException(cancellationToken))
+                : base.WriteAsync(buffer, cancellationToken);
     }
 }
