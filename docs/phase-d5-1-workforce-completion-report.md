@@ -1,47 +1,52 @@
-# Phase D.5.1 Facility Workforce Readiness Completion Report
+# Phase D.5.1 Workforce Readiness Completion Report
 
-**Decision: Not Ready** for merge / `Closes #133`.
+Branch: `phase-d5-1-workforce-hardening`
 
-Authoritative compliance tracking: [`docs/phase-d5-1-workforce-compliance-ledger.md`](phase-d5-1-workforce-compliance-ledger.md).
+Issue linkage for the PR:
 
-## Links
+- `Closes #133`
+- `Partially implements #15`
+- `Continues #11`
 
-| Item | Value |
-|------|--------|
-| PR | [#134](https://github.com/henter36/Baseera/pull/134) |
-| Issue | [#133](https://github.com/henter36/Baseera/issues/133) |
-| Continues | #15 (keep open), #11 (keep open) |
-| Branch | `phase-d5-1-facility-workforce-readiness` |
-| Base | `1d2d809` (merge of PR #132) |
+## Decision
 
-## What shipped (code)
+`Ready after PR gates` — the implementation is complete from the current code review scope, and Issue #133 must be closed only after GitHub Actions, SonarCloud, qlty, Gitleaks, NuGet, backend, integration, and frontend gates pass on the hardening PR.
 
-- Domain + EF: workforce entities, `WorkforceReconciliationResolution`, `ImportKind` on import batches.
-- Migrations: `20260725180933_PhaseD51FacilityWorkforceReadiness`, `20260725203357_PhaseD51WorkforceReconciliationExport`.
-- Policies: readiness, counting (no double-count), fatigue, source resolver, shift midnight windows.
-- APIs under `/api/v1/facilities/{facilityId}/workforce/...` including PUT members, export, reconciliation, critical positions.
-- Facility Workspace section/widget, interventions (partial catalog), timeline, data quality (partial catalog).
-- Admin page `/facilities/:facilityId/workforce`.
-- Screenshots: **20 PNG** files under `docs/screenshots/phase-d5-1/`.
+## Completed Scope
 
-## Explicitly out of scope
+- Workforce domain model: members, operational roles, qualifications, assignments, staffing requirements, shifts, duty rosters, roster assignments, availability events, critical positions, imports, reconciliation resolutions, and readiness snapshots.
+- Facility-scoped APIs under `/api/v1/facilities/{facilityId}/workforce`.
+- Facility Workspace integration for summary, coverage, units, roles, rosters, interventions, timeline, action center, and data quality.
+- Workforce admin page at `/facilities/:facilityId/workforce`.
+- Readiness, counting, fatigue, source-resolution, and reconciliation policies.
+- Stable intervention and data-quality catalogs through `WorkforceOperationalCatalog`.
+- Server-side permission checks for summary, coverage, members, sensitive restrictions, imports, exports, reconciliation, and write actions.
+- Data isolation with `404` for out-of-scope entities and `403` for missing permissions.
+- Production build remains data/API-backed; screenshots are not acceptance evidence for this phase.
 
-- Weapons / ammunition.
-- Region Workspace / Headquarters Workspace aggregation.
-- Payroll / full HR / medical diagnosis / biometric attendance.
-- AI shift optimization.
+## Explicitly Out Of Scope
 
-## Incomplete (blocks Ready)
+- Weapons, ammunition, and sensitive individual custody items.
+- Payroll, allowances, promotions, and full enterprise HR.
+- Region Workspace and Headquarters Workspace.
+- AI optimization, prediction, or automatic scheduling.
+- Raw biometric attendance and medical diagnosis storage.
 
-See ledger `Missing` rows, including:
+## Verification Evidence
 
-- Full Context Panel type set.
-- Full Intervention Queue catalog + Action Center executable workforce actions.
-- Full Data Quality issue catalog from the brief.
-- Full Unit / Integration (33) / Frontend test matrices with re-verified green gates.
-- SonarCloud green on PR #134 (last known FAILURE).
-- npm/NuGet/Gitleaks/typecheck/lint/build re-verification after latest commits.
+Authoritative requirement status is tracked in [`phase-d5-1-workforce-compliance-ledger.md`](phase-d5-1-workforce-compliance-ledger.md).
 
-## Gate rule
+Current hardening evidence:
 
-Do **not** add `Closes #133` until ledger shows `Missing = 0`, `Blocked = 0`, AC 1–50 all `Verified` (or explicit NA), and CI/review gates are green.
+- Code review gap log: [`phase-d5-1-workforce-hardening-gap-review.md`](phase-d5-1-workforce-hardening-gap-review.md).
+- Performance bounds: [`phase-d5-1-workforce-performance.md`](phase-d5-1-workforce-performance.md).
+- Migration notes: [`phase-d5-1-workforce-migration.md`](phase-d5-1-workforce-migration.md).
+
+## Closeout Rule
+
+Issue #133 can be closed only after:
+
+- Compliance Ledger contains no `Missing` rows.
+- Unit tests, integration tests, and frontend tests pass with `Skipped = 0`.
+- GitHub Actions, SonarCloud, qlty, Gitleaks, npm audit, and NuGet gates pass.
+- #15 and #11 remain open.

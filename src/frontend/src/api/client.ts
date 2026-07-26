@@ -1650,6 +1650,7 @@ export type WorkforceDataQualityPayload = {
   missingEmployeeNumber: number
   unknownEmploymentStatus: number
   missingHomeOrOperationalFacility: number
+  missingOperationalFacility: number
   staleVerification: number
   openImportIssues: number
   warnings: string[]

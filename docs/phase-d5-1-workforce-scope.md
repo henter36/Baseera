@@ -19,7 +19,7 @@ It introduces the Facility Workforce Readiness & Duty Coverage Center: operation
 - Facility Workspace section `القوى البشرية والتغطية`
 - Context Panel, Intervention Queue, Action Center, Timeline, Data Quality
 - Admin page `/facilities/:facilityId/workforce`
-- Permissions, audit, migration, tests, docs, screenshots
+- Permissions, audit, migration, tests, and docs
 
 ## Excluded
 

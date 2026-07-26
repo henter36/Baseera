@@ -10,4 +10,4 @@ Checks:
 - Full-page drill-downs return to `/workspaces/facilities/{facilityId}?section=workforce` or `/facilities/{facilityId}/workforce`.
 - Focusable controls are buttons/links only where actions exist; empty/unauthorized states use shared Workspace shells.
 
-Screenshots folder: `docs/screenshots/phase-d5-1/` (capture notes in that README; PNG captures may still be pending).
+RTL acceptance for hardening is through DOM/layout behavior and frontend tests. Screenshots are not required or used as Phase D.5.1 acceptance evidence.

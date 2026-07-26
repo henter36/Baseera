@@ -124,6 +124,7 @@ async function loadWorkforceAdminData(
       missingEmployeeNumber: summary.missingDataRecords,
       unknownEmploymentStatus: 0,
       missingHomeOrOperationalFacility: 0,
+      missingOperationalFacility: 0,
       staleVerification: summary.staleRecords,
       openImportIssues: 0,
       warnings: summary.warnings,
@@ -920,7 +921,7 @@ function DataQualitySection({ dataQuality }: Readonly<{ dataQuality: WorkforceDa
         <Metric label="الأعضاء" value={dataQuality.totalMembers} />
         <Metric label="رقم مفقود" value={dataQuality.missingEmployeeNumber} />
         <Metric label="حالة مجهولة" value={dataQuality.unknownEmploymentStatus} />
-        <Metric label="منشأة ناقصة" value={dataQuality.missingHomeOrOperationalFacility} />
+        <Metric label="منشأة تشغيلية ناقصة" value={dataQuality.missingOperationalFacility} />
         <Metric label="تحقق قديم" value={dataQuality.staleVerification} />
         <Metric label="استيراد مفتوح" value={dataQuality.openImportIssues} />
       </div>

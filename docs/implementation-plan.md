@@ -158,10 +158,10 @@
 
 - يضيف Domain قوى بشرية تشغيلية عبر `WorkforceMember` المستقل عن حساب الدخول `User`، مع `WorkforceRoleDefinition` منفصل عن RBAC.
 - يغطي المؤهلات، التكليفات، `StaffingRequirement`، الورديات، جداول المناوبة (Draft/Published)، أحداث التوفر (بدون تشخيص طبي)، والمواقع الحرجة.
-- يحسب التغطية والفجوات ومؤشرات الإجهاد/المخاطر بشكل حتمي عبر `WorkforceReadinessPolicy` و`WorkforceFatiguePolicy`، مع لقطات `WorkforceReadinessSnapshot` واستيراد Preview/Confirm محدود.
+- يحسب التغطية والفجوات ومؤشرات الإجهاد/المخاطر بشكل حتمي عبر `WorkforceReadinessPolicy` و`WorkforceFatiguePolicy`، مع لقطات `WorkforceReadinessSnapshot` واستيراد Preview/Confirm محدود وكتالوجات ثابتة للتدخلات وجودة البيانات.
 - يدمج القسم `القوى البشرية والتغطية` وwidget `facility.workforce` داخل `facility-operations`، مع صفحة `/facilities/:facilityId/workforce`.
 - يفرض صلاحيات `Workforce.*` منفصلة عن `Workspaces.ViewFacility`.
-- Migration: `20260725180933_PhaseD51FacilityWorkforceReadiness`.
+- Migrations: `20260725180933_PhaseD51FacilityWorkforceReadiness` و`20260725203357_PhaseD51WorkforceReconciliationExport`، دون إعادة كتابة تاريخ قاعدة البيانات.
 - لا ينفذ الأسلحة/الذخائر، ولا Region/HQ Workspaces، ولا الرواتب/البدلات/الترقيات، ولا الحضور البيومتري الخام، ولا تحسين المناوبات بالذكاء الاصطناعي.
 - يغلق Issue #133؛ يبقى Issue #15 مفتوحًا (أسلحة وبقية الشرائح) وIssue #11 مفتوحًا لبقية مجالات مركز القرار.
 

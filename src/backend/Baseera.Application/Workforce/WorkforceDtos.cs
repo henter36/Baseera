@@ -162,6 +162,7 @@ public sealed record WorkforceDataQualityDto
     public required int MissingEmployeeNumber { get; init; }
     public required int UnknownEmploymentStatus { get; init; }
     public required int MissingHomeOrOperationalFacility { get; init; }
+    public required int MissingOperationalFacility { get; init; }
     public required int StaleVerification { get; init; }
     public required int OpenImportIssues { get; init; }
     public required IReadOnlyList<string> Warnings { get; init; }

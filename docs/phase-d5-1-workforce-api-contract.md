@@ -13,6 +13,7 @@ Base path: `/api/v1/facilities/{facilityId}/workforce`
 | POST | `/members` | `Workforce.ManageMembers` |
 | POST | `/assignments` | `Workforce.ManageAssignments` |
 | POST | `/qualifications` | `Workforce.ManageQualifications` |
+| GET | `/qualifications?page=&pageSize=` | `Workforce.ViewMembers` (pageSize clamped 1–100, default 50) |
 | GET | `/requirements` | `Workforce.ViewCoverage` |
 | POST | `/requirements` | `Workforce.ManageRequirements` |
 | GET | `/rosters` | `Workforce.ViewCoverage` |
@@ -23,7 +24,13 @@ Base path: `/api/v1/facilities/{facilityId}/workforce`
 | POST | `/import/preview` | `Workforce.Import` |
 | POST | `/import/confirm` | `Workforce.Import` |
 | GET | `/data-quality` | `Workforce.ViewSummary` |
+| GET | `/critical-positions` | `Workforce.ViewCoverage` |
+| GET | `/export?search=&pageSize=` | `Workforce.Export` |
+| GET | `/reconciliation?page=&pageSize=` | `Workforce.Reconcile` |
+| POST | `/reconciliation/{itemId}/resolve` | `Workforce.Reconcile` |
 
 Missing permission → 403. Out-of-scope / missing entity → 404. Duplicate org employee number on create → conflict/`InvalidOperationException` mapped by API error pipeline. Duplicate primary assignment windows rejected. Published roster mutation rejected.
 
 Workspace shell loads `facility.workforce` widget when `Workforce.ViewSummary` is present; coverage/roles inside payload are permission-gated.
+
+`/data-quality` exposes `missingOperationalFacility` for the operational-facility metric. The older `missingHomeOrOperationalFacility` remains populated for backward compatibility with clients that still read the combined legacy field.

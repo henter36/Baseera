@@ -4,11 +4,13 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FacilityWorkspacePage } from './FacilityWorkspacePage'
 
-const { getWorkspace, getNoteWorkspaceDetail, getCorrectiveAction, getCorrectiveActionHistory, currentPermissions } = vi.hoisted(() => ({
+const { getWorkspace, getNoteWorkspaceDetail, getCorrectiveAction, getCorrectiveActionHistory, workforceRosters, publishRoster, currentPermissions } = vi.hoisted(() => ({
   getWorkspace: vi.fn(),
   getNoteWorkspaceDetail: vi.fn(),
   getCorrectiveAction: vi.fn(),
   getCorrectiveActionHistory: vi.fn(),
+  workforceRosters: vi.fn(),
+  publishRoster: vi.fn(),
   currentPermissions: new Set<string>(),
 }))
 
@@ -35,6 +37,11 @@ vi.mock('../../api/client', async () => {
         get: getCorrectiveAction,
         history: getCorrectiveActionHistory,
       },
+      workforce: {
+        ...actual.api.workforce,
+        rosters: workforceRosters,
+        publishRoster,
+      },
     },
   }
 })
@@ -49,6 +56,10 @@ describe('FacilityWorkspacePage', () => {
     getCorrectiveAction.mockResolvedValue(correctiveActionDetail)
     getCorrectiveActionHistory.mockReset()
     getCorrectiveActionHistory.mockResolvedValue(correctiveActionHistory)
+    workforceRosters.mockReset()
+    workforceRosters.mockResolvedValue([{ id: 'roster-draft', shiftDefinitionId: 'shift-day', dutyDate: '2026-07-26', status: 'Draft', assignmentCount: 2 }])
+    publishRoster.mockReset()
+    publishRoster.mockResolvedValue(undefined)
     currentPermissions.clear()
     currentPermissions.add('Workspaces.View')
     currentPermissions.add('Workspaces.ViewFacility')
@@ -231,7 +242,7 @@ describe('FacilityWorkspacePage', () => {
     expect(screen.getByTestId('router-location')).toHaveTextContent('/workspaces/facilities/facility-a')
   })
 
-  it('shows permission-gated workforce actions inside the action center', async () => {
+  it('executes supported workforce action center actions through APIs', async () => {
     currentPermissions.add('Workforce.ManageRosters')
     currentPermissions.add('Workforce.Reconcile')
     renderPage('/workspaces/facilities/facility-a')
@@ -239,7 +250,13 @@ describe('FacilityWorkspacePage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'مركز الإجراءات' }))
 
     const workforceActions = screen.getByRole('list', { name: /إجراءات القوى البشرية المسموحة/ })
-    expect(within(workforceActions).getByRole('button', { name: /نشر جدول مناوبة/ })).toBeEnabled()
+    fireEvent.click(within(workforceActions).getByRole('button', { name: /نشر أول جدول مناوبة مسودة/ }))
+
+    await waitFor(() => {
+      expect(workforceRosters).toHaveBeenCalledWith('facility-a')
+      expect(publishRoster).toHaveBeenCalledWith('facility-a', 'roster-draft')
+    })
+    expect(await screen.findByText('تم نشر جدول مناوبة مسودة وتحديث البيانات.')).toBeInTheDocument()
     expect(within(workforceActions).getByRole('button', { name: /مصالحة فروقات/ })).toBeEnabled()
     expect(within(workforceActions).queryByRole('button', { name: /تأكيد استيراد/ })).not.toBeInTheDocument()
   })
@@ -865,6 +882,7 @@ const shell = {
           missingEmployeeNumber: 0,
           unknownEmploymentStatus: 1,
           missingHomeOrOperationalFacility: 0,
+          missingOperationalFacility: 0,
           staleVerification: 1,
           openImportIssues: 0,
           warnings: ['سجلات تحقق قديمة'],
