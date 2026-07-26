@@ -1589,6 +1589,7 @@ export type WorkforceMemberListItem = {
   currentOperationalUnitNameAr?: string | null
   isOperational: boolean
   lastVerifiedAtUtc?: string | null
+  rowVersion?: string | null
   dataQualityIssues: string[]
 }
 
@@ -1751,6 +1752,16 @@ export type WorkforceAvailabilityRequest = {
   restrictionCodes?: OperationalRestrictionCode[] | null
 }
 
+export const WorkforceImportKind = {
+  PersonnelMaster: 0,
+  Assignments: 1,
+  Qualifications: 2,
+  Rosters: 3,
+  Availability: 4,
+  AttendanceSummary: 5,
+} as const
+export type WorkforceImportKind = (typeof WorkforceImportKind)[keyof typeof WorkforceImportKind]
+
 export type WorkforceImportRow = {
   employeeNumber: string
   displayName: string
@@ -1763,6 +1774,7 @@ export type WorkforceImportRow = {
 }
 
 export type WorkforceImportPreviewRequest = {
+  importKind?: WorkforceImportKind
   sourceSystem: string
   sourceReference: string
   fileHash: string
@@ -1776,6 +1788,64 @@ export type WorkforceImportResult = {
   duplicateRows: number
   appliedRows: number
   errors: string[]
+}
+
+export type WorkforceMemberUpdateRequest = {
+  displayName: string
+  employmentStatus: EmploymentStatus
+  rankOrGrade?: string | null
+  jobTitle: string
+  primarySpecialty: string
+  currentOperationalUnitId?: string | null
+  supervisorWorkforceMemberId?: string | null
+  isOperational: boolean
+  isSensitiveRole: boolean
+  rowVersion?: string | null
+}
+
+export type WorkforceReconciliationItem = {
+  id: string
+  issueType: string
+  severity: string
+  titleAr: string
+  detailAr: string
+  entityType: string
+  entityId?: string | null
+  sourceSystem?: string | null
+  suggestedActionAr: string
+  responsibleHintAr: string
+  detectedAtUtc: string
+}
+
+export type WorkforceReconciliationList = {
+  items: WorkforceReconciliationItem[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+export type WorkforceReconciliationResolveRequest = {
+  resolutionAction: string
+  notes?: string | null
+}
+
+export type WorkforceCriticalPosition = {
+  id: string
+  roleDefinitionId: string
+  roleCode: string
+  roleNameAr: string
+  facilityUnitId?: string | null
+  shiftDefinitionId?: string | null
+  requiredPrimaryCount: number
+  requiredAlternateCount: number
+  primaryFilled: number
+  alternateFilled: number
+  vacantPrimary: number
+  vacantAlternate: number
+  actingCount: number
+  singlePointOfFailure: boolean
+  criticality: WorkforceRoleCriticality
+  statusAr: string
 }
 
 export type ResourceAssetListItem = {
@@ -3117,6 +3187,8 @@ export const api = {
       request<WorkforceMemberDetail>(`/api/v1/facilities/${facilityId}/workforce/members/${memberId}`),
     createMember: (facilityId: string, body: WorkforceMemberCreateRequest) =>
       postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/members`, body),
+    updateMember: (facilityId: string, memberId: string, body: WorkforceMemberUpdateRequest) =>
+      putJson<void>(`/api/v1/facilities/${facilityId}/workforce/members/${memberId}`, body),
     createAssignment: (facilityId: string, body: WorkforceAssignmentRequest) =>
       postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/assignments`, body),
     createQualification: (facilityId: string, body: WorkforceQualificationRequest) =>
@@ -3141,6 +3213,14 @@ export const api = {
       postJson<WorkforceImportResult>(`/api/v1/facilities/${facilityId}/workforce/import/confirm`, body),
     dataQuality: (facilityId: string) =>
       request<WorkforceDataQualityPayload>(`/api/v1/facilities/${facilityId}/workforce/data-quality`),
+    criticalPositions: (facilityId: string) =>
+      request<WorkforceCriticalPosition[]>(`/api/v1/facilities/${facilityId}/workforce/critical-positions`),
+    reconciliation: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<WorkforceReconciliationList>(`/api/v1/facilities/${facilityId}/workforce/reconciliation?${buildSimpleQuery(filters)}`),
+    resolveReconciliation: (facilityId: string, itemId: string, body: WorkforceReconciliationResolveRequest) =>
+      postJson<void>(`/api/v1/facilities/${facilityId}/workforce/reconciliation/${encodeURIComponent(itemId)}/resolve`, body),
+    export: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      downloadFile(`/api/v1/facilities/${facilityId}/workforce/export?${buildSimpleQuery(filters)}`),
   },
 
   formCompliance: {

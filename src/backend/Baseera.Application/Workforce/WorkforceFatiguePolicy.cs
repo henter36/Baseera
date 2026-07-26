@@ -13,7 +13,7 @@ public static class WorkforceFatiguePolicy
 
     public sealed record FatigueIndicatorInputs(
         decimal OvertimeHoursInWindow,
-        int ConsecutiveShiftsWithoutRest,
+        int ConsecutiveShiftCount,
         int CriticalRoleCoverageCount,
         int CriticalRoleRequiredCount,
         DateTimeOffset? NearestQualificationExpiryUtc,
@@ -27,7 +27,7 @@ public static class WorkforceFatiguePolicy
             indicators.Add(ExcessiveOvertimeHours);
         }
 
-        if (inputs.ConsecutiveShiftsWithoutRest >= ConsecutiveShiftsWithoutRestThreshold)
+        if (inputs.ConsecutiveShiftCount >= ConsecutiveShiftsWithoutRestThreshold)
         {
             indicators.Add(ConsecutiveShiftsWithoutRest);
         }

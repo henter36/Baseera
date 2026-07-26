@@ -339,9 +339,26 @@ internal sealed class WorkforceImportBatchConfiguration : IEntityTypeConfigurati
         builder.Property(batch => batch.SourceReference).HasMaxLength(160).IsRequired();
         builder.Property(batch => batch.FileHash).HasMaxLength(128).IsRequired();
         builder.Property(batch => batch.Status).HasMaxLength(40).IsRequired();
-        builder.HasIndex(batch => new { batch.FacilityId, batch.SourceSystem, batch.SourceReference, batch.FileHash }).IsUnique();
+        builder.HasIndex(batch => new { batch.FacilityId, batch.ImportKind, batch.SourceSystem, batch.SourceReference, batch.FileHash }).IsUnique();
         builder.HasOne(batch => batch.Facility).WithMany().HasForeignKey(batch => batch.FacilityId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(batch => batch.SubmittedByUser).WithMany().HasForeignKey(batch => batch.SubmittedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class WorkforceReconciliationResolutionConfiguration : IEntityTypeConfiguration<WorkforceReconciliationResolution>
+{
+    public void Configure(EntityTypeBuilder<WorkforceReconciliationResolution> builder)
+    {
+        builder.ToTable("WorkforceReconciliationResolutions");
+        builder.HasKey(resolution => resolution.Id);
+        builder.Property(resolution => resolution.ItemKey).HasMaxLength(200).IsRequired();
+        builder.Property(resolution => resolution.IssueType).HasMaxLength(80).IsRequired();
+        builder.Property(resolution => resolution.ResolutionAction).HasMaxLength(80).IsRequired();
+        builder.Property(resolution => resolution.Notes).HasMaxLength(1000);
+        builder.Property(resolution => resolution.ResolvedBy).HasMaxLength(120);
+        builder.HasIndex(resolution => new { resolution.FacilityId, resolution.ItemKey }).IsUnique();
+        builder.HasOne(resolution => resolution.Facility).WithMany().HasForeignKey(resolution => resolution.FacilityId).OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }
 }

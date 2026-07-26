@@ -129,6 +129,7 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Workforce.CriticalPositionRequirement> CriticalPositionRequirements => Enumerable.Empty<Domain.Workforce.CriticalPositionRequirement>().AsQueryable();
         public IQueryable<Domain.Workforce.WorkforceReadinessSnapshot> WorkforceReadinessSnapshots => Enumerable.Empty<Domain.Workforce.WorkforceReadinessSnapshot>().AsQueryable();
         public IQueryable<Domain.Workforce.WorkforceImportBatch> WorkforceImportBatches => Enumerable.Empty<Domain.Workforce.WorkforceImportBatch>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceReconciliationResolution> WorkforceReconciliationResolutions => Enumerable.Empty<Domain.Workforce.WorkforceReconciliationResolution>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitions => Enumerable.Empty<Domain.Forms.FormDefinition>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<Domain.Forms.FormReviewDecision> FormReviewDecisions => Enumerable.Empty<Domain.Forms.FormReviewDecision>().AsQueryable();

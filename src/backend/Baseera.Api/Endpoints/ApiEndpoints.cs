@@ -423,6 +423,17 @@ public static class ApiEndpoints
             return Results.Created($"/api/v1/facilities/{facilityId}/workforce/members/{id}", new { id });
         }).RequireAuthorization(AuthPolicies.WorkforceManageMembers);
 
+        workforce.MapPut("/members/{memberId:guid}", async (
+            Guid facilityId,
+            Guid memberId,
+            WorkforceMemberUpdateRequest request,
+            IWorkforceMemberCommandService service,
+            CancellationToken ct) =>
+        {
+            await service.UpdateMemberAsync(facilityId, memberId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.WorkforceManageMembers);
+
         workforce.MapPost("/assignments", async (
             Guid facilityId,
             WorkforceAssignmentRequest request,
@@ -530,6 +541,44 @@ public static class ApiEndpoints
             CancellationToken ct) =>
             Results.Ok(await service.GetDataQualityAsync(facilityId, ct)))
             .RequireAuthorization(AuthPolicies.WorkforceViewSummary);
+
+        workforce.MapGet("/critical-positions", async (
+            Guid facilityId,
+            IWorkforceCriticalPositionQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListCriticalPositionsAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewCoverage);
+
+        workforce.MapGet("/export", async (
+            Guid facilityId,
+            string? search,
+            int? pageSize,
+            IWorkforceExportService service,
+            CancellationToken ct) =>
+        {
+            var file = await service.ExportAsync(facilityId, search, pageSize ?? WorkforceExportOptions.DefaultLimit, ct);
+            return Results.File(file.Content, file.ContentType, file.FileName);
+        }).RequireAuthorization(AuthPolicies.WorkforceExport);
+
+        workforce.MapGet("/reconciliation", async (
+            Guid facilityId,
+            int? page,
+            int? pageSize,
+            IWorkforceReconciliationService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListReconciliationAsync(facilityId, page ?? 1, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceReconcile);
+
+        workforce.MapPost("/reconciliation/{itemId}/resolve", async (
+            Guid facilityId,
+            string itemId,
+            WorkforceReconciliationResolveRequest request,
+            IWorkforceReconciliationService service,
+            CancellationToken ct) =>
+        {
+            await service.ResolveReconciliationAsync(facilityId, itemId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.WorkforceReconcile);
     }
 
     private static void MapFormsEndpoints(RouteGroupBuilder api)

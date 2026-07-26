@@ -117,7 +117,7 @@ public sealed class WorkforceReadinessPolicyTests
         var now = DateTimeOffset.Parse("2026-07-25T00:00:00Z", CultureInfo.InvariantCulture);
         var indicators = WorkforceFatiguePolicy.Evaluate(new WorkforceFatiguePolicy.FatigueIndicatorInputs(
             OvertimeHoursInWindow: 14,
-            ConsecutiveShiftsWithoutRest: 3,
+            ConsecutiveShiftCount: 3,
             CriticalRoleCoverageCount: 1,
             CriticalRoleRequiredCount: 2,
             NearestQualificationExpiryUtc: now.AddDays(10),

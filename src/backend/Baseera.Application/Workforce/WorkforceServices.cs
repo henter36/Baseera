@@ -51,9 +51,27 @@ public interface IWorkforceImportService
     Task<WorkforceImportResult> ConfirmAsync(Guid facilityId, WorkforceImportPreviewRequest request, CancellationToken cancellationToken);
 }
 
+public interface IWorkforceMemberQueryService
+{
+    Task<IReadOnlyList<WorkforceMemberListItemDto>> ListMembersAsync(Guid facilityId, string? search, int pageSize, CancellationToken cancellationToken);
+    Task<WorkforceMemberDetailDto?> GetMemberAsync(Guid facilityId, Guid memberId, CancellationToken cancellationToken);
+}
+
 public interface IWorkforceReconciliationService
 {
+    Task<WorkforceReconciliationListDto> ListReconciliationAsync(Guid facilityId, int page, int pageSize, CancellationToken cancellationToken);
+    Task ResolveReconciliationAsync(Guid facilityId, string itemId, WorkforceReconciliationResolveRequest request, CancellationToken cancellationToken);
     Task<WorkforceReconciliationResult> ReconcileAsync(Guid facilityId, CancellationToken cancellationToken);
+}
+
+public interface IWorkforceExportService
+{
+    Task<(string FileName, string ContentType, byte[] Content)> ExportAsync(Guid facilityId, string? search, int pageSize, CancellationToken cancellationToken);
+}
+
+public interface IWorkforceCriticalPositionQueryService
+{
+    Task<IReadOnlyList<WorkforceCriticalPositionDto>> ListCriticalPositionsAsync(Guid facilityId, CancellationToken cancellationToken);
 }
 
 public sealed class WorkforceReadinessOptions
@@ -62,7 +80,7 @@ public sealed class WorkforceReadinessOptions
     public int MemberPageSizeLimit { get; init; } = 100;
 }
 
-public sealed class WorkforceReadinessService(
+public sealed partial class WorkforceReadinessService(
     IBaseeraDbContext db,
     IOrganizationalScopeService scope,
     ICurrentUser currentUser,
@@ -70,12 +88,15 @@ public sealed class WorkforceReadinessService(
     IWorkforceSourceResolver sourceResolver,
     TimeProvider timeProvider)
     : IWorkforceReadinessQueryService,
+      IWorkforceMemberQueryService,
       IWorkforceMemberCommandService,
       IStaffingRequirementService,
       IDutyRosterService,
       IWorkforceAvailabilityService,
       IWorkforceImportService,
-      IWorkforceReconciliationService
+      IWorkforceReconciliationService,
+      IWorkforceExportService,
+      IWorkforceCriticalPositionQueryService
 {
     private readonly WorkforceReadinessOptions options = new();
 
@@ -136,16 +157,7 @@ public sealed class WorkforceReadinessService(
         var today = DateOnly.FromDateTime(now.UtcDateTime);
 
         var members = await MembersInFacility(facilityId)
-            .Select(m => new
-            {
-                m.Id,
-                m.EmploymentStatus,
-                m.IsOperational,
-                m.LastVerifiedAtUtc,
-                m.EmployeeNumber,
-                m.DisplayName,
-                m.JobTitle
-            })
+            .Select(m => new SummaryMemberRow(m.Id, m.EmploymentStatus, m.IsOperational, m.LastVerifiedAtUtc, m.EmployeeNumber, m.DisplayName, m.JobTitle))
             .ToListAsync(cancellationToken);
 
         var memberIds = members.Select(m => m.Id).ToList();
@@ -159,7 +171,7 @@ public sealed class WorkforceReadinessService(
                 && a.DutyRoster.FacilityId == facilityId
                 && a.DutyRoster.Status == DutyRosterStatuses.Published
                 && a.DutyRoster.DutyDate == today)
-            .Select(a => new { a.WorkforceMemberId, a.RoleDefinitionId, a.Status })
+            .Select(a => new SummaryRosterRow(a.WorkforceMemberId, a.RoleDefinitionId, a.Status))
             .ToListAsync(cancellationToken);
 
         var activeAssignments = await db.WorkforceAssignments
@@ -168,7 +180,7 @@ public sealed class WorkforceReadinessService(
                 && a.FacilityId == facilityId
                 && a.EffectiveFromUtc <= now
                 && (a.EffectiveToUtc == null || a.EffectiveToUtc > now))
-            .Select(a => new { a.WorkforceMemberId, a.RoleDefinitionId })
+            .Select(a => new SummaryAssignmentRow(a.WorkforceMemberId, a.RoleDefinitionId))
             .ToListAsync(cancellationToken);
 
         var availability = await db.WorkforceAvailabilityEvents
@@ -177,13 +189,13 @@ public sealed class WorkforceReadinessService(
                 && memberIds.Contains(e.WorkforceMemberId)
                 && e.StartsAtUtc <= now
                 && (e.EndsAtUtc == null || e.EndsAtUtc > now))
-            .Select(e => new { e.WorkforceMemberId, e.AvailabilityType, e.AffectsOperationalAvailability, e.SourceType })
+            .Select(e => new SummaryAvailabilityRow(e.WorkforceMemberId, e.AvailabilityType, e.AffectsOperationalAvailability, e.SourceType))
             .ToListAsync(cancellationToken);
 
         var qualifications = await db.WorkforceQualifications
             .AsNoTracking()
             .Where(q => !q.IsDeleted && memberIds.Contains(q.WorkforceMemberId))
-            .Select(q => new { q.WorkforceMemberId, q.RoleDefinitionId, q.Status, q.ExpiresAtUtc })
+            .Select(q => new SummaryQualificationRow(q.WorkforceMemberId, q.RoleDefinitionId, q.Status, q.ExpiresAtUtc))
             .ToListAsync(cancellationToken);
 
         var critical = await db.CriticalPositionRequirements
@@ -192,164 +204,55 @@ public sealed class WorkforceReadinessService(
                 && c.FacilityId == facilityId
                 && c.EffectiveFromUtc <= now
                 && (c.EffectiveToUtc == null || c.EffectiveToUtc > now))
-            .Select(c => new { c.RoleDefinitionId, c.RequiredPrimaryCount })
+            .Select(c => new SummaryCriticalRow(c.RoleDefinitionId, c.RequiredPrimaryCount, c.RequiredAlternateCount))
             .ToListAsync(cancellationToken);
 
-        var operationallyEligible = 0;
-        var operationallyAvailable = 0;
-        var onLeave = 0;
-        var inTraining = 0;
-        var restricted = 0;
-        var present = 0;
-        var scheduled = publishedAssignments.Count;
-        var qualified = 0;
-        var unqualified = 0;
-        var stale = 0;
-        var missing = 0;
-        var nearestExpiry = (DateTimeOffset?)null;
-        var overtime = 0;
-
-        foreach (var member in members)
-        {
-            if (string.IsNullOrWhiteSpace(member.EmployeeNumber)
-                || string.IsNullOrWhiteSpace(member.DisplayName)
-                || string.IsNullOrWhiteSpace(member.JobTitle)
-                || member.EmploymentStatus == EmploymentStatus.Unknown)
-            {
-                missing++;
-            }
-
-            if (member.LastVerifiedAtUtc is null || member.LastVerifiedAtUtc < now.AddDays(-options.StaleVerificationDays))
-            {
-                stale++;
-            }
-
-            var eligible = WorkforceReadinessPolicy.IsEmploymentOperationallyEligible(member.EmploymentStatus, member.IsOperational);
-            if (eligible)
-            {
-                operationallyEligible++;
-            }
-
-            var memberAvailability = availability.Where(a => a.WorkforceMemberId == member.Id).ToList();
-            if (memberAvailability.Any(a => a.AvailabilityType == AvailabilityType.AnnualLeave || a.AvailabilityType == AvailabilityType.SickLeave || a.AvailabilityType == AvailabilityType.EmergencyLeave))
-            {
-                onLeave++;
-            }
-
-            if (memberAvailability.Any(a => a.AvailabilityType == AvailabilityType.Training))
-            {
-                inTraining++;
-            }
-
-            if (memberAvailability.Any(a => a.AvailabilityType == AvailabilityType.RestrictedDuty))
-            {
-                restricted++;
-            }
-
-            var blocked = memberAvailability.Any(a => WorkforceReadinessPolicy.IsAvailabilityBlocking(a.AvailabilityType, a.AffectsOperationalAvailability));
-            var rosterRows = publishedAssignments.Where(a => a.WorkforceMemberId == member.Id).ToList();
-            if (rosterRows.Any(a => a.Status is RosterAssignmentStatus.Present or RosterAssignmentStatus.Confirmed or RosterAssignmentStatus.Late))
-            {
-                present++;
-            }
-
-            var hasAttendanceImport = memberAvailability.Any(a =>
-                a.SourceType is WorkforceSourceType.Import or WorkforceSourceType.ExternalSystem
-                && a.AvailabilityType == AvailabilityType.Available);
-            var source = sourceResolver.Resolve(
-                rosterRows.Count > 0,
-                rosterRows.FirstOrDefault()?.Status,
-                hasAttendanceImport,
-                memberAvailability.Count > 0,
-                activeAssignments.Any(a => a.WorkforceMemberId == member.Id));
-            _ = source; // documents precedence; presence for availability uses eligibility + not blocked
-
-            if (eligible && !blocked)
-            {
-                operationallyAvailable++;
-            }
-
-            var memberQuals = qualifications.Where(q => q.WorkforceMemberId == member.Id).ToList();
-            foreach (var roleId in activeAssignments.Where(a => a.WorkforceMemberId == member.Id).Select(a => a.RoleDefinitionId).Distinct())
-            {
-                var valid = memberQuals.Any(q => WorkforceReadinessPolicy.IsQualificationValidForRole(
-                    q.Status, q.RoleDefinitionId, roleId, now, q.ExpiresAtUtc));
-                if (valid)
-                {
-                    qualified++;
-                }
-                else
-                {
-                    unqualified++;
-                }
-            }
-
-            foreach (var expiry in memberQuals.Where(q => q.ExpiresAtUtc.HasValue).Select(q => q.ExpiresAtUtc!.Value))
-            {
-                if (nearestExpiry is null || expiry < nearestExpiry)
-                {
-                    nearestExpiry = expiry;
-                }
-            }
-        }
+        var memberStats = AccumulateMemberSummaryStats(
+            members, publishedAssignments, activeAssignments, availability, qualifications, now, sourceResolver, options.StaleVerificationDays);
 
         var coverage = WorkforceReadinessPolicy.Calculate(new WorkforceCoverageInputs(
             required,
             minimumSafe,
             activeAssignments.Select(a => a.WorkforceMemberId).Distinct().Count(),
-            scheduled,
-            present,
-            operationallyAvailable,
-            qualified,
-            unqualified,
+            memberStats.Scheduled,
+            memberStats.Present,
+            memberStats.OperationallyAvailable,
+            memberStats.Qualified,
+            memberStats.Unqualified,
             members.Count(m => m.EmploymentStatus == EmploymentStatus.Suspended),
-            onLeave,
-            inTraining,
-            restricted,
-            overtime,
+            memberStats.OnLeave,
+            memberStats.InTraining,
+            memberStats.Restricted,
+            memberStats.Overtime,
             requirements.Count > 0,
             publishedAssignments.Count > 0 || activeAssignments.Count > 0));
 
-        var criticalAtRisk = critical.Count(c =>
-        {
-            var covered = publishedAssignments.Count(a =>
-                a.RoleDefinitionId == c.RoleDefinitionId
-                && a.Status is RosterAssignmentStatus.Present or RosterAssignmentStatus.Confirmed or RosterAssignmentStatus.Planned);
-            return covered < c.RequiredPrimaryCount;
-        });
-
-        var warnings = BuildSummaryWarnings(members.Count, required, stale, missing, criticalAtRisk, coverage.Status);
-        var fatigue = WorkforceFatiguePolicy.Evaluate(new WorkforceFatiguePolicy.FatigueIndicatorInputs(
-            overtime,
-            publishedAssignments.GroupBy(a => a.WorkforceMemberId).Select(g => g.Count()).DefaultIfEmpty(0).Max(),
-            publishedAssignments.Select(a => a.WorkforceMemberId).Distinct().Count(id =>
-                critical.Any(c => publishedAssignments.Any(a => a.WorkforceMemberId == id && a.RoleDefinitionId == c.RoleDefinitionId))),
-            critical.Sum(c => c.RequiredPrimaryCount),
-            nearestExpiry,
-            now));
+        var criticalAtRisk = CountCriticalPositionsAtRisk(critical, publishedAssignments);
+        var warnings = BuildSummaryWarnings(members.Count, required, memberStats.Stale, memberStats.Missing, criticalAtRisk, coverage.Status);
+        var fatigue = BuildSummaryFatigueIndicators(memberStats.Overtime, publishedAssignments, critical, memberStats.NearestExpiry, now);
 
         var summary = new WorkforceSummaryDto
         {
             FacilityId = facilityId,
             TotalMembers = members.Count,
-            OperationallyEligible = operationallyEligible,
+            OperationallyEligible = memberStats.OperationallyEligible,
             Required = required,
             MinimumSafe = minimumSafe,
-            Scheduled = scheduled,
-            Present = present,
-            OperationallyAvailable = operationallyAvailable,
-            OnLeave = onLeave,
-            InTraining = inTraining,
-            Restricted = restricted,
+            Scheduled = memberStats.Scheduled,
+            Present = memberStats.Present,
+            OperationallyAvailable = memberStats.OperationallyAvailable,
+            OnLeave = memberStats.OnLeave,
+            InTraining = memberStats.InTraining,
+            Restricted = memberStats.Restricted,
             Gap = coverage.Gap,
             SafeGap = coverage.SafeGap,
             CoverageRate = coverage.CoverageRate,
             QualificationCoverage = coverage.QualificationCoverage,
             CoverageStatus = coverage.Status,
             CriticalPositionsAtRisk = criticalAtRisk,
-            StaleRecords = stale,
-            MissingDataRecords = missing,
-            FreshnessStatus = WorkforceReadinessPolicy.ResolveFreshness(members.Count, stale),
+            StaleRecords = memberStats.Stale,
+            MissingDataRecords = memberStats.Missing,
+            FreshnessStatus = WorkforceReadinessPolicy.ResolveFreshness(members.Count, memberStats.Stale),
             ConfidenceLevel = WorkforceReadinessPolicy.ResolveConfidence(members.Count, warnings.Count),
             IsPartial = warnings.Count > 0,
             Warnings = warnings,
@@ -372,6 +275,7 @@ public sealed class WorkforceReadinessService(
 
         return summary;
     }
+
 
     public async Task<IReadOnlyList<WorkforceCoverageRowDto>> GetCoverageAsync(Guid facilityId, CancellationToken cancellationToken)
     {
@@ -586,7 +490,8 @@ public sealed class WorkforceReadinessService(
                 m.CurrentOperationalUnitId,
                 UnitNameAr = m.CurrentOperationalUnit == null ? null : m.CurrentOperationalUnit.NameAr,
                 m.IsOperational,
-                m.LastVerifiedAtUtc
+                m.LastVerifiedAtUtc,
+                m.RowVersion
             })
             .FirstOrDefaultAsync(cancellationToken);
         if (member is null)
@@ -644,9 +549,14 @@ public sealed class WorkforceReadinessService(
             RestrictionCodes = canViewSensitive ? ParseRestrictionCodes(e.RestrictionCodesCsv) : null
         }).ToList();
 
-        IReadOnlyList<string>? restrictionCodes = canViewSensitive
-            ? availability.Where(a => a.RestrictionCodes is not null).SelectMany(a => a.RestrictionCodes!).Distinct(StringComparer.Ordinal).ToList()
-            : null;
+        IReadOnlyList<string>? restrictionCodes = null;
+        if (canViewSensitive)
+        {
+            restrictionCodes = availability
+                .SelectMany(a => a.RestrictionCodes ?? Array.Empty<string>())
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+        }
 
         return new WorkforceMemberDetailDto
         {
@@ -662,6 +572,7 @@ public sealed class WorkforceReadinessService(
                 CurrentOperationalUnitNameAr = member.UnitNameAr,
                 IsOperational = member.IsOperational,
                 LastVerifiedAtUtc = member.LastVerifiedAtUtc,
+                RowVersion = Convert.ToBase64String(member.RowVersion),
                 DataQualityIssues = BuildMemberDataQuality(member.EmployeeNumber, member.DisplayName, member.EmploymentStatus, member.LastVerifiedAtUtc)
             },
             Assignments = assignments,
@@ -676,19 +587,103 @@ public sealed class WorkforceReadinessService(
         Require(PermissionCodes.WorkforceViewSummary);
         await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
         var now = timeProvider.GetUtcNow();
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
         var staleBefore = now.AddDays(-options.StaleVerificationDays);
         var members = await MembersInFacility(facilityId)
-            .Select(m => new { m.EmployeeNumber, m.EmploymentStatus, m.HomeFacilityId, m.CurrentOperationalFacilityId, m.LastVerifiedAtUtc })
+            .Select(m => new
+            {
+                m.Id,
+                m.EmployeeNumber,
+                m.ExternalPersonnelId,
+                m.EmploymentStatus,
+                m.HomeFacilityId,
+                m.CurrentOperationalFacilityId,
+                m.CurrentOperationalUnitId,
+                m.LastVerifiedAtUtc
+            })
             .ToListAsync(cancellationToken);
         var missingNumber = members.Count(m => string.IsNullOrWhiteSpace(m.EmployeeNumber));
         var unknownStatus = members.Count(m => m.EmploymentStatus == EmploymentStatus.Unknown);
         var missingFacility = members.Count(m => m.HomeFacilityId is null && m.CurrentOperationalFacilityId is null);
+        var missingUnit = members.Count(m => m.CurrentOperationalFacilityId == facilityId && m.CurrentOperationalUnitId is null);
         var stale = members.Count(m => m.LastVerifiedAtUtc is null || m.LastVerifiedAtUtc < staleBefore);
-        var warnings = new List<string>();
-        if (missingNumber > 0) warnings.Add("أرقام موظفين مفقودة.");
-        if (unknownStatus > 0) warnings.Add("حالات توظيف غير معروفة.");
-        if (missingFacility > 0) warnings.Add("أعضاء بلا منشأة منزلية أو تشغيلية.");
-        if (stale > 0) warnings.Add("سجلات تحتاج تحققًا حديثًا.");
+        var duplicateExternal = members
+            .Where(m => !string.IsNullOrWhiteSpace(m.ExternalPersonnelId))
+            .GroupBy(m => m.ExternalPersonnelId!, StringComparer.OrdinalIgnoreCase)
+            .Count(g => g.Count() > 1);
+
+        var expiredAssignments = await db.WorkforceAssignments.AsNoTracking()
+            .CountAsync(a => !a.IsDeleted && a.FacilityId == facilityId && a.EffectiveToUtc != null && a.EffectiveToUtc <= now, cancellationToken);
+        var missingApproval = await db.StaffingRequirements.AsNoTracking()
+            .CountAsync(r => !r.IsDeleted && r.FacilityId == facilityId
+                && r.EffectiveFromUtc <= now && (r.EffectiveToUtc == null || r.EffectiveToUtc > now)
+                && (r.ApprovalReference == null || r.ApprovalReference == ""), cancellationToken);
+        var rosterWithoutCommander = await db.DutyRosters.AsNoTracking()
+            .CountAsync(r => !r.IsDeleted && r.FacilityId == facilityId && r.DutyDate == today
+                && r.Status == DutyRosterStatuses.Published
+                && !r.Assignments.Any(a => !a.IsDeleted && a.RoleDefinition.Category == WorkforceRoleCategory.Command), cancellationToken);
+        var leaveWhileRostered = await db.DutyRosterAssignments.AsNoTracking()
+            .CountAsync(a => !a.IsDeleted
+                && a.DutyRoster.FacilityId == facilityId
+                && a.DutyRoster.DutyDate == today
+                && a.DutyRoster.Status == DutyRosterStatuses.Published
+                && db.WorkforceAvailabilityEvents.Any(e => !e.IsDeleted
+                    && e.WorkforceMemberId == a.WorkforceMemberId
+                    && e.StartsAtUtc <= now
+                    && (e.EndsAtUtc == null || e.EndsAtUtc > now)
+                    && (e.AvailabilityType == AvailabilityType.AnnualLeave
+                        || e.AvailabilityType == AvailabilityType.SickLeave
+                        || e.AvailabilityType == AvailabilityType.EmergencyLeave)), cancellationToken);
+        var retiredOnRoster = await db.DutyRosterAssignments.AsNoTracking()
+            .CountAsync(a => !a.IsDeleted
+                && a.DutyRoster.FacilityId == facilityId
+                && a.DutyRoster.DutyDate == today
+                && a.DutyRoster.Status == DutyRosterStatuses.Published
+                && (a.WorkforceMember.EmploymentStatus == EmploymentStatus.Retired
+                    || a.WorkforceMember.EmploymentStatus == EmploymentStatus.Terminated), cancellationToken);
+        var missingQualification = await db.WorkforceAssignments.AsNoTracking()
+            .CountAsync(a => !a.IsDeleted && a.FacilityId == facilityId
+                && a.EffectiveFromUtc <= now && (a.EffectiveToUtc == null || a.EffectiveToUtc > now)
+                && a.RoleDefinition.RequiresCertification
+                && !db.WorkforceQualifications.Any(q => !q.IsDeleted
+                    && q.WorkforceMemberId == a.WorkforceMemberId
+                    && q.RoleDefinitionId == a.RoleDefinitionId
+                    && (q.Status == QualificationStatus.Valid || q.Status == QualificationStatus.ExpiringSoon)
+                    && (q.ExpiresAtUtc == null || q.ExpiresAtUtc > now)), cancellationToken);
+
+        var issues = new List<WorkforceDataQualityIssueDto>();
+        void AddIssue(string code, string titleAr, int count, string severity, string impactAr, string actionAr)
+        {
+            if (count <= 0)
+            {
+                return;
+            }
+
+            issues.Add(new WorkforceDataQualityIssueDto
+            {
+                Code = code,
+                TitleAr = titleAr,
+                Count = count,
+                Severity = severity,
+                ImpactAr = impactAr,
+                SuggestedActionAr = actionAr
+            });
+        }
+
+        AddIssue("missing_employee_number", "أرقام موظفين مفقودة", missingNumber, "high", "يصعب مطابقة المصدر الخارجي.", "استكمال رقم الموظف.");
+        AddIssue("unknown_status", "حالة توظيف غير معروفة", unknownStatus, "high", "لا يمكن احتساب الجاهزية بثقة.", "تحديث حالة التوظيف.");
+        AddIssue("missing_facility", "منشأة منزلية/تشغيلية مفقودة", missingFacility, "critical", "لا يدخل العضو في نطاق المنشأة.", "ربط العضو بمنشأة.");
+        AddIssue("missing_unit_or_role", "وحدة تشغيلية مفقودة", missingUnit, "medium", "يصعب توزيع التغطية على الوحدات.", "تعيين وحدة تشغيلية.");
+        AddIssue("stale_source", "سجلات مصدر متقادمة", stale, "medium", "ثقة البيانات منخفضة.", "إعادة التحقق من المصدر.");
+        AddIssue("duplicate_external_id", "معرّف خارجي مكرر", duplicateExternal, "high", "ازدواجية سجلات الأفراد.", "دمج أو تصحيح المعرف.");
+        AddIssue("expired_assignment", "تكليفات منتهية ما زالت ظاهرة", expiredAssignments, "medium", "تضخيم التغطية الظاهرة.", "أرشفة التكليف المنتهي.");
+        AddIssue("requirement_without_approval", "احتياج بلا مرجع اعتماد", missingApproval, "medium", "baseline غير موثق.", "إضافة مرجع الاعتماد.");
+        AddIssue("roster_without_commander", "مناوبة بدون قائد", rosterWithoutCommander, "high", "فجوة قيادة في الوردية.", "تعيين دور قيادي.");
+        AddIssue("leave_while_rostered", "إجازة أثناء المناوبة", leaveWhileRostered, "high", "فجوة حضور متوقعة.", "تعيين بديل.");
+        AddIssue("retired_on_roster", "متقاعد/منتهٍ في المناوبة", retiredOnRoster, "critical", "جدولة غير صالحة.", "إزالة من الجدول.");
+        AddIssue("missing_qualification", "مؤهل مطلوب مفقود", missingQualification, "high", "تغطية غير مؤهلة.", "تسجيل/تجديد المؤهل.");
+
+        var warnings = issues.Select(i => $"{i.TitleAr} ({i.Count})").ToList();
         return new WorkforceDataQualityDto
         {
             TotalMembers = members.Count,
@@ -696,8 +691,9 @@ public sealed class WorkforceReadinessService(
             UnknownEmploymentStatus = unknownStatus,
             MissingHomeOrOperationalFacility = missingFacility,
             StaleVerification = stale,
-            OpenImportIssues = 0,
-            Warnings = warnings
+            OpenImportIssues = duplicateExternal,
+            Warnings = warnings,
+            Issues = issues
         };
     }
 
@@ -763,7 +759,17 @@ public sealed class WorkforceReadinessService(
     public async Task UpdateMemberAsync(Guid facilityId, Guid memberId, WorkforceMemberUpdateRequest request, CancellationToken cancellationToken)
     {
         Require(PermissionCodes.WorkforceManageMembers);
+        if (string.IsNullOrWhiteSpace(request.DisplayName) || string.IsNullOrWhiteSpace(request.JobTitle) || string.IsNullOrWhiteSpace(request.PrimarySpecialty))
+        {
+            throw new WorkforceValidationException("الاسم المعروض والمسمى الوظيفي والتخصص مطلوبة.");
+        }
+
         var member = await LoadMemberForUpdateAsync(facilityId, memberId, cancellationToken);
+        if (request.RowVersion is { Length: > 0 })
+        {
+            WorkforceAccessPolicy.EnsureRowVersion(member.RowVersion, request.RowVersion);
+        }
+
         if (request.SupervisorWorkforceMemberId == member.Id)
         {
             throw new InvalidOperationException("لا يمكن تعيين العضو مشرفًا على نفسه.");
@@ -772,6 +778,11 @@ public sealed class WorkforceReadinessService(
         if (request.CurrentOperationalUnitId.HasValue)
         {
             await EnsureUnitInFacilityAsync(facilityId, request.CurrentOperationalUnitId.Value, cancellationToken);
+        }
+
+        if (request.SupervisorWorkforceMemberId.HasValue)
+        {
+            await EnsureMemberInFacilityAsync(facilityId, request.SupervisorWorkforceMemberId.Value, cancellationToken);
         }
 
         member.DisplayName = request.DisplayName.Trim();
@@ -786,7 +797,15 @@ public sealed class WorkforceReadinessService(
         member.IsSensitiveRole = request.IsSensitiveRole;
         member.LastVerifiedAtUtc = timeProvider.GetUtcNow();
         member.UpdatedAtUtc = timeProvider.GetUtcNow();
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new InvalidOperationException("تعارض في النسخة المتزامنة لسجل العضو.");
+        }
+
         await AuditAsync("WorkforceMemberUpdated", "WorkforceMember", member.Id, cancellationToken);
     }
 
@@ -1072,7 +1091,7 @@ public sealed class WorkforceReadinessService(
         var sourceSystem = request.SourceSystem.Trim();
         var sourceReference = request.SourceReference.Trim();
         var fileHash = request.FileHash.Trim();
-        var existing = await FindConfirmedImportAsync(facilityId, sourceSystem, sourceReference, fileHash, cancellationToken);
+        var existing = await FindConfirmedImportAsync(facilityId, request.ImportKind, sourceSystem, sourceReference, fileHash, cancellationToken);
         if (existing is not null)
         {
             return existing;
@@ -1080,26 +1099,19 @@ public sealed class WorkforceReadinessService(
 
         var context = await BuildImportContextAsync(facilityId, request, cancellationToken);
         var validation = ValidateImportRows(context, request);
-        if (validation.ValidRows.Count == 0)
+        if (validation.ValidRows.Count == 0 && request.ImportKind == WorkforceImportKind.PersonnelMaster)
         {
             EnsureImportBatchCounts(validation, WorkforceImportBatchStatuses.Previewed, 0, null);
             return ToImportResult(validation, 0);
         }
 
-        return await ApplyImportAsync(context, validation, cancellationToken);
-    }
+        if (validation.RejectedRows == validation.TotalRows && validation.ValidRows.Count == 0)
+        {
+            EnsureImportBatchCounts(validation, WorkforceImportBatchStatuses.Previewed, 0, null);
+            return ToImportResult(validation, 0);
+        }
 
-    public async Task<WorkforceReconciliationResult> ReconcileAsync(Guid facilityId, CancellationToken cancellationToken)
-    {
-        Require(PermissionCodes.WorkforceReconcile);
-        await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
-        var quality = await GetDataQualityAsync(facilityId, cancellationToken);
-        var openIssues = quality.MissingEmployeeNumber
-            + quality.UnknownEmploymentStatus
-            + quality.MissingHomeOrOperationalFacility
-            + quality.StaleVerification;
-        await AuditAsync("WorkforceReconciled", "Facility", facilityId, cancellationToken);
-        return new WorkforceReconciliationResult(openIssues, MarkedReconciled: true);
+        return await ApplyImportAsync(context, request, validation, cancellationToken);
     }
 
     private IQueryable<WorkforceMember> MembersInFacility(Guid facilityId) =>
@@ -1126,7 +1138,7 @@ public sealed class WorkforceReadinessService(
             .OrderByDescending(s => s.CapturedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (latest is not null && latest.CapturedAtUtc.Date == summary.GeneratedAtUtc.UtcDateTime.Date)
+        if (latest is not null && latest.CapturedAtUtc.UtcDateTime.Date == summary.GeneratedAtUtc.UtcDateTime.Date)
         {
             latest.CapturedAtUtc = summary.GeneratedAtUtc;
             latest.Required = summary.Required;
@@ -1260,6 +1272,172 @@ public sealed class WorkforceReadinessService(
         return issues;
     }
 
+
+    private static MemberSummaryStats AccumulateMemberSummaryStats(
+        IReadOnlyList<SummaryMemberRow> members,
+        IReadOnlyList<SummaryRosterRow> publishedAssignments,
+        IReadOnlyList<SummaryAssignmentRow> activeAssignments,
+        IReadOnlyList<SummaryAvailabilityRow> availability,
+        IReadOnlyList<SummaryQualificationRow> qualifications,
+        DateTimeOffset now,
+        IWorkforceSourceResolver sourceResolver,
+        int staleVerificationDays)
+    {
+        var stats = new MemberSummaryStats { Scheduled = publishedAssignments.Count };
+        foreach (var member in members)
+        {
+            AccumulateOneMember(
+                member,
+                publishedAssignments,
+                activeAssignments,
+                availability,
+                qualifications,
+                now,
+                sourceResolver,
+                staleVerificationDays,
+                stats);
+        }
+
+        return stats;
+    }
+
+    private static void AccumulateOneMember(
+        SummaryMemberRow member,
+        IReadOnlyList<SummaryRosterRow> publishedAssignments,
+        IReadOnlyList<SummaryAssignmentRow> activeAssignments,
+        IReadOnlyList<SummaryAvailabilityRow> availability,
+        IReadOnlyList<SummaryQualificationRow> qualifications,
+        DateTimeOffset now,
+        IWorkforceSourceResolver sourceResolver,
+        int staleVerificationDays,
+        MemberSummaryStats stats)
+    {
+        if (string.IsNullOrWhiteSpace(member.EmployeeNumber)
+            || string.IsNullOrWhiteSpace(member.DisplayName)
+            || string.IsNullOrWhiteSpace(member.JobTitle)
+            || member.EmploymentStatus == EmploymentStatus.Unknown)
+        {
+            stats.Missing++;
+        }
+
+        if (member.LastVerifiedAtUtc is null || member.LastVerifiedAtUtc < now.AddDays(-staleVerificationDays))
+        {
+            stats.Stale++;
+        }
+
+        var eligible = WorkforceReadinessPolicy.IsEmploymentOperationallyEligible(member.EmploymentStatus, member.IsOperational);
+        if (eligible)
+        {
+            stats.OperationallyEligible++;
+        }
+
+        var memberAvailability = availability.Where(a => a.WorkforceMemberId == member.Id).ToList();
+        if (memberAvailability.Any(a => a.AvailabilityType is AvailabilityType.AnnualLeave or AvailabilityType.SickLeave or AvailabilityType.EmergencyLeave))
+        {
+            stats.OnLeave++;
+        }
+
+        if (memberAvailability.Any(a => a.AvailabilityType == AvailabilityType.Training))
+        {
+            stats.InTraining++;
+        }
+
+        if (memberAvailability.Any(a => a.AvailabilityType == AvailabilityType.RestrictedDuty))
+        {
+            stats.Restricted++;
+        }
+
+        var blocked = memberAvailability.Any(a => WorkforceReadinessPolicy.IsAvailabilityBlocking(a.AvailabilityType, a.AffectsOperationalAvailability));
+        var rosterRows = publishedAssignments.Where(a => a.WorkforceMemberId == member.Id).ToList();
+        if (rosterRows.Any(a => a.Status is RosterAssignmentStatus.Present or RosterAssignmentStatus.Confirmed or RosterAssignmentStatus.Late))
+        {
+            stats.Present++;
+        }
+
+        var hasAttendanceImport = memberAvailability.Any(a =>
+            a.SourceType is WorkforceSourceType.Import or WorkforceSourceType.ExternalSystem
+            && a.AvailabilityType == AvailabilityType.Available);
+        _ = sourceResolver.Resolve(
+            rosterRows.Count > 0,
+            rosterRows.FirstOrDefault()?.Status,
+            hasAttendanceImport,
+            memberAvailability.Count > 0,
+            activeAssignments.Any(a => a.WorkforceMemberId == member.Id));
+
+        if (eligible && !blocked)
+        {
+            stats.OperationallyAvailable++;
+        }
+
+        AccumulateQualificationStats(member.Id, qualifications, activeAssignments, now, stats);
+    }
+
+    private static void AccumulateQualificationStats(
+        Guid memberId,
+        IReadOnlyList<SummaryQualificationRow> qualifications,
+        IReadOnlyList<SummaryAssignmentRow> activeAssignments,
+        DateTimeOffset now,
+        MemberSummaryStats stats)
+    {
+        var memberQuals = qualifications.Where(q => q.WorkforceMemberId == memberId).ToList();
+        foreach (var roleId in activeAssignments.Where(a => a.WorkforceMemberId == memberId).Select(a => a.RoleDefinitionId).Distinct())
+        {
+            var valid = memberQuals.Any(q => WorkforceReadinessPolicy.IsQualificationValidForRole(
+                q.Status, q.RoleDefinitionId, roleId, now, q.ExpiresAtUtc));
+            if (valid)
+            {
+                stats.Qualified++;
+            }
+            else
+            {
+                stats.Unqualified++;
+            }
+        }
+
+        foreach (var expiry in memberQuals.Select(q => q.ExpiresAtUtc).Where(v => v.HasValue).Select(v => v.GetValueOrDefault()))
+        {
+            if (stats.NearestExpiry is null || expiry < stats.NearestExpiry)
+            {
+                stats.NearestExpiry = expiry;
+            }
+        }
+    }
+
+    private static int CountCriticalPositionsAtRisk(
+        IReadOnlyList<SummaryCriticalRow> critical,
+        IReadOnlyList<SummaryRosterRow> publishedAssignments)
+    {
+        return critical.Count(c =>
+        {
+            var covered = publishedAssignments.Count(a =>
+                a.RoleDefinitionId == c.RoleDefinitionId
+                && a.Status is RosterAssignmentStatus.Present or RosterAssignmentStatus.Confirmed or RosterAssignmentStatus.Late);
+            var primaryFilled = Math.Min(c.RequiredPrimaryCount, covered);
+            var alternateFilled = Math.Min(Math.Max(0, covered - c.RequiredPrimaryCount), c.RequiredAlternateCount);
+            var vacantPrimary = Math.Max(0, c.RequiredPrimaryCount - primaryFilled);
+            var vacantAlternate = Math.Max(0, c.RequiredAlternateCount - alternateFilled);
+            var spof = c.RequiredPrimaryCount > 0 && primaryFilled <= 1 && vacantAlternate > 0;
+            return vacantPrimary > 0 || vacantAlternate > 0 || spof;
+        });
+    }
+
+    private static IReadOnlyList<string> BuildSummaryFatigueIndicators(
+        int overtime,
+        IReadOnlyList<SummaryRosterRow> publishedAssignments,
+        IReadOnlyList<SummaryCriticalRow> critical,
+        DateTimeOffset? nearestExpiry,
+        DateTimeOffset now)
+    {
+        return WorkforceFatiguePolicy.Evaluate(new WorkforceFatiguePolicy.FatigueIndicatorInputs(
+            OvertimeHoursInWindow: overtime,
+            ConsecutiveShiftCount: publishedAssignments.GroupBy(a => a.WorkforceMemberId).Select(g => g.Count()).DefaultIfEmpty(0).Max(),
+            CriticalRoleCoverageCount: publishedAssignments.Select(a => a.WorkforceMemberId).Distinct().Count(id =>
+                critical.Any(c => publishedAssignments.Any(a => a.WorkforceMemberId == id && a.RoleDefinitionId == c.RoleDefinitionId))),
+            CriticalRoleRequiredCount: critical.Sum(c => c.RequiredPrimaryCount),
+            NearestQualificationExpiryUtc: nearestExpiry,
+            AsOfUtc: now));
+    }
+
     private static IReadOnlyList<string> BuildSummaryWarnings(
         int totalMembers,
         int required,
@@ -1319,6 +1497,7 @@ public sealed class WorkforceReadinessService(
         return new ImportContext(
             facilityId,
             facility.OrganizationId,
+            request.ImportKind,
             request.SourceSystem.Trim(),
             request.SourceReference.Trim(),
             request.FileHash.Trim(),
@@ -1327,7 +1506,33 @@ public sealed class WorkforceReadinessService(
             timeProvider.GetUtcNow());
     }
 
-    private static ImportValidationSummary ValidateImportRows(ImportContext context, WorkforceImportPreviewRequest request)
+    private static ImportValidationSummary ValidateImportRows(ImportContext context, WorkforceImportPreviewRequest request) =>
+        request.ImportKind switch
+        {
+            WorkforceImportKind.PersonnelMaster => ValidatePersonnelMasterRows(context, request),
+            WorkforceImportKind.Assignments => ValidateKeyedRows(request, row =>
+                !string.IsNullOrWhiteSpace(row.EmployeeNumber) && row.RoleDefinitionId.HasValue && row.EffectiveFromUtc.HasValue,
+                "رقم الموظف ومعرّف الدور وتاريخ السريان مطلوبة."),
+            WorkforceImportKind.Qualifications => ValidateKeyedRows(request, row =>
+                !string.IsNullOrWhiteSpace(row.EmployeeNumber) && !string.IsNullOrWhiteSpace(row.QualificationName),
+                "رقم الموظف واسم المؤهل مطلوبان."),
+            WorkforceImportKind.Rosters => ValidateKeyedRows(request, row =>
+                !string.IsNullOrWhiteSpace(row.EmployeeNumber) && row.RoleDefinitionId.HasValue && row.ShiftDefinitionId.HasValue && row.DutyDate.HasValue,
+                "رقم الموظف والدور والوردية وتاريخ المناوبة مطلوبة."),
+            WorkforceImportKind.Availability => ValidateKeyedRows(request, row =>
+                !string.IsNullOrWhiteSpace(row.EmployeeNumber) && row.AvailabilityStartsAtUtc.HasValue,
+                "رقم الموظف وبداية التوفر مطلوبان."),
+            WorkforceImportKind.AttendanceSummary => ValidateKeyedRows(request, row =>
+                !string.IsNullOrWhiteSpace(row.EmployeeNumber)
+                && row.AttendancePresentCount.HasValue
+                && row.AttendanceAbsentCount.HasValue
+                && row.AttendancePresentCount >= 0
+                && row.AttendanceAbsentCount >= 0,
+                "رقم الموظف وعدادات الحضور/الغياب مطلوبة وقيمها غير سالبة."),
+            _ => new ImportValidationSummary(request.Rows.Count, Array.Empty<NormalizedImportRow>(), request.Rows.Count, 0, ["نوع الاستيراد غير مدعوم."])
+        };
+
+    private static ImportValidationSummary ValidatePersonnelMasterRows(ImportContext context, WorkforceImportPreviewRequest request)
     {
         var requestNumbers = new HashSet<string>(StringComparer.Ordinal);
         var known = new HashSet<string>(context.ExistingEmployeeNumbers, StringComparer.Ordinal);
@@ -1368,7 +1573,47 @@ public sealed class WorkforceReadinessService(
                 row.JobTitle.Trim(),
                 row.PrimarySpecialty.Trim(),
                 row.CurrentOperationalUnitId,
-                row.IsOperational));
+                row.IsOperational,
+                row));
+        }
+
+        return new ImportValidationSummary(request.Rows.Count, validRows, errors.Count, duplicate, errors);
+    }
+
+    private static ImportValidationSummary ValidateKeyedRows(
+        WorkforceImportPreviewRequest request,
+        Func<WorkforceImportRow, bool> isValid,
+        string errorMessage)
+    {
+        var errors = new List<string>();
+        var validRows = new List<NormalizedImportRow>();
+        var duplicate = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in request.Rows)
+        {
+            if (!isValid(row))
+            {
+                errors.Add($"صف {row.EmployeeNumber}: {errorMessage}");
+                continue;
+            }
+
+            var key = $"{WorkforceAccessPolicy.NormalizeEmployeeNumber(row.EmployeeNumber!)}|{row.RoleDefinitionId}|{row.DutyDate}|{row.AvailabilityStartsAtUtc}|{row.QualificationName}";
+            if (!seen.Add(key))
+            {
+                duplicate++;
+                continue;
+            }
+
+            validRows.Add(new NormalizedImportRow(
+                WorkforceAccessPolicy.NormalizeEmployeeNumber(row.EmployeeNumber!),
+                row.DisplayName?.Trim() ?? string.Empty,
+                row.ExternalPersonnelId,
+                row.EmploymentStatus,
+                row.JobTitle?.Trim() ?? string.Empty,
+                row.PrimarySpecialty?.Trim() ?? string.Empty,
+                row.CurrentOperationalUnitId,
+                row.IsOperational,
+                row));
         }
 
         return new ImportValidationSummary(request.Rows.Count, validRows, errors.Count, duplicate, errors);
@@ -1376,35 +1621,48 @@ public sealed class WorkforceReadinessService(
 
     private async Task<WorkforceImportResult> ApplyImportAsync(
         ImportContext context,
+        WorkforceImportPreviewRequest request,
         ImportValidationSummary validation,
         CancellationToken cancellationToken)
     {
-        EnsureImportBatchCounts(validation, WorkforceImportBatchStatuses.Confirmed, validation.ValidRows.Count, context.NowUtc);
-        foreach (var row in validation.ValidRows)
+        var applied = 0;
+        if (context.ImportKind == WorkforceImportKind.PersonnelMaster)
         {
-            db.Add(new WorkforceMember
+            EnsureImportBatchCounts(validation, WorkforceImportBatchStatuses.Confirmed, validation.ValidRows.Count, context.NowUtc);
+            foreach (var row in validation.ValidRows)
             {
-                OrganizationId = context.OrganizationId,
-                ExternalPersonnelId = row.ExternalPersonnelId,
-                DisplayName = row.DisplayName,
-                EmployeeNumber = row.EmployeeNumber,
-                EmploymentStatus = row.EmploymentStatus,
-                JobTitle = row.JobTitle,
-                PrimarySpecialty = row.PrimarySpecialty,
-                AdministrativeOrganizationId = context.OrganizationId,
-                HomeFacilityId = context.FacilityId,
-                CurrentOperationalFacilityId = context.FacilityId,
-                CurrentOperationalUnitId = row.CurrentOperationalUnitId,
-                IsOperational = row.IsOperational,
-                SourceType = WorkforceSourceType.Import,
-                SourceReference = context.SourceReference,
-                LastVerifiedAtUtc = context.NowUtc
-            });
+                db.Add(new WorkforceMember
+                {
+                    OrganizationId = context.OrganizationId,
+                    ExternalPersonnelId = row.ExternalPersonnelId,
+                    DisplayName = row.DisplayName,
+                    EmployeeNumber = row.EmployeeNumber,
+                    EmploymentStatus = row.EmploymentStatus,
+                    JobTitle = row.JobTitle,
+                    PrimarySpecialty = row.PrimarySpecialty,
+                    AdministrativeOrganizationId = context.OrganizationId,
+                    HomeFacilityId = context.FacilityId,
+                    CurrentOperationalFacilityId = context.FacilityId,
+                    CurrentOperationalUnitId = row.CurrentOperationalUnitId,
+                    IsOperational = row.IsOperational,
+                    SourceType = WorkforceSourceType.Import,
+                    SourceReference = context.SourceReference,
+                    LastVerifiedAtUtc = context.NowUtc
+                });
+            }
+
+            applied = validation.ValidRows.Count;
+        }
+        else
+        {
+            applied = await ApplyNonPersonnelImportAsync(context, validation, cancellationToken);
+            EnsureImportBatchCounts(validation, WorkforceImportBatchStatuses.Confirmed, applied, context.NowUtc);
         }
 
         db.Add(new WorkforceImportBatch
         {
             FacilityId = context.FacilityId,
+            ImportKind = context.ImportKind,
             SourceSystem = context.SourceSystem,
             SourceReference = context.SourceReference,
             FileHash = context.FileHash,
@@ -1416,7 +1674,7 @@ public sealed class WorkforceReadinessService(
             RejectedRows = validation.RejectedRows,
             DuplicateRows = validation.DuplicateRows,
             ConfirmedAtUtc = context.NowUtc,
-            AppliedRows = validation.ValidRows.Count
+            AppliedRows = applied
         });
 
         try
@@ -1426,7 +1684,7 @@ public sealed class WorkforceReadinessService(
         catch (DbUpdateException ex) when (WorkforceAccessPolicy.IsWorkforceImportBatchesUniqueViolation(ex))
         {
             db.ClearChanges();
-            var raced = await FindConfirmedImportAsync(context.FacilityId, context.SourceSystem, context.SourceReference, context.FileHash, cancellationToken);
+            var raced = await FindConfirmedImportAsync(context.FacilityId, context.ImportKind, context.SourceSystem, context.SourceReference, context.FileHash, cancellationToken);
             if (raced is not null)
             {
                 return raced;
@@ -1440,7 +1698,133 @@ public sealed class WorkforceReadinessService(
         }
 
         await AuditAsync("WorkforceImportConfirmed", "WorkforceImportBatch", context.FacilityId, cancellationToken);
-        return ToImportResult(validation, validation.ValidRows.Count);
+        return ToImportResult(validation, applied);
+    }
+
+    private async Task<int> ApplyNonPersonnelImportAsync(
+        ImportContext context,
+        ImportValidationSummary validation,
+        CancellationToken cancellationToken)
+    {
+        var numbers = validation.ValidRows.Select(r => r.EmployeeNumber).Distinct().ToList();
+        var members = await db.WorkforceMembers
+            .Where(m => m.OrganizationId == context.OrganizationId && !m.IsDeleted && numbers.Contains(m.EmployeeNumber))
+            .Select(m => new { m.Id, m.EmployeeNumber })
+            .ToListAsync(cancellationToken);
+        var byNumber = members.ToDictionary(m => m.EmployeeNumber, m => m.Id, StringComparer.Ordinal);
+        var applied = 0;
+        foreach (var row in validation.ValidRows)
+        {
+            if (!byNumber.TryGetValue(row.EmployeeNumber, out var memberId))
+            {
+                continue;
+            }
+
+            var source = row.Source;
+            switch (context.ImportKind)
+            {
+                case WorkforceImportKind.Assignments when source.RoleDefinitionId.HasValue && source.EffectiveFromUtc.HasValue:
+                    db.Add(new WorkforceAssignment
+                    {
+                        WorkforceMemberId = memberId,
+                        FacilityId = context.FacilityId,
+                        FacilityUnitId = source.FacilityUnitId ?? source.CurrentOperationalUnitId,
+                        RoleDefinitionId = source.RoleDefinitionId.Value,
+                        AssignmentType = source.AssignmentType,
+                        EffectiveFromUtc = source.EffectiveFromUtc.Value,
+                        EffectiveToUtc = source.EffectiveToUtc,
+                        IsPrimary = true,
+                        SourceReference = context.SourceReference,
+                        ApprovedBy = currentUser.DisplayName
+                    });
+                    applied++;
+                    break;
+                case WorkforceImportKind.Qualifications when !string.IsNullOrWhiteSpace(source.QualificationName):
+                    db.Add(new WorkforceQualification
+                    {
+                        WorkforceMemberId = memberId,
+                        QualificationType = source.QualificationType,
+                        RoleDefinitionId = source.RoleDefinitionId,
+                        Name = source.QualificationName!.Trim(),
+                        ExpiresAtUtc = source.QualificationExpiresAtUtc,
+                        Status = QualificationStatus.Valid,
+                        VerifiedAtUtc = context.NowUtc,
+                        VerifiedBy = currentUser.DisplayName
+                    });
+                    applied++;
+                    break;
+                case WorkforceImportKind.Availability when source.AvailabilityStartsAtUtc.HasValue:
+                    db.Add(new WorkforceAvailabilityEvent
+                    {
+                        WorkforceMemberId = memberId,
+                        AvailabilityType = source.AvailabilityType,
+                        StartsAtUtc = source.AvailabilityStartsAtUtc.Value,
+                        EndsAtUtc = source.AvailabilityEndsAtUtc,
+                        AffectsOperationalAvailability = true,
+                        SourceType = WorkforceSourceType.Import,
+                        SourceReference = context.SourceReference,
+                        RecordedAtUtc = context.NowUtc,
+                        RecordedBy = currentUser.DisplayName
+                    });
+                    applied++;
+                    break;
+                case WorkforceImportKind.Rosters when source.ShiftDefinitionId.HasValue && source.DutyDate.HasValue && source.RoleDefinitionId.HasValue:
+                    var roster = await db.DutyRosters.FirstOrDefaultAsync(r =>
+                        r.FacilityId == context.FacilityId
+                        && r.ShiftDefinitionId == source.ShiftDefinitionId
+                        && r.DutyDate == source.DutyDate
+                        && !r.IsDeleted, cancellationToken);
+                    if (roster is null)
+                    {
+                        roster = new DutyRoster
+                        {
+                            FacilityId = context.FacilityId,
+                            FacilityUnitId = source.FacilityUnitId,
+                            ShiftDefinitionId = source.ShiftDefinitionId.Value,
+                            DutyDate = source.DutyDate.Value,
+                            Status = DutyRosterStatuses.Draft
+                        };
+                        db.Add(roster);
+                        await db.SaveChangesAsync(cancellationToken);
+                    }
+
+                    if (roster.Status != DutyRosterStatuses.Published)
+                    {
+                        db.Add(new DutyRosterAssignment
+                        {
+                            DutyRosterId = roster.Id,
+                            WorkforceMemberId = memberId,
+                            RoleDefinitionId = source.RoleDefinitionId.Value,
+                            Status = RosterAssignmentStatus.Planned
+                        });
+                        applied++;
+                    }
+
+                    break;
+                case WorkforceImportKind.AttendanceSummary:
+                    // Shape-validated attendance summary rows are recorded as Available/UnexcusedAbsence signals without PII payloads.
+                    if ((source.AttendancePresentCount ?? 0) > 0)
+                    {
+                        db.Add(new WorkforceAvailabilityEvent
+                        {
+                            WorkforceMemberId = memberId,
+                            AvailabilityType = AvailabilityType.Available,
+                            StartsAtUtc = context.NowUtc.AddHours(-8),
+                            EndsAtUtc = context.NowUtc,
+                            AffectsOperationalAvailability = false,
+                            SourceType = WorkforceSourceType.Import,
+                            SourceReference = context.SourceReference,
+                            RecordedAtUtc = context.NowUtc,
+                            RecordedBy = currentUser.DisplayName
+                        });
+                        applied++;
+                    }
+
+                    break;
+            }
+        }
+
+        return applied;
     }
 
     private static void EnsureImportBatchCounts(
@@ -1467,6 +1851,7 @@ public sealed class WorkforceReadinessService(
 
     private async Task<WorkforceImportResult?> FindConfirmedImportAsync(
         Guid facilityId,
+        WorkforceImportKind importKind,
         string sourceSystem,
         string sourceReference,
         string fileHash,
@@ -1475,6 +1860,7 @@ public sealed class WorkforceReadinessService(
         var batch = await db.WorkforceImportBatches
             .AsNoTracking()
             .Where(b => b.FacilityId == facilityId
+                && b.ImportKind == importKind
                 && b.SourceSystem == sourceSystem
                 && b.SourceReference == sourceReference
                 && b.FileHash == fileHash
@@ -1493,14 +1879,17 @@ public sealed class WorkforceReadinessService(
         }
     }
 
-    private async Task AuditAsync(string action, string entityType, Guid entityId, CancellationToken cancellationToken)
+    private Task AuditAsync(string action, string entityType, Guid entityId, CancellationToken cancellationToken) =>
+        AuditAsync(action, entityType, entityId.ToString(), cancellationToken);
+
+    private async Task AuditAsync(string action, string entityType, string entityId, CancellationToken cancellationToken)
     {
         await audit.WriteAsync(new AuditEntry
         {
             Action = action,
             Module = "Workforce",
             EntityType = entityType,
-            EntityId = entityId.ToString(),
+            EntityId = entityId,
             NewValues = new Dictionary<string, string>
             {
                 ["Actor"] = currentUser.DisplayName ?? currentUser.ExternalSubject ?? "unknown"
@@ -1511,9 +1900,43 @@ public sealed class WorkforceReadinessService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+
+    private sealed class MemberSummaryStats
+    {
+        public int OperationallyEligible;
+        public int OperationallyAvailable;
+        public int OnLeave;
+        public int InTraining;
+        public int Restricted;
+        public int Present;
+        public int Scheduled;
+        public int Qualified;
+        public int Unqualified;
+        public int Stale;
+        public int Missing;
+        public int Overtime = 0;
+        public DateTimeOffset? NearestExpiry;
+    }
+
+    private sealed record SummaryMemberRow(
+        Guid Id,
+        EmploymentStatus EmploymentStatus,
+        bool IsOperational,
+        DateTimeOffset? LastVerifiedAtUtc,
+        string EmployeeNumber,
+        string DisplayName,
+        string JobTitle);
+
+    private sealed record SummaryRosterRow(Guid WorkforceMemberId, Guid RoleDefinitionId, RosterAssignmentStatus Status);
+    private sealed record SummaryAssignmentRow(Guid WorkforceMemberId, Guid RoleDefinitionId);
+    private sealed record SummaryAvailabilityRow(Guid WorkforceMemberId, AvailabilityType AvailabilityType, bool AffectsOperationalAvailability, WorkforceSourceType SourceType);
+    private sealed record SummaryQualificationRow(Guid WorkforceMemberId, Guid? RoleDefinitionId, QualificationStatus Status, DateTimeOffset? ExpiresAtUtc);
+    private sealed record SummaryCriticalRow(Guid RoleDefinitionId, int RequiredPrimaryCount, int RequiredAlternateCount);
+
     private sealed record ImportContext(
         Guid FacilityId,
         Guid OrganizationId,
+        WorkforceImportKind ImportKind,
         string SourceSystem,
         string SourceReference,
         string FileHash,
@@ -1529,7 +1952,8 @@ public sealed class WorkforceReadinessService(
         string JobTitle,
         string PrimarySpecialty,
         Guid? CurrentOperationalUnitId,
-        bool IsOperational);
+        bool IsOperational,
+        WorkforceImportRow Source);
 
     private sealed record ImportValidationSummary(
         int TotalRows,

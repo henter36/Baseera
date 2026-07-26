@@ -569,6 +569,7 @@ public sealed class BusinessCalendarTests
         public IQueryable<Domain.Workforce.CriticalPositionRequirement> CriticalPositionRequirements => Empty<Domain.Workforce.CriticalPositionRequirement>();
         public IQueryable<Domain.Workforce.WorkforceReadinessSnapshot> WorkforceReadinessSnapshots => Empty<Domain.Workforce.WorkforceReadinessSnapshot>();
         public IQueryable<Domain.Workforce.WorkforceImportBatch> WorkforceImportBatches => Empty<Domain.Workforce.WorkforceImportBatch>();
+        public IQueryable<Domain.Workforce.WorkforceReconciliationResolution> WorkforceReconciliationResolutions => Empty<Domain.Workforce.WorkforceReconciliationResolution>();
         public IQueryable<FormDefinition> FormDefinitions => Empty<FormDefinition>();
         public IQueryable<FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<FormReviewDecision> FormReviewDecisions => Empty<FormReviewDecision>();

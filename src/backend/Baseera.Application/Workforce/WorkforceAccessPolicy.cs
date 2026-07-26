@@ -62,6 +62,43 @@ public static class WorkforceAccessPolicy
     public static string NormalizeEmployeeNumber(string value) =>
         value.Trim().ToUpperInvariant();
 
+    public static void EnsureRowVersion(byte[] current, string? incomingBase64)
+    {
+        if (string.IsNullOrWhiteSpace(incomingBase64))
+        {
+            throw new InvalidOperationException("إصدار السجل غير صالح.");
+        }
+
+        byte[] incoming;
+        try
+        {
+            incoming = Convert.FromBase64String(incomingBase64);
+        }
+        catch (FormatException)
+        {
+            throw new InvalidOperationException("إصدار السجل غير صالح.");
+        }
+        catch (ArgumentNullException)
+        {
+            throw new InvalidOperationException("إصدار السجل غير صالح.");
+        }
+
+        EnsureRowVersion(current, incoming);
+    }
+
+    public static void EnsureRowVersion(byte[] current, byte[]? incoming)
+    {
+        if (incoming is null || incoming.Length == 0)
+        {
+            throw new InvalidOperationException("إصدار السجل غير صالح.");
+        }
+
+        if (!current.SequenceEqual(incoming))
+        {
+            throw new InvalidOperationException("تم تعديل السجل بواسطة مستخدم آخر. أعد التحميل ثم حاول مجددًا.");
+        }
+    }
+
     public static bool IsWorkforceMembersUniqueViolation(Exception exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)
@@ -87,7 +124,8 @@ public static class WorkforceAccessPolicy
         for (var current = exception; current is not null; current = current.InnerException)
         {
             var message = current.Message;
-            if (message.Contains("IX_WorkforceImportBatches_FacilityId_SourceSystem_SourceReference_FileHash", StringComparison.OrdinalIgnoreCase)
+            if (message.Contains("IX_WorkforceImportBatches_FacilityId_ImportKind_SourceSystem_SourceReference_FileHash", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("IX_WorkforceImportBatches_FacilityId_SourceSystem_SourceReference_FileHash", StringComparison.OrdinalIgnoreCase)
                 || (message.Contains("WorkforceImportBatches", StringComparison.OrdinalIgnoreCase)
                     && (message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
                         || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)

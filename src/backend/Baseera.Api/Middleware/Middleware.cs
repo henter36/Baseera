@@ -1,5 +1,7 @@
 namespace Baseera.Api.Middleware;
 
+using Baseera.Application.Workforce;
+
 public sealed class CorrelationIdMiddleware(RequestDelegate next)
 {
     public const string HeaderName = "X-Correlation-Id";
@@ -38,6 +40,14 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 context,
                 StatusCodes.Status400BadRequest,
                 "طلب غير صالح",
+                ex.Message);
+        }
+        catch (WorkforceValidationException ex)
+        {
+            await WriteProblem(
+                context,
+                StatusCodes.Status422UnprocessableEntity,
+                "أخطاء تحقق",
                 ex.Message);
         }
         catch (Baseera.Application.Forms.Responses.FormResponseConflictException ex)

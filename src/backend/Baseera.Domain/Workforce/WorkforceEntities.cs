@@ -143,6 +143,24 @@ public static class DutyRosterStatuses
     public const string Published = "Published";
 }
 
+public enum WorkforceImportKind
+{
+    PersonnelMaster = 0,
+    Assignments = 1,
+    Qualifications = 2,
+    Rosters = 3,
+    Availability = 4,
+    AttendanceSummary = 5
+}
+
+public static class WorkforceReconciliationActions
+{
+    public const string Acknowledge = "Acknowledge";
+    public const string Corrected = "Corrected";
+    public const string Deferred = "Deferred";
+    public const string FalsePositive = "FalsePositive";
+}
+
 public class WorkforceMember : SoftDeletableEntity, IScopedEntity
 {
     private Organization? organization;
@@ -549,6 +567,7 @@ public class WorkforceImportBatch : EntityBase
         set => facility = value;
     }
 
+    public WorkforceImportKind ImportKind { get; set; } = WorkforceImportKind.PersonnelMaster;
     public string SourceSystem { get; set; } = string.Empty;
     public string SourceReference { get; set; } = string.Empty;
     public string FileHash { get; set; } = string.Empty;

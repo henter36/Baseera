@@ -111,6 +111,7 @@ public interface IBaseeraDbContext
     IQueryable<CriticalPositionRequirement> CriticalPositionRequirements { get; }
     IQueryable<WorkforceReadinessSnapshot> WorkforceReadinessSnapshots { get; }
     IQueryable<WorkforceImportBatch> WorkforceImportBatches { get; }
+    IQueryable<WorkforceReconciliationResolution> WorkforceReconciliationResolutions { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;

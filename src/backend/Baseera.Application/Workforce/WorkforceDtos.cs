@@ -88,6 +88,7 @@ public sealed record WorkforceMemberListItemDto
     public string? CurrentOperationalUnitNameAr { get; init; }
     public required bool IsOperational { get; init; }
     public DateTimeOffset? LastVerifiedAtUtc { get; init; }
+    public string? RowVersion { get; init; }
     public required IReadOnlyList<string> DataQualityIssues { get; init; }
 }
 
@@ -142,6 +143,17 @@ public sealed record WorkforceDataQualityDto
     public required int StaleVerification { get; init; }
     public required int OpenImportIssues { get; init; }
     public required IReadOnlyList<string> Warnings { get; init; }
+    public IReadOnlyList<WorkforceDataQualityIssueDto> Issues { get; init; } = Array.Empty<WorkforceDataQualityIssueDto>();
+}
+
+public sealed record WorkforceDataQualityIssueDto
+{
+    public required string Code { get; init; }
+    public required string TitleAr { get; init; }
+    public required int Count { get; init; }
+    public required string Severity { get; init; }
+    public required string ImpactAr { get; init; }
+    public required string SuggestedActionAr { get; init; }
 }
 
 public sealed record WorkforceWorkspacePayload
@@ -182,6 +194,8 @@ public sealed record WorkforceMemberUpdateRequest
     public Guid? SupervisorWorkforceMemberId { get; init; }
     public bool IsOperational { get; init; }
     public bool IsSensitiveRole { get; init; }
+    /// <summary>Optional concurrency token; when set, mismatched values yield conflict.</summary>
+    public byte[]? RowVersion { get; init; }
 }
 
 public sealed record WorkforceAssignmentRequest
@@ -280,6 +294,7 @@ public sealed record WorkforceAvailabilityRequest
 
 public sealed record WorkforceImportPreviewRequest
 {
+    public WorkforceImportKind ImportKind { get; init; } = WorkforceImportKind.PersonnelMaster;
     public required string SourceSystem { get; init; }
     public required string SourceReference { get; init; }
     public required string FileHash { get; init; }
@@ -288,14 +303,29 @@ public sealed record WorkforceImportPreviewRequest
 
 public sealed record WorkforceImportRow
 {
-    public required string EmployeeNumber { get; init; }
-    public required string DisplayName { get; init; }
+    public string? EmployeeNumber { get; init; }
+    public string? DisplayName { get; init; }
     public string? ExternalPersonnelId { get; init; }
     public EmploymentStatus EmploymentStatus { get; init; } = EmploymentStatus.Active;
-    public required string JobTitle { get; init; }
-    public required string PrimarySpecialty { get; init; }
+    public string? JobTitle { get; init; }
+    public string? PrimarySpecialty { get; init; }
     public Guid? CurrentOperationalUnitId { get; init; }
     public bool IsOperational { get; init; } = true;
+    public Guid? RoleDefinitionId { get; init; }
+    public Guid? FacilityUnitId { get; init; }
+    public Guid? ShiftDefinitionId { get; init; }
+    public DateOnly? DutyDate { get; init; }
+    public AssignmentType AssignmentType { get; init; } = AssignmentType.Permanent;
+    public DateTimeOffset? EffectiveFromUtc { get; init; }
+    public DateTimeOffset? EffectiveToUtc { get; init; }
+    public QualificationType QualificationType { get; init; } = QualificationType.RoleCertification;
+    public string? QualificationName { get; init; }
+    public DateTimeOffset? QualificationExpiresAtUtc { get; init; }
+    public AvailabilityType AvailabilityType { get; init; } = AvailabilityType.Available;
+    public DateTimeOffset? AvailabilityStartsAtUtc { get; init; }
+    public DateTimeOffset? AvailabilityEndsAtUtc { get; init; }
+    public int? AttendancePresentCount { get; init; }
+    public int? AttendanceAbsentCount { get; init; }
 }
 
 public sealed record WorkforceImportResult(
@@ -306,4 +336,62 @@ public sealed record WorkforceImportResult(
     int AppliedRows,
     IReadOnlyList<string> Errors);
 
+public sealed record WorkforceReconciliationItemDto
+{
+    public required string Id { get; init; }
+    public required string IssueType { get; init; }
+    public required string Severity { get; init; }
+    public required string TitleAr { get; init; }
+    public required string DetailAr { get; init; }
+    public required string EntityType { get; init; }
+    public Guid? EntityId { get; init; }
+    public string? SourceSystem { get; init; }
+    public required string SuggestedActionAr { get; init; }
+    public required string ResponsibleHintAr { get; init; }
+    public required DateTimeOffset DetectedAtUtc { get; init; }
+}
+
+public sealed record WorkforceReconciliationListDto
+{
+    public required IReadOnlyList<WorkforceReconciliationItemDto> Items { get; init; }
+    public required int TotalCount { get; init; }
+    public required int Page { get; init; }
+    public required int PageSize { get; init; }
+}
+
+public sealed record WorkforceReconciliationResolveRequest
+{
+    public required string ResolutionAction { get; init; }
+    public string? Notes { get; init; }
+}
+
+public sealed record WorkforceCriticalPositionDto
+{
+    public required Guid Id { get; init; }
+    public required Guid RoleDefinitionId { get; init; }
+    public required string RoleCode { get; init; }
+    public required string RoleNameAr { get; init; }
+    public Guid? FacilityUnitId { get; init; }
+    public Guid? ShiftDefinitionId { get; init; }
+    public required int RequiredPrimaryCount { get; init; }
+    public required int RequiredAlternateCount { get; init; }
+    public required int PrimaryFilled { get; init; }
+    public required int AlternateFilled { get; init; }
+    public required int VacantPrimary { get; init; }
+    public required int VacantAlternate { get; init; }
+    public required int ActingCount { get; init; }
+    public required bool SinglePointOfFailure { get; init; }
+    public required WorkforceRoleCriticality Criticality { get; init; }
+    public required string StatusAr { get; init; }
+}
+
 public sealed record WorkforceReconciliationResult(int OpenIssues, bool MarkedReconciled);
+
+public static class WorkforceExportOptions
+{
+    public const int DefaultLimit = 500;
+    public const int MaxLimit = 1000;
+}
+
+public sealed class WorkforceValidationException(string message) : Exception(message);
+

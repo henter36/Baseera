@@ -99,6 +99,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<CriticalPositionRequirement> CriticalPositionRequirements => Set<CriticalPositionRequirement>();
     public DbSet<WorkforceReadinessSnapshot> WorkforceReadinessSnapshots => Set<WorkforceReadinessSnapshot>();
     public DbSet<WorkforceImportBatch> WorkforceImportBatches => Set<WorkforceImportBatch>();
+    public DbSet<WorkforceReconciliationResolution> WorkforceReconciliationResolutions => Set<WorkforceReconciliationResolution>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -193,6 +194,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<CriticalPositionRequirement> Application.Abstractions.IBaseeraDbContext.CriticalPositionRequirements => CriticalPositionRequirements;
     IQueryable<WorkforceReadinessSnapshot> Application.Abstractions.IBaseeraDbContext.WorkforceReadinessSnapshots => WorkforceReadinessSnapshots;
     IQueryable<WorkforceImportBatch> Application.Abstractions.IBaseeraDbContext.WorkforceImportBatches => WorkforceImportBatches;
+    IQueryable<WorkforceReconciliationResolution> Application.Abstractions.IBaseeraDbContext.WorkforceReconciliationResolutions => WorkforceReconciliationResolutions;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();

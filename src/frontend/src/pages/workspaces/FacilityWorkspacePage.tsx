@@ -81,6 +81,11 @@ const PANEL_TYPES = [
   'workforce-shift',
   'workforce-role',
   'workforce-gap',
+  'workforce-unit',
+  'workforce-roster',
+  'workforce-requirement',
+  'workforce-qualification',
+  'workforce-critical-position',
 ] as const
 
 type PanelType = (typeof PANEL_TYPES)[number]
@@ -687,7 +692,7 @@ function PanelDetail({
     return <DomainGapPanel type={panel.type} summary={summary} />
   }
 
-  if (panel.type === 'workforce-member' || panel.type === 'workforce-shift' || panel.type === 'workforce-role' || panel.type === 'workforce-gap') {
+  if (isWorkforcePanelType(panel.type)) {
     return <WorkforcePreviewPanel type={panel.type} summary={summary} entityId={panel.entityId} />
   }
 
@@ -942,6 +947,21 @@ function WorkforcePreviewPanel({
   summary,
   entityId,
 }: Readonly<{ type: PanelType; summary?: PanelSummary; entityId: string }>) {
+  const canViewMembers = usePermission('Workforce.ViewMembers')
+  const canManageMembers = usePermission('Workforce.ManageMembers')
+  const canManageRosters = usePermission('Workforce.ManageRosters')
+  const canManageRequirements = usePermission('Workforce.ManageRequirements')
+  const canManageQualifications = usePermission('Workforce.ManageQualifications')
+  const canReconcile = usePermission('Workforce.Reconcile')
+  const actions = workforcePanelActions(type, {
+    canViewMembers,
+    canManageMembers,
+    canManageRosters,
+    canManageRequirements,
+    canManageQualifications,
+    canReconcile,
+  })
+
   return (
     <div className="context-stack">
       <ContextSection title={panelLabel(type)}>
@@ -955,9 +975,49 @@ function WorkforcePreviewPanel({
           ]}
         />
       </ContextSection>
+      {actions.length > 0 ? (
+        <ContextSection title="إجراءات مسموحة">
+          <ul className="priority-row-list" aria-label="إجراءات لوحة القوى البشرية">
+            {actions.map((action) => (
+              <li key={action}>
+                <article className="priority-row compact" data-tone="info">
+                  <span className="priority-band" />
+                  <span><strong>{action}</strong><small>تُنفَّذ من صفحة الإدارة وفق صلاحيات الخادم</small></span>
+                </article>
+              </li>
+            ))}
+          </ul>
+        </ContextSection>
+      ) : (
+        <div className="context-action-note">لا توجد إجراءات مسموحة لهذا النوع بصلاحياتك الحالية. الخادم هو مصدر الحقيقة.</div>
+      )}
       <div className="context-action-note">تفاصيل القوى البشرية الكاملة متاحة من صفحة الإدارة عند الحاجة إلى أعضاء أو جداول أو متطلبات.</div>
     </div>
   )
+}
+
+function workforcePanelActions(
+  type: PanelType,
+  permissions: Readonly<{
+    canViewMembers: boolean
+    canManageMembers: boolean
+    canManageRosters: boolean
+    canManageRequirements: boolean
+    canManageQualifications: boolean
+    canReconcile: boolean
+  }>,
+): string[] {
+  const actions: string[] = []
+  if (type === 'workforce-member' && permissions.canViewMembers) actions.push('عرض العضو')
+  if (type === 'workforce-member' && permissions.canManageMembers) actions.push('تعديل العضو')
+  if (type === 'workforce-roster' && permissions.canManageRosters) actions.push('إدارة الجدول')
+  if (type === 'workforce-requirement' && permissions.canManageRequirements) actions.push('إدارة المتطلب')
+  if (type === 'workforce-qualification' && permissions.canManageQualifications) actions.push('إدارة المؤهل')
+  if (type === 'workforce-critical-position' && permissions.canReconcile) actions.push('متابعة المصالحة')
+  if (type === 'workforce-gap' || type === 'workforce-unit' || type === 'workforce-shift' || type === 'workforce-role') {
+    if (permissions.canViewMembers) actions.push('فتح مركز القوى البشرية')
+  }
+  return actions
 }
 
 function ActivityPreviewPanel({ summary }: Readonly<{ summary?: PanelSummary }>) {
@@ -1291,7 +1351,7 @@ function WorkforceCoverageSection({ data, openPanel }: Readonly<{ data: CommandD
               key={unit.facilityUnitId ?? unit.unitNameAr}
               type="button"
               data-status={unitRailStatus(unit)}
-              onClick={() => openPanel({ type: 'workforce-gap', entityId: unit.facilityUnitId ?? `unit-${unit.unitNameAr}` })}
+              onClick={() => openPanel({ type: 'workforce-unit', entityId: unit.facilityUnitId ?? `unit-${unit.unitNameAr}` })}
             >
               <span>{unit.unitNameAr}</span>
               <strong>{unit.coverageRate == null ? '-' : `${Math.round(unit.coverageRate * 100)}%`}</strong>
@@ -1728,6 +1788,11 @@ function panelForPriorityItem(item: PriorityItem): PanelState {
   if (item.type === 'resource') return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.reference }
   if (item.type === 'workforce') {
     if (item.reference.startsWith('gap:')) return { type: 'workforce-gap', entityId: item.reference }
+    if (item.reference.startsWith('critical:')) return { type: 'workforce-critical-position', entityId: item.reference }
+    if (item.reference.startsWith('roster:')) return { type: 'workforce-roster', entityId: item.reference }
+    if (item.reference.startsWith('requirement:')) return { type: 'workforce-requirement', entityId: item.reference }
+    if (item.reference.startsWith('qualification:')) return { type: 'workforce-qualification', entityId: item.reference }
+    if (item.reference.startsWith('unit:')) return { type: 'workforce-unit', entityId: item.reference }
     return { type: 'workforce-role', entityId: item.reference }
   }
   return { type: 'activity', entityId: item.reference }
@@ -1820,8 +1885,10 @@ function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefine
       ? `/facilities/${shell.context.facilityId ?? ''}/occupancy`
       : null
   }
-  if (panel.type === 'workforce-member' || panel.type === 'workforce-shift' || panel.type === 'workforce-role' || panel.type === 'workforce-gap') {
-    return `/facilities/${shell.context.facilityId ?? ''}/workforce`
+  if (isWorkforcePanelType(panel.type)) {
+    const section = workforceAdminSectionForPanel(panel.type)
+    const base = `/facilities/${shell.context.facilityId ?? ''}/workforce`
+    return section ? `${base}?section=${section}` : base
   }
   if (summary && 'drillDownTarget' in summary) return routeFromTarget(summary.drillDownTarget)
   return null
@@ -1882,7 +1949,7 @@ function workforceExceptions(
       reasonAr: `عدد المواقع الحرجة المعرضة للخطر: ${summary.criticalPositionsAtRisk}`,
       severityAr: 'حرجة',
       tone: 'danger',
-      panelType: 'workforce-gap',
+      panelType: 'workforce-critical-position',
     })
   }
   for (const warning of summary.warnings.slice(0, 3)) {
@@ -1990,26 +2057,48 @@ function domainTone(domain?: DataQualityDomain): WorkspaceVisualTone {
   return 'muted'
 }
 
+function isWorkforcePanelType(type: PanelType): boolean {
+  return type.startsWith('workforce-')
+}
+
+function workforceAdminSectionForPanel(type: PanelType): string | null {
+  if (type === 'workforce-member') return 'members'
+  if (type === 'workforce-shift' || type === 'workforce-roster') return 'shifts'
+  if (type === 'workforce-role') return 'roles'
+  if (type === 'workforce-unit') return 'units'
+  if (type === 'workforce-requirement') return 'requirements'
+  if (type === 'workforce-qualification') return 'qualifications'
+  if (type === 'workforce-critical-position' || type === 'workforce-gap') return 'coverage'
+  return null
+}
+
 function panelLabel(type: PanelType) {
-  if (type === 'note') return 'ملاحظة تشغيلية'
-  if (type === 'corrective-action') return 'إجراء تصحيحي'
-  if (type === 'escalation') return 'تصعيد'
-  if (type === 'form-assignment') return 'التزام نموذج'
-  if (type === 'facility-unit') return 'وحدة داخلية'
-  if (type === 'incident') return 'وقوعات وحوادث'
-  if (type === 'risk') return 'مخاطر ومعالجات'
-  if (type === 'vehicle') return 'مركبة'
-  if (type === 'weapon') return 'سلاح أو عهدة'
-  if (type === 'communication-device') return 'جهاز اتصال'
-  if (type === 'equipment') return 'مورد أو معدة'
-  if (type === 'workforce-member') return 'عضو قوى بشرية'
-  if (type === 'workforce-shift') return 'وردية تشغيل'
-  if (type === 'workforce-role') return 'دور تشغيلي'
-  if (type === 'workforce-gap') return 'فجوة تغطية'
-  if (type === 'project') return 'مشروع أو مبادرة'
-  if (type === 'emergency-plan') return 'خطة تشغيلية أو طوارئ'
-  if (type === 'decision') return 'قرار أو توجيه'
-  return 'حدث تشغيلي'
+  const labels: Partial<Record<PanelType, string>> = {
+    note: 'ملاحظة تشغيلية',
+    'corrective-action': 'إجراء تصحيحي',
+    escalation: 'تصعيد',
+    'form-assignment': 'التزام نموذج',
+    'facility-unit': 'وحدة داخلية',
+    incident: 'وقوعات وحوادث',
+    risk: 'مخاطر ومعالجات',
+    vehicle: 'مركبة',
+    weapon: 'سلاح أو عهدة',
+    'communication-device': 'جهاز اتصال',
+    equipment: 'مورد أو معدة',
+    'workforce-member': 'عضو قوى بشرية',
+    'workforce-shift': 'وردية تشغيل',
+    'workforce-role': 'دور تشغيلي',
+    'workforce-gap': 'فجوة تغطية',
+    'workforce-unit': 'وحدة قوى بشرية',
+    'workforce-roster': 'جدول واجب',
+    'workforce-requirement': 'متطلب تسكين',
+    'workforce-qualification': 'مؤهل تشغيلي',
+    'workforce-critical-position': 'موقع حرج',
+    project: 'مشروع أو مبادرة',
+    'emergency-plan': 'خطة تشغيلية أو طوارئ',
+    decision: 'قرار أو توجيه',
+  }
+  return labels[type] ?? 'حدث تشغيلي'
 }
 
 function summaryReference(summary?: PanelSummary) {

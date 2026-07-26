@@ -1,44 +1,47 @@
 # Phase D.5.1 Facility Workforce Readiness Completion Report
 
-Status: implemented on branch `phase-d5-1-facility-workforce-readiness`. Pushed to origin; **PR not created in this delivery step** (per operator instruction). Base SHA `1d2d809` (merge of PR #132).
+**Decision: Not Ready** for merge / `Closes #133`.
 
-Issue links:
+Authoritative compliance tracking: [`docs/phase-d5-1-workforce-compliance-ledger.md`](phase-d5-1-workforce-compliance-ledger.md).
 
-- Partially implements #15 (Integrated Resource Center — workforce slice; **weapons remain open**).
-- Continues #11 (Facility Workspace).
-- Closes #133 (this slice) when PR merges with that keyword.
+## Links
 
-## Delivered
+| Item | Value |
+|------|--------|
+| PR | [#134](https://github.com/henter36/Baseera/pull/134) |
+| Issue | [#133](https://github.com/henter36/Baseera/issues/133) |
+| Continues | #15 (keep open), #11 (keep open) |
+| Branch | `phase-d5-1-facility-workforce-readiness` |
+| Base | `1d2d809` (merge of PR #132) |
 
-- Domain model + migration `20260725180933_PhaseD51FacilityWorkforceReadiness`.
-- Policies: readiness, fatigue indicators, assignment conflicts, access/import invariants, presence source resolver.
-- Facility-scoped APIs under `/api/v1/facilities/{facilityId}/workforce/...`.
-- Facility Workspace section/widget `القوى البشرية والتغطية` (`facility.workforce`).
+## What shipped (code)
+
+- Domain + EF: workforce entities, `WorkforceReconciliationResolution`, `ImportKind` on import batches.
+- Migrations: `20260725180933_PhaseD51FacilityWorkforceReadiness`, `20260725203357_PhaseD51WorkforceReconciliationExport`.
+- Policies: readiness, counting (no double-count), fatigue, source resolver, shift midnight windows.
+- APIs under `/api/v1/facilities/{facilityId}/workforce/...` including PUT members, export, reconciliation, critical positions.
+- Facility Workspace section/widget, interventions (partial catalog), timeline, data quality (partial catalog).
 - Admin page `/facilities/:facilityId/workforce`.
-- Permissions `Workforce.*`, audit actions, demo seed for Facility A1, unit + integration + frontend tests, docs under `docs/phase-d5-1-workforce-*.md`.
-- Workspace query budget raised to 100 with payload path optimized (no snapshot write / no duplicate coverage queries).
+- Screenshots: **20 PNG** files under `docs/screenshots/phase-d5-1/`.
 
-## Explicitly not implemented
+## Explicitly out of scope
 
 - Weapons / ammunition.
 - Region Workspace / Headquarters Workspace aggregation.
-- Payroll, allowances, promotions, full performance reviews.
-- Disciplinary records, detailed medical files, raw biometric attendance.
-- Recruitment / retirement / full institutional training LMS.
-- AI prediction or automated shift optimization.
-- HTTP export/reconcile/member-update endpoints (permissions/services exist partially; UI export not shipped).
+- Payroll / full HR / medical diagnosis / biometric attendance.
+- AI shift optimization.
 
-## Verification (local)
+## Incomplete (blocks Ready)
 
-| Gate | Result |
-|------|--------|
-| Unit | 773 passed, 0 skipped |
-| Integration | 178 passed, 0 skipped |
-| Frontend typecheck/lint/test | 266 passed (55 files) |
-| Frontend build (CI-like Entra env) | succeeded |
-| NuGet vulnerability gate | No High/Critical |
-| `git diff --check` | clean |
+See ledger `Missing` rows, including:
 
-Screenshots: folder `docs/screenshots/phase-d5-1/` prepared; PNG captures documented in folder README.
+- Full Context Panel type set.
+- Full Intervention Queue catalog + Action Center executable workforce actions.
+- Full Data Quality issue catalog from the brief.
+- Full Unit / Integration (33) / Frontend test matrices with re-verified green gates.
+- SonarCloud green on PR #134 (last known FAILURE).
+- npm/NuGet/Gitleaks/typecheck/lint/build re-verification after latest commits.
 
-Issue #15 remains open for weapons and remaining resource-center slices. Issue #11 remains open for other decision-center domains.
+## Gate rule
+
+Do **not** add `Closes #133` until ledger shows `Missing = 0`, `Blocked = 0`, AC 1–50 all `Verified` (or explicit NA), and CI/review gates are green.

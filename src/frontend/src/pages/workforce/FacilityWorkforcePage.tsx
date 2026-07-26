@@ -5,16 +5,22 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import {
   ApiError,
   api,
+  AvailabilityType,
   EmploymentStatus,
   WorkforceCoverageStatus,
+  WorkforceImportKind,
   WorkforceSourceType,
   type DutyRosterPayload,
   type StaffingRequirementPayload,
   type WorkforceCoverageRowPayload,
+  type WorkforceCriticalPosition,
   type WorkforceDataQualityPayload,
   type WorkforceImportPreviewRequest,
   type WorkforceImportResult,
   type WorkforceMemberListItem,
+  type WorkforceMemberUpdateRequest,
+  type WorkforceQualificationPayload,
+  type WorkforceReconciliationItem,
   type WorkforceRoleDefinitionPayload,
   type WorkforceSummaryPayload,
   type WorkforceUnitCoveragePayload,
@@ -29,9 +35,12 @@ type WorkforceSection =
   | 'units'
   | 'roles'
   | 'members'
+  | 'qualifications'
   | 'requirements'
+  | 'availability'
   | 'imports'
   | 'data-quality'
+  | 'reconciliation'
 
 const SECTION_NAV: ReadonlyArray<Readonly<{ key: WorkforceSection; label: string }>> = [
   { key: 'overview', label: 'المشهد العام' },
@@ -40,13 +49,30 @@ const SECTION_NAV: ReadonlyArray<Readonly<{ key: WorkforceSection; label: string
   { key: 'units', label: 'الوحدات' },
   { key: 'roles', label: 'الأدوار' },
   { key: 'members', label: 'الأعضاء' },
+  { key: 'qualifications', label: 'المؤهلات' },
   { key: 'requirements', label: 'المتطلبات' },
+  { key: 'availability', label: 'التوفر' },
   { key: 'imports', label: 'الاستيراد' },
   { key: 'data-quality', label: 'جودة البيانات' },
+  { key: 'reconciliation', label: 'المصالحة' },
+]
+
+const IMPORT_KIND_OPTIONS: ReadonlyArray<Readonly<{ value: WorkforceImportKind; label: string }>> = [
+  { value: WorkforceImportKind.PersonnelMaster, label: 'سجل الأفراد' },
+  { value: WorkforceImportKind.Assignments, label: 'التكليفات' },
+  { value: WorkforceImportKind.Qualifications, label: 'المؤهلات' },
+  { value: WorkforceImportKind.Rosters, label: 'جداول الواجب' },
+  { value: WorkforceImportKind.Availability, label: 'التوفر' },
+  { value: WorkforceImportKind.AttendanceSummary, label: 'ملخص الحضور' },
 ]
 
 function errorMessage(error: unknown) {
-  return error instanceof ApiError ? error.message : 'تعذر تنفيذ العملية. تحقق من البيانات وحاول مرة أخرى.'
+  if (!(error instanceof ApiError)) return 'تعذر تنفيذ العملية. تحقق من البيانات وحاول مرة أخرى.'
+  if (error.status === 403) return 'ليست لديك صلاحية تنفيذ هذه العملية.'
+  if (error.status === 404) return 'السجل غير موجود ضمن نطاق السجن.'
+  if (error.status === 409) return 'تعارض في البيانات. حدّث الصفحة ثم أعد المحاولة.'
+  if (error.status === 422) return error.message || 'البيانات غير صالحة.'
+  return error.message
 }
 
 function sectionFromSearch(searchParams: URLSearchParams): WorkforceSection {
@@ -61,17 +87,23 @@ export function FacilityWorkforcePage() {
   const canView = usePermission('Workforce.ViewSummary')
   const canViewCoverage = usePermission('Workforce.ViewCoverage')
   const canViewMembers = usePermission('Workforce.ViewMembers')
+  const canManageMembers = usePermission('Workforce.ManageMembers')
+  const canRecordAvailability = usePermission('Workforce.RecordAvailability')
   const canImport = usePermission('Workforce.Import')
+  const canReconcile = usePermission('Workforce.Reconcile')
+  const canExport = usePermission('Workforce.Export')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [exportNote, setExportNote] = useState('')
   const [importRequest, setImportRequest] = useState<WorkforceImportPreviewRequest | null>(null)
   const [importPreview, setImportPreview] = useState<WorkforceImportResult | null>(null)
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
   const activeSection = sectionFromSearch(searchParams)
 
   const query = useQuery({
-    queryKey: ['workforce-admin', facilityId, canViewCoverage, canViewMembers],
+    queryKey: ['workforce-admin', facilityId, canViewCoverage, canViewMembers, canReconcile],
     queryFn: async () => {
-      const [summary, coverage, units, roles, members, requirements, rosters, dataQuality] = await Promise.all([
+      const [summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation] = await Promise.all([
         api.workforce.summary(facilityId!),
         canViewCoverage ? api.workforce.coverage(facilityId!) : Promise.resolve([] as WorkforceCoverageRowPayload[]),
         canViewCoverage ? api.workforce.units(facilityId!) : Promise.resolve([] as WorkforceUnitCoveragePayload[]),
@@ -80,10 +112,26 @@ export function FacilityWorkforcePage() {
         canViewCoverage ? api.workforce.requirements(facilityId!) : Promise.resolve([] as StaffingRequirementPayload[]),
         canViewCoverage ? api.workforce.rosters(facilityId!) : Promise.resolve([] as DutyRosterPayload[]),
         api.workforce.dataQuality(facilityId!),
+        canViewCoverage ? api.workforce.criticalPositions(facilityId!) : Promise.resolve([] as WorkforceCriticalPosition[]),
+        canReconcile ? api.workforce.reconciliation(facilityId!, { page: 1, pageSize: 50 }) : Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 50 }),
       ])
-      return { summary, coverage, units, roles, members, requirements, rosters, dataQuality }
+      return { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation }
     },
     enabled: canView && Boolean(facilityId),
+  })
+
+  const qualificationsQuery = useQuery({
+    queryKey: ['workforce-qualifications', facilityId, query.data?.members.map((m) => m.id).join(',')],
+    queryFn: async () => {
+      const members = query.data?.members ?? []
+      const details = await Promise.all(members.slice(0, 30).map((member) => api.workforce.member(facilityId!, member.id)))
+      return details.flatMap((detail) => detail.qualifications.map((qualification) => ({
+        ...qualification,
+        memberId: detail.member.id,
+        memberDisplayName: detail.member.displayName,
+      })))
+    },
+    enabled: canViewMembers && activeSection === 'qualifications' && Boolean(facilityId) && Boolean(query.data),
   })
 
   const importPreviewMutation = useMutation({
@@ -118,13 +166,77 @@ export function FacilityWorkforcePage() {
     onError: (err) => setError(errorMessage(err)),
   })
 
+  const updateMemberMutation = useMutation({
+    mutationFn: ({ memberId, body }: { memberId: string; body: WorkforceMemberUpdateRequest }) =>
+      api.workforce.updateMember(facilityId!, memberId, body),
+    onMutate: () => {
+      setMessage('')
+      setError('')
+    },
+    onSuccess: () => {
+      setEditingMemberId(null)
+      setMessage('تم تحديث سجل العضو.')
+      queryClient.invalidateQueries({ queryKey: ['workforce-admin', facilityId] })
+      queryClient.invalidateQueries({ queryKey: ['workforce-qualifications', facilityId] })
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+
+  const availabilityMutation = useMutation({
+    mutationFn: (body: Parameters<typeof api.workforce.createAvailability>[1]) =>
+      api.workforce.createAvailability(facilityId!, body),
+    onMutate: () => {
+      setMessage('')
+      setError('')
+    },
+    onSuccess: () => {
+      setMessage('تم تسجيل حدث التوفر.')
+      queryClient.invalidateQueries({ queryKey: ['workforce-admin', facilityId] })
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ itemId, resolutionAction }: { itemId: string; resolutionAction: string }) =>
+      api.workforce.resolveReconciliation(facilityId!, itemId, { resolutionAction }),
+    onMutate: () => {
+      setMessage('')
+      setError('')
+    },
+    onSuccess: () => {
+      setMessage('تم تسجيل قرار المصالحة.')
+      queryClient.invalidateQueries({ queryKey: ['workforce-admin', facilityId] })
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+
+  const exportMutation = useMutation({
+    mutationFn: () => api.workforce.export(facilityId!, { pageSize: 500 }),
+    onMutate: () => {
+      setMessage('')
+      setError('')
+      setExportNote('')
+    },
+    onSuccess: ({ blob, fileName }) => {
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName || 'workforce-export.csv'
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setExportNote('تم التصدير بحقول محدودة مع إخفاء البيانات الشخصية الحساسة. لا يتضمن الملف قيودًا طبية أو حضورًا خامًا.')
+      setMessage('اكتمل التصدير.')
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+
   if (!facilityId) return <WorkspaceEmpty message="معرّف السجن مطلوب." />
   if (!canView) return <WorkspaceUnauthorized />
   if (query.isLoading) return <WorkspaceLoading />
-  if (query.isError) return <WorkspaceError message="تعذر تحميل مركز القوى البشرية." onRetry={() => query.refetch()} />
+  if (query.isError) return <WorkspaceError message={errorMessage(query.error) || 'تعذر تحميل مركز القوى البشرية.'} onRetry={() => query.refetch()} />
   if (!query.data) return <WorkspaceEmpty message="لا توجد بيانات قوى بشرية." />
 
-  const { summary, coverage, units, roles, members, requirements, rosters, dataQuality } = query.data
+  const { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation } = query.data
   const setActiveSection = (section: WorkforceSection) => {
     const params = new URLSearchParams(searchParams)
     if (section === 'overview') params.delete('section')
@@ -140,11 +252,24 @@ export function FacilityWorkforcePage() {
           <h1>القوى البشرية والتغطية التشغيلية</h1>
           <p>قراءة التغطية والورديات والأعضاء والمتطلبات دون خلطها مع موارد المعدات.</p>
         </div>
-        <Link className="command-button ghost" to={`/workspaces/facilities/${facilityId}?section=workforce`}>العودة لمساحة السجن</Link>
+        <div className="command-header-actions">
+          {canExport && (
+            <button
+              type="button"
+              className="command-button ghost"
+              disabled={exportMutation.isPending}
+              onClick={() => exportMutation.mutate()}
+            >
+              {exportMutation.isPending ? 'جار التصدير...' : 'تصدير محدود'}
+            </button>
+          )}
+          <Link className="command-button ghost" to={`/workspaces/facilities/${facilityId}?section=workforce`}>العودة لمساحة السجن</Link>
+        </div>
       </header>
 
       {message && <output className="context-action-note" aria-live="polite">{message}</output>}
       {error && <p className="context-action-note" role="alert">{error}</p>}
+      {exportNote && <p className="context-action-note" data-testid="export-redaction-note">{exportNote}</p>}
 
       <nav className="command-section-nav" aria-label="تنقل مركز القوى البشرية">
         {SECTION_NAV.map(({ key, label }) => (
@@ -155,7 +280,7 @@ export function FacilityWorkforcePage() {
       </nav>
 
       {(activeSection === 'overview' || activeSection === 'coverage') && (
-        <OverviewSection summary={summary} coverage={coverage} />
+        <OverviewSection summary={summary} coverage={coverage} criticalPositions={criticalPositions} />
       )}
 
       {activeSection === 'shifts' && <ShiftsSection coverage={coverage} rosters={rosters} />}
@@ -163,10 +288,36 @@ export function FacilityWorkforcePage() {
       {activeSection === 'roles' && <RolesSection roles={roles} coverage={coverage} />}
       {activeSection === 'members' && (
         canViewMembers
-          ? <MembersSection members={members} />
+          ? (
+            <MembersSection
+              members={members}
+              canManage={canManageMembers}
+              editingMemberId={editingMemberId}
+              pending={updateMemberMutation.isPending}
+              onEdit={setEditingMemberId}
+              onCancelEdit={() => setEditingMemberId(null)}
+              onSave={(memberId, body) => updateMemberMutation.mutate({ memberId, body })}
+            />
+          )
+          : <WorkspaceUnauthorized />
+      )}
+      {activeSection === 'qualifications' && (
+        canViewMembers
+          ? <QualificationsSection items={qualificationsQuery.data ?? []} loading={qualificationsQuery.isLoading} />
           : <WorkspaceUnauthorized />
       )}
       {activeSection === 'requirements' && <RequirementsSection requirements={requirements} />}
+      {activeSection === 'availability' && (
+        canRecordAvailability
+          ? (
+            <AvailabilityForm
+              members={members}
+              pending={availabilityMutation.isPending}
+              onSubmit={(body) => availabilityMutation.mutate(body)}
+            />
+          )
+          : <WorkspaceUnauthorized />
+      )}
       {activeSection === 'imports' && (
         canImport
           ? (
@@ -183,6 +334,18 @@ export function FacilityWorkforcePage() {
           : <WorkspaceUnauthorized />
       )}
       {activeSection === 'data-quality' && <DataQualitySection dataQuality={dataQuality} />}
+      {activeSection === 'reconciliation' && (
+        canReconcile
+          ? (
+            <ReconciliationSection
+              items={reconciliation.items}
+              totalCount={reconciliation.totalCount}
+              pending={resolveMutation.isPending}
+              onResolve={(itemId) => resolveMutation.mutate({ itemId, resolutionAction: 'acknowledge' })}
+            />
+          )
+          : <WorkspaceUnauthorized />
+      )}
     </main>
   )
 }
@@ -190,7 +353,12 @@ export function FacilityWorkforcePage() {
 function OverviewSection({
   summary,
   coverage,
-}: Readonly<{ summary: WorkforceSummaryPayload; coverage: WorkforceCoverageRowPayload[] }>) {
+  criticalPositions,
+}: Readonly<{
+  summary: WorkforceSummaryPayload
+  coverage: WorkforceCoverageRowPayload[]
+  criticalPositions: WorkforceCriticalPosition[]
+}>) {
   const roleGaps = coverage.filter((row) => row.gap > 0)
   return (
     <section className="command-section-stack">
@@ -218,6 +386,23 @@ function OverviewSection({
         <span>إجازة {summary.onLeave}</span>
         <span>مواقع حرجة {summary.criticalPositionsAtRisk}</span>
       </div>
+
+      {criticalPositions.length > 0 && (
+        <ul className="priority-row-list" aria-label="المواقع الحرجة">
+          {criticalPositions.map((item) => (
+            <li key={item.id}>
+              <article className="priority-row compact" data-tone={item.singlePointOfFailure || item.vacantPrimary > 0 ? 'warn' : 'ok'}>
+                <span className="priority-band" />
+                <span>
+                  <strong>{item.roleNameAr}</strong>
+                  <small>{item.statusAr} · أساسي شاغر {item.vacantPrimary} · بديل شاغر {item.vacantAlternate}</small>
+                </span>
+                <b>{item.singlePointOfFailure ? 'نقطة فشل' : 'مغطى'}</b>
+              </article>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {roleGaps.length > 0 && (
         <ul className="priority-row-list" aria-label="فجوات التغطية">
@@ -321,23 +506,135 @@ function RolesSection({
   )
 }
 
-function MembersSection({ members }: Readonly<{ members: WorkforceMemberListItem[] }>) {
+function MembersSection({
+  members,
+  canManage,
+  editingMemberId,
+  pending,
+  onEdit,
+  onCancelEdit,
+  onSave,
+}: Readonly<{
+  members: WorkforceMemberListItem[]
+  canManage: boolean
+  editingMemberId: string | null
+  pending: boolean
+  onEdit: (id: string) => void
+  onCancelEdit: () => void
+  onSave: (memberId: string, body: WorkforceMemberUpdateRequest) => void
+}>) {
   if (members.length === 0) return <WorkspaceEmpty message="لا يوجد أعضاء مسجلون." />
   return (
     <ul className="unit-load-list workforce-members" aria-label="سجلات الأعضاء">
       {members.map((member) => (
         <li key={member.id}>
-          <article data-status={member.isOperational ? 'complete' : 'partial'}>
+          {editingMemberId === member.id ? (
+            <MemberEditForm
+              member={member}
+              pending={pending}
+              onCancel={onCancelEdit}
+              onSave={(body) => onSave(member.id, body)}
+            />
+          ) : (
+            <article data-status={member.isOperational ? 'complete' : 'partial'}>
+              <span className="unit-load-title">
+                <strong>{member.displayName}</strong>
+                <small>{member.employeeNumber} · {member.jobTitle}</small>
+              </span>
+              <span>{employmentLabel(member.employmentStatus)}</span>
+              <span className="unit-load-values">
+                <b>{member.currentOperationalUnitNameAr ?? '-'}</b>
+                <small>الوحدة</small>
+                <b>{member.isOperational ? 'نعم' : 'لا'}</b>
+                <small>تشغيلي</small>
+              </span>
+              {canManage && (
+                <button type="button" className="command-button ghost" onClick={() => onEdit(member.id)}>تعديل</button>
+              )}
+            </article>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function MemberEditForm({
+  member,
+  pending,
+  onCancel,
+  onSave,
+}: Readonly<{
+  member: WorkforceMemberListItem
+  pending: boolean
+  onCancel: () => void
+  onSave: (body: WorkforceMemberUpdateRequest) => void
+}>) {
+  return (
+    <form
+      className="inline-action-form"
+      aria-label={`تعديل عضو ${member.displayName}`}
+      onSubmit={(event) => submitForm(event, (data) => onSave({
+        displayName: getFormString(data, 'displayName').trim(),
+        employmentStatus: Number(getFormString(data, 'employmentStatus')) as EmploymentStatus,
+        jobTitle: getFormString(data, 'jobTitle').trim(),
+        primarySpecialty: getFormString(data, 'primarySpecialty').trim(),
+        currentOperationalUnitId: getOptionalFormString(data, 'currentOperationalUnitId') ?? null,
+        isOperational: data.get('isOperational') === 'on',
+        isSensitiveRole: data.get('isSensitiveRole') === 'on',
+        rowVersion: member.rowVersion ?? null,
+      }))}
+    >
+      <h2>تعديل {member.displayName}</h2>
+      <label>الاسم المعروض<input name="displayName" required defaultValue={member.displayName} /></label>
+      <label>المسمى<input name="jobTitle" required defaultValue={member.jobTitle} /></label>
+      <label>التخصص<input name="primarySpecialty" required defaultValue={member.primarySpecialty} /></label>
+      <label>
+        الحالة
+        <select name="employmentStatus" defaultValue={String(member.employmentStatus)}>
+          <option value={EmploymentStatus.Active}>نشط</option>
+          <option value={EmploymentStatus.SecondedIn}>إعارة واردة</option>
+          <option value={EmploymentStatus.SecondedOut}>إعارة صادرة</option>
+          <option value={EmploymentStatus.Suspended}>موقوف</option>
+          <option value={EmploymentStatus.LongLeave}>إجازة طويلة</option>
+          <option value={EmploymentStatus.Retired}>متقاعد</option>
+          <option value={EmploymentStatus.Terminated}>منتهٍ</option>
+          <option value={EmploymentStatus.Unknown}>غير معروف</option>
+        </select>
+      </label>
+      <label>معرّف الوحدة<input name="currentOperationalUnitId" defaultValue={member.currentOperationalUnitId ?? ''} /></label>
+      <label><input type="checkbox" name="isOperational" defaultChecked={member.isOperational} /> تشغيلي</label>
+      <label><input type="checkbox" name="isSensitiveRole" /> دور حساس</label>
+      <div className="inline-action-row">
+        <button type="submit" className="command-button primary" disabled={pending}>{pending ? 'جار الحفظ...' : 'حفظ'}</button>
+        <button type="button" className="command-button ghost" onClick={onCancel}>إلغاء</button>
+      </div>
+    </form>
+  )
+}
+
+function QualificationsSection({
+  items,
+  loading,
+}: Readonly<{
+  items: Array<WorkforceQualificationPayload & { memberId: string; memberDisplayName: string }>
+  loading: boolean
+}>) {
+  if (loading) return <WorkspaceLoading />
+  if (items.length === 0) return <WorkspaceEmpty message="لا توجد مؤهلات مسجلة للأعضاء المعروضين." />
+  return (
+    <ul className="unit-load-list" aria-label="قائمة المؤهلات">
+      {items.map((item) => (
+        <li key={item.id}>
+          <article data-status={item.expiresAtUtc ? 'partial' : 'complete'}>
             <span className="unit-load-title">
-              <strong>{member.displayName}</strong>
-              <small>{member.employeeNumber} · {member.jobTitle}</small>
+              <strong>{item.name}</strong>
+              <small>{item.memberDisplayName}</small>
             </span>
-            <span>{employmentLabel(member.employmentStatus)}</span>
+            <span>حالة {item.status}</span>
             <span className="unit-load-values">
-              <b>{member.currentOperationalUnitNameAr ?? '-'}</b>
-              <small>الوحدة</small>
-              <b>{member.isOperational ? 'نعم' : 'لا'}</b>
-              <small>تشغيلي</small>
+              <b>{item.expiresAtUtc ? item.expiresAtUtc.slice(0, 10) : '-'}</b>
+              <small>انتهاء</small>
             </span>
           </article>
         </li>
@@ -363,6 +660,62 @@ function RequirementsSection({ requirements }: Readonly<{ requirements: Staffing
         </li>
       ))}
     </ul>
+  )
+}
+
+function AvailabilityForm({
+  members,
+  pending,
+  onSubmit,
+}: Readonly<{
+  members: WorkforceMemberListItem[]
+  pending: boolean
+  onSubmit: (body: Parameters<typeof api.workforce.createAvailability>[1]) => void
+}>) {
+  if (members.length === 0) return <WorkspaceEmpty message="لا يوجد أعضاء لتسجيل التوفر." />
+  return (
+    <form
+      className="inline-action-form"
+      aria-label="تسجيل توفر عضو"
+      onSubmit={(event) => submitForm(event, (data) => onSubmit({
+        workforceMemberId: getFormString(data, 'workforceMemberId'),
+        availabilityType: Number(getFormString(data, 'availabilityType')) as typeof AvailabilityType[keyof typeof AvailabilityType],
+        startsAtUtc: new Date(getFormString(data, 'startsAtUtc')).toISOString(),
+        endsAtUtc: getOptionalFormString(data, 'endsAtUtc')
+          ? new Date(getFormString(data, 'endsAtUtc')).toISOString()
+          : undefined,
+        affectsOperationalAvailability: data.get('affectsOperationalAvailability') === 'on',
+        sourceType: WorkforceSourceType.Manual,
+        reasonCode: getOptionalFormString(data, 'reasonCode'),
+      }))}
+    >
+      <h2>تسجيل توفر / غياب</h2>
+      <label>
+        العضو
+        <select name="workforceMemberId" required defaultValue={members[0]?.id}>
+          {members.map((member) => (
+            <option key={member.id} value={member.id}>{member.displayName}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        نوع التوفر
+        <select name="availabilityType" defaultValue={AvailabilityType.AnnualLeave}>
+          <option value={AvailabilityType.Available}>متاح</option>
+          <option value={AvailabilityType.AnnualLeave}>إجازة سنوية</option>
+          <option value={AvailabilityType.SickLeave}>إجازة مرضية</option>
+          <option value={AvailabilityType.Training}>دورة</option>
+          <option value={AvailabilityType.ExternalAssignment}>انتداب خارجي</option>
+          <option value={AvailabilityType.RestrictedDuty}>مقيد</option>
+          <option value={AvailabilityType.UnexcusedAbsence}>غياب غير مبرر</option>
+        </select>
+      </label>
+      <label>يبدأ في<input name="startsAtUtc" type="datetime-local" required /></label>
+      <label>ينتهي في<input name="endsAtUtc" type="datetime-local" /></label>
+      <label>رمز السبب<input name="reasonCode" /></label>
+      <label><input type="checkbox" name="affectsOperationalAvailability" defaultChecked /> يؤثر على التوفر التشغيلي</label>
+      <button type="submit" className="command-button primary" disabled={pending}>{pending ? 'جار الحفظ...' : 'تسجيل'}</button>
+    </form>
   )
 }
 
@@ -393,6 +746,45 @@ function DataQualitySection({ dataQuality }: Readonly<{ dataQuality: WorkforceDa
   )
 }
 
+function ReconciliationSection({
+  items,
+  totalCount,
+  pending,
+  onResolve,
+}: Readonly<{
+  items: WorkforceReconciliationItem[]
+  totalCount: number
+  pending: boolean
+  onResolve: (itemId: string) => void
+}>) {
+  if (items.length === 0) return <WorkspaceEmpty message="لا توجد بنود مصالحة مفتوحة." />
+  return (
+    <section className="command-section-stack">
+      <p className="context-action-note">بنود مفتوحة: {totalCount}</p>
+      <ul className="unit-load-list" aria-label="بنود المصالحة">
+        {items.map((item) => (
+          <li key={item.id}>
+            <article data-status={item.severity === 'high' || item.severity === 'critical' ? 'partial' : 'attention'}>
+              <span className="unit-load-title">
+                <strong>{item.titleAr}</strong>
+                <small>{item.issueType} · {item.severity}</small>
+              </span>
+              <span>{item.detailAr}</span>
+              <span className="unit-load-values">
+                <b>{item.suggestedActionAr}</b>
+                <small>{item.responsibleHintAr}</small>
+              </span>
+              <button type="button" className="command-button ghost" disabled={pending} onClick={() => onResolve(item.id)}>
+                معالجة
+              </button>
+            </article>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function WorkforceImportForm({
   pending,
   preview,
@@ -412,6 +804,7 @@ function WorkforceImportForm({
         className="inline-action-form"
         aria-label="معاينة استيراد القوى البشرية"
         onSubmit={(event) => submitForm(event, (data) => onPreview({
+          importKind: Number(getFormString(data, 'importKind')) as WorkforceImportKind,
           sourceSystem: getFormString(data, 'sourceSystem').trim(),
           sourceReference: getFormString(data, 'sourceReference').trim(),
           fileHash: getFormString(data, 'fileHash').trim(),
@@ -428,11 +821,19 @@ function WorkforceImportForm({
         }))}
       >
         <h2>معاينة استيراد القوى البشرية</h2>
+        <label>
+          نوع الاستيراد
+          <select name="importKind" defaultValue={WorkforceImportKind.PersonnelMaster} aria-label="نوع الاستيراد">
+            {IMPORT_KIND_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
         <label>النظام المصدر<input name="sourceSystem" required defaultValue="manual-csv" /></label>
         <label>مرجع الاستيراد<input name="sourceReference" required defaultValue="D5-1-demo-import" /></label>
         <label>بصمة الملف<input name="fileHash" required defaultValue="phase-d5-1-demo-hash" /></label>
         <label>رقم الموظف<input name="employeeNumber" required defaultValue={`EMP-${Date.now().toString().slice(-6)}`} /></label>
-        <label>الاسم المعروض<input name="displayName" required defaultValue="عضو مستورد للمعاينة" /></label>
+        <label>الاسم المعروض<input name="displayName" required defaultValue="ناصر الدوسري" /></label>
         <label>المعرّف الخارجي<input name="externalPersonnelId" /></label>
         <label>المسمى الوظيفي<input name="jobTitle" required defaultValue="ضابط أمن" /></label>
         <label>التخصص الأساسي<input name="primarySpecialty" required defaultValue="أمن" /></label>

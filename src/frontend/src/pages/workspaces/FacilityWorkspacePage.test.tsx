@@ -352,6 +352,58 @@ describe('FacilityWorkspacePage', () => {
     })
     expect(row).toHaveFocus()
   })
+
+  it('opens workforce unit and critical-position panels with deep links and permission-gated actions', async () => {
+    currentPermissions.add('Workforce.ViewMembers')
+    currentPermissions.add('Workforce.Reconcile')
+    renderPage('/workspaces/facilities/facility-a?section=workforce')
+
+    const unitRail = await screen.findByLabelText('حرارة تغطية الوحدات')
+    fireEvent.click(within(unitRail).getByRole('button', { name: /عنبر أ/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('heading', { level: 2 })).toHaveTextContent('وحدة قوى بشرية')
+    expect(screen.getByTestId('router-location')).toHaveTextContent('panel=workforce-unit')
+    expect(within(dialog).getByRole('link', { name: 'فتح الصفحة الكاملة' })).toHaveAttribute(
+      'href',
+      '/facilities/facility-a/workforce?section=units',
+    )
+    expect(within(dialog).getByText('فتح مركز القوى البشرية')).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByLabelText('إغلاق لوحة التفاصيل'))
+    const exceptions = await screen.findByLabelText('استثناءات القوى البشرية')
+    fireEvent.click(within(exceptions).getByRole('button', { name: /مواقع حرجة غير مغطاة/ }))
+    const criticalDialog = await screen.findByRole('dialog')
+    expect(within(criticalDialog).getByRole('heading', { level: 2 })).toHaveTextContent('موقع حرج')
+    expect(screen.getByTestId('router-location')).toHaveTextContent('panel=workforce-critical-position')
+    expect(within(criticalDialog).getByText('متابعة المصالحة')).toBeInTheDocument()
+  })
+
+  it('hides workforce panel actions without member permissions', async () => {
+    renderPage('/workspaces/facilities/facility-a?panel=workforce-member&entityId=member-demo')
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('heading', { level: 2 })).toHaveTextContent('عضو قوى بشرية')
+    expect(within(dialog).getByText(/لا توجد إجراءات مسموحة/)).toBeInTheDocument()
+    expect(within(dialog).queryByText('عرض العضو')).not.toBeInTheDocument()
+  })
+
+  it('supports workforce shift deep link and back/forward searchParams', async () => {
+    renderPage('/workspaces/facilities/facility-a?section=workforce&panel=workforce-shift&entityId=shift-day')
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('heading', { level: 2 })).toHaveTextContent('وردية تشغيل')
+    expect(screen.getByTestId('router-location')).toHaveTextContent('panel=workforce-shift')
+    expect(within(dialog).getByRole('link', { name: 'فتح الصفحة الكاملة' })).toHaveAttribute(
+      'href',
+      '/facilities/facility-a/workforce?section=shifts',
+    )
+
+    fireEvent.click(within(dialog).getByLabelText('إغلاق لوحة التفاصيل'))
+    await waitFor(() => {
+      expect(screen.getByTestId('router-location')).not.toHaveTextContent('panel=workforce-shift')
+      expect(screen.getByTestId('router-location')).toHaveTextContent('section=workforce')
+    })
+  })
 })
 
 function renderPage(initialEntry: string) {

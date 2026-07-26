@@ -109,6 +109,9 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IWorkforceAvailabilityService>(sp => sp.GetRequiredService<WorkforceReadinessService>());
         services.AddScoped<IWorkforceImportService>(sp => sp.GetRequiredService<WorkforceReadinessService>());
         services.AddScoped<IWorkforceReconciliationService>(sp => sp.GetRequiredService<WorkforceReadinessService>());
+        services.AddScoped<IWorkforceMemberQueryService>(sp => sp.GetRequiredService<WorkforceReadinessService>());
+        services.AddScoped<IWorkforceExportService>(sp => sp.GetRequiredService<WorkforceReadinessService>());
+        services.AddScoped<IWorkforceCriticalPositionQueryService>(sp => sp.GetRequiredService<WorkforceReadinessService>());
         services.AddScoped<FacilityWorkspaceFacilityDomainQueries>();
         services.AddScoped<IFacilityWorkspaceReadService, FacilityWorkspaceReadService>();
         services.AddScoped<IWorkspaceDefinitionProvider, FacilityWorkspaceDefinitionProvider>();
