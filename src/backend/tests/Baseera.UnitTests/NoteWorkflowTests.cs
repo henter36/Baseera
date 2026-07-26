@@ -117,6 +117,19 @@ public sealed class NoteScopeShapeTests
         public IQueryable<Domain.Resources.MaintenanceWorkOrder> MaintenanceWorkOrders => Enumerable.Empty<Domain.Resources.MaintenanceWorkOrder>().AsQueryable();
         public IQueryable<Domain.Resources.ResourceRequirement> ResourceRequirements => Enumerable.Empty<Domain.Resources.ResourceRequirement>().AsQueryable();
         public IQueryable<Domain.Resources.ResourceImportBatch> ResourceImportBatches => Enumerable.Empty<Domain.Resources.ResourceImportBatch>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceMember> WorkforceMembers => Enumerable.Empty<Domain.Workforce.WorkforceMember>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceRoleDefinition> WorkforceRoleDefinitions => Enumerable.Empty<Domain.Workforce.WorkforceRoleDefinition>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceQualification> WorkforceQualifications => Enumerable.Empty<Domain.Workforce.WorkforceQualification>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceAssignment> WorkforceAssignments => Enumerable.Empty<Domain.Workforce.WorkforceAssignment>().AsQueryable();
+        public IQueryable<Domain.Workforce.StaffingRequirement> StaffingRequirements => Enumerable.Empty<Domain.Workforce.StaffingRequirement>().AsQueryable();
+        public IQueryable<Domain.Workforce.ShiftDefinition> ShiftDefinitions => Enumerable.Empty<Domain.Workforce.ShiftDefinition>().AsQueryable();
+        public IQueryable<Domain.Workforce.DutyRoster> DutyRosters => Enumerable.Empty<Domain.Workforce.DutyRoster>().AsQueryable();
+        public IQueryable<Domain.Workforce.DutyRosterAssignment> DutyRosterAssignments => Enumerable.Empty<Domain.Workforce.DutyRosterAssignment>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceAvailabilityEvent> WorkforceAvailabilityEvents => Enumerable.Empty<Domain.Workforce.WorkforceAvailabilityEvent>().AsQueryable();
+        public IQueryable<Domain.Workforce.CriticalPositionRequirement> CriticalPositionRequirements => Enumerable.Empty<Domain.Workforce.CriticalPositionRequirement>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceReadinessSnapshot> WorkforceReadinessSnapshots => Enumerable.Empty<Domain.Workforce.WorkforceReadinessSnapshot>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceImportBatch> WorkforceImportBatches => Enumerable.Empty<Domain.Workforce.WorkforceImportBatch>().AsQueryable();
+        public IQueryable<Domain.Workforce.WorkforceReconciliationResolution> WorkforceReconciliationResolutions => Enumerable.Empty<Domain.Workforce.WorkforceReconciliationResolution>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitions => Enumerable.Empty<Domain.Forms.FormDefinition>().AsQueryable();
         public IQueryable<Domain.Forms.FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<Domain.Forms.FormReviewDecision> FormReviewDecisions => Enumerable.Empty<Domain.Forms.FormReviewDecision>().AsQueryable();
@@ -148,7 +161,10 @@ public sealed class NoteScopeShapeTests
         public void Remove<TEntity>(TEntity entity) where TEntity : class { }
         public void Detach<TEntity>(TEntity entity) where TEntity : class { }
         public void ClearChanges() { }
-        public Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default) =>
+        public Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken = default,
+            System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted) =>
             operation(cancellationToken);
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);

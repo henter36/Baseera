@@ -11,8 +11,10 @@ using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
+using Baseera.Domain.Workforce;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using System.Data;
 
 public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options) : DbContext(options), Application.Abstractions.IBaseeraDbContext
 {
@@ -86,6 +88,19 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<MaintenanceWorkOrder> MaintenanceWorkOrders => Set<MaintenanceWorkOrder>();
     public DbSet<ResourceRequirement> ResourceRequirements => Set<ResourceRequirement>();
     public DbSet<ResourceImportBatch> ResourceImportBatches => Set<ResourceImportBatch>();
+    public DbSet<WorkforceMember> WorkforceMembers => Set<WorkforceMember>();
+    public DbSet<WorkforceRoleDefinition> WorkforceRoleDefinitions => Set<WorkforceRoleDefinition>();
+    public DbSet<WorkforceQualification> WorkforceQualifications => Set<WorkforceQualification>();
+    public DbSet<WorkforceAssignment> WorkforceAssignments => Set<WorkforceAssignment>();
+    public DbSet<StaffingRequirement> StaffingRequirements => Set<StaffingRequirement>();
+    public DbSet<ShiftDefinition> ShiftDefinitions => Set<ShiftDefinition>();
+    public DbSet<DutyRoster> DutyRosters => Set<DutyRoster>();
+    public DbSet<DutyRosterAssignment> DutyRosterAssignments => Set<DutyRosterAssignment>();
+    public DbSet<WorkforceAvailabilityEvent> WorkforceAvailabilityEvents => Set<WorkforceAvailabilityEvent>();
+    public DbSet<CriticalPositionRequirement> CriticalPositionRequirements => Set<CriticalPositionRequirement>();
+    public DbSet<WorkforceReadinessSnapshot> WorkforceReadinessSnapshots => Set<WorkforceReadinessSnapshot>();
+    public DbSet<WorkforceImportBatch> WorkforceImportBatches => Set<WorkforceImportBatch>();
+    public DbSet<WorkforceReconciliationResolution> WorkforceReconciliationResolutions => Set<WorkforceReconciliationResolution>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -168,13 +183,27 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<MaintenanceWorkOrder> Application.Abstractions.IBaseeraDbContext.MaintenanceWorkOrders => MaintenanceWorkOrders;
     IQueryable<ResourceRequirement> Application.Abstractions.IBaseeraDbContext.ResourceRequirements => ResourceRequirements;
     IQueryable<ResourceImportBatch> Application.Abstractions.IBaseeraDbContext.ResourceImportBatches => ResourceImportBatches;
+    IQueryable<WorkforceMember> Application.Abstractions.IBaseeraDbContext.WorkforceMembers => WorkforceMembers;
+    IQueryable<WorkforceRoleDefinition> Application.Abstractions.IBaseeraDbContext.WorkforceRoleDefinitions => WorkforceRoleDefinitions;
+    IQueryable<WorkforceQualification> Application.Abstractions.IBaseeraDbContext.WorkforceQualifications => WorkforceQualifications;
+    IQueryable<WorkforceAssignment> Application.Abstractions.IBaseeraDbContext.WorkforceAssignments => WorkforceAssignments;
+    IQueryable<StaffingRequirement> Application.Abstractions.IBaseeraDbContext.StaffingRequirements => StaffingRequirements;
+    IQueryable<ShiftDefinition> Application.Abstractions.IBaseeraDbContext.ShiftDefinitions => ShiftDefinitions;
+    IQueryable<DutyRoster> Application.Abstractions.IBaseeraDbContext.DutyRosters => DutyRosters;
+    IQueryable<DutyRosterAssignment> Application.Abstractions.IBaseeraDbContext.DutyRosterAssignments => DutyRosterAssignments;
+    IQueryable<WorkforceAvailabilityEvent> Application.Abstractions.IBaseeraDbContext.WorkforceAvailabilityEvents => WorkforceAvailabilityEvents;
+    IQueryable<CriticalPositionRequirement> Application.Abstractions.IBaseeraDbContext.CriticalPositionRequirements => CriticalPositionRequirements;
+    IQueryable<WorkforceReadinessSnapshot> Application.Abstractions.IBaseeraDbContext.WorkforceReadinessSnapshots => WorkforceReadinessSnapshots;
+    IQueryable<WorkforceImportBatch> Application.Abstractions.IBaseeraDbContext.WorkforceImportBatches => WorkforceImportBatches;
+    IQueryable<WorkforceReconciliationResolution> Application.Abstractions.IBaseeraDbContext.WorkforceReconciliationResolutions => WorkforceReconciliationResolutions;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
 
     public async Task<TResult> ExecuteInTransactionAsync<TResult>(
         Func<CancellationToken, Task<TResult>> operation,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
     {
         if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
         {
@@ -184,7 +213,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         var strategy = Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
-            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            await using var transaction = await Database.BeginTransactionAsync(isolationLevel, cancellationToken);
             var result = await operation(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return result;
@@ -332,6 +361,16 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<ResourcePlacement>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
         modelBuilder.Entity<MaintenanceWorkOrder>().HasQueryFilter(e => !e.IsDeleted && !e.ResourceAsset.IsDeleted);
         modelBuilder.Entity<ResourceRequirement>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<WorkforceMember>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<WorkforceRoleDefinition>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<WorkforceQualification>().HasQueryFilter(e => !e.IsDeleted && !e.WorkforceMember.IsDeleted);
+        modelBuilder.Entity<WorkforceAssignment>().HasQueryFilter(e => !e.IsDeleted && !e.WorkforceMember.IsDeleted);
+        modelBuilder.Entity<StaffingRequirement>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<ShiftDefinition>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<DutyRoster>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<DutyRosterAssignment>().HasQueryFilter(e => !e.IsDeleted && !e.DutyRoster.IsDeleted);
+        modelBuilder.Entity<WorkforceAvailabilityEvent>().HasQueryFilter(e => !e.IsDeleted && !e.WorkforceMember.IsDeleted);
+        modelBuilder.Entity<CriticalPositionRequirement>().HasQueryFilter(e => !e.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {

@@ -11,6 +11,8 @@ using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
+using Baseera.Domain.Workforce;
+using System.Data;
 
 public interface IBaseeraDbContext
 {
@@ -98,13 +100,29 @@ public interface IBaseeraDbContext
     IQueryable<MaintenanceWorkOrder> MaintenanceWorkOrders { get; }
     IQueryable<ResourceRequirement> ResourceRequirements { get; }
     IQueryable<ResourceImportBatch> ResourceImportBatches { get; }
+    IQueryable<WorkforceMember> WorkforceMembers { get; }
+    IQueryable<WorkforceRoleDefinition> WorkforceRoleDefinitions { get; }
+    IQueryable<WorkforceQualification> WorkforceQualifications { get; }
+    IQueryable<WorkforceAssignment> WorkforceAssignments { get; }
+    IQueryable<StaffingRequirement> StaffingRequirements { get; }
+    IQueryable<ShiftDefinition> ShiftDefinitions { get; }
+    IQueryable<DutyRoster> DutyRosters { get; }
+    IQueryable<DutyRosterAssignment> DutyRosterAssignments { get; }
+    IQueryable<WorkforceAvailabilityEvent> WorkforceAvailabilityEvents { get; }
+    IQueryable<CriticalPositionRequirement> CriticalPositionRequirements { get; }
+    IQueryable<WorkforceReadinessSnapshot> WorkforceReadinessSnapshots { get; }
+    IQueryable<WorkforceImportBatch> WorkforceImportBatches { get; }
+    IQueryable<WorkforceReconciliationResolution> WorkforceReconciliationResolutions { get; }
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
     void Remove<TEntity>(TEntity entity) where TEntity : class;
     void Detach<TEntity>(TEntity entity) where TEntity : class;
     void ClearChanges();
-    Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default);
+    Task<TResult> ExecuteInTransactionAsync<TResult>(
+        Func<CancellationToken, Task<TResult>> operation,
+        CancellationToken cancellationToken = default,
+        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted);
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);

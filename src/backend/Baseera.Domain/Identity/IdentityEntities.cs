@@ -217,6 +217,19 @@ public static class PermissionCodes
     public const string ResourcesImport = "Resources.Import";
     public const string ResourcesExport = "Resources.Export";
     public const string ResourcesReconcile = "Resources.Reconcile";
+    public const string WorkforceViewSummary = "Workforce.ViewSummary";
+    public const string WorkforceViewCoverage = "Workforce.ViewCoverage";
+    public const string WorkforceViewMembers = "Workforce.ViewMembers";
+    public const string WorkforceViewSensitiveRestrictions = "Workforce.ViewSensitiveRestrictions";
+    public const string WorkforceManageMembers = "Workforce.ManageMembers";
+    public const string WorkforceManageAssignments = "Workforce.ManageAssignments";
+    public const string WorkforceManageQualifications = "Workforce.ManageQualifications";
+    public const string WorkforceManageRequirements = "Workforce.ManageRequirements";
+    public const string WorkforceManageRosters = "Workforce.ManageRosters";
+    public const string WorkforceRecordAvailability = "Workforce.RecordAvailability";
+    public const string WorkforceImport = "Workforce.Import";
+    public const string WorkforceExport = "Workforce.Export";
+    public const string WorkforceReconcile = "Workforce.Reconcile";
 }
 
 public static class RoleCodes

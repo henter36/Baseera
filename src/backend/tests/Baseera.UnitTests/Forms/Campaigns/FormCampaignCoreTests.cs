@@ -557,6 +557,19 @@ public sealed class BusinessCalendarTests
         public IQueryable<Domain.Resources.MaintenanceWorkOrder> MaintenanceWorkOrders => Empty<Domain.Resources.MaintenanceWorkOrder>();
         public IQueryable<Domain.Resources.ResourceRequirement> ResourceRequirements => Empty<Domain.Resources.ResourceRequirement>();
         public IQueryable<Domain.Resources.ResourceImportBatch> ResourceImportBatches => Empty<Domain.Resources.ResourceImportBatch>();
+        public IQueryable<Domain.Workforce.WorkforceMember> WorkforceMembers => Empty<Domain.Workforce.WorkforceMember>();
+        public IQueryable<Domain.Workforce.WorkforceRoleDefinition> WorkforceRoleDefinitions => Empty<Domain.Workforce.WorkforceRoleDefinition>();
+        public IQueryable<Domain.Workforce.WorkforceQualification> WorkforceQualifications => Empty<Domain.Workforce.WorkforceQualification>();
+        public IQueryable<Domain.Workforce.WorkforceAssignment> WorkforceAssignments => Empty<Domain.Workforce.WorkforceAssignment>();
+        public IQueryable<Domain.Workforce.StaffingRequirement> StaffingRequirements => Empty<Domain.Workforce.StaffingRequirement>();
+        public IQueryable<Domain.Workforce.ShiftDefinition> ShiftDefinitions => Empty<Domain.Workforce.ShiftDefinition>();
+        public IQueryable<Domain.Workforce.DutyRoster> DutyRosters => Empty<Domain.Workforce.DutyRoster>();
+        public IQueryable<Domain.Workforce.DutyRosterAssignment> DutyRosterAssignments => Empty<Domain.Workforce.DutyRosterAssignment>();
+        public IQueryable<Domain.Workforce.WorkforceAvailabilityEvent> WorkforceAvailabilityEvents => Empty<Domain.Workforce.WorkforceAvailabilityEvent>();
+        public IQueryable<Domain.Workforce.CriticalPositionRequirement> CriticalPositionRequirements => Empty<Domain.Workforce.CriticalPositionRequirement>();
+        public IQueryable<Domain.Workforce.WorkforceReadinessSnapshot> WorkforceReadinessSnapshots => Empty<Domain.Workforce.WorkforceReadinessSnapshot>();
+        public IQueryable<Domain.Workforce.WorkforceImportBatch> WorkforceImportBatches => Empty<Domain.Workforce.WorkforceImportBatch>();
+        public IQueryable<Domain.Workforce.WorkforceReconciliationResolution> WorkforceReconciliationResolutions => Empty<Domain.Workforce.WorkforceReconciliationResolution>();
         public IQueryable<FormDefinition> FormDefinitions => Empty<FormDefinition>();
         public IQueryable<FormDefinition> FormDefinitionsIncludingDeleted => FormDefinitions;
         public IQueryable<FormReviewDecision> FormReviewDecisions => Empty<FormReviewDecision>();
@@ -581,7 +594,10 @@ public sealed class BusinessCalendarTests
         public void Remove<TEntity>(TEntity entity) where TEntity : class { }
         public void Detach<TEntity>(TEntity entity) where TEntity : class { }
         public void ClearChanges() { }
-        public Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default) =>
+        public Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken = default,
+            System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted) =>
             operation(cancellationToken);
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);

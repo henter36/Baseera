@@ -16,6 +16,10 @@ import {
   type OccupancyUnitPayload,
   type OccupancyWorkspacePayload,
   type ResourceWorkspacePayload,
+  type WorkforceCoverageRowPayload,
+  type WorkforceCoverageStatus,
+  type WorkforceUnitCoveragePayload,
+  type WorkforceWorkspacePayload,
   type FacilityPriorityQueuePayload,
   type FacilityRecentActivityPayload,
   type FacilityStructurePayload,
@@ -73,6 +77,15 @@ const PANEL_TYPES = [
   'emergency-plan',
   'decision',
   'activity',
+  'workforce-member',
+  'workforce-shift',
+  'workforce-role',
+  'workforce-gap',
+  'workforce-unit',
+  'workforce-roster',
+  'workforce-requirement',
+  'workforce-qualification',
+  'workforce-critical-position',
 ] as const
 
 type PanelType = (typeof PANEL_TYPES)[number]
@@ -83,6 +96,7 @@ type SectionKey =
   | 'operations'
   | 'occupancy'
   | 'resources'
+  | 'workforce'
   | 'risks'
   | 'projects'
   | 'compliance'
@@ -111,6 +125,7 @@ type CommandData = Readonly<{
   forms?: FacilityFormCompliancePayload
   occupancy?: OccupancyWorkspacePayload
   resources?: ResourceWorkspacePayload
+  workforce?: WorkforceWorkspacePayload
   priority?: FacilityPriorityQueuePayload
   activity?: FacilityRecentActivityPayload
   structure?: FacilityStructurePayload
@@ -123,6 +138,7 @@ const SECTION_NAV: ReadonlyArray<Readonly<{ key: SectionKey; label: string }>> =
   { key: 'operations', label: 'التشغيل والوقوعات' },
   { key: 'occupancy', label: 'الإشغال والنزلاء' },
   { key: 'resources', label: 'الموارد والجاهزية' },
+  { key: 'workforce', label: 'القوى البشرية والتغطية' },
   { key: 'risks', label: 'المخاطر والمعالجات' },
   { key: 'projects', label: 'المشاريع والمبادرات' },
   { key: 'compliance', label: 'النماذج والالتزام' },
@@ -486,6 +502,14 @@ function SectionDeck({
     )
   }
 
+  if (activeSection === 'workforce') {
+    return (
+      <CommandSection title="القوى البشرية والتغطية">
+        <WorkforceCoverageSection data={data} openPanel={openPanel} />
+      </CommandSection>
+    )
+  }
+
   if (activeSection === 'risks') {
     return <CommandSection title="المخاطر والمعالجات"><DomainUnavailableSection domain={domainFor(data, 'risks')} panelType="risk" openPanel={openPanel} /></CommandSection>
   }
@@ -666,6 +690,10 @@ function PanelDetail({
       return <FacilityUnitPanel summary={summary} />
     }
     return <DomainGapPanel type={panel.type} summary={summary} />
+  }
+
+  if (isWorkforcePanelType(panel.type)) {
+    return <WorkforcePreviewPanel type={panel.type} summary={summary} entityId={panel.entityId} />
   }
 
   if (panel.entityId.startsWith('domain-') && summary && 'statusCode' in summary) {
@@ -914,6 +942,84 @@ function DomainGapPanel({ type, summary }: Readonly<{ type: PanelType; summary?:
   )
 }
 
+function WorkforcePreviewPanel({
+  type,
+  summary,
+  entityId,
+}: Readonly<{ type: PanelType; summary?: PanelSummary; entityId: string }>) {
+  const canViewMembers = usePermission('Workforce.ViewMembers')
+  const canManageMembers = usePermission('Workforce.ManageMembers')
+  const canManageRosters = usePermission('Workforce.ManageRosters')
+  const canManageRequirements = usePermission('Workforce.ManageRequirements')
+  const canManageQualifications = usePermission('Workforce.ManageQualifications')
+  const canReconcile = usePermission('Workforce.Reconcile')
+  const actions = workforcePanelActions(type, {
+    canViewMembers,
+    canManageMembers,
+    canManageRosters,
+    canManageRequirements,
+    canManageQualifications,
+    canReconcile,
+  })
+
+  return (
+    <div className="context-stack">
+      <ContextSection title={panelLabel(type)}>
+        <StatusRail
+          tone={summary && 'priorityRank' in summary && summary.priorityRank >= 900 ? 'danger' : 'warn'}
+          rows={[
+            ['النوع', panelLabel(type)],
+            ['المرجع', summaryReference(summary) || entityId],
+            ['العنوان', summaryTitle(summary)],
+            ['السبب', summaryReason(summary)],
+          ]}
+        />
+      </ContextSection>
+      {actions.length > 0 ? (
+        <ContextSection title="إجراءات مسموحة">
+          <ul className="priority-row-list" aria-label="إجراءات لوحة القوى البشرية">
+            {actions.map((action) => (
+              <li key={action}>
+                <article className="priority-row compact" data-tone="info">
+                  <span className="priority-band" />
+                  <span><strong>{action}</strong><small>تُنفَّذ من صفحة الإدارة وفق صلاحيات الخادم</small></span>
+                </article>
+              </li>
+            ))}
+          </ul>
+        </ContextSection>
+      ) : (
+        <div className="context-action-note">لا توجد إجراءات مسموحة لهذا النوع بصلاحياتك الحالية. الخادم هو مصدر الحقيقة.</div>
+      )}
+      <div className="context-action-note">تفاصيل القوى البشرية الكاملة متاحة من صفحة الإدارة عند الحاجة إلى أعضاء أو جداول أو متطلبات.</div>
+    </div>
+  )
+}
+
+function workforcePanelActions(
+  type: PanelType,
+  permissions: Readonly<{
+    canViewMembers: boolean
+    canManageMembers: boolean
+    canManageRosters: boolean
+    canManageRequirements: boolean
+    canManageQualifications: boolean
+    canReconcile: boolean
+  }>,
+): string[] {
+  const actions: string[] = []
+  if (type === 'workforce-member' && permissions.canViewMembers) actions.push('عرض العضو')
+  if (type === 'workforce-member' && permissions.canManageMembers) actions.push('تعديل العضو')
+  if (type === 'workforce-roster' && permissions.canManageRosters) actions.push('إدارة الجدول')
+  if (type === 'workforce-requirement' && permissions.canManageRequirements) actions.push('إدارة المتطلب')
+  if (type === 'workforce-qualification' && permissions.canManageQualifications) actions.push('إدارة المؤهل')
+  if (type === 'workforce-critical-position' && permissions.canReconcile) actions.push('متابعة المصالحة')
+  if (type === 'workforce-gap' || type === 'workforce-unit' || type === 'workforce-shift' || type === 'workforce-role') {
+    if (permissions.canViewMembers) actions.push('فتح مركز القوى البشرية')
+  }
+  return actions
+}
+
 function ActivityPreviewPanel({ summary }: Readonly<{ summary?: PanelSummary }>) {
   return (
     <ContextSection title="تفاصيل الحدث">
@@ -934,6 +1040,26 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
   const urgent = data.priority?.items.slice(0, 5) ?? []
   const missingDomains = data.dataQuality?.domains.filter((domain) => domain.statusCode === 'unavailable') ?? []
   const missingDomainChips = missingDomains.slice(0, 3)
+  const canManageRosters = usePermission('Workforce.ManageRosters')
+  const canManageAssignments = usePermission('Workforce.ManageAssignments')
+  const canManageQualifications = usePermission('Workforce.ManageQualifications')
+  const canReconcile = usePermission('Workforce.Reconcile')
+  const canImport = usePermission('Workforce.Import')
+  const canViewCoverage = usePermission('Workforce.ViewCoverage')
+  const workforceActions = [
+    canManageRosters ? { id: 'publish-roster', label: 'نشر جدول مناوبة', panel: { type: 'workforce-roster' as const, entityId: 'action:publish-roster' } } : null,
+    canManageAssignments ? { id: 'assign-replacement', label: 'تعيين بديل', panel: { type: 'workforce-member' as const, entityId: 'action:replacement' } } : null,
+    canManageAssignments ? { id: 'confirm-assignment', label: 'اعتماد تكليف', panel: { type: 'workforce-requirement' as const, entityId: 'action:assignment' } } : null,
+    canManageQualifications ? { id: 'verify-qualification', label: 'التحقق من مؤهل', panel: { type: 'workforce-qualification' as const, entityId: 'action:qualification' } } : null,
+    canManageQualifications ? { id: 'expired-qualification', label: 'معالجة شهادة منتهية', panel: { type: 'workforce-qualification' as const, entityId: 'action:qualification-expired' } } : null,
+    canViewCoverage ? { id: 'review-restriction', label: 'مراجعة قيد تشغيلي', panel: { type: 'workforce-member' as const, entityId: 'action:restriction' } } : null,
+    canManageAssignments ? { id: 'no-ops-location', label: 'عضو بلا موقع تشغيلي', panel: { type: 'workforce-gap' as const, entityId: 'action:missing-location' } } : null,
+    canViewCoverage ? { id: 'no-alternate', label: 'منصب بلا بديل', panel: { type: 'workforce-critical-position' as const, entityId: 'action:no-alternate' } } : null,
+    canImport ? { id: 'confirm-import', label: 'تأكيد استيراد', panel: { type: 'workforce-gap' as const, entityId: 'action:import' } } : null,
+    canReconcile ? { id: 'reconcile', label: 'مصالحة فروقات', panel: { type: 'workforce-gap' as const, entityId: 'action:reconcile' } } : null,
+    canViewCoverage ? { id: 'stale-data', label: 'تحديث بيانات قديمة', panel: { type: 'workforce-gap' as const, entityId: 'action:stale' } } : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null)
+
   return (
     <aside className="action-center" aria-labelledby="action-center-title">
       <div className="context-panel-toolbar">
@@ -946,6 +1072,18 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
         <CommandMetric label="مصعدة" value={data.alerts?.openEscalations ?? 0} tone="warn" />
         <CommandMetric label="نواقص بيانات" value={missingDomains.length} tone="muted" />
       </div>
+      {workforceActions.length > 0 && (
+        <ul className="priority-row-list" aria-label="إجراءات القوى البشرية المسموحة">
+          {workforceActions.map((action) => (
+            <li key={action.id}>
+              <button type="button" className="priority-row compact" onClick={() => openPanel(action.panel)}>
+                <span className="priority-band" aria-hidden="true" />
+                <span className="priority-row-main"><strong>{action.label}</strong><small>يُفتح وفق الصلاحية فقط</small></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <ul className="priority-row-list" aria-label="الإجراءات العاجلة">
         {urgent.map((item) => (
           <li key={`${item.type}-${item.reference}`}>
@@ -1168,6 +1306,145 @@ function ResourcesReadinessSection({ data, openPanel }: Readonly<{ data: Command
             </article>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+function WorkforceCoverageSection({ data, openPanel }: Readonly<{ data: CommandData; openPanel: (panel: PanelState) => void }>) {
+  const workforce = data.workforce
+  const workforceGap = domainFor(data, 'workforce')
+  if (!workforce) {
+    return (
+      <div className="command-section-stack">
+        <DomainUnavailableSection domain={workforceGap} panelType="workforce-gap" openPanel={openPanel} compact />
+      </div>
+    )
+  }
+
+  const { summary, coverage, units, roles } = workforce
+  const roleGaps = coverage.filter((row) => row.gap > 0 || row.safeGap > 0)
+  const shiftRows = coverage.filter((row) => row.shiftCode)
+  const exceptions = workforceExceptions(summary, roleGaps)
+
+  return (
+    <div className="command-section-stack">
+      <div className="occupancy-command-strip" data-status={workforceStripStatus(summary.coverageStatus, summary.gap)}>
+        <div>
+          <span className="command-eyebrow">تغطية القوى البشرية</span>
+          <h3>{summary.coverageRate == null ? 'لا يوجد baseline تغطية' : `${Math.round(summary.coverageRate * 100)}% تغطية`}</h3>
+          <p>{summary.warnings.join(' ') || 'لا توجد تحذيرات تغطية حالية.'}</p>
+        </div>
+        <strong>{summary.operationallyAvailable}/{summary.required || '-'}</strong>
+      </div>
+
+      <div className="workforce-rail readiness-rail" aria-label="مؤشرات التغطية">
+        <CommandMetric label="المطلوب" value={summary.required} tone="info" />
+        <CommandMetric label="المتاح تشغيليًا" value={summary.operationallyAvailable} tone="ok" />
+        <CommandMetric label="الحاضر" value={summary.present} tone="info" />
+        <CommandMetric label="الفجوة" value={summary.gap} tone={summary.gap > 0 ? 'danger' : 'ok'} />
+        <CommandMetric label="الحد الآمن الأدنى" value={summary.minimumSafe} tone={summary.safeGap > 0 ? 'warn' : 'ok'} />
+      </div>
+
+      <div className="duty-status-band" data-status={workforceStripStatus(summary.coverageStatus, summary.gap)}>
+        <span>المجدول {summary.scheduled}</span>
+        <span>إجازة {summary.onLeave}</span>
+        <span>تدريب {summary.inTraining}</span>
+        <span>مقيّد {summary.restricted}</span>
+        <span>مواقع حرجة {summary.criticalPositionsAtRisk}</span>
+      </div>
+
+      {roleGaps.length > 0 && (
+        <ul className="priority-row-list" aria-label="فجوات الأدوار">
+          {roleGaps.map((row) => (
+            <li key={`role-gap-${row.roleDefinitionId}-${row.facilityUnitId ?? 'facility'}-${row.shiftDefinitionId ?? 'any'}`}>
+              <button
+                type="button"
+                className="priority-row compact"
+                data-tone={coverageTone(row.coverageStatus)}
+                onClick={() => openPanel({ type: 'workforce-role', entityId: row.roleDefinitionId })}
+              >
+                <span className="priority-band" />
+                <span>
+                  <strong>{row.roleNameAr}</strong>
+                  <small>{row.roleCode}{row.unitNameAr ? ` · ${row.unitNameAr}` : ''} · فجوة {row.gap}</small>
+                </span>
+                <b>{row.coverageRate == null ? '-' : `${Math.round(row.coverageRate * 100)}%`}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {units.length > 0 && (
+        <div className="workforce-rail" aria-label="حرارة تغطية الوحدات">
+          {units.map((unit) => (
+            <button
+              key={unit.facilityUnitId ?? unit.unitNameAr}
+              type="button"
+              data-status={unitRailStatus(unit)}
+              onClick={() => openPanel({ type: 'workforce-unit', entityId: unit.facilityUnitId ?? `unit-${unit.unitNameAr}` })}
+            >
+              <span>{unit.unitNameAr}</span>
+              <strong>{unit.coverageRate == null ? '-' : `${Math.round(unit.coverageRate * 100)}%`}</strong>
+              <small>مطلوب {unit.required} · متاح {unit.operationallyAvailable} · فجوة {unit.gap}</small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {shiftRows.length > 0 && (
+        <ul className="shift-coverage-list" aria-label="تغطية الورديات">
+          {shiftRows.map((row) => (
+            <li key={`shift-${row.roleDefinitionId}-${row.shiftDefinitionId}-${row.facilityUnitId ?? 'facility'}`}>
+              <button
+                type="button"
+                className="shift-coverage-row"
+                data-status={unitRailStatus({ gap: row.gap, required: row.required, coverageStatus: row.coverageStatus })}
+                onClick={() => openPanel({ type: 'workforce-shift', entityId: row.shiftDefinitionId ?? row.roleDefinitionId })}
+              >
+                <span>
+                  <strong>{row.shiftCode}</strong>
+                  <small>{row.roleNameAr}{row.unitNameAr ? ` · ${row.unitNameAr}` : ''}</small>
+                </span>
+                <span>مطلوب {row.required}</span>
+                <span>حاضر {row.present}</span>
+                <span>فجوة {row.gap}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {roles.length > 0 && roleGaps.length === 0 && (
+        <div className="workforce-rail" aria-label="تعريفات الأدوار">
+          {roles.slice(0, 8).map((role) => (
+            <button key={role.id} type="button" data-status="complete" onClick={() => openPanel({ type: 'workforce-role', entityId: role.id })}>
+              <span>{role.nameAr}</span>
+              <strong>{role.code}</strong>
+              <small>{role.isShiftBased ? 'ورديات' : 'ثابت'}{role.requiresCertification ? ' · شهادة' : ''}</small>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {exceptions.length > 0 && (
+        <ul className="priority-row-list" aria-label="استثناءات القوى البشرية">
+          {exceptions.map((item) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                className="priority-row compact"
+                data-tone={item.tone}
+                onClick={() => openPanel({ type: item.panelType, entityId: item.id })}
+              >
+                <span className="priority-band" />
+                <span><strong>{item.titleAr}</strong><small>{item.reasonAr}</small></span>
+                <b>{item.severityAr}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
@@ -1493,6 +1770,7 @@ function extractCommandData(shell: WorkspaceShellDto): CommandData {
     forms: payloadFor<FacilityFormCompliancePayload>(shell.widgets, 'facility.form-compliance'),
     occupancy: payloadFor<OccupancyWorkspacePayload>(shell.widgets, 'facility.occupancy'),
     resources: payloadFor<ResourceWorkspacePayload>(shell.widgets, 'facility.resources'),
+    workforce: payloadFor<WorkforceWorkspacePayload>(shell.widgets, 'facility.workforce'),
     priority: payloadFor<FacilityPriorityQueuePayload>(shell.widgets, 'facility.priority-queue'),
     activity: payloadFor<FacilityRecentActivityPayload>(shell.widgets, 'facility.recent-activity'),
     structure: payloadFor<FacilityStructurePayload>(shell.widgets, 'facility.structure'),
@@ -1540,7 +1818,18 @@ function panelForPriorityItem(item: PriorityItem): PanelState {
   if (item.type === 'escalation') return { type: 'escalation', entityId: item.reference }
   if (item.type === 'occupancy') return { type: 'facility-unit', entityId: item.drillDownTarget.routeParameters.unitId ?? 'domain-occupancy' }
   if (item.type === 'resource') return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.reference }
+  if (item.type === 'workforce') return workforcePanelForReference(item.reference)
   return { type: 'activity', entityId: item.reference }
+}
+
+function workforcePanelForReference(reference: string): PanelState {
+  if (reference.startsWith('gap:')) return { type: 'workforce-gap', entityId: reference }
+  if (reference.startsWith('critical:')) return { type: 'workforce-critical-position', entityId: reference }
+  if (reference.startsWith('roster:')) return { type: 'workforce-roster', entityId: reference }
+  if (reference.startsWith('requirement:')) return { type: 'workforce-requirement', entityId: reference }
+  if (reference.startsWith('qualification:')) return { type: 'workforce-qualification', entityId: reference }
+  if (reference.startsWith('unit:')) return { type: 'workforce-unit', entityId: reference }
+  return { type: 'workforce-role', entityId: reference }
 }
 
 function panelForActivityItem(item: ActivityItem, index: number): PanelState {
@@ -1562,6 +1851,9 @@ function panelForActivityItem(item: ActivityItem, index: number): PanelState {
   if (item.drillDownTarget.routeKey === 'facility.resources') {
     return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.entityReference }
   }
+  if (item.drillDownTarget.routeKey === 'facility.workforce') {
+    return { type: 'workforce-gap', entityId: item.drillDownTarget.routeParameters.memberId ?? item.entityReference }
+  }
   return { type: 'activity', entityId: `${item.entityReference}-${index}` }
 }
 
@@ -1574,6 +1866,7 @@ function panelForDomain(domain: DataQualityDomain): PanelState {
     forms: 'activity',
     occupancy: 'facility-unit',
     resources: 'equipment',
+    workforce: 'workforce-gap',
     incidents: 'incident',
     risks: 'risk',
     projects: 'project',
@@ -1626,6 +1919,11 @@ function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefine
       ? `/facilities/${shell.context.facilityId ?? ''}/occupancy`
       : null
   }
+  if (isWorkforcePanelType(panel.type)) {
+    const section = workforceAdminSectionForPanel(panel.type)
+    const base = `/facilities/${shell.context.facilityId ?? ''}/workforce`
+    return section ? `${base}?section=${section}` : base
+  }
   if (summary && 'drillDownTarget' in summary) return routeFromTarget(summary.drillDownTarget)
   return null
 }
@@ -1637,6 +1935,7 @@ function routeFromTarget(target: { routeKey: string; routeParameters: Record<str
   if (target.routeKey === 'escalations.occurrences') return '/settings/escalations/occurrences'
   if (target.routeKey === 'facility.occupancy') return `/facilities/${target.routeParameters.facilityId ?? ''}/occupancy`
   if (target.routeKey === 'facility.resources') return `/facilities/${target.routeParameters.facilityId ?? ''}/resources`
+  if (target.routeKey === 'facility.workforce') return `/facilities/${target.routeParameters.facilityId ?? ''}/workforce`
   return null
 }
 
@@ -1650,6 +1949,64 @@ function resourcePanelType(resourceTypeCode?: string): PanelType {
   if (resourceTypeCode === '0' || resourceTypeCode === 'Vehicle') return 'vehicle'
   if (resourceTypeCode === '1' || resourceTypeCode === 'CommunicationDevice') return 'communication-device'
   return 'equipment'
+}
+
+function workforceStripStatus(status: WorkforceCoverageStatus, gap: number) {
+  if (status === 3 || status === 2 || gap > 0) return 'partial'
+  if (status === 0) return 'complete'
+  if (status === 4) return 'missing'
+  return 'attention'
+}
+
+function coverageTone(status: WorkforceCoverageStatus): WorkspaceVisualTone {
+  if (status === 2 || status === 3) return 'danger'
+  if (status === 1) return 'warn'
+  if (status === 0) return 'ok'
+  return 'muted'
+}
+
+function unitRailStatus(unit: Pick<WorkforceUnitCoveragePayload, 'gap' | 'required' | 'coverageStatus'> | { gap: number; required: number; coverageStatus: WorkforceCoverageStatus }) {
+  if (unit.coverageStatus === 2 || unit.coverageStatus === 3 || unit.gap > 0) return 'partial'
+  if (unit.required > 0) return 'complete'
+  return 'missing'
+}
+
+function workforceExceptions(
+  summary: WorkforceWorkspacePayload['summary'],
+  roleGaps: WorkforceCoverageRowPayload[],
+): Array<{ id: string; titleAr: string; reasonAr: string; severityAr: string; tone: WorkspaceVisualTone; panelType: PanelType }> {
+  const items: Array<{ id: string; titleAr: string; reasonAr: string; severityAr: string; tone: WorkspaceVisualTone; panelType: PanelType }> = []
+  if (summary.criticalPositionsAtRisk > 0) {
+    items.push({
+      id: 'critical-positions',
+      titleAr: 'مواقع حرجة غير مغطاة',
+      reasonAr: `عدد المواقع الحرجة المعرضة للخطر: ${summary.criticalPositionsAtRisk}`,
+      severityAr: 'حرجة',
+      tone: 'danger',
+      panelType: 'workforce-critical-position',
+    })
+  }
+  for (const warning of summary.warnings.slice(0, 3)) {
+    items.push({
+      id: `warning-${warning}`,
+      titleAr: 'تحذير تغطية',
+      reasonAr: warning,
+      severityAr: 'عالية',
+      tone: 'warn',
+      panelType: 'workforce-gap',
+    })
+  }
+  for (const row of roleGaps.slice(0, 5)) {
+    items.push({
+      id: `gap-${row.roleDefinitionId}-${row.shiftDefinitionId ?? 'any'}`,
+      titleAr: `فجوة دور ${row.roleNameAr}`,
+      reasonAr: `مطلوب ${row.required} · متاح ${row.operationallyAvailable} · فجوة ${row.gap}`,
+      severityAr: row.safeGap > 0 ? 'حرجة' : 'عالية',
+      tone: coverageTone(row.coverageStatus),
+      panelType: 'workforce-role',
+    })
+  }
+  return items
 }
 
 function executeNoteAction(action: NoteWorkspaceAllowedAction, data: NoteWorkspaceDetail, reason: string) {
@@ -1734,22 +2091,48 @@ function domainTone(domain?: DataQualityDomain): WorkspaceVisualTone {
   return 'muted'
 }
 
+function isWorkforcePanelType(type: PanelType): boolean {
+  return type.startsWith('workforce-')
+}
+
+function workforceAdminSectionForPanel(type: PanelType): string | null {
+  if (type === 'workforce-member') return 'members'
+  if (type === 'workforce-shift' || type === 'workforce-roster') return 'shifts'
+  if (type === 'workforce-role') return 'roles'
+  if (type === 'workforce-unit') return 'units'
+  if (type === 'workforce-requirement') return 'requirements'
+  if (type === 'workforce-qualification') return 'qualifications'
+  if (type === 'workforce-critical-position' || type === 'workforce-gap') return 'coverage'
+  return null
+}
+
 function panelLabel(type: PanelType) {
-  if (type === 'note') return 'ملاحظة تشغيلية'
-  if (type === 'corrective-action') return 'إجراء تصحيحي'
-  if (type === 'escalation') return 'تصعيد'
-  if (type === 'form-assignment') return 'التزام نموذج'
-  if (type === 'facility-unit') return 'وحدة داخلية'
-  if (type === 'incident') return 'وقوعات وحوادث'
-  if (type === 'risk') return 'مخاطر ومعالجات'
-  if (type === 'vehicle') return 'مركبة'
-  if (type === 'weapon') return 'سلاح أو عهدة'
-  if (type === 'communication-device') return 'جهاز اتصال'
-  if (type === 'equipment') return 'مورد أو معدة'
-  if (type === 'project') return 'مشروع أو مبادرة'
-  if (type === 'emergency-plan') return 'خطة تشغيلية أو طوارئ'
-  if (type === 'decision') return 'قرار أو توجيه'
-  return 'حدث تشغيلي'
+  const labels: Partial<Record<PanelType, string>> = {
+    note: 'ملاحظة تشغيلية',
+    'corrective-action': 'إجراء تصحيحي',
+    escalation: 'تصعيد',
+    'form-assignment': 'التزام نموذج',
+    'facility-unit': 'وحدة داخلية',
+    incident: 'وقوعات وحوادث',
+    risk: 'مخاطر ومعالجات',
+    vehicle: 'مركبة',
+    weapon: 'سلاح أو عهدة',
+    'communication-device': 'جهاز اتصال',
+    equipment: 'مورد أو معدة',
+    'workforce-member': 'عضو قوى بشرية',
+    'workforce-shift': 'وردية تشغيل',
+    'workforce-role': 'دور تشغيلي',
+    'workforce-gap': 'فجوة تغطية',
+    'workforce-unit': 'وحدة قوى بشرية',
+    'workforce-roster': 'جدول واجب',
+    'workforce-requirement': 'متطلب تسكين',
+    'workforce-qualification': 'مؤهل تشغيلي',
+    'workforce-critical-position': 'موقع حرج',
+    project: 'مشروع أو مبادرة',
+    'emergency-plan': 'خطة تشغيلية أو طوارئ',
+    decision: 'قرار أو توجيه',
+  }
+  return labels[type] ?? 'حدث تشغيلي'
 }
 
 function summaryReference(summary?: PanelSummary) {

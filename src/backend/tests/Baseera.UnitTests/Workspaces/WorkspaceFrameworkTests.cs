@@ -5,6 +5,7 @@ using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Notes;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Resources;
+using Baseera.Application.Workforce;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Resources;
 using Baseera.Application.Workspaces;
@@ -508,7 +509,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 new NoteTypeAccessService(db, currentUser)),
             new FakeOperationalDashboardQueryService(),
             new FakeFormComplianceQueryService(),
-            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), new ThrowingResourceReadinessQueryService()),
+            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), new ThrowingResourceReadinessQueryService(), new ThrowingWorkforceReadinessQueryService()),
             time);
 
         var payload = await readService.GetCorrectiveActionsAsync(FacilityWorkspaceContext(), CancellationToken.None);
@@ -557,7 +558,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 new NoteTypeAccessService(db, currentUser)),
             new FakeOperationalDashboardQueryService(),
             new FakeFormComplianceQueryService(),
-            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), new ThrowingResourceReadinessQueryService()),
+            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), new ThrowingResourceReadinessQueryService(), new ThrowingWorkforceReadinessQueryService()),
             time);
 
         var payload = await readService.GetRecentActivityAsync(FacilityWorkspaceContext(), CancellationToken.None);
@@ -600,7 +601,7 @@ public sealed class WorkspaceFrameworkTests : IDisposable
                 new NoteTypeAccessService(db, currentUser)),
             new FakeOperationalDashboardQueryService(),
             new FakeFormComplianceQueryService(),
-            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), resourceService),
+            new FacilityWorkspaceFacilityDomainQueries(new ThrowingOccupancyQueryService(), resourceService, new ThrowingWorkforceReadinessQueryService()),
             time);
 
         var priority = await readService.GetPriorityQueueAsync(FacilityWorkspaceContext(), CancellationToken.None);
@@ -1160,6 +1161,36 @@ public sealed class WorkspaceFrameworkTests : IDisposable
 
         public Task<ResourceAssetDetailDto?> GetAssetAsync(Guid facilityId, Guid assetId, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Resources should not be queried in this test.");
+    }
+
+    private sealed class ThrowingWorkforceReadinessQueryService : IWorkforceReadinessQueryService
+    {
+        public Task<WorkforceWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<WorkforceSummaryDto> GetSummaryAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<IReadOnlyList<WorkforceCoverageRowDto>> GetCoverageAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<IReadOnlyList<WorkforceUnitCoverageDto>> GetUnitsAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<IReadOnlyList<WorkforceRoleDefinitionDto>> GetRolesAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<IReadOnlyList<WorkforceMemberListItemDto>> ListMembersAsync(Guid facilityId, string? search, int pageSize, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<WorkforceMemberDetailDto?> GetMemberAsync(Guid facilityId, Guid memberId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<WorkforceDataQualityDto> GetDataQualityAsync(Guid facilityId, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<WorkforceQualificationListDto> ListQualificationsAsync(Guid facilityId, int page, int pageSize, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
     }
 
     private sealed class FakeResourceReadinessQueryService(Guid assetId) : IResourceReadinessQueryService

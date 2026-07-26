@@ -154,6 +154,17 @@
 - لا ينفذ القوى البشرية أو الأسلحة/الذخائر أو العهد الحساسة أو المخزون والمستودعات العامة، ولا Region/HQ Workspaces.
 - لا يغلق Issue #15 أو Issue #11؛ هذه دفعة أولى للموارد الأساسية فقط.
 
+### Phase D.5.1 — Facility Workforce Readiness & Duty Coverage (Issue #133، جزئي من #15، استمرار #11)
+
+- يضيف Domain قوى بشرية تشغيلية عبر `WorkforceMember` المستقل عن حساب الدخول `User`، مع `WorkforceRoleDefinition` منفصل عن RBAC.
+- يغطي المؤهلات، التكليفات، `StaffingRequirement`، الورديات، جداول المناوبة (Draft/Published)، أحداث التوفر (بدون تشخيص طبي)، والمواقع الحرجة.
+- يحسب التغطية والفجوات ومؤشرات الإجهاد/المخاطر بشكل حتمي عبر `WorkforceReadinessPolicy` و`WorkforceFatiguePolicy`، مع لقطات `WorkforceReadinessSnapshot` واستيراد Preview/Confirm محدود.
+- يدمج القسم `القوى البشرية والتغطية` وwidget `facility.workforce` داخل `facility-operations`، مع صفحة `/facilities/:facilityId/workforce`.
+- يفرض صلاحيات `Workforce.*` منفصلة عن `Workspaces.ViewFacility`.
+- Migration: `20260725180933_PhaseD51FacilityWorkforceReadiness`.
+- لا ينفذ الأسلحة/الذخائر، ولا Region/HQ Workspaces، ولا الرواتب/البدلات/الترقيات، ولا الحضور البيومتري الخام، ولا تحسين المناوبات بالذكاء الاصطناعي.
+- يغلق Issue #133؛ يبقى Issue #15 مفتوحًا (أسلحة وبقية الشرائح) وIssue #11 مفتوحًا لبقية مجالات مركز القرار.
+
 ## المرحلة E — المشاريع والاستراتيجية
 
 مشاريع متعددة المواقع، مبادرات، أهداف، مؤشرات، مستهدفات، لوحة أداء.

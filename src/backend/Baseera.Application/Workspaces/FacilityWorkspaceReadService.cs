@@ -5,6 +5,7 @@ using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Resources;
+using Baseera.Application.Workforce;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Escalations;
 using Baseera.Domain.Identity;
@@ -22,6 +23,8 @@ internal interface IFacilityWorkspaceReadService
     Task<OccupancyWorkspacePayload> GetOccupancyAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<ResourceWorkspacePayload> GetResourcesAsync(WorkspaceContext context, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Resource workspace read is not implemented by this test double.");
+    Task<WorkforceWorkspacePayload> GetWorkforceAsync(WorkspaceContext context, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Workforce workspace read is not implemented by this test double.");
     Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityRecentActivityPayload> GetRecentActivityAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken);
@@ -34,10 +37,12 @@ internal interface IFacilityWorkspaceReadService
 /// </summary>
 internal sealed class FacilityWorkspaceFacilityDomainQueries(
     IOccupancyQueryService occupancy,
-    IResourceReadinessQueryService resources)
+    IResourceReadinessQueryService resources,
+    IWorkforceReadinessQueryService workforce)
 {
     public IOccupancyQueryService Occupancy { get; } = occupancy;
     public IResourceReadinessQueryService Resources { get; } = resources;
+    public IWorkforceReadinessQueryService Workforce { get; } = workforce;
 }
 
 internal sealed class FacilityWorkspaceReadService(
@@ -52,6 +57,12 @@ internal sealed class FacilityWorkspaceReadService(
     private const int PriorityLimit = 10;
     private const int RecentActivityLimit = 10;
     private const int UnitLimit = 12;
+    private const string DomainKeyWorkforce = "workforce";
+    private const string DataQualityComplete = "complete";
+    private const string DataQualityPartial = "partial";
+    private const string SeverityCriticalAr = "حرجة";
+    private const string SeverityHighAr = "عالية";
+    private const string SeverityMediumAr = "متوسطة";
     private readonly Dictionary<string, object> cache = new(StringComparer.Ordinal);
 
     public async Task<FacilityWorkspaceFacilityInfo> GetFacilityAsync(WorkspaceContext context, CancellationToken cancellationToken)
@@ -87,7 +98,10 @@ internal sealed class FacilityWorkspaceReadService(
             var resourcePayload = currentUser.HasPermission(PermissionCodes.ResourcesViewSummary)
                 ? await GetResourcesAsync(context, cancellationToken)
                 : null;
-            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload);
+            var workforcePayload = currentUser.HasPermission(PermissionCodes.WorkforceViewSummary)
+                ? await GetWorkforceAsync(context, cancellationToken)
+                : null;
+            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload, workforcePayload);
         });
     }
 
@@ -139,6 +153,14 @@ internal sealed class FacilityWorkspaceReadService(
                 cancellationToken));
     }
 
+    public async Task<WorkforceWorkspacePayload> GetWorkforceAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"workforce:{CacheKey(context)}", async () =>
+            await facilityDomain.Workforce.GetWorkspacePayloadAsync(
+                FacilityWorkspaceContextGuard.RequireFacilityId(context),
+                cancellationToken));
+    }
+
     public async Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
         return await GetOrAddAsync($"priority:{CacheKey(context)}", async () =>
@@ -160,6 +182,10 @@ internal sealed class FacilityWorkspaceReadService(
             if (currentUser.HasPermission(PermissionCodes.ResourcesViewSummary))
             {
                 items.AddRange(await BuildResourcePriorityItemsAsync(context, cancellationToken));
+            }
+            if (currentUser.HasPermission(PermissionCodes.WorkforceViewSummary))
+            {
+                items.AddRange(await BuildWorkforcePriorityItemsAsync(context, cancellationToken));
             }
 
             return new FacilityPriorityQueuePayload(
@@ -192,6 +218,10 @@ internal sealed class FacilityWorkspaceReadService(
             if (currentUser.HasPermission(PermissionCodes.ResourcesViewMaintenance))
             {
                 events.AddRange(await BuildRecentResourceEventsAsync(context, cancellationToken));
+            }
+            if (currentUser.HasPermission(PermissionCodes.WorkforceViewCoverage))
+            {
+                events.AddRange(await BuildRecentWorkforceEventsAsync(context, cancellationToken));
             }
 
             return new FacilityRecentActivityPayload(
@@ -281,6 +311,15 @@ internal sealed class FacilityWorkspaceReadService(
             else
             {
                 domains.Insert(6, MissingDomain("resources", "الموارد والجاهزية", "لا يملك المستخدم صلاحية عرض الموارد أو لم تُحمّل بيانات المجال.", "#15"));
+            }
+
+            if (metrics.Workforce is not null)
+            {
+                domains.Insert(7, WorkforceDomain(metrics.Workforce));
+            }
+            else
+            {
+                domains.Insert(7, MissingDomain(DomainKeyWorkforce, "القوى البشرية والتغطية", "لا يملك المستخدم صلاحية عرض القوى البشرية أو لم تُحمّل بيانات المجال.", "#133"));
             }
 
             return new FacilityDataQualityPayload(domains);
@@ -658,6 +697,235 @@ internal sealed class FacilityWorkspaceReadService(
             .ToList();
     }
 
+    private async Task<IReadOnlyList<FacilityPriorityItemPayload>> BuildWorkforcePriorityItemsAsync(
+        WorkspaceContext context,
+        CancellationToken cancellationToken)
+    {
+        var payload = await GetWorkforceAsync(context, cancellationToken);
+        var facilityId = payload.Summary.FacilityId;
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        var items = new List<FacilityPriorityItemPayload>();
+        items.AddRange(BuildWorkforceSummaryPriorityItems(context, payload));
+        items.AddRange(await BuildWorkforceRosterPriorityItemsAsync(context, facilityId, today, cancellationToken));
+        items.AddRange(BuildWorkforceFatiguePriorityItems(context, payload, items));
+        items.AddRange(BuildWorkforceQualityPriorityItems(context, payload));
+        return items
+            .GroupBy(i => i.Type)
+            .Select(g => g.OrderByDescending(i => i.PriorityRank).First())
+            .OrderByDescending(i => i.PriorityRank)
+            .Take(PriorityLimit)
+            .ToList();
+    }
+
+    private static IEnumerable<FacilityPriorityItemPayload> BuildWorkforceSummaryPriorityItems(
+        WorkspaceContext context,
+        Application.Workforce.WorkforceWorkspacePayload payload)
+    {
+        var facilityId = payload.Summary.FacilityId;
+        if (payload.Summary.SafeGap > 0)
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.ShiftBelowMinimum", $"safe-gap:{facilityId}", "التغطية دون الحد الأدنى الآمن", SeverityCriticalAr, 930, $"الفجوة الآمنة {payload.Summary.SafeGap} مقابل الحد الأدنى {payload.Summary.MinimumSafe}", "مراجعة التغطية", PermissionCodes.WorkforceViewCoverage));
+        }
+
+        if (payload.Summary.CriticalPositionsAtRisk > 0)
+        {
+            var canViewCoverage = context.Permissions.Contains(PermissionCodes.WorkforceViewCoverage);
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec(
+                "workforce.CriticalRoleUncovered",
+                $"critical:{facilityId}",
+                "مواقع حرجة غير مغطاة",
+                SeverityCriticalAr,
+                920,
+                canViewCoverage ? $"عدد المواقع الحرجة المعرضة للخطر: {payload.Summary.CriticalPositionsAtRisk}" : "يوجد تنبيه ملخص على تغطية المواقع الحرجة.",
+                canViewCoverage ? "فتح القوى البشرية" : "عرض الملخص",
+                PermissionCodes.WorkforceViewCoverage));
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.NoCriticalPositionAlternate", $"critical-alt:{facilityId}", "منصب حرج بلا بديل كافٍ", SeverityHighAr, 910, "يوجد مواقع حرجة بدون بديل تشغيلي كافٍ.", "مراجعة المناصب الحرجة", PermissionCodes.WorkforceViewCoverage));
+        }
+
+        if (payload.Summary.StaleRecords > 0)
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.WorkforceDataStale", $"stale:{facilityId}", "بيانات قوى بشرية متقادمة", SeverityMediumAr, 780, $"سجلات تحتاج تحققًا: {payload.Summary.StaleRecords}", "تحديث البيانات", PermissionCodes.WorkforceViewSummary));
+        }
+
+        if (payload.Summary.Gap > 0)
+        {
+            var severity = payload.Summary.CoverageStatus is Domain.Workforce.WorkforceCoverageStatus.Unsafe
+                ? SeverityCriticalAr
+                : SeverityHighAr;
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec(
+                "workforce.ShiftBelowMinimum",
+                $"gap:{facilityId}",
+                "فجوة تغطية تشغيلية",
+                severity,
+                860,
+                $"الفجوة الحالية {payload.Summary.Gap} مقابل الاحتياج {payload.Summary.Required}",
+                "مراجعة التغطية",
+                PermissionCodes.WorkforceViewCoverage));
+        }
+
+        if (payload.Units.Any(u => u.Gap > 0))
+        {
+            var worst = payload.Units.OrderByDescending(u => u.Gap).First();
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.UnitStaffingGap", $"unit-gap:{worst.FacilityUnitId}", "فجوة تغطية وحدة", SeverityHighAr, 850, $"{worst.UnitNameAr}: فجوة {worst.Gap}", "مراجعة الوحدة", PermissionCodes.WorkforceViewCoverage));
+        }
+
+        if (payload.Summary.OnLeave > 0
+            && payload.Summary.TotalMembers > 0
+            && payload.Summary.OnLeave * 100 / payload.Summary.TotalMembers >= 20)
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.HighAbsenceRate", $"absence:{facilityId}", "معدل غياب مرتفع", SeverityHighAr, 830, $"في إجازة: {payload.Summary.OnLeave} من {payload.Summary.TotalMembers}", "مراجعة الغياب", PermissionCodes.WorkforceViewSummary));
+        }
+
+        if (payload.Summary.CoverageStatus is Domain.Workforce.WorkforceCoverageStatus.Unknown)
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.UnknownAvailability", $"unknown:{facilityId}", "توفر مجهول", SeverityMediumAr, 750, "حالة التغطية Unknown — لا تُحسب كـ Available.", "تحديث التوفر", PermissionCodes.WorkforceViewSummary));
+        }
+
+        if (HasLowWorkforceSourceQuality(payload.Summary))
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.WorkforceSourceConflict", $"source:{facilityId}", "تعارض أو ضعف مصدر الحقيقة", SeverityMediumAr, 760, "الثقة أو الحداثة منخفضة — يلزم reconciliation.", "فتح المصالحة", PermissionCodes.WorkforceReconcile));
+        }
+    }
+
+    private static bool HasLowWorkforceSourceQuality(Application.Workforce.WorkforceSummaryDto summary) =>
+        string.Equals(summary.ConfidenceLevel, "low", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(summary.FreshnessStatus, "stale", StringComparison.OrdinalIgnoreCase);
+
+    private async Task<IReadOnlyList<FacilityPriorityItemPayload>> BuildWorkforceRosterPriorityItemsAsync(
+        WorkspaceContext context,
+        Guid facilityId,
+        DateOnly today,
+        CancellationToken cancellationToken)
+    {
+        var items = new List<FacilityPriorityItemPayload>();
+        var unpublished = await db.DutyRosters.AsNoTracking()
+            .CountAsync(r => r.FacilityId == facilityId
+                && !r.IsDeleted
+                && r.Status == Domain.Workforce.DutyRosterStatuses.Draft
+                && r.DutyDate >= today
+                && r.DutyDate <= today.AddDays(1), cancellationToken);
+        if (unpublished > 0)
+        {
+            items.Add(WorkforcePriority(context, new WorkforcePrioritySpec("workforce.UnpublishedRoster", $"unpub:{facilityId}", "جداول مناوبة غير منشورة", SeverityMediumAr, 800, $"مسودات لليوم/الغد: {unpublished}", "مراجعة الجداول", PermissionCodes.WorkforceViewCoverage)));
+        }
+
+        var commanderRoleIds = await db.WorkforceRoleDefinitions.AsNoTracking()
+            .Where(r => !r.IsDeleted && r.Category == Domain.Workforce.WorkforceRoleCategory.Command)
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+        if (commanderRoleIds.Count > 0
+            && !await HasPublishedRoleCoverageAsync(facilityId, today, commanderRoleIds, requirePresentLike: true, cancellationToken))
+        {
+            items.Add(WorkforcePriority(context, new WorkforcePrioritySpec("workforce.NoShiftCommander", $"commander:{facilityId}", "قائد مناوبة غير متوفر", SeverityCriticalAr, 925, "لا يوجد دور قيادي حاضر/مؤكد في مناوبات اليوم المنشورة.", "تعيين قائد مناوبة", PermissionCodes.WorkforceViewCoverage)));
+        }
+
+        var driverRoleIds = await db.WorkforceRoleDefinitions.AsNoTracking()
+            .Where(r => !r.IsDeleted && (r.Code.Contains("Driver") || r.NameAr.Contains("سائق")))
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+        if (driverRoleIds.Count > 0
+            && !await HasPublishedRoleCoverageAsync(facilityId, today, driverRoleIds, requirePresentLike: false, cancellationToken))
+        {
+            items.Add(WorkforcePriority(context, new WorkforcePrioritySpec("workforce.NoQualifiedDriver", $"driver:{facilityId}", "سائق مؤهل غير متوفر", SeverityHighAr, 870, "لا تغطية لدور سائق في مناوبات اليوم.", "تأمين سائق مؤهل", PermissionCodes.WorkforceViewCoverage)));
+        }
+
+        return items;
+    }
+
+    private async Task<bool> HasPublishedRoleCoverageAsync(
+        Guid facilityId,
+        DateOnly today,
+        IReadOnlyList<Guid> roleIds,
+        bool requirePresentLike,
+        CancellationToken cancellationToken)
+    {
+        var query = db.DutyRosterAssignments.AsNoTracking()
+            .Where(a => !a.IsDeleted
+                && a.DutyRoster.FacilityId == facilityId
+                && a.DutyRoster.DutyDate == today
+                && a.DutyRoster.Status == Domain.Workforce.DutyRosterStatuses.Published
+                && roleIds.Contains(a.RoleDefinitionId));
+        if (requirePresentLike)
+        {
+            query = query.Where(a =>
+                a.Status == Domain.Workforce.RosterAssignmentStatus.Present
+                || a.Status == Domain.Workforce.RosterAssignmentStatus.Confirmed
+                || a.Status == Domain.Workforce.RosterAssignmentStatus.Late);
+        }
+
+        return await query.AnyAsync(cancellationToken);
+    }
+
+    private static IEnumerable<FacilityPriorityItemPayload> BuildWorkforceFatiguePriorityItems(
+        WorkspaceContext context,
+        Application.Workforce.WorkforceWorkspacePayload payload,
+        IReadOnlyList<FacilityPriorityItemPayload> existing)
+    {
+        var facilityId = payload.Summary.FacilityId;
+        var indicators = payload.Summary.FatigueIndicators;
+        if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.QualificationExpiringSoon))
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.QualificationExpired", $"qual:{facilityId}", "مؤهلات منتهية أو قاربت الانتهاء", SeverityHighAr, 840, "توجد مؤشرات انتهاء مؤهلات تؤثر على الجاهزية.", "مراجعة المؤهلات", PermissionCodes.WorkforceViewMembers));
+        }
+
+        if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.ExcessiveOvertimeHours)
+            || indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.ConsecutiveShiftsWithoutRest))
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.ExcessiveOvertime", $"ot:{facilityId}", "إرهاق/ساعات إضافية مرتفعة", SeverityMediumAr, 770, "مؤشرات إرهاق تشغيلية نشطة.", "مراجعة المناوبات", PermissionCodes.WorkforceViewCoverage));
+        }
+
+        if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.ConsecutiveShiftsWithoutRest))
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.ConsecutiveShiftRisk", $"consecutive:{facilityId}", "خطر مناوبات متتالية", SeverityMediumAr, 765, "مؤشر إرهاق: مناوبات متتالية دون راحة كافية.", "مراجعة الجداول", PermissionCodes.WorkforceViewCoverage));
+        }
+
+        if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.QualificationExpiringSoon)
+            && existing.All(i => i.Type != "workforce.QualificationExpiring"))
+        {
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.QualificationExpiring", $"qual-expiring:{facilityId}", "مؤهلات قاربت الانتهاء", SeverityMediumAr, 835, "توجد مؤهلات ضمن نافذة الانتهاء القريب.", "تجديد المؤهلات", PermissionCodes.WorkforceViewMembers));
+        }
+    }
+
+    private static IEnumerable<FacilityPriorityItemPayload> BuildWorkforceQualityPriorityItems(
+        WorkspaceContext context,
+        Application.Workforce.WorkforceWorkspacePayload payload)
+    {
+        if (!payload.DataQuality.Issues.Any(i => i.Code is "conflicting_assignment" or "leave_while_rostered"))
+        {
+            yield break;
+        }
+
+        yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.ConflictingAssignments", $"conflict:{payload.Summary.FacilityId}", "تكليفات متعارضة", SeverityHighAr, 845, "جودة البيانات تشير إلى تعارضات تكليف/جدولة.", "فتح المصالحة", PermissionCodes.WorkforceReconcile));
+    }
+
+    private readonly record struct WorkforcePrioritySpec(
+        string Type,
+        string Reference,
+        string TitleAr,
+        string SeverityAr,
+        int PriorityRank,
+        string ReasonAr,
+        string ActionLabelAr,
+        string Permission);
+
+    private static FacilityPriorityItemPayload WorkforcePriority(
+        WorkspaceContext context,
+        WorkforcePrioritySpec spec) =>
+        new()
+        {
+            Type = spec.Type,
+            Reference = spec.Reference,
+            TitleAr = spec.TitleAr,
+            SeverityAr = spec.SeverityAr,
+            PriorityRank = spec.PriorityRank,
+            ReasonAr = spec.ReasonAr,
+            DueAtUtc = null,
+            OverdueDays = null,
+            OwnerAr = null,
+            ActionLabelAr = spec.ActionLabelAr,
+            DrillDownTarget = WorkforceTarget(context, spec.Permission)
+        };
+
     private async Task<IReadOnlyList<FacilityActivityItemPayload>> BuildRecentNoteEventsAsync(
         IQueryable<OperationalNote> notes,
         CancellationToken cancellationToken)
@@ -809,6 +1077,97 @@ internal sealed class FacilityWorkspaceReadService(
             .ToList();
     }
 
+    private async Task<IReadOnlyList<FacilityActivityItemPayload>> BuildRecentWorkforceEventsAsync(
+        WorkspaceContext context,
+        CancellationToken cancellationToken)
+    {
+        var facilityId = FacilityWorkspaceContextGuard.RequireFacilityId(context);
+        var drill = WorkforceTarget(context, PermissionCodes.WorkforceViewCoverage);
+        var events = new List<FacilityActivityItemPayload>();
+
+        var rosters = await db.DutyRosters.AsNoTracking()
+            .Where(roster => roster.FacilityId == facilityId && roster.PublishedAtUtc.HasValue)
+            .OrderByDescending(roster => roster.PublishedAtUtc)
+            .Take(5)
+            .Select(roster => new { roster.Id, roster.DutyDate, roster.PublishedAtUtc })
+            .ToListAsync(cancellationToken);
+        events.AddRange(rosters.Select(row => new FacilityActivityItemPayload
+        {
+            EventType = "workforce.roster.published",
+            TitleAr = $"نشر جدول مناوبة {row.DutyDate:yyyy-MM-dd}",
+            DescriptionAr = "تحديث تغطية القوى البشرية بدون عرض أسماء الأعضاء.",
+            OccurredAtUtc = row.PublishedAtUtc ?? context.ToUtc,
+            EntityReference = row.Id.ToString(),
+            Tone = "info",
+            DrillDownTarget = drill
+        }));
+
+        var auditActions = new[]
+        {
+            "WorkforceMemberCreated",
+            "WorkforceMemberUpdated",
+            "WorkforceImportConfirmed",
+            "DutyRosterPublished",
+            "WorkforceAvailabilityRecorded"
+        };
+        var workforceAuditEntityIds = FacilityWorkforceAuditEntityIds(facilityId);
+        var audits = await db.AuditLogs.AsNoTracking()
+            .Where(log => log.Module == "Workforce"
+                && auditActions.Contains(log.Action)
+                && log.EntityId != null
+                && workforceAuditEntityIds.Contains(log.EntityId))
+            .OrderByDescending(log => log.OccurredAtUtc)
+            .Take(20)
+            .Select(log => new { log.Action, log.EntityId, log.OccurredAtUtc, log.UserDisplayName })
+            .ToListAsync(cancellationToken);
+
+        events.AddRange(audits.Select(log => new FacilityActivityItemPayload
+        {
+            EventType = $"workforce.audit.{log.Action}",
+            TitleAr = log.Action switch
+            {
+                "WorkforceMemberCreated" => "إنشاء عضو قوى بشرية",
+                "WorkforceMemberUpdated" => "تحديث عضو قوى بشرية",
+                "WorkforceImportConfirmed" => "تأكيد استيراد قوى بشرية",
+                "DutyRosterPublished" => "نشر جدول مناوبة",
+                "WorkforceAvailabilityRecorded" => "تسجيل توفر تشغيلي",
+                _ => "حدث قوى بشرية"
+            },
+            DescriptionAr = "سجل تشغيلي دون بيانات حساسة.",
+            OccurredAtUtc = log.OccurredAtUtc,
+            ActorDisplayName = log.UserDisplayName,
+            EntityReference = log.EntityId ?? facilityId.ToString(),
+            Tone = "info",
+            DrillDownTarget = drill
+        }));
+
+        return events
+            .OrderByDescending(e => e.OccurredAtUtc)
+            .Take(20)
+            .ToList();
+    }
+
+    private IQueryable<string> FacilityWorkforceAuditEntityIds(Guid facilityId)
+    {
+        var memberIds = db.WorkforceMembers.AsNoTracking()
+            .Where(member => !member.IsDeleted
+                && (member.CurrentOperationalFacilityId == facilityId || member.HomeFacilityId == facilityId))
+            .Select(member => member.Id.ToString());
+        var batchIds = db.WorkforceImportBatches.AsNoTracking()
+            .Where(batch => batch.FacilityId == facilityId)
+            .Select(batch => batch.Id.ToString());
+        var rosterIds = db.DutyRosters.AsNoTracking()
+            .Where(roster => roster.FacilityId == facilityId)
+            .Select(roster => roster.Id.ToString());
+        var availabilityIds = db.WorkforceAvailabilityEvents.AsNoTracking()
+            .Where(evt => !evt.IsDeleted
+                && (evt.WorkforceMember.CurrentOperationalFacilityId == facilityId
+                    || evt.WorkforceMember.HomeFacilityId == facilityId))
+            .Select(evt => evt.Id.ToString());
+
+        return memberIds.Concat(batchIds).Concat(rosterIds).Concat(availabilityIds);
+    }
+
     private IQueryable<EscalationOccurrence> BuildScopedEscalations(IQueryable<OperationalNote> notes, IQueryable<CorrectiveAction> actions)
     {
         var noteIds = notes.Select(note => note.Id);
@@ -857,7 +1216,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             Key = key,
             LabelAr = labelAr,
-            StatusCode = count > 0 ? "complete" : "partial",
+            StatusCode = count > 0 ? DataQualityComplete : DataQualityPartial,
             StatusAr = count > 0 ? "متاح" : "جزئي",
             ConfidenceAr = count > 0 ? "مرتفعة" : "متوسطة",
             LastUpdatedAtUtc = lastUpdatedAtUtc,
@@ -887,7 +1246,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             Key = "occupancy",
             LabelAr = "الإشغال والنزلاء",
-            StatusCode = payload.Summary.IsPartial ? "partial" : "complete",
+            StatusCode = payload.Summary.IsPartial ? DataQualityPartial : DataQualityComplete,
             StatusAr = payload.Summary.IsPartial ? "جزئي" : "متاح",
             ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
             LastUpdatedAtUtc = payload.Summary.LatestSnapshotAtUtc,
@@ -924,10 +1283,43 @@ internal sealed class FacilityWorkspaceReadService(
 
         if (summary.IsPartial)
         {
-            return ("partial", "جزئي");
+            return (DataQualityPartial, "جزئي");
         }
 
-        return ("complete", "متاح");
+        return (DataQualityComplete, "متاح");
+    }
+
+    private static FacilityDataQualityDomainPayload WorkforceDomain(WorkforceWorkspacePayload payload)
+    {
+        var (statusCode, statusAr) = ResolveWorkforceDataQualityStatus(payload.Summary);
+        return new()
+        {
+            Key = DomainKeyWorkforce,
+            LabelAr = "القوى البشرية والتغطية",
+            StatusCode = statusCode,
+            StatusAr = statusAr,
+            ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
+            LastUpdatedAtUtc = payload.Summary.DataEffectiveAtUtc,
+            ImpactAr = payload.Summary.Warnings.Count > 0
+                ? string.Join(" ", payload.Summary.Warnings)
+                : "يدخل في الحالة العامة والعمل العاجل وقسم القوى البشرية.",
+            FollowUpIssue = null
+        };
+    }
+
+    private static (string StatusCode, string StatusAr) ResolveWorkforceDataQualityStatus(WorkforceSummaryDto summary)
+    {
+        if (summary.TotalMembers == 0)
+        {
+            return ("missing", "مفقود");
+        }
+
+        if (summary.IsPartial)
+        {
+            return (DataQualityPartial, "جزئي");
+        }
+
+        return (DataQualityComplete, "متاح");
     }
 
     private static DrillDownTarget NoteTarget(Guid noteId) =>
@@ -972,6 +1364,14 @@ internal sealed class FacilityWorkspaceReadService(
                     ["assetId"] = assetId.Value.ToString()
                 }
                 : new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+            FacilityWorkspaceDrillDownFilters.Preserve(context),
+            requiredPermission);
+
+    private static DrillDownTarget WorkforceTarget(WorkspaceContext context, string requiredPermission) =>
+        new(
+            "facility.workforce",
+            "فتح القوى البشرية",
+            new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             requiredPermission);
 

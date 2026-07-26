@@ -1387,6 +1387,481 @@ export type ResourceWorkspacePayload = {
   timeline: ResourceActivityPayload[]
 }
 
+export const EmploymentStatus = {
+  Active: 0,
+  SecondedIn: 1,
+  SecondedOut: 2,
+  Suspended: 3,
+  LongLeave: 4,
+  Retired: 5,
+  Terminated: 6,
+  Unknown: 7,
+} as const
+export type EmploymentStatus = (typeof EmploymentStatus)[keyof typeof EmploymentStatus]
+
+export const WorkforceRoleCategory = {
+  Command: 0,
+  Security: 1,
+  Control: 2,
+  Escort: 3,
+  Medical: 4,
+  Social: 5,
+  Technical: 6,
+  Logistics: 7,
+  Administrative: 8,
+  Other: 9,
+} as const
+export type WorkforceRoleCategory = (typeof WorkforceRoleCategory)[keyof typeof WorkforceRoleCategory]
+
+export const WorkforceRoleCriticality = {
+  Low: 0,
+  Medium: 1,
+  High: 2,
+  MissionCritical: 3,
+} as const
+export type WorkforceRoleCriticality = (typeof WorkforceRoleCriticality)[keyof typeof WorkforceRoleCriticality]
+
+export const QualificationType = {
+  RoleCertification: 0,
+  Skill: 1,
+  License: 2,
+  SecurityClearance: 3,
+  FitnessClearance: 4,
+  Other: 5,
+} as const
+export type QualificationType = (typeof QualificationType)[keyof typeof QualificationType]
+
+export const QualificationStatus = {
+  Valid: 0,
+  ExpiringSoon: 1,
+  Expired: 2,
+  Suspended: 3,
+  PendingVerification: 4,
+  Unknown: 5,
+} as const
+export type QualificationStatus = (typeof QualificationStatus)[keyof typeof QualificationStatus]
+
+export const AssignmentType = {
+  Permanent: 0,
+  Temporary: 1,
+  Acting: 2,
+  EmergencySupport: 3,
+  Secondment: 4,
+  TrainingCoverage: 5,
+  Other: 6,
+} as const
+export type AssignmentType = (typeof AssignmentType)[keyof typeof AssignmentType]
+
+export const AvailabilityType = {
+  Available: 0,
+  AnnualLeave: 1,
+  SickLeave: 2,
+  Training: 3,
+  ExternalAssignment: 4,
+  InternalAssignment: 5,
+  Suspended: 6,
+  RestrictedDuty: 7,
+  EmergencyLeave: 8,
+  UnexcusedAbsence: 9,
+  Other: 10,
+} as const
+export type AvailabilityType = (typeof AvailabilityType)[keyof typeof AvailabilityType]
+
+export const OperationalRestrictionCode = {
+  CannotDrive: 0,
+  CannotCarryWeapon: 1,
+  CannotWorkNightShift: 2,
+  CannotPerformEscort: 3,
+  AdministrativeDutyOnly: 4,
+} as const
+export type OperationalRestrictionCode = (typeof OperationalRestrictionCode)[keyof typeof OperationalRestrictionCode]
+
+export const RosterAssignmentStatus = {
+  Planned: 0,
+  Confirmed: 1,
+  Present: 2,
+  Late: 3,
+  Absent: 4,
+  Excused: 5,
+  Replaced: 6,
+  Completed: 7,
+  Cancelled: 8,
+  Unknown: 9,
+} as const
+export type RosterAssignmentStatus = (typeof RosterAssignmentStatus)[keyof typeof RosterAssignmentStatus]
+
+export const WorkforceSourceType = {
+  Manual: 0,
+  Import: 1,
+  ExternalSystem: 2,
+  Audit: 3,
+  Other: 4,
+} as const
+export type WorkforceSourceType = (typeof WorkforceSourceType)[keyof typeof WorkforceSourceType]
+
+export const WorkforceCoverageStatus = {
+  Ready: 0,
+  Attention: 1,
+  Critical: 2,
+  Unsafe: 3,
+  Unknown: 4,
+} as const
+export type WorkforceCoverageStatus = (typeof WorkforceCoverageStatus)[keyof typeof WorkforceCoverageStatus]
+
+export type WorkforceSummaryPayload = {
+  facilityId: string
+  totalMembers: number
+  operationallyEligible: number
+  required: number
+  minimumSafe: number
+  scheduled: number
+  present: number
+  operationallyAvailable: number
+  onLeave: number
+  inTraining: number
+  restricted: number
+  gap: number
+  safeGap: number
+  coverageRate?: number | null
+  qualificationCoverage?: number | null
+  coverageStatus: WorkforceCoverageStatus
+  criticalPositionsAtRisk: number
+  staleRecords: number
+  missingDataRecords: number
+  freshnessStatus: string
+  confidenceLevel: string
+  isPartial: boolean
+  warnings: string[]
+  fatigueIndicators: string[]
+  generatedAtUtc: string
+  dataEffectiveAtUtc?: string | null
+}
+
+export type WorkforceCoverageRowPayload = {
+  roleDefinitionId: string
+  roleCode: string
+  roleNameAr: string
+  facilityUnitId?: string | null
+  unitNameAr?: string | null
+  shiftDefinitionId?: string | null
+  shiftCode?: string | null
+  required: number
+  minimumSafe: number
+  scheduled: number
+  present: number
+  operationallyAvailable: number
+  gap: number
+  safeGap: number
+  coverageRate?: number | null
+  coverageStatus: WorkforceCoverageStatus
+}
+
+export type WorkforceUnitCoveragePayload = {
+  facilityUnitId?: string | null
+  unitNameAr: string
+  required: number
+  operationallyAvailable: number
+  gap: number
+  coverageRate?: number | null
+  coverageStatus: WorkforceCoverageStatus
+}
+
+export type WorkforceRoleDefinitionPayload = {
+  id: string
+  code: string
+  nameAr: string
+  nameEn?: string | null
+  category: WorkforceRoleCategory
+  criticality: WorkforceRoleCriticality
+  requiresCertification: boolean
+  isShiftBased: boolean
+  isSensitive: boolean
+}
+
+export type WorkforceMemberListItem = {
+  id: string
+  employeeNumber: string
+  displayName: string
+  employmentStatus: EmploymentStatus
+  jobTitle: string
+  primarySpecialty: string
+  currentOperationalUnitId?: string | null
+  currentOperationalUnitNameAr?: string | null
+  isOperational: boolean
+  isSensitiveRole: boolean
+  lastVerifiedAtUtc?: string | null
+  rowVersion?: string | null
+  dataQualityIssues: string[]
+}
+
+export type WorkforceAssignmentPayload = {
+  id: string
+  roleDefinitionId: string
+  roleCode: string
+  roleNameAr: string
+  facilityUnitId?: string | null
+  assignmentType: AssignmentType
+  effectiveFromUtc: string
+  effectiveToUtc?: string | null
+  isPrimary: boolean
+}
+
+export type WorkforceQualificationPayload = {
+  id: string
+  qualificationType: QualificationType
+  roleDefinitionId?: string | null
+  name: string
+  expiresAtUtc?: string | null
+  status: QualificationStatus
+}
+
+export type WorkforceQualificationListItem = WorkforceQualificationPayload & {
+  memberId: string
+  memberDisplayName: string
+  roleCode?: string | null
+}
+
+export type WorkforceQualificationList = {
+  items: WorkforceQualificationListItem[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+export type WorkforceAvailabilityPayload = {
+  id: string
+  availabilityType: AvailabilityType
+  startsAtUtc: string
+  endsAtUtc?: string | null
+  affectsOperationalAvailability: boolean
+  restrictionCodes?: string[] | null
+}
+
+export type WorkforceMemberDetail = {
+  member: WorkforceMemberListItem
+  assignments: WorkforceAssignmentPayload[]
+  qualifications: WorkforceQualificationPayload[]
+  availability: WorkforceAvailabilityPayload[]
+  restrictionCodes?: string[] | null
+}
+
+export type WorkforceDataQualityPayload = {
+  totalMembers: number
+  missingEmployeeNumber: number
+  unknownEmploymentStatus: number
+  missingHomeOrOperationalFacility: number
+  staleVerification: number
+  openImportIssues: number
+  warnings: string[]
+}
+
+export type WorkforceWorkspacePayload = {
+  summary: WorkforceSummaryPayload
+  coverage: WorkforceCoverageRowPayload[]
+  units: WorkforceUnitCoveragePayload[]
+  roles: WorkforceRoleDefinitionPayload[]
+  dataQuality: WorkforceDataQualityPayload
+}
+
+export type WorkforceMemberCreateRequest = {
+  displayName: string
+  employeeNumber: string
+  externalPersonnelId?: string | null
+  employmentStatus?: EmploymentStatus
+  rankOrGrade?: string | null
+  jobTitle: string
+  primarySpecialty: string
+  homeFacilityId?: string | null
+  currentOperationalUnitId?: string | null
+  supervisorWorkforceMemberId?: string | null
+  isOperational?: boolean
+  isSensitiveRole?: boolean
+  sourceType?: WorkforceSourceType
+  sourceReference?: string | null
+}
+
+export type WorkforceAssignmentRequest = {
+  workforceMemberId: string
+  roleDefinitionId: string
+  facilityUnitId?: string | null
+  assignmentType?: AssignmentType
+  effectiveFromUtc: string
+  effectiveToUtc?: string | null
+  isPrimary?: boolean
+  sourceReference?: string | null
+  reason?: string | null
+}
+
+export type WorkforceQualificationRequest = {
+  workforceMemberId: string
+  qualificationType: QualificationType
+  roleDefinitionId?: string | null
+  name: string
+  issuedAtUtc?: string | null
+  expiresAtUtc?: string | null
+  issuer?: string | null
+  reference?: string | null
+  status?: QualificationStatus
+}
+
+export type StaffingRequirementRequest = {
+  facilityUnitId?: string | null
+  roleDefinitionId: string
+  shiftDefinitionId?: string | null
+  requiredHeadcount: number
+  minimumSafeHeadcount: number
+  effectiveFromUtc: string
+  effectiveToUtc?: string | null
+  sourceReference: string
+  approvalReference?: string | null
+  notes?: string | null
+}
+
+export type StaffingRequirementPayload = {
+  id: string
+  facilityUnitId?: string | null
+  roleDefinitionId: string
+  roleCode?: string | null
+  shiftDefinitionId?: string | null
+  requiredHeadcount: number
+  minimumSafeHeadcount: number
+  effectiveFromUtc: string
+  effectiveToUtc?: string | null
+  sourceReference: string
+}
+
+export type DutyRosterCreateRequest = {
+  facilityUnitId?: string | null
+  shiftDefinitionId: string
+  dutyDate: string
+}
+
+export type DutyRosterAssignmentRequest = {
+  workforceMemberId: string
+  roleDefinitionId: string
+  status?: RosterAssignmentStatus
+  replacementForAssignmentId?: string | null
+  notes?: string | null
+}
+
+export type DutyRosterPayload = {
+  id: string
+  facilityUnitId?: string | null
+  shiftDefinitionId: string
+  dutyDate: string
+  status: string
+  publishedAtUtc?: string | null
+  assignmentCount: number
+}
+
+export type WorkforceAvailabilityRequest = {
+  workforceMemberId: string
+  availabilityType: AvailabilityType
+  startsAtUtc: string
+  endsAtUtc?: string | null
+  affectsOperationalAvailability?: boolean
+  sourceType?: WorkforceSourceType
+  sourceReference?: string | null
+  reasonCode?: string | null
+  restrictionCodes?: OperationalRestrictionCode[] | null
+}
+
+export const WorkforceImportKind = {
+  PersonnelMaster: 0,
+  Assignments: 1,
+  Qualifications: 2,
+  Rosters: 3,
+  Availability: 4,
+  AttendanceSummary: 5,
+} as const
+export type WorkforceImportKind = (typeof WorkforceImportKind)[keyof typeof WorkforceImportKind]
+
+export type WorkforceImportRow = {
+  employeeNumber: string
+  displayName: string
+  externalPersonnelId?: string | null
+  employmentStatus?: EmploymentStatus
+  jobTitle: string
+  primarySpecialty: string
+  currentOperationalUnitId?: string | null
+  isOperational?: boolean
+}
+
+export type WorkforceImportPreviewRequest = {
+  importKind?: WorkforceImportKind
+  sourceSystem: string
+  sourceReference: string
+  fileHash: string
+  rows: WorkforceImportRow[]
+}
+
+export type WorkforceImportResult = {
+  totalRows: number
+  validRows: number
+  rejectedRows: number
+  duplicateRows: number
+  appliedRows: number
+  errors: string[]
+}
+
+export type WorkforceMemberUpdateRequest = {
+  displayName: string
+  employmentStatus: EmploymentStatus
+  rankOrGrade?: string | null
+  jobTitle: string
+  primarySpecialty: string
+  currentOperationalUnitId?: string | null
+  supervisorWorkforceMemberId?: string | null
+  isOperational: boolean
+  isSensitiveRole: boolean
+  rowVersion?: string | null
+}
+
+export type WorkforceReconciliationItem = {
+  id: string
+  issueType: string
+  severity: string
+  titleAr: string
+  detailAr: string
+  entityType: string
+  entityId?: string | null
+  sourceSystem?: string | null
+  suggestedActionAr: string
+  responsibleHintAr: string
+  detectedAtUtc: string
+}
+
+export type WorkforceReconciliationList = {
+  items: WorkforceReconciliationItem[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
+export type WorkforceReconciliationResolveRequest = {
+  resolutionAction: string
+  notes?: string | null
+}
+
+export type WorkforceCriticalPosition = {
+  id: string
+  roleDefinitionId: string
+  roleCode: string
+  roleNameAr: string
+  facilityUnitId?: string | null
+  shiftDefinitionId?: string | null
+  requiredPrimaryCount: number
+  requiredAlternateCount: number
+  primaryFilled: number
+  alternateFilled: number
+  vacantPrimary: number
+  vacantAlternate: number
+  actingCount: number
+  singlePointOfFailure: boolean
+  criticality: WorkforceRoleCriticality
+  statusAr: string
+}
+
 export type ResourceAssetListItem = {
   id: string
   resourceType: ResourceType
@@ -2709,6 +3184,59 @@ export const api = {
       postJson<ResourceImportResult>(`/api/v1/facilities/${facilityId}/resources/import/preview`, body),
     importConfirm: (facilityId: string, body: ResourceImportPreviewRequest) =>
       postJson<ResourceImportResult>(`/api/v1/facilities/${facilityId}/resources/import/confirm`, body),
+  },
+
+  workforce: {
+    summary: (facilityId: string) =>
+      request<WorkforceSummaryPayload>(`/api/v1/facilities/${facilityId}/workforce/summary`),
+    coverage: (facilityId: string) =>
+      request<WorkforceCoverageRowPayload[]>(`/api/v1/facilities/${facilityId}/workforce/coverage`),
+    units: (facilityId: string) =>
+      request<WorkforceUnitCoveragePayload[]>(`/api/v1/facilities/${facilityId}/workforce/units`),
+    roles: (facilityId: string) =>
+      request<WorkforceRoleDefinitionPayload[]>(`/api/v1/facilities/${facilityId}/workforce/roles`),
+    members: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<WorkforceMemberListItem[]>(`/api/v1/facilities/${facilityId}/workforce/members?${buildSimpleQuery(filters)}`),
+    member: (facilityId: string, memberId: string) =>
+      request<WorkforceMemberDetail>(`/api/v1/facilities/${facilityId}/workforce/members/${memberId}`),
+    createMember: (facilityId: string, body: WorkforceMemberCreateRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/members`, body),
+    updateMember: (facilityId: string, memberId: string, body: WorkforceMemberUpdateRequest) =>
+      putJson<void>(`/api/v1/facilities/${facilityId}/workforce/members/${memberId}`, body),
+    createAssignment: (facilityId: string, body: WorkforceAssignmentRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/assignments`, body),
+    createQualification: (facilityId: string, body: WorkforceQualificationRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/qualifications`, body),
+    qualifications: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<WorkforceQualificationList>(`/api/v1/facilities/${facilityId}/workforce/qualifications?${buildSimpleQuery(filters)}`),
+    requirements: (facilityId: string) =>
+      request<StaffingRequirementPayload[]>(`/api/v1/facilities/${facilityId}/workforce/requirements`),
+    createRequirement: (facilityId: string, body: StaffingRequirementRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/requirements`, body),
+    rosters: (facilityId: string) =>
+      request<DutyRosterPayload[]>(`/api/v1/facilities/${facilityId}/workforce/rosters`),
+    createRoster: (facilityId: string, body: DutyRosterCreateRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/rosters`, body),
+    addRosterAssignment: (facilityId: string, rosterId: string, body: DutyRosterAssignmentRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/rosters/${rosterId}/assignments`, body),
+    publishRoster: (facilityId: string, rosterId: string) =>
+      request<void>(`/api/v1/facilities/${facilityId}/workforce/rosters/${rosterId}/publish`, { method: 'POST' }),
+    createAvailability: (facilityId: string, body: WorkforceAvailabilityRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/availability`, body),
+    importPreview: (facilityId: string, body: WorkforceImportPreviewRequest) =>
+      postJson<WorkforceImportResult>(`/api/v1/facilities/${facilityId}/workforce/import/preview`, body),
+    importConfirm: (facilityId: string, body: WorkforceImportPreviewRequest) =>
+      postJson<WorkforceImportResult>(`/api/v1/facilities/${facilityId}/workforce/import/confirm`, body),
+    dataQuality: (facilityId: string) =>
+      request<WorkforceDataQualityPayload>(`/api/v1/facilities/${facilityId}/workforce/data-quality`),
+    criticalPositions: (facilityId: string) =>
+      request<WorkforceCriticalPosition[]>(`/api/v1/facilities/${facilityId}/workforce/critical-positions`),
+    reconciliation: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<WorkforceReconciliationList>(`/api/v1/facilities/${facilityId}/workforce/reconciliation?${buildSimpleQuery(filters)}`),
+    resolveReconciliation: (facilityId: string, itemId: string, body: WorkforceReconciliationResolveRequest) =>
+      postJson<void>(`/api/v1/facilities/${facilityId}/workforce/reconciliation/${encodeURIComponent(itemId)}/resolve`, body),
+    export: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      downloadFile(`/api/v1/facilities/${facilityId}/workforce/export?${buildSimpleQuery(filters)}`),
   },
 
   formCompliance: {

@@ -28,6 +28,7 @@ const WORKSPACE_ROUTE_MAP = {
   'form-compliance.facility': '/form-compliance/facilities/:facilityId',
   'facility.occupancy': '/facilities/:facilityId/occupancy',
   'facility.resources': '/facilities/:facilityId/resources',
+  'facility.workforce': '/facilities/:facilityId/workforce',
 } as const
 
 export function WorkspaceShell({

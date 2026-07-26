@@ -7,12 +7,15 @@ using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
+using Baseera.Domain.Workforce;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 public static class DatabaseInitializer
 {
+    private const string SecurityOfficerNameAr = "ضابط أمن";
+
     public static async Task InitializeAsync(
         IServiceProvider services,
         bool seedDemoData,
@@ -270,6 +273,28 @@ public static class DatabaseInitializer
             PermissionCodes.ResourcesImport,
             PermissionCodes.ResourcesReconcile
         ];
+        string[] workforceSummary =
+        [
+            PermissionCodes.WorkforceViewSummary,
+            PermissionCodes.WorkforceViewCoverage,
+            PermissionCodes.WorkforceViewMembers
+        ];
+        string[] workforceManager =
+        [
+            PermissionCodes.WorkforceViewSummary,
+            PermissionCodes.WorkforceViewCoverage,
+            PermissionCodes.WorkforceViewMembers,
+            PermissionCodes.WorkforceViewSensitiveRestrictions,
+            PermissionCodes.WorkforceManageMembers,
+            PermissionCodes.WorkforceManageAssignments,
+            PermissionCodes.WorkforceManageQualifications,
+            PermissionCodes.WorkforceManageRequirements,
+            PermissionCodes.WorkforceManageRosters,
+            PermissionCodes.WorkforceRecordAvailability,
+            PermissionCodes.WorkforceImport,
+            PermissionCodes.WorkforceExport,
+            PermissionCodes.WorkforceReconcile
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -307,7 +332,8 @@ public static class DatabaseInitializer
             dashboardFull,
             workspaceHeadquarters,
             occupancySummary,
-            resourceSummary);
+            resourceSummary,
+            workforceSummary);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -329,7 +355,8 @@ public static class DatabaseInitializer
             occupancyManager,
             occupancySensitive,
             resourceManager,
-            PermissionCodes.ResourcesExport);
+            PermissionCodes.ResourcesExport,
+            workforceManager);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -402,7 +429,8 @@ public static class DatabaseInitializer
             dashboardScoped,
             workspaceFacility,
             occupancyManager,
-            resourceManager);
+            resourceManager,
+            workforceManager);
 
         string[] formsDesigner =
         [
@@ -524,6 +552,13 @@ public static class DatabaseInitializer
             PermissionCodes.OrganizationView,
             workspaceFacility,
             resourceManager);
+
+        var workforceOfficer = roles.First(r => r.Code == RoleCodes.WorkforceOfficer);
+        Grant(workforceOfficer,
+            PermissionCodes.OrganizationView,
+            workspaceFacility,
+            workforceManager,
+            ownNotifications);
 
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -828,6 +863,7 @@ public static class DatabaseInitializer
 
         await EnsureDemoOccupancyAsync(db, cancellationToken);
         await EnsureDemoResourcesAsync(db, cancellationToken);
+        await EnsureDemoWorkforceAsync(db, cancellationToken);
         await EnsureDevAdminAsync(db, cancellationToken);
     }
 
@@ -1121,6 +1157,297 @@ public static class DatabaseInitializer
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    private static async Task EnsureDemoWorkforceAsync(BaseeraDbContext db, CancellationToken cancellationToken)
+    {
+        if (!await db.Facilities.AnyAsync(f => f.Id == SeedIds.FacilityA1, cancellationToken))
+        {
+            return;
+        }
+
+        if (await db.WorkforceMembers.AnyAsync(m => m.CurrentOperationalFacilityId == SeedIds.FacilityA1, cancellationToken))
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        var effectiveFrom = now.AddMonths(-6);
+
+        var shiftCommander = new WorkforceRoleDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            Code = "ShiftCommander",
+            NameAr = "قائد الوردية",
+            NameEn = "Shift Commander",
+            Category = WorkforceRoleCategory.Command,
+            Criticality = WorkforceRoleCriticality.MissionCritical,
+            RequiresCertification = true,
+            IsShiftBased = true,
+            IsSensitive = true
+        };
+        var controlOperator = new WorkforceRoleDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            Code = "ControlRoomOperator",
+            NameAr = "مشغل غرفة التحكم",
+            NameEn = "Control Room Operator",
+            Category = WorkforceRoleCategory.Control,
+            Criticality = WorkforceRoleCriticality.High,
+            RequiresCertification = true,
+            IsShiftBased = true
+        };
+        var securityOfficer = new WorkforceRoleDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            Code = "SecurityOfficer",
+            NameAr = SecurityOfficerNameAr,
+            NameEn = "Security Officer",
+            Category = WorkforceRoleCategory.Security,
+            Criticality = WorkforceRoleCriticality.High,
+            IsShiftBased = true
+        };
+        var escortOfficer = new WorkforceRoleDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            Code = "EscortOfficer",
+            NameAr = "ضابط مرافقة",
+            NameEn = "Escort Officer",
+            Category = WorkforceRoleCategory.Escort,
+            Criticality = WorkforceRoleCriticality.Medium,
+            IsShiftBased = true
+        };
+        var vehicleDriver = new WorkforceRoleDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            Code = "VehicleDriver",
+            NameAr = "سائق مركبة",
+            NameEn = "Vehicle Driver",
+            Category = WorkforceRoleCategory.Logistics,
+            Criticality = WorkforceRoleCriticality.Medium,
+            RequiresCertification = true,
+            IsShiftBased = true
+        };
+        db.WorkforceRoleDefinitions.AddRange(shiftCommander, controlOperator, securityOfficer, escortOfficer, vehicleDriver);
+
+        var morning = new ShiftDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            Code = "MORNING",
+            Name = "الوردية الصباحية",
+            StartLocalTime = new TimeOnly(6, 0),
+            EndLocalTime = new TimeOnly(18, 0),
+            CrossesMidnight = false,
+            Timezone = "Asia/Riyadh",
+            IsActive = true
+        };
+        var night = new ShiftDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            Code = "NIGHT",
+            Name = "الوردية الليلية",
+            StartLocalTime = new TimeOnly(18, 0),
+            EndLocalTime = new TimeOnly(6, 0),
+            CrossesMidnight = true,
+            Timezone = "Asia/Riyadh",
+            IsActive = true
+        };
+        db.ShiftDefinitions.AddRange(morning, night);
+
+        WorkforceMember DemoMember(string number, string name, string title, string specialty, Guid? unitId) =>
+            new()
+            {
+                OrganizationId = SeedIds.Organization,
+                DisplayName = name,
+                EmployeeNumber = number,
+                EmploymentStatus = EmploymentStatus.Active,
+                JobTitle = title,
+                PrimarySpecialty = specialty,
+                AdministrativeOrganizationId = SeedIds.Organization,
+                HomeFacilityId = SeedIds.FacilityA1,
+                CurrentOperationalFacilityId = SeedIds.FacilityA1,
+                CurrentOperationalUnitId = unitId,
+                IsOperational = true,
+                SourceType = WorkforceSourceType.Manual,
+                SourceReference = "demo-workforce-seed",
+                LastVerifiedAtUtc = now.AddDays(-2)
+            };
+
+        var m1 = DemoMember("WF-A1-001", "أحمد القحطاني", "قائد وردية", "قيادة", SeedIds.FacilityA1UnitNorth);
+        var m2 = DemoMember("WF-A1-002", "سعد العتيبي", "مشغل تحكم", "تحكم", SeedIds.FacilityA1UnitNorth);
+        var m3 = DemoMember("WF-A1-003", "فهد الشمري", SecurityOfficerNameAr, "أمن", SeedIds.FacilityA1UnitSouth);
+        var m4 = DemoMember("WF-A1-004", "خالد الدوسري", "ضابط مرافقة", "مرافقة", SeedIds.FacilityA1UnitSouth);
+        var m5 = DemoMember("WF-A1-005", "ناصر الحربي", "سائق", "نقل", SeedIds.FacilityA1UnitMedical);
+        var m6 = DemoMember("WF-A1-006", "عبدالله المطيري", SecurityOfficerNameAr, "أمن", null);
+        db.WorkforceMembers.AddRange(m1, m2, m3, m4, m5, m6);
+
+        db.WorkforceAssignments.AddRange(
+            new WorkforceAssignment
+            {
+                WorkforceMemberId = m1.Id,
+                FacilityId = SeedIds.FacilityA1,
+                FacilityUnitId = SeedIds.FacilityA1UnitNorth,
+                RoleDefinitionId = shiftCommander.Id,
+                AssignmentType = AssignmentType.Permanent,
+                EffectiveFromUtc = effectiveFrom,
+                IsPrimary = true
+            },
+            new WorkforceAssignment
+            {
+                WorkforceMemberId = m2.Id,
+                FacilityId = SeedIds.FacilityA1,
+                FacilityUnitId = SeedIds.FacilityA1UnitNorth,
+                RoleDefinitionId = controlOperator.Id,
+                AssignmentType = AssignmentType.Permanent,
+                EffectiveFromUtc = effectiveFrom,
+                IsPrimary = true
+            },
+            new WorkforceAssignment
+            {
+                WorkforceMemberId = m3.Id,
+                FacilityId = SeedIds.FacilityA1,
+                FacilityUnitId = SeedIds.FacilityA1UnitSouth,
+                RoleDefinitionId = securityOfficer.Id,
+                AssignmentType = AssignmentType.Permanent,
+                EffectiveFromUtc = effectiveFrom,
+                IsPrimary = true
+            },
+            new WorkforceAssignment
+            {
+                WorkforceMemberId = m4.Id,
+                FacilityId = SeedIds.FacilityA1,
+                RoleDefinitionId = escortOfficer.Id,
+                AssignmentType = AssignmentType.Permanent,
+                EffectiveFromUtc = effectiveFrom,
+                IsPrimary = true
+            },
+            new WorkforceAssignment
+            {
+                WorkforceMemberId = m5.Id,
+                FacilityId = SeedIds.FacilityA1,
+                RoleDefinitionId = vehicleDriver.Id,
+                AssignmentType = AssignmentType.Permanent,
+                EffectiveFromUtc = effectiveFrom,
+                IsPrimary = true
+            });
+
+        db.StaffingRequirements.AddRange(
+            new StaffingRequirement
+            {
+                OrganizationId = SeedIds.Organization,
+                FacilityId = SeedIds.FacilityA1,
+                RoleDefinitionId = shiftCommander.Id,
+                ShiftDefinitionId = morning.Id,
+                RequiredHeadcount = 1,
+                MinimumSafeHeadcount = 1,
+                EffectiveFromUtc = effectiveFrom,
+                SourceReference = "STAFF-A1-CMD"
+            },
+            new StaffingRequirement
+            {
+                OrganizationId = SeedIds.Organization,
+                FacilityId = SeedIds.FacilityA1,
+                RoleDefinitionId = controlOperator.Id,
+                ShiftDefinitionId = morning.Id,
+                RequiredHeadcount = 2,
+                MinimumSafeHeadcount = 1,
+                EffectiveFromUtc = effectiveFrom,
+                SourceReference = "STAFF-A1-CTRL"
+            },
+            new StaffingRequirement
+            {
+                OrganizationId = SeedIds.Organization,
+                FacilityId = SeedIds.FacilityA1,
+                RoleDefinitionId = securityOfficer.Id,
+                ShiftDefinitionId = morning.Id,
+                RequiredHeadcount = 4,
+                MinimumSafeHeadcount = 3,
+                EffectiveFromUtc = effectiveFrom,
+                SourceReference = "STAFF-A1-SEC"
+            });
+
+        db.CriticalPositionRequirements.Add(new CriticalPositionRequirement
+        {
+            FacilityId = SeedIds.FacilityA1,
+            RoleDefinitionId = shiftCommander.Id,
+            ShiftDefinitionId = morning.Id,
+            RequiredPrimaryCount = 1,
+            RequiredAlternateCount = 1,
+            Criticality = WorkforceRoleCriticality.MissionCritical,
+            EffectiveFromUtc = effectiveFrom
+        });
+
+        db.WorkforceQualifications.AddRange(
+            new WorkforceQualification
+            {
+                WorkforceMemberId = m1.Id,
+                QualificationType = QualificationType.RoleCertification,
+                RoleDefinitionId = shiftCommander.Id,
+                Name = "شهادة قيادة وردية",
+                Status = QualificationStatus.Valid,
+                IssuedAtUtc = now.AddYears(-1),
+                ExpiresAtUtc = now.AddYears(1)
+            },
+            new WorkforceQualification
+            {
+                WorkforceMemberId = m5.Id,
+                QualificationType = QualificationType.License,
+                RoleDefinitionId = vehicleDriver.Id,
+                Name = "رخصة قيادة مهنية",
+                Status = QualificationStatus.ExpiringSoon,
+                IssuedAtUtc = now.AddYears(-2),
+                ExpiresAtUtc = now.AddDays(20)
+            });
+
+        db.WorkforceAvailabilityEvents.Add(new WorkforceAvailabilityEvent
+        {
+            WorkforceMemberId = m6.Id,
+            AvailabilityType = AvailabilityType.AnnualLeave,
+            StartsAtUtc = now.AddDays(-1),
+            EndsAtUtc = now.AddDays(5),
+            AffectsOperationalAvailability = true,
+            SourceType = WorkforceSourceType.Manual,
+            RecordedAtUtc = now,
+            RecordedBy = "seed"
+        });
+
+        var roster = new DutyRoster
+        {
+            FacilityId = SeedIds.FacilityA1,
+            ShiftDefinitionId = morning.Id,
+            DutyDate = today,
+            Status = DutyRosterStatuses.Published,
+            PublishedAtUtc = now.AddHours(-2),
+            PublishedBy = "seed"
+        };
+        db.DutyRosters.Add(roster);
+        db.DutyRosterAssignments.AddRange(
+            new DutyRosterAssignment
+            {
+                DutyRosterId = roster.Id,
+                WorkforceMemberId = m1.Id,
+                RoleDefinitionId = shiftCommander.Id,
+                Status = RosterAssignmentStatus.Present
+            },
+            new DutyRosterAssignment
+            {
+                DutyRosterId = roster.Id,
+                WorkforceMemberId = m2.Id,
+                RoleDefinitionId = controlOperator.Id,
+                Status = RosterAssignmentStatus.Confirmed
+            },
+            new DutyRosterAssignment
+            {
+                DutyRosterId = roster.Id,
+                WorkforceMemberId = m3.Id,
+                RoleDefinitionId = securityOfficer.Id,
+                Status = RosterAssignmentStatus.Planned
+            });
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private sealed record DemoResourceAssetState(
         ResourceStatus Status,
         ResourceCondition Condition,
@@ -1218,6 +1545,7 @@ public static class DatabaseInitializer
     private const string WorkspacesModule = "Workspaces";
     private const string OccupancyModule = "Occupancy";
     private const string ResourcesModule = "Resources";
+    private const string WorkforceModule = "Workforce";
     private const string FormsModule = "Forms";
 
     private static List<Permission> BuildPermissions()
@@ -1367,7 +1695,20 @@ public static class DatabaseInitializer
             (PermissionCodes.ResourcesManageRequirements, "إدارة احتياجات الموارد", ResourcesModule),
             (PermissionCodes.ResourcesImport, "استيراد الموارد", ResourcesModule),
             (PermissionCodes.ResourcesExport, "تصدير الموارد", ResourcesModule),
-            (PermissionCodes.ResourcesReconcile, "مصالحة بيانات الموارد", ResourcesModule)
+            (PermissionCodes.ResourcesReconcile, "مصالحة بيانات الموارد", ResourcesModule),
+            (PermissionCodes.WorkforceViewSummary, "عرض ملخص جاهزية القوى البشرية", WorkforceModule),
+            (PermissionCodes.WorkforceViewCoverage, "عرض تغطية المناوبات والاحتياج", WorkforceModule),
+            (PermissionCodes.WorkforceViewMembers, "عرض أعضاء القوى البشرية", WorkforceModule),
+            (PermissionCodes.WorkforceViewSensitiveRestrictions, "عرض قيود تشغيلية حساسة", WorkforceModule),
+            (PermissionCodes.WorkforceManageMembers, "إدارة أعضاء القوى البشرية", WorkforceModule),
+            (PermissionCodes.WorkforceManageAssignments, "إدارة تكليفات القوى البشرية", WorkforceModule),
+            (PermissionCodes.WorkforceManageQualifications, "إدارة مؤهلات القوى البشرية", WorkforceModule),
+            (PermissionCodes.WorkforceManageRequirements, "إدارة احتياجات التغطية", WorkforceModule),
+            (PermissionCodes.WorkforceManageRosters, "إدارة جداول المناوبات", WorkforceModule),
+            (PermissionCodes.WorkforceRecordAvailability, "تسجيل التوفر والغياب", WorkforceModule),
+            (PermissionCodes.WorkforceImport, "استيراد القوى البشرية", WorkforceModule),
+            (PermissionCodes.WorkforceExport, "تصدير القوى البشرية", WorkforceModule),
+            (PermissionCodes.WorkforceReconcile, "مصالحة بيانات القوى البشرية", WorkforceModule)
         ];
 
         return items.Select(i => new Permission
@@ -1391,7 +1732,7 @@ public static class DatabaseInitializer
             (RoleCodes.RegionalCoordinator, "منسق منطقة"),
             (RoleCodes.FacilityDirector, "مدير سجن"),
             (RoleCodes.FacilityCoordinator, "منسق سجن"),
-            (RoleCodes.SecurityOfficer, "ضابط أمن"),
+            (RoleCodes.SecurityOfficer, SecurityOfficerNameAr),
             (RoleCodes.ArmamentOfficer, "ضابط تسليح"),
             (RoleCodes.FleetOfficer, "ضابط أسطول"),
             (RoleCodes.WorkforceOfficer, "ضابط قوى عاملة"),
