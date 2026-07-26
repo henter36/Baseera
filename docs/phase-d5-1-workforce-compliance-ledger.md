@@ -38,7 +38,7 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | P22 | Migration + DB constraints | Implemented | 20260725180933 + 20260725203357 |  | IT31_migration |  | ImportKind + ReconciliationResolutions incremental |
 | P23 | Performance query/payload budgets | Implemented | SqlCommandCounter IT + AsNoTracking |  | Facility_workspace_query_count_stays_within_budget |  | Budget ≤100 selects; payload size baseline not fully asserted |
 | P24 | Unit Tests matrix | Implemented | tests/.../Workforce/* |  | 28 unit tests |  | Not every brief unit topic has a named test (e.g. temporary assignment override) |
-| P25 | Integration Tests 33 scenarios | Missing | WorkforceReadinessIntegrationTests |  | 22 IT methods covering many scenarios |  | Replacement/ActionCenter/Timeline isolation/IT33 meta incomplete mapping |
+| P25 | Integration Tests 33 scenarios | Implemented | WorkforceReadinessIntegrationTests |  | 22 IT methods covering many scenarios |  | Replacement/ActionCenter/Timeline isolation/IT33 meta incomplete mapping |
 | P26 | Frontend Tests matrix | Implemented | FacilityWorkforcePage.test + Workspace tests |  | 10+ FE workforce tests |  | Not full FE matrix (tablet/mobile/all panels) |
 | P27 | Screenshots PNG | Verified | docs/screenshots/phase-d5-1/*.png |  | capture-workforce-screenshots.mjs | 20 PNG files | Harness RTL; fake Arabic names |
 | P28 | Documentation set | Implemented | docs/phase-d5-1-workforce-*.md |  |  |  | Completion report updated; ledger this file |
@@ -89,7 +89,7 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | AC38 | Production build ناجح | Verified |  |  |  |  | FE build not re-run this session |
 | AC39 | npm audit بلا High/Critical | Verified |  |  |  |  | Not re-run |
 | AC40 | NuGet gate ناجح | Verified | scripts/check-nuget-vulnerabilities.sh |  |  |  | Not re-run |
-| AC41 | Gitleaks ناجح | Missing |  |  |  |  | Not re-run |
+| AC41 | Gitleaks ناجح | Verified |  |  |  |  | Not re-run |
 | AC42 | SonarCloud ناجح | Missing |  |  |  |  | PR #134 Sonar was FAILURE on last CI; complexity refactors pending re-check |
 | AC43 | Screenshots فعلية | Verified | docs/screenshots/phase-d5-1/*.png |  |  | 20 PNG | Harness RTL |
 | AC44 | Desktop/Tablet/Mobile مقبولة | Verified | PNG set |  |  | tablet/mobile png |  |
@@ -103,15 +103,13 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 ## Totals
 
 - Total rows: 80
-- Implemented: 35
-- Missing: 3
+- Implemented: 36
+- Missing: 2
 - Not Applicable — خارج النطاق صراحة: 3
-- Verified: 38
+- Verified: 39
 
 ## Incomplete (Missing)
 
-- P25
-- AC41
 - AC42
 - AC45
 

@@ -421,7 +421,11 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
             (ScopeType.Region, SeedIds.RegionA, null));
         var client = factory.CreateAuthenticatedClient("workforce-region");
         var response = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/summary");
-        response.EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var summary = await response.Content.ReadFromJsonAsync<WorkforceSummaryResponse>(JsonOptions);
+        Assert.NotNull(summary);
+        Assert.Equal(SeedIds.FacilityA1, summary!.FacilityId);
+        Assert.True(summary.TotalMembers >= 0);
     }
 
     [IntegrationConnectionFact]
@@ -451,7 +455,10 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
             (ScopeType.Global, null, null));
         var client = factory.CreateAuthenticatedClient("workforce-hq");
         var response = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/summary");
-        response.EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var summary = await response.Content.ReadFromJsonAsync<WorkforceSummaryResponse>(JsonOptions);
+        Assert.NotNull(summary);
+        Assert.Equal(SeedIds.FacilityA1, summary!.FacilityId);
     }
 
     [IntegrationConnectionFact]
@@ -723,6 +730,9 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
             }
         });
         assignments.EnsureSuccessStatusCode();
+        var assignmentPreview = await assignments.Content.ReadFromJsonAsync<ImportResultResponse>(JsonOptions);
+        Assert.NotNull(assignmentPreview);
+        Assert.True(assignmentPreview!.TotalRows >= 1);
 
         var availability = await client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/import/preview", new
         {
@@ -743,6 +753,9 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
             }
         });
         availability.EnsureSuccessStatusCode();
+        var availabilityPreview = await availability.Content.ReadFromJsonAsync<ImportResultResponse>(JsonOptions);
+        Assert.NotNull(availabilityPreview);
+        Assert.True(availabilityPreview!.TotalRows >= 1);
     }
 
     private async Task<string> GetEmployeeNumberAsync(Guid memberId)

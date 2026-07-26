@@ -138,9 +138,7 @@ public sealed partial class WorkforceReadinessService(
             Issues = summary.Warnings
                 .Select((warning, index) => new WorkforceDataQualityIssueDto
                 {
-                    Code = warning.Contains("إجازة", StringComparison.Ordinal) ? "leave_while_rostered"
-                        : warning.Contains("تعارض", StringComparison.Ordinal) ? "conflicting_assignment"
-                        : $"workspace_warning_{index}",
+                    Code = ResolveWorkspaceWarningCode(warning, index),
                     TitleAr = warning,
                     Count = 1,
                     Severity = "medium",
@@ -667,7 +665,7 @@ public sealed partial class WorkforceReadinessService(
                     && (q.ExpiresAtUtc == null || q.ExpiresAtUtc > now)), cancellationToken);
 
         var issues = new List<WorkforceDataQualityIssueDto>();
-        void AddIssue(string code, string titleAr, int count, string severity, string impactAr, string actionAr, string? ownerAr = null, string? drill = null)
+        void AddIssue(string code, string titleAr, int count, string severity, string impactAr, string actionAr)
         {
             if (count <= 0)
             {
@@ -682,8 +680,8 @@ public sealed partial class WorkforceReadinessService(
                 Severity = severity,
                 ImpactAr = impactAr,
                 SuggestedActionAr = actionAr,
-                OwnerAr = ownerAr ?? "عمليات المنشأة",
-                DrillDownHint = drill ?? code
+                OwnerAr = "عمليات المنشأة",
+                DrillDownHint = code
             });
         }
 
@@ -1339,6 +1337,21 @@ public sealed partial class WorkforceReadinessService(
         return issues;
     }
 
+
+    private static string ResolveWorkspaceWarningCode(string warning, int index)
+    {
+        if (warning.Contains("إجازة", StringComparison.Ordinal))
+        {
+            return "leave_while_rostered";
+        }
+
+        if (warning.Contains("تعارض", StringComparison.Ordinal))
+        {
+            return "conflicting_assignment";
+        }
+
+        return $"workspace_warning_{index}";
+    }
 
     private static MemberSummaryStats AccumulateMemberSummaryStats(
         IReadOnlyList<SummaryMemberRow> members,
