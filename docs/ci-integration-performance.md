@@ -46,6 +46,19 @@ Latest `main` backend CI before this branch:
 
 Source: GitHub Actions run `30188503935`, backend job `89757297130`.
 
+First PR CI run after collection fixtures, before sharding:
+
+| Step | Duration |
+| --- | ---: |
+| Backend job | 5m29s |
+| Restore | 11s |
+| Build | 39s |
+| Unit tests | 11s |
+| Integration tests | 3m17s |
+| Apply migrations | 27s |
+
+This improved backend CI by about 11.6%, below the 30% target, so the conditional sharding round was enabled.
+
 ## Changes
 
 The integration suite now uses four shared xUnit collections:
@@ -115,6 +128,17 @@ The backend workflow now:
 - runs integration tests with the explicit csproj, minimal console logging, and `--blame-hang`;
 - fails the job if integration tests report skipped tests;
 - verifies migrations against a dedicated `Baseera_Migration_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}` database and drops it afterward.
+- runs integration tests in four collection-aligned shards after the first CI run showed the backend job still missed the 30% wall-clock target.
+
+Shard discovery was checked locally with `dotnet test --list-tests --filter ...`:
+
+| Shard | Tests |
+| --- | ---: |
+| core | 30 |
+| forms | 54 |
+| operations | 91 |
+| workforce | 23 |
+| total | 198 |
 
 ## Duplicate Test Review
 
