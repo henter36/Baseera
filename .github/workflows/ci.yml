@@ -252,11 +252,18 @@ jobs:
             --blame-hang-timeout 10m \
             | tee "$test_output"
 
-          status=${PIPESTATUS[0]}
+          pipeline_status=("${PIPESTATUS[@]}")
+          status="${pipeline_status[0]}"
+          tee_status="${pipeline_status[1]}"
           set -e
 
           if [[ "$status" -ne 0 ]]; then
             exit "$status"
+          fi
+
+          if [[ "$tee_status" -ne 0 ]]; then
+            echo "Failed to capture integration test output" >&2
+            exit "$tee_status"
           fi
 
           if grep -E 'Skipped:\s*[1-9]' "$test_output" >/dev/null; then

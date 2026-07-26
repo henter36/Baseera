@@ -25,7 +25,7 @@ def extract_tests() -> list[TestMethod]:
     tests: list[TestMethod] = []
     method_pattern = re.compile(
         r"\[(?:IntegrationConnectionFact|Fact|Theory)[^\]]*\]\s+"
-        r"public\s+async\s+Task\s+([A-Za-z0-9_]+)\s*\(",
+        r"public\s+(?:async\s+)?(?:Task|void)\s+([A-Za-z0-9_]+)\s*\(",
         re.MULTILINE,
     )
     endpoint_pattern = re.compile(r'"(/api/v1/[^"\s{}]+)')

@@ -189,27 +189,27 @@ public sealed class FormCampaignIntegrationTests : IntegrationTestBase<FormsInte
     public async Task Inactive_facility_preview_lists_unavailable_facility()
     {
         await SeedAsync();
-        using (var scope = _factory.Services.CreateScope())
+        await SetFacilityA2ActiveAsync(isActive: false);
+        try
         {
-            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
-            var facility = await db.Facilities.FindAsync(SeedIds.FacilityA2);
-            facility!.IsActive = false;
-            await db.SaveChangesAsync();
+            var designer = _factory.CreateAuthenticatedClient("cmp-designer");
+            var approver = _factory.CreateAuthenticatedClient("cmp-approver");
+            var publisher = _factory.CreateAuthenticatedClient("cmp-publisher");
+
+            var (formId, versionId, _) = await CreateLockedFormAsync(designer, approver);
+            var campaign = await CreateCampaignAsync(designer, formId, versionId, DateTimeOffset.UtcNow.AddHours(1));
+
+            var preview = await publisher.PostAsync($"/api/v1/form-campaigns/{campaign.Id}/target-preview", null);
+            var previewBody = await preview.Content.ReadAsStringAsync();
+            Assert.True(preview.IsSuccessStatusCode, previewBody);
+            using var doc = JsonDocument.Parse(previewBody);
+            var unavailable = doc.RootElement.GetProperty("unavailableFacilities").EnumerateArray().Select(e => e.GetString()).ToList();
+            Assert.Contains("FAC-A2", unavailable);
         }
-
-        var designer = _factory.CreateAuthenticatedClient("cmp-designer");
-        var approver = _factory.CreateAuthenticatedClient("cmp-approver");
-        var publisher = _factory.CreateAuthenticatedClient("cmp-publisher");
-
-        var (formId, versionId, _) = await CreateLockedFormAsync(designer, approver);
-        var campaign = await CreateCampaignAsync(designer, formId, versionId, DateTimeOffset.UtcNow.AddHours(1));
-
-        var preview = await publisher.PostAsync($"/api/v1/form-campaigns/{campaign.Id}/target-preview", null);
-        var previewBody = await preview.Content.ReadAsStringAsync();
-        Assert.True(preview.IsSuccessStatusCode, previewBody);
-        using var doc = JsonDocument.Parse(previewBody);
-        var unavailable = doc.RootElement.GetProperty("unavailableFacilities").EnumerateArray().Select(e => e.GetString()).ToList();
-        Assert.Contains("FAC-A2", unavailable);
+        finally
+        {
+            await SetFacilityA2ActiveAsync(isActive: true);
+        }
     }
 
     [IntegrationConnectionFact]
@@ -266,6 +266,15 @@ public sealed class FormCampaignIntegrationTests : IntegrationTestBase<FormsInte
             (ScopeType.Global, null, null));
         await _factory.SeedUserAsync("cmp-publisher", "ناشر", [RoleCodes.FormPublisher],
             (ScopeType.Global, null, null));
+    }
+
+    private async Task SetFacilityA2ActiveAsync(bool isActive)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var facility = await db.Facilities.FindAsync(SeedIds.FacilityA2);
+        facility!.IsActive = isActive;
+        await db.SaveChangesAsync();
     }
 
     private async Task<(Guid FormId, Guid VersionId, string SchemaHash)> CreateLockedFormAsync(HttpClient designer, HttpClient approver)

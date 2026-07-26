@@ -27,8 +27,11 @@ public abstract class SharedIntegrationFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var raw = Environment.GetEnvironmentVariable("BASEERA_TEST_CONNECTION")
-            ?? throw new InvalidOperationException("BASEERA_TEST_CONNECTION is required.");
+        var raw = Environment.GetEnvironmentVariable("BASEERA_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return;
+        }
 
         var builder = new SqlConnectionStringBuilder(raw)
         {

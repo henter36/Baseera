@@ -5,6 +5,7 @@ using System.Text.Json;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
 using Baseera.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
@@ -122,17 +123,24 @@ public sealed class AuditAndAttachmentTests : IntegrationTestBase<CoreIntegratio
         var region = await client.GetFromJsonAsync<RegionItem>($"/api/v1/regions/{SeedIds.RegionA}");
         Assert.NotNull(region);
 
-        var update = await client.PutAsJsonAsync($"/api/v1/regions/{SeedIds.RegionA}", new
+        try
         {
-            nameAr = "منطقة أ محدّثة",
-            isActive = true,
-            rowVersion = region!.RowVersion
-        });
-        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+            var update = await client.PutAsJsonAsync($"/api/v1/regions/{SeedIds.RegionA}", new
+            {
+                nameAr = "منطقة أ محدّثة",
+                isActive = true,
+                rowVersion = region!.RowVersion
+            });
+            Assert.Equal(HttpStatusCode.OK, update.StatusCode);
 
-        var audits = await client.GetFromJsonAsync<PagedEnvelope<AuditItem>>("/api/v1/audit-logs?module=Organization&page=1&pageSize=20");
-        Assert.NotNull(audits);
-        Assert.Contains(audits!.Items, a => a.Action == "Update" && a.EntityId == SeedIds.RegionA.ToString());
+            var audits = await client.GetFromJsonAsync<PagedEnvelope<AuditItem>>("/api/v1/audit-logs?module=Organization&page=1&pageSize=20");
+            Assert.NotNull(audits);
+            Assert.Contains(audits!.Items, a => a.Action == "Update" && a.EntityId == SeedIds.RegionA.ToString());
+        }
+        finally
+        {
+            await RestoreRegionANameAsync(region!.NameAr);
+        }
     }
 
     [IntegrationConnectionFact]
@@ -148,21 +156,28 @@ public sealed class AuditAndAttachmentTests : IntegrationTestBase<CoreIntegratio
         var region = await client.GetFromJsonAsync<RegionItem>($"/api/v1/regions/{SeedIds.RegionA}");
         Assert.NotNull(region);
 
-        var first = await client.PutAsJsonAsync($"/api/v1/regions/{SeedIds.RegionA}", new
+        try
         {
-            nameAr = "تحديث أول",
-            isActive = true,
-            rowVersion = region!.RowVersion
-        });
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            var first = await client.PutAsJsonAsync($"/api/v1/regions/{SeedIds.RegionA}", new
+            {
+                nameAr = "تحديث أول",
+                isActive = true,
+                rowVersion = region!.RowVersion
+            });
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
 
-        var stale = await client.PutAsJsonAsync($"/api/v1/regions/{SeedIds.RegionA}", new
+            var stale = await client.PutAsJsonAsync($"/api/v1/regions/{SeedIds.RegionA}", new
+            {
+                nameAr = "تحديث قديم",
+                isActive = true,
+                rowVersion = region.RowVersion
+            });
+            Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        }
+        finally
         {
-            nameAr = "تحديث قديم",
-            isActive = true,
-            rowVersion = region.RowVersion
-        });
-        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+            await RestoreRegionANameAsync(region!.NameAr);
+        }
     }
 
     [IntegrationConnectionFact]
@@ -274,6 +289,15 @@ public sealed class AuditAndAttachmentTests : IntegrationTestBase<CoreIntegratio
         Assert.True(
             response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized,
             $"Expected Forbidden/Unauthorized, got {response.StatusCode}");
+    }
+
+    private async Task RestoreRegionANameAsync(string nameAr)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var region = await db.Regions.FindAsync(SeedIds.RegionA);
+        region!.NameAr = nameAr;
+        await db.SaveChangesAsync();
     }
 }
 
