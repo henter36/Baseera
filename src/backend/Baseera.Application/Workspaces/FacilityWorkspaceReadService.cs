@@ -929,6 +929,126 @@ internal sealed class FacilityWorkspaceReadService(
             });
         }
 
+        var commanderRoleIds = await db.WorkforceRoleDefinitions.AsNoTracking()
+            .Where(r => !r.IsDeleted && r.Category == Domain.Workforce.WorkforceRoleCategory.Command)
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+        if (commanderRoleIds.Count > 0)
+        {
+            var hasCommander = await db.DutyRosterAssignments.AsNoTracking()
+                .AnyAsync(a => !a.IsDeleted
+                    && a.DutyRoster.FacilityId == facilityId
+                    && a.DutyRoster.DutyDate == today
+                    && a.DutyRoster.Status == Domain.Workforce.DutyRosterStatuses.Published
+                    && commanderRoleIds.Contains(a.RoleDefinitionId)
+                    && (a.Status == Domain.Workforce.RosterAssignmentStatus.Present
+                        || a.Status == Domain.Workforce.RosterAssignmentStatus.Confirmed
+                        || a.Status == Domain.Workforce.RosterAssignmentStatus.Planned), cancellationToken);
+            if (!hasCommander)
+            {
+                items.Add(new FacilityPriorityItemPayload
+                {
+                    Type = "workforce.NoShiftCommander",
+                    Reference = $"commander:{facilityId}",
+                    TitleAr = "قائد مناوبة غير متوفر",
+                    SeverityAr = "حرجة",
+                    PriorityRank = 925,
+                    ReasonAr = "لا يوجد دور قيادي حاضر/مؤكد في مناوبات اليوم المنشورة.",
+                    DueAtUtc = null,
+                    OverdueDays = null,
+                    OwnerAr = null,
+                    ActionLabelAr = "تعيين قائد مناوبة",
+                    DrillDownTarget = WorkforceTarget(context, PermissionCodes.WorkforceViewCoverage)
+                });
+            }
+        }
+
+        var driverRoleIds = await db.WorkforceRoleDefinitions.AsNoTracking()
+            .Where(r => !r.IsDeleted && (r.Code.Contains("Driver") || r.NameAr.Contains("سائق")))
+            .Select(r => r.Id)
+            .ToListAsync(cancellationToken);
+        if (driverRoleIds.Count > 0)
+        {
+            var driverCovered = await db.DutyRosterAssignments.AsNoTracking()
+                .AnyAsync(a => !a.IsDeleted
+                    && a.DutyRoster.FacilityId == facilityId
+                    && a.DutyRoster.DutyDate == today
+                    && a.DutyRoster.Status == Domain.Workforce.DutyRosterStatuses.Published
+                    && driverRoleIds.Contains(a.RoleDefinitionId), cancellationToken);
+            if (!driverCovered)
+            {
+                items.Add(new FacilityPriorityItemPayload
+                {
+                    Type = "workforce.NoQualifiedDriver",
+                    Reference = $"driver:{facilityId}",
+                    TitleAr = "سائق مؤهل غير متوفر",
+                    SeverityAr = "عالية",
+                    PriorityRank = 870,
+                    ReasonAr = "لا تغطية لدور سائق في مناوبات اليوم.",
+                    DueAtUtc = null,
+                    OverdueDays = null,
+                    OwnerAr = null,
+                    ActionLabelAr = "تأمين سائق مؤهل",
+                    DrillDownTarget = WorkforceTarget(context, PermissionCodes.WorkforceViewCoverage)
+                });
+            }
+        }
+
+        if (payload.Summary.FatigueIndicators.Contains(Application.Workforce.WorkforceFatiguePolicy.ConsecutiveShiftsWithoutRest))
+        {
+            items.Add(new FacilityPriorityItemPayload
+            {
+                Type = "workforce.ConsecutiveShiftRisk",
+                Reference = $"consecutive:{facilityId}",
+                TitleAr = "خطر مناوبات متتالية",
+                SeverityAr = "متوسطة",
+                PriorityRank = 765,
+                ReasonAr = "مؤشر إرهاق: مناوبات متتالية دون راحة كافية.",
+                DueAtUtc = null,
+                OverdueDays = null,
+                OwnerAr = null,
+                ActionLabelAr = "مراجعة الجداول",
+                DrillDownTarget = WorkforceTarget(context, PermissionCodes.WorkforceViewCoverage)
+            });
+        }
+
+        if (payload.Summary.FatigueIndicators.Contains(Application.Workforce.WorkforceFatiguePolicy.QualificationExpiringSoon)
+            && items.All(i => i.Type != "workforce.QualificationExpiring"))
+        {
+            items.Add(new FacilityPriorityItemPayload
+            {
+                Type = "workforce.QualificationExpiring",
+                Reference = $"qual-expiring:{facilityId}",
+                TitleAr = "مؤهلات قاربت الانتهاء",
+                SeverityAr = "متوسطة",
+                PriorityRank = 835,
+                ReasonAr = "توجد مؤهلات ضمن نافذة الانتهاء القريب.",
+                DueAtUtc = null,
+                OverdueDays = null,
+                OwnerAr = null,
+                ActionLabelAr = "تجديد المؤهلات",
+                DrillDownTarget = WorkforceTarget(context, PermissionCodes.WorkforceViewMembers)
+            });
+        }
+
+        if (payload.DataQuality.Issues.Any(i => i.Code is "conflicting_assignment" or "leave_while_rostered"))
+        {
+            items.Add(new FacilityPriorityItemPayload
+            {
+                Type = "workforce.ConflictingAssignments",
+                Reference = $"conflict:{facilityId}",
+                TitleAr = "تكليفات متعارضة",
+                SeverityAr = "عالية",
+                PriorityRank = 845,
+                ReasonAr = "جودة البيانات تشير إلى تعارضات تكليف/جدولة.",
+                DueAtUtc = null,
+                OverdueDays = null,
+                OwnerAr = null,
+                ActionLabelAr = "فتح المصالحة",
+                DrillDownTarget = WorkforceTarget(context, PermissionCodes.WorkforceReconcile)
+            });
+        }
+
         return items.Take(PriorityLimit).ToList();
     }
 

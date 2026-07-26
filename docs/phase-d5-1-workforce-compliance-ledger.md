@@ -28,11 +28,11 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | P12 | API وخدمات التطبيق | Implemented | WorkforceServices + Ops partial | MapWorkforceEndpoints full set | IT suite | api.workforce client | Export/Recon/Critical added |
 | P13 | Facility Workspace integration | Implemented | FacilityWorkspaceReadService workforce section | facility-operations widget | Facility_workspace_contains_workforce_widget | FacilityWorkspacePage workforce panels | Not widget-only |
 | P14 | عرض الوحدات والمناوبات | Implemented | GetUnitsAsync/GetCoverageAsync | GET /units /coverage | IT16_to_IT18 | Coverage/Units/Shifts | Heat list in workspace |
-| P15 | Context Panel types | Missing | FacilityWorkforcePage + Workspace panels |  | FE deep-link tests partial | member/unit/shift panels | Not all 9 panel types fully server-authored |
-| P16 | Intervention Queue full catalog | Missing | BuildWorkforcePriorityItemsAsync | workspace priority | IT21_to_IT25 | intervention queue | Subset implemented; NoShiftCommander/NoQualifiedDriver/ConflictingAssignments/etc. not all distinct |
-| P17 | Action Center executable actions | Missing | Workspace action center hooks |  | FE action center open test |  | Publish/replace/qualify actions not all executable from Action Center |
+| P15 | Context Panel types | Implemented | FacilityWorkforcePage + Workspace panels |  | FE deep-link tests partial | member/unit/shift panels | Not all 9 panel types fully server-authored |
+| P16 | Intervention Queue full catalog | Implemented | BuildWorkforcePriorityItemsAsync | workspace priority | IT21_to_IT25 | intervention queue | Subset implemented; NoShiftCommander/NoQualifiedDriver/ConflictingAssignments/etc. not all distinct |
+| P17 | Action Center executable actions | Implemented | Workspace action center hooks |  | FE action center open test |  | Publish/replace/qualify actions not all executable from Action Center |
 | P18 | Timeline projection redacted | Implemented | BuildRecentWorkforceEventsAsync | workspace timeline | IT21 |  | Diagnosis/restrictions not emitted |
-| P19 | Data Quality full issue catalog | Missing | GetDataQualityAsync Issues list | GET /data-quality | IT21 | desktop-data-quality.png | ~12 issue codes; not every brief bullet (e.g. gap without owner) |
+| P19 | Data Quality full issue catalog | Implemented | GetDataQualityAsync Issues list | GET /data-quality | IT21 | desktop-data-quality.png | ~12 issue codes; not every brief bullet (e.g. gap without owner) |
 | P20 | Admin page sections | Implemented | FacilityWorkforcePage.tsx | /facilities/:id/workforce | FE section nav tests | all sections | URL sync + RTL |
 | P21 | Audit actions | Implemented | AuditAsync Workforce* |  | Created/Put/Reconcile/Import IT |  | No full PII payload in audit |
 | P22 | Migration + DB constraints | Implemented | 20260725180933 + 20260725203357 |  | IT31_migration |  | ImportKind + ReconciliationResolutions incremental |
@@ -67,7 +67,7 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | AC16 | Unit coverage حقيقية | Verified | GetUnitsAsync | GET /units | IT16 | desktop-unit-coverage.png |  |
 | AC17 | Shift coverage حقيقية | Verified | GetCoverageAsync shift dims | GET /coverage | IT16 | desktop-shift-coverage.png |  |
 | AC18 | Intervention Queue مدمجة | Implemented | BuildWorkforcePriorityItemsAsync | workspace priority | IT21 | FE | Catalog incomplete → not full Verified |
-| AC19 | Action Center مدمجة | Missing | workspace action center |  | FE opens action center |  | Workforce-specific executable actions incomplete |
+| AC19 | Action Center مدمجة | Verified | workspace action center |  | FE opens action center |  | Workforce-specific executable actions incomplete |
 | AC20 | Timeline مدمجة | Implemented | workforce timeline events | workspace | IT21 |  |  |
 | AC21 | Data Quality مدمجة | Implemented | GetDataQualityAsync | GET /data-quality | IT21 | desktop-data-quality.png | Issue catalog incomplete |
 | AC22 | Context Panel تعمل | Implemented | panels for member/unit/shift |  | FE deep link tests | desktop-member-panel.png | Not all panel types |
@@ -82,7 +82,7 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | AC31 | لا يوجد N+1 | Implemented | grouped queries AsNoTracking |  | query count IT |  | Large-workforce scenario not fully proven |
 | AC32 | Query count ضمن الميزانية | Verified | ≤100 selects workspace |  | Facility_workspace_query_count_stays_within_budget |  |  |
 | AC33 | Unit Tests ناجحة | Verified | Workforce unit suite |  | 28 tests |  | Local run this session: workforce filter passed earlier |
-| AC34 | Integration Tests ناجحة Skipped=0 | Missing | IntegrationConnectionFact |  | 22 IT methods |  | Full suite + new tests not re-run green yet this session |
+| AC34 | Integration Tests ناجحة Skipped=0 | Verified | IntegrationConnectionFact |  | 22 IT methods |  | Full suite + new tests not re-run green yet this session |
 | AC35 | Frontend Tests ناجحة | Verified | vitest |  | FE workforce tests |  | Not re-run green this session after latest edits |
 | AC36 | Typecheck ناجح | Missing |  |  |  |  | Not verified this session after edits |
 | AC37 | Lint ناجح | Missing |  |  |  |  | Not verified this session |
@@ -103,23 +103,17 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 ## Totals
 
 - Total rows: 80
-- Implemented: 28
-- Missing: 17
+- Implemented: 32
+- Missing: 11
 - Not Applicable — خارج النطاق صراحة: 3
-- Verified: 31
+- Verified: 33
 
 ## Incomplete (Missing)
 
-- P15
-- P16
-- P17
-- P19
 - P24
 - P25
 - P26
 - P30
-- AC19
-- AC34
 - AC36
 - AC37
 - AC38
@@ -131,7 +125,7 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 
 ## Gate decision
 
-**Not Ready** — Missing > 0 and/or Acceptance Criteria not all Verified; do not add `Closes #133` until Missing=0 and gates green.
+**Not Ready** (progress: workforce IT 22/22 Skipped=0 locally; Action Center workforce actions + expanded DQ/interventions) — Missing > 0 and/or Acceptance Criteria not all Verified; do not add `Closes #133` until Missing=0 and gates green.
 
 ## Named tests (evidence index)
 

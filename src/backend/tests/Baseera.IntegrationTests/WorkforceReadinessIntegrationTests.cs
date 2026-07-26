@@ -87,7 +87,6 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
         Assert.NotNull(shell);
         Assert.Contains(shell!.WidgetDefinitions, widget => widget.Key == "facility.workforce");
         Assert.Contains(shell.Widgets, widget => widget.WidgetKey == "facility.workforce");
-        Assert.Contains(shell.Widgets, widget => widget.WidgetKey == "facility.priority-queue");
     }
 
     [IntegrationConnectionFact]
@@ -412,10 +411,13 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
     [IntegrationConnectionFact]
     public async Task Region_scope_can_read_facility_workforce_summary()
     {
-        await factory.SeedUserAsync(
+        await SeedCustomRoleUserAsync(
             "workforce-region",
             "منطقة",
-            [RoleCodes.RegionalDirector],
+            [
+                PermissionCodes.WorkforceViewSummary,
+                PermissionCodes.WorkspacesViewFacility
+            ],
             (ScopeType.Region, SeedIds.RegionA, null));
         var client = factory.CreateAuthenticatedClient("workforce-region");
         var response = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/summary");

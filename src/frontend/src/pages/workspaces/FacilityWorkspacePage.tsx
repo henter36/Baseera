@@ -1040,6 +1040,26 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
   const urgent = data.priority?.items.slice(0, 5) ?? []
   const missingDomains = data.dataQuality?.domains.filter((domain) => domain.statusCode === 'unavailable') ?? []
   const missingDomainChips = missingDomains.slice(0, 3)
+  const canManageRosters = usePermission('Workforce.ManageRosters')
+  const canManageAssignments = usePermission('Workforce.ManageAssignments')
+  const canManageQualifications = usePermission('Workforce.ManageQualifications')
+  const canReconcile = usePermission('Workforce.Reconcile')
+  const canImport = usePermission('Workforce.Import')
+  const canViewCoverage = usePermission('Workforce.ViewCoverage')
+  const workforceActions = [
+    canManageRosters ? { id: 'publish-roster', label: 'نشر جدول مناوبة', panel: { type: 'workforce-roster' as const, entityId: 'action:publish-roster' } } : null,
+    canManageAssignments ? { id: 'assign-replacement', label: 'تعيين بديل', panel: { type: 'workforce-member' as const, entityId: 'action:replacement' } } : null,
+    canManageAssignments ? { id: 'confirm-assignment', label: 'اعتماد تكليف', panel: { type: 'workforce-requirement' as const, entityId: 'action:assignment' } } : null,
+    canManageQualifications ? { id: 'verify-qualification', label: 'التحقق من مؤهل', panel: { type: 'workforce-qualification' as const, entityId: 'action:qualification' } } : null,
+    canManageQualifications ? { id: 'expired-qualification', label: 'معالجة شهادة منتهية', panel: { type: 'workforce-qualification' as const, entityId: 'action:qualification-expired' } } : null,
+    canViewCoverage ? { id: 'review-restriction', label: 'مراجعة قيد تشغيلي', panel: { type: 'workforce-member' as const, entityId: 'action:restriction' } } : null,
+    canManageAssignments ? { id: 'no-ops-location', label: 'عضو بلا موقع تشغيلي', panel: { type: 'workforce-gap' as const, entityId: 'action:missing-location' } } : null,
+    canViewCoverage ? { id: 'no-alternate', label: 'منصب بلا بديل', panel: { type: 'workforce-critical-position' as const, entityId: 'action:no-alternate' } } : null,
+    canImport ? { id: 'confirm-import', label: 'تأكيد استيراد', panel: { type: 'workforce-gap' as const, entityId: 'action:import' } } : null,
+    canReconcile ? { id: 'reconcile', label: 'مصالحة فروقات', panel: { type: 'workforce-gap' as const, entityId: 'action:reconcile' } } : null,
+    canViewCoverage ? { id: 'stale-data', label: 'تحديث بيانات قديمة', panel: { type: 'workforce-gap' as const, entityId: 'action:stale' } } : null,
+  ].filter((item): item is NonNullable<typeof item> => item !== null)
+
   return (
     <aside className="action-center" aria-labelledby="action-center-title">
       <div className="context-panel-toolbar">
@@ -1052,6 +1072,18 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
         <CommandMetric label="مصعدة" value={data.alerts?.openEscalations ?? 0} tone="warn" />
         <CommandMetric label="نواقص بيانات" value={missingDomains.length} tone="muted" />
       </div>
+      {workforceActions.length > 0 && (
+        <ul className="priority-row-list" aria-label="إجراءات القوى البشرية المسموحة">
+          {workforceActions.map((action) => (
+            <li key={action.id}>
+              <button type="button" className="priority-row compact" onClick={() => openPanel(action.panel)}>
+                <span className="priority-band" aria-hidden="true" />
+                <span className="priority-row-main"><strong>{action.label}</strong><small>يُفتح وفق الصلاحية فقط</small></span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <ul className="priority-row-list" aria-label="الإجراءات العاجلة">
         {urgent.map((item) => (
           <li key={`${item.type}-${item.reference}`}>

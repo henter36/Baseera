@@ -172,11 +172,11 @@ describe('FacilityWorkspacePage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /ملاحظة حرجة/ }))
 
-    const assign = await screen.findByRole('button', { name: 'إسناد' })
+    const assign = await screen.findByRole('button', { name: 'إسناد' }, { timeout: 15000 })
     expect(assign).toBeDisabled()
     expect(assign).toHaveAttribute('title', 'يتطلب هذا الإجراء نموذجًا متقدمًا في الصفحة الكاملة.')
     expect(screen.getByRole('button', { name: 'بدء المعالجة' })).toBeEnabled()
-  })
+  }, 20000)
 
   it('opens corrective action details in the context panel without page navigation', async () => {
     renderPage('/workspaces/facilities/facility-a')

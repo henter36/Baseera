@@ -134,7 +134,22 @@ public sealed partial class WorkforceReadinessService(
             MissingHomeOrOperationalFacility = 0,
             StaleVerification = summary.StaleRecords,
             OpenImportIssues = 0,
-            Warnings = summary.Warnings
+            Warnings = summary.Warnings,
+            Issues = summary.Warnings
+                .Select((warning, index) => new WorkforceDataQualityIssueDto
+                {
+                    Code = warning.Contains("إجازة", StringComparison.Ordinal) ? "leave_while_rostered"
+                        : warning.Contains("تعارض", StringComparison.Ordinal) ? "conflicting_assignment"
+                        : $"workspace_warning_{index}",
+                    TitleAr = warning,
+                    Count = 1,
+                    Severity = "medium",
+                    ImpactAr = "مستمد من ملخص الجاهزية لمساحة العمل.",
+                    SuggestedActionAr = "فتح جودة البيانات للقوى البشرية.",
+                    OwnerAr = "عمليات المنشأة",
+                    DrillDownHint = "data-quality"
+                })
+                .ToList()
         };
         return new WorkforceWorkspacePayload
         {
@@ -652,7 +667,7 @@ public sealed partial class WorkforceReadinessService(
                     && (q.ExpiresAtUtc == null || q.ExpiresAtUtc > now)), cancellationToken);
 
         var issues = new List<WorkforceDataQualityIssueDto>();
-        void AddIssue(string code, string titleAr, int count, string severity, string impactAr, string actionAr)
+        void AddIssue(string code, string titleAr, int count, string severity, string impactAr, string actionAr, string? ownerAr = null, string? drill = null)
         {
             if (count <= 0)
             {
@@ -666,7 +681,9 @@ public sealed partial class WorkforceReadinessService(
                 Count = count,
                 Severity = severity,
                 ImpactAr = impactAr,
-                SuggestedActionAr = actionAr
+                SuggestedActionAr = actionAr,
+                OwnerAr = ownerAr ?? "عمليات المنشأة",
+                DrillDownHint = drill ?? code
             });
         }
 
@@ -682,6 +699,56 @@ public sealed partial class WorkforceReadinessService(
         AddIssue("leave_while_rostered", "إجازة أثناء المناوبة", leaveWhileRostered, "high", "فجوة حضور متوقعة.", "تعيين بديل.");
         AddIssue("retired_on_roster", "متقاعد/منتهٍ في المناوبة", retiredOnRoster, "critical", "جدولة غير صالحة.", "إزالة من الجدول.");
         AddIssue("missing_qualification", "مؤهل مطلوب مفقود", missingQualification, "high", "تغطية غير مؤهلة.", "تسجيل/تجديد المؤهل.");
+
+        var missingRole = await db.WorkforceMembers.AsNoTracking()
+            .CountAsync(m => !m.IsDeleted
+                && (m.CurrentOperationalFacilityId == facilityId || m.HomeFacilityId == facilityId)
+                && !db.WorkforceAssignments.Any(a => !a.IsDeleted && a.WorkforceMemberId == m.Id
+                    && a.FacilityId == facilityId
+                    && a.EffectiveFromUtc <= now
+                    && (a.EffectiveToUtc == null || a.EffectiveToUtc > now)), cancellationToken);
+        var shiftWithoutMinimum = await db.ShiftDefinitions.AsNoTracking()
+            .CountAsync(s => !s.IsDeleted && s.FacilityId == facilityId
+                && !db.StaffingRequirements.Any(r => !r.IsDeleted && r.FacilityId == facilityId
+                    && r.ShiftDefinitionId == s.Id
+                    && r.MinimumSafeHeadcount > 0
+                    && r.EffectiveFromUtc <= now
+                    && (r.EffectiveToUtc == null || r.EffectiveToUtc > now)), cancellationToken);
+        var expiredQualification = await db.WorkforceQualifications.AsNoTracking()
+            .CountAsync(q => !q.IsDeleted
+                && q.ExpiresAtUtc != null && q.ExpiresAtUtc <= now
+                && (q.WorkforceMember.CurrentOperationalFacilityId == facilityId
+                    || q.WorkforceMember.HomeFacilityId == facilityId), cancellationToken);
+        var overlappingRoster = await db.DutyRosterAssignments.AsNoTracking()
+            .Where(a => !a.IsDeleted
+                && a.DutyRoster.FacilityId == facilityId
+                && a.DutyRoster.DutyDate == today
+                && a.DutyRoster.Status == DutyRosterStatuses.Published)
+            .GroupBy(a => a.WorkforceMemberId)
+            .Where(g => g.Count() > 1)
+            .CountAsync(cancellationToken);
+        var openGap = await db.StaffingRequirements.AsNoTracking()
+            .AnyAsync(r => !r.IsDeleted && r.FacilityId == facilityId
+                && r.RequiredHeadcount > 0
+                && r.EffectiveFromUtc <= now
+                && (r.EffectiveToUtc == null || r.EffectiveToUtc > now), cancellationToken);
+        var gapWithoutOwner = openGap ? 1 : 0;
+
+        AddIssue("missing_role", "موظف بلا دور تشغيلي", missingRole, "high", "لا يدخل في تغطية الأدوار.", "إنشاء تكليف.");
+        AddIssue("shift_without_minimum", "مناوبة بلا حد أدنى آمن", shiftWithoutMinimum, "medium", "لا يمكن الحكم على السلامة.", "تعريف MinimumSafe.");
+        AddIssue("qualification_expired", "مؤهل منتهٍ", expiredQualification, "high", "تغطية غير مؤهلة.", "تجديد أو إيقاف الدور.");
+        AddIssue("conflicting_assignment", "موظف في مناوبتين متعارضتين", overlappingRoster, "critical", "عد مزدوج/تعارض حضور.", "إزالة التعارض.");
+        AddIssue("gap_without_owner", "فجوة بلا مسؤول", gapWithoutOwner, "medium", "لا يوجد مالك للمتابعة.", "تعيين مسؤول تغطية.");
+        AddIssue("duplicate_employee", "رقم موظف مكرر داخل المنشأة", members
+            .Where(m => !string.IsNullOrWhiteSpace(m.EmployeeNumber))
+            .GroupBy(m => m.EmployeeNumber!, StringComparer.OrdinalIgnoreCase)
+            .Count(g => g.Count() > 1), "critical", "ازدواج هوية تشغيلية.", "دمج السجلات.");
+        AddIssue("unknown_availability", "توفر مجهول", members.Count(m => m.EmploymentStatus == EmploymentStatus.Unknown), "medium", "Unknown لا يُحسب Available.", "تحديث التوفر.");
+        AddIssue("invalid_user_link", "ربط مستخدم غير صحيح", await db.WorkforceMembers.AsNoTracking()
+            .CountAsync(m => !m.IsDeleted
+                && (m.CurrentOperationalFacilityId == facilityId || m.HomeFacilityId == facilityId)
+                && m.UserId != null
+                && !db.Users.Any(u => u.Id == m.UserId), cancellationToken), "high", "فشل ربط الهوية.", "تصحيح UserId.");
 
         var warnings = issues.Select(i => $"{i.TitleAr} ({i.Count})").ToList();
         return new WorkforceDataQualityDto

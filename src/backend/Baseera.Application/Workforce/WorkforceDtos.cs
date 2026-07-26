@@ -154,6 +154,9 @@ public sealed record WorkforceDataQualityIssueDto
     public required string Severity { get; init; }
     public required string ImpactAr { get; init; }
     public required string SuggestedActionAr { get; init; }
+    public string? UnitNameAr { get; init; }
+    public string? OwnerAr { get; init; }
+    public string? DrillDownHint { get; init; }
 }
 
 public sealed record WorkforceWorkspacePayload
