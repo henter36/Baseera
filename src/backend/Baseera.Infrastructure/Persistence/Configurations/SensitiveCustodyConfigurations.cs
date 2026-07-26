@@ -57,7 +57,7 @@ internal sealed class WeaponAssetConfiguration : IEntityTypeConfiguration<Weapon
         builder.ToTable("WeaponAssets");
         builder.HasKey(asset => asset.Id);
         builder.Property(asset => asset.InternalAssetCode).HasMaxLength(80).IsRequired();
-        builder.Property(asset => asset.SerialNumberEncrypted).HasMaxLength(512).IsRequired();
+        builder.Property(asset => asset.SerialNumberEncrypted).HasMaxLength(1024).IsRequired();
         builder.Property(asset => asset.SerialNumberHash).HasMaxLength(128).IsRequired();
         builder.Property(asset => asset.Manufacturer).HasMaxLength(120);
         builder.Property(asset => asset.Model).HasMaxLength(120);

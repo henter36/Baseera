@@ -324,6 +324,10 @@ public class CustodyTransaction : SoftDeletableEntity
     public string? SourceReference { get; set; }
     public Guid? PreviousTransactionId { get; set; }
     public CustodyTransaction? PreviousTransaction { get; set; }
+    public WeaponStatus PreviousWeaponStatus { get; set; } = WeaponStatus.Unknown;
+    public CustodyLocationType PreviousCustodyLocationType { get; set; } = CustodyLocationType.Unknown;
+    public Guid? PreviousFacilityUnitId { get; set; }
+    public Guid? PreviousArmoryLocationId { get; set; }
     public Guid? CorrectionOfTransactionId { get; set; }
     public CustodyTransaction? CorrectionOfTransaction { get; set; }
     public bool IsCurrent { get; set; }

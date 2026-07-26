@@ -5836,6 +5836,18 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("PreviousTransactionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("PreviousArmoryLocationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PreviousCustodyLocationType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PreviousFacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PreviousWeaponStatus")
+                        .HasColumnType("int");
+
                     b.Property<string>("PurposeCode")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -6449,8 +6461,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("SerialNumberEncrypted")
                         .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("nvarchar(512)");
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
 
                     b.Property<string>("SerialNumberHash")
                         .IsRequired()
