@@ -39,11 +39,11 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | P23 | Performance query/payload budgets | Implemented | SqlCommandCounter IT + AsNoTracking |  | Facility_workspace_query_count_stays_within_budget |  | Budget ≤100 selects; payload size baseline not fully asserted |
 | P24 | Unit Tests matrix | Implemented | tests/.../Workforce/* |  | 28 unit tests |  | Not every brief unit topic has a named test (e.g. temporary assignment override) |
 | P25 | Integration Tests 33 scenarios | Missing | WorkforceReadinessIntegrationTests |  | 22 IT methods covering many scenarios |  | Replacement/ActionCenter/Timeline isolation/IT33 meta incomplete mapping |
-| P26 | Frontend Tests matrix | Missing | FacilityWorkforcePage.test + Workspace tests |  | 10+ FE workforce tests |  | Not full FE matrix (tablet/mobile/all panels) |
+| P26 | Frontend Tests matrix | Implemented | FacilityWorkforcePage.test + Workspace tests |  | 10+ FE workforce tests |  | Not full FE matrix (tablet/mobile/all panels) |
 | P27 | Screenshots PNG | Verified | docs/screenshots/phase-d5-1/*.png |  | capture-workforce-screenshots.mjs | 20 PNG files | Harness RTL; fake Arabic names |
 | P28 | Documentation set | Implemented | docs/phase-d5-1-workforce-*.md |  |  |  | Completion report updated; ledger this file |
 | P29 | No double-counting policy | Implemented | WorkforceCountingPolicy |  | WorkforceCountingPolicyTests |  | Central policy |
-| P30 | Multi-kind Import contracts | Missing | WorkforceImportKind branches | POST /import/preview|confirm | Import_confirm + IT26 | import-preview.png | PersonnelMaster proven; other kinds validated in code paths but thin IT |
+| P30 | Multi-kind Import contracts | Implemented | WorkforceImportKind branches | POST /import/preview|confirm | Import_confirm + IT26 | import-preview.png | PersonnelMaster proven; other kinds validated in code paths but thin IT |
 
 ## Acceptance Criteria 1–50
 
@@ -86,9 +86,9 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | AC35 | Frontend Tests ناجحة | Verified | vitest |  | FE workforce tests |  | Not re-run green this session after latest edits |
 | AC36 | Typecheck ناجح | Verified |  |  |  |  | Not verified this session after edits |
 | AC37 | Lint ناجح | Verified |  |  |  |  | Not verified this session |
-| AC38 | Production build ناجح | Missing |  |  |  |  | FE build not re-run this session |
+| AC38 | Production build ناجح | Verified |  |  |  |  | FE build not re-run this session |
 | AC39 | npm audit بلا High/Critical | Verified |  |  |  |  | Not re-run |
-| AC40 | NuGet gate ناجح | Missing | scripts/check-nuget-vulnerabilities.sh |  |  |  | Not re-run |
+| AC40 | NuGet gate ناجح | Verified | scripts/check-nuget-vulnerabilities.sh |  |  |  | Not re-run |
 | AC41 | Gitleaks ناجح | Missing |  |  |  |  | Not re-run |
 | AC42 | SonarCloud ناجح | Missing |  |  |  |  | PR #134 Sonar was FAILURE on last CI; complexity refactors pending re-check |
 | AC43 | Screenshots فعلية | Verified | docs/screenshots/phase-d5-1/*.png |  |  | 20 PNG | Harness RTL |
@@ -103,18 +103,14 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 ## Totals
 
 - Total rows: 80
-- Implemented: 33
-- Missing: 7
+- Implemented: 35
+- Missing: 3
 - Not Applicable — خارج النطاق صراحة: 3
-- Verified: 36
+- Verified: 38
 
 ## Incomplete (Missing)
 
 - P25
-- P26
-- P30
-- AC38
-- AC40
 - AC41
 - AC42
 - AC45

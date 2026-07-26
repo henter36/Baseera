@@ -678,6 +678,83 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
         Assert.True(summary.TotalMembers >= 0);
     }
 
+    [IntegrationConnectionFact]
+    public async Task IT30_multi_kind_import_preview_accepts_assignments_and_availability_kinds()
+    {
+        await factory.SeedUserAsync(
+            "workforce-import-kinds",
+            "أنواع استيراد",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("workforce-import-kinds");
+
+        Guid memberId;
+        Guid roleId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            memberId = await db.WorkforceMembers.AsNoTracking()
+                .Where(m => m.CurrentOperationalFacilityId == SeedIds.FacilityA1)
+                .Select(m => m.Id)
+                .FirstAsync();
+            roleId = await db.WorkforceRoleDefinitions.AsNoTracking()
+                .Where(r => !r.IsDeleted)
+                .Select(r => r.Id)
+                .FirstAsync();
+        }
+
+        var employeeNumber = await GetEmployeeNumberAsync(memberId);
+        var assignments = await client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/import/preview", new
+        {
+            importKind = 1,
+            sourceSystem = "IT-ASSIGN",
+            sourceReference = $"assign-{Guid.NewGuid():N}",
+            fileHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("assign"))),
+            rows = new[]
+            {
+                new
+                {
+                    employeeNumber,
+                    roleDefinitionId = roleId,
+                    assignmentType = 0,
+                    effectiveFromUtc = DateTimeOffset.UtcNow.AddDays(-1),
+                    isOperational = true
+                }
+            }
+        });
+        assignments.EnsureSuccessStatusCode();
+
+        var availability = await client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/import/preview", new
+        {
+            importKind = 4,
+            sourceSystem = "IT-AVAIL",
+            sourceReference = $"avail-{Guid.NewGuid():N}",
+            fileHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("avail"))),
+            rows = new[]
+            {
+                new
+                {
+                    employeeNumber,
+                    availabilityType = 1,
+                    availabilityStartsAtUtc = DateTimeOffset.UtcNow,
+                    availabilityEndsAtUtc = DateTimeOffset.UtcNow.AddDays(1),
+                    isOperational = true
+                }
+            }
+        });
+        availability.EnsureSuccessStatusCode();
+    }
+
+    private async Task<string> GetEmployeeNumberAsync(Guid memberId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        return await db.WorkforceMembers.AsNoTracking()
+            .Where(m => m.Id == memberId)
+            .Select(m => m.EmployeeNumber)
+            .FirstAsync();
+    }
+
     private async Task SeedCustomRoleUserAsync(
         string subject,
         string displayName,

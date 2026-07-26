@@ -231,6 +231,19 @@ describe('FacilityWorkspacePage', () => {
     expect(screen.getByTestId('router-location')).toHaveTextContent('/workspaces/facilities/facility-a')
   })
 
+  it('shows permission-gated workforce actions inside the action center', async () => {
+    currentPermissions.add('Workforce.ManageRosters')
+    currentPermissions.add('Workforce.Reconcile')
+    renderPage('/workspaces/facilities/facility-a')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'مركز الإجراءات' }))
+
+    const workforceActions = screen.getByRole('list', { name: /إجراءات القوى البشرية المسموحة/ })
+    expect(within(workforceActions).getByRole('button', { name: /نشر جدول مناوبة/ })).toBeEnabled()
+    expect(within(workforceActions).getByRole('button', { name: /مصالحة فروقات/ })).toBeEnabled()
+    expect(within(workforceActions).queryByRole('button', { name: /تأكيد استيراد/ })).not.toBeInTheDocument()
+  })
+
   it('does not render a duplicate priority queue inside the priorities section', async () => {
     renderPage('/workspaces/facilities/facility-a')
 
