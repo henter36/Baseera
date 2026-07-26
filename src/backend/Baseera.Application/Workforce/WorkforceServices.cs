@@ -1626,6 +1626,21 @@ public sealed partial class WorkforceReadinessService(
 
     private static void ValidateImportRequest(WorkforceImportPreviewRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.SourceSystem))
+        {
+            throw new ArgumentException("نظام المصدر مطلوب.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SourceReference))
+        {
+            throw new ArgumentException("مرجع المصدر مطلوب.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.FileHash))
+        {
+            throw new ArgumentException("بصمة الملف مطلوبة.");
+        }
+
         if (request.Rows.Count > 500)
         {
             throw new ArgumentException("الحد الأقصى للاستيراد 500 صف.");
