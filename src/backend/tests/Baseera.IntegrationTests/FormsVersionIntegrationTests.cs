@@ -10,13 +10,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class FormsVersionIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(FormsIntegrationCollection.Name)]
+public sealed class FormsVersionIntegrationTests : IntegrationTestBase<FormsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static int _codeSequence;
 
-    public FormsVersionIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public FormsVersionIntegrationTests(FormsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Version_create_save_submit_approve_lock_and_reject_locked_update()

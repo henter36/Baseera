@@ -8,35 +8,65 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Data.SqlClient;
 using Xunit;
 
 namespace Baseera.IntegrationTests;
 
 public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
 {
-    private readonly string _databaseName = $"Baseera_Test_{Guid.NewGuid():N}";
     private readonly string _connectionString;
+    private readonly string _databaseName;
+    private readonly bool _applyMigrationsOnStartup;
+    private readonly bool _seedDemoOrganization;
     private readonly IInterceptor? _interceptor;
 
     public BaseeraApiFactory()
-        : this(null)
+        : this(CreateIsolatedConnectionString(), applyMigrationsOnStartup: true, seedDemoOrganization: true, interceptor: null)
     {
     }
 
-    private BaseeraApiFactory(IInterceptor? interceptor)
+    public BaseeraApiFactory(
+        string connectionString,
+        bool applyMigrationsOnStartup = false,
+        bool seedDemoOrganization = false)
+        : this(connectionString, applyMigrationsOnStartup, seedDemoOrganization, interceptor: null)
     {
+    }
+
+    private BaseeraApiFactory(
+        string connectionString,
+        bool applyMigrationsOnStartup,
+        bool seedDemoOrganization,
+        IInterceptor? interceptor)
+    {
+        _connectionString = connectionString;
+        _databaseName = DatabaseNameFrom(connectionString);
+        _applyMigrationsOnStartup = applyMigrationsOnStartup;
+        _seedDemoOrganization = seedDemoOrganization;
         _interceptor = interceptor;
+    }
+
+    private static string CreateIsolatedConnectionString()
+    {
         var raw = Environment.GetEnvironmentVariable("BASEERA_TEST_CONNECTION");
         if (string.IsNullOrWhiteSpace(raw))
         {
             // Fixture must construct even when tests are skipped; no credential fallback.
-            _connectionString = "Server=127.0.0.1,1433;Database=Baseera_Skip;Integrated Security=true;Encrypt=False;TrustServerCertificate=True";
-            return;
+            return "Server=127.0.0.1,1433;Database=Baseera_Skip;Integrated Security=true;Encrypt=False;TrustServerCertificate=True";
         }
 
-        var builder = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = raw };
-        builder["Database"] = _databaseName;
-        _connectionString = builder.ConnectionString;
+        var builder = new SqlConnectionStringBuilder(raw)
+        {
+            InitialCatalog = $"Baseera_Test_{Guid.NewGuid():N}"
+        };
+        return builder.ConnectionString;
+    }
+
+    private static string DatabaseNameFrom(string connectionString)
+    {
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        return string.IsNullOrWhiteSpace(builder.InitialCatalog) ? "Baseera_Test" : builder.InitialCatalog;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -46,9 +76,10 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         // ConfigureAppConfiguration alone can be ignored by WebApplication.CreateBuilder.
         builder.UseSetting("ConnectionStrings:Baseera", _connectionString);
         builder.UseSetting("Auth:UseTestAuth", "true");
-        builder.UseSetting("Seed:DemoOrganization", "true");
-        builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
+        builder.UseSetting("Seed:DemoOrganization", _seedDemoOrganization.ToString());
+        builder.UseSetting("Database:ApplyMigrationsOnStartup", _applyMigrationsOnStartup.ToString());
         builder.UseSetting("Attachments:RootPath", Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName));
+        ConfigureTestLogging(builder);
 
         builder.ConfigureAppConfiguration((_, config) =>
         {
@@ -56,8 +87,8 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:Baseera"] = _connectionString,
                 ["Auth:UseTestAuth"] = "true",
-                ["Seed:DemoOrganization"] = "true",
-                ["Database:ApplyMigrationsOnStartup"] = "true",
+                ["Seed:DemoOrganization"] = _seedDemoOrganization.ToString(),
+                ["Database:ApplyMigrationsOnStartup"] = _applyMigrationsOnStartup.ToString(),
                 ["Attachments:RootPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName)
             });
         });
@@ -68,7 +99,26 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         }
     }
 
-    public static BaseeraApiFactory WithInterceptor(IInterceptor interceptor) => new(interceptor);
+    private static void ConfigureTestLogging(IWebHostBuilder builder)
+    {
+        var verboseSql = string.Equals(
+            Environment.GetEnvironmentVariable("BASEERA_TEST_SQL_LOGGING"),
+            "verbose",
+            StringComparison.OrdinalIgnoreCase);
+
+        builder.UseSetting("Logging:LogLevel:Default", "Warning");
+        builder.UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore", "Warning");
+        builder.UseSetting(
+            "Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command",
+            verboseSql ? "Information" : "Warning");
+    }
+
+    public static BaseeraApiFactory WithInterceptor(IInterceptor interceptor) =>
+        new(
+            CreateIsolatedConnectionString(),
+            applyMigrationsOnStartup: true,
+            seedDemoOrganization: true,
+            interceptor);
 
     public async Task SeedUserAsync(
         string subject,
@@ -92,7 +142,6 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
                 ProvisioningStatus = UserProvisioningStatus.Active
             };
             db.Users.Add(user);
-            await db.SaveChangesAsync();
         }
         else if (user.IsDeleted)
         {
@@ -100,27 +149,52 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
             user.DeletedAtUtc = null;
             user.IsActive = true;
             user.ProvisioningStatus = UserProvisioningStatus.Active;
-            await db.SaveChangesAsync();
         }
 
-        foreach (var roleCode in roleCodes)
+        var distinctRoleCodes = roleCodes.Distinct(StringComparer.Ordinal).ToArray();
+        var roles = await db.Roles
+            .Where(role => distinctRoleCodes.Contains(role.Code))
+            .ToDictionaryAsync(role => role.Code);
+
+        var missingRole = distinctRoleCodes.FirstOrDefault(roleCode => !roles.ContainsKey(roleCode));
+        if (missingRole is not null)
         {
-            var role = await db.Roles.FirstAsync(r => r.Code == roleCode);
-            if (!await db.UserRoles.AnyAsync(ur => ur.UserId == user.Id && ur.RoleId == role.Id))
+            throw new InvalidOperationException($"Role '{missingRole}' was not found.");
+        }
+
+        var requestedRoleIds = roles.Values.Select(role => role.Id).ToArray();
+        var existingRoleIds = requestedRoleIds.Length == 0
+            ? []
+            : await db.UserRoles
+                .Where(userRole => userRole.UserId == user.Id && requestedRoleIds.Contains(userRole.RoleId))
+                .Select(userRole => userRole.RoleId)
+                .ToListAsync();
+        var existingRoleSet = existingRoleIds.ToHashSet();
+
+        foreach (var role in roles.Values)
+        {
+            if (!existingRoleSet.Contains(role.Id))
             {
                 db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = role.Id });
             }
         }
 
+        var existingScopes = await db.UserScopes
+            .Where(userScope => userScope.UserId == user.Id && userScope.FacilityUnitId == null)
+            .Select(userScope => new
+            {
+                userScope.ScopeType,
+                userScope.RegionId,
+                userScope.FacilityId
+            })
+            .ToListAsync();
+
         foreach (var s in scopes)
         {
-            var exists = await db.UserScopes.AnyAsync(us =>
-                us.UserId == user.Id &&
-                us.ScopeType == s.ScopeType &&
-                us.RegionId == s.RegionId &&
-                us.FacilityId == s.FacilityId &&
-                us.FacilityUnitId == null);
-            if (exists)
+            if (existingScopes.Any(userScope =>
+                userScope.ScopeType == s.ScopeType &&
+                userScope.RegionId == s.RegionId &&
+                userScope.FacilityId == s.FacilityId))
             {
                 continue;
             }

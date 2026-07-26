@@ -8,8 +8,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class OccupancyIntegrationTests(BaseeraApiFactory factory) : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class OccupancyIntegrationTests(OperationsIntegrationFixture fixture)
+    : IntegrationTestBase<OperationsIntegrationFixture>(fixture)
 {
+    private BaseeraApiFactory factory => Factory;
+
     [IntegrationConnectionFact]
     public async Task Concurrent_movement_import_is_idempotent_under_unique_constraint()
     {

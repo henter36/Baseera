@@ -10,13 +10,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class FormCampaignIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(FormsIntegrationCollection.Name)]
+public sealed class FormCampaignIntegrationTests : IntegrationTestBase<FormsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static int _seq;
 
-    public FormCampaignIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public FormCampaignIntegrationTests(FormsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Draft_preview_publish_once_creates_cycle_and_assignments_idempotent_scheduler()

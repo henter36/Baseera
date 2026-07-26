@@ -7,8 +7,12 @@ using Baseera.Infrastructure.Persistence;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class WorkspaceFrameworkIntegrationTests(BaseeraApiFactory factory) : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class WorkspaceFrameworkIntegrationTests(OperationsIntegrationFixture fixture)
+    : IntegrationTestBase<OperationsIntegrationFixture>(fixture)
 {
+    private BaseeraApiFactory factory => Factory;
+
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     [IntegrationConnectionFact]

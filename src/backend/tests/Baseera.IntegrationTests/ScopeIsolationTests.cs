@@ -8,11 +8,14 @@ using Baseera.Infrastructure.Persistence;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class ScopeIsolationTests : IClassFixture<BaseeraApiFactory>
+[Collection(CoreIntegrationCollection.Name)]
+public sealed class ScopeIsolationTests : IntegrationTestBase<CoreIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
 
-    public ScopeIsolationTests(BaseeraApiFactory factory) => _factory = factory;
+    public ScopeIsolationTests(CoreIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Facility_user_cannot_see_other_facility_by_id()
@@ -97,11 +100,14 @@ public sealed class ScopeIsolationTests : IClassFixture<BaseeraApiFactory>
     }
 }
 
-public sealed class AuditAndAttachmentTests : IClassFixture<BaseeraApiFactory>
+[Collection(CoreIntegrationCollection.Name)]
+public sealed class AuditAndAttachmentTests : IntegrationTestBase<CoreIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
 
-    public AuditAndAttachmentTests(BaseeraApiFactory factory) => _factory = factory;
+    public AuditAndAttachmentTests(CoreIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Updating_region_writes_audit_log()

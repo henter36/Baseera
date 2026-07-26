@@ -11,13 +11,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class FormsCoreIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(FormsIntegrationCollection.Name)]
+public sealed class FormsCoreIntegrationTests : IntegrationTestBase<FormsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static int _codeSequence;
 
-    public FormsCoreIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public FormsCoreIntegrationTests(FormsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Region_user_cannot_see_other_region_form()

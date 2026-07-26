@@ -15,12 +15,15 @@ namespace Baseera.IntegrationTests;
 /// Complements NotesCoreIntegrationTests.cs: facility/unit scope isolation, archive/restore,
 /// sensitive list redaction, atomic audit logging, and assignment validation over HTTP.
 /// </summary>
-public sealed class NotesAdditionalIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(OperationsIntegrationCollection.Name)]
+public sealed class NotesAdditionalIntegrationTests : IntegrationTestBase<OperationsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    public NotesAdditionalIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public NotesAdditionalIntegrationTests(OperationsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task List_notes_binds_AsParameters_filters_and_defaults()

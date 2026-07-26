@@ -8,13 +8,16 @@ using Baseera.Infrastructure.Persistence;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class FormResponseIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(FormsIntegrationCollection.Name)]
+public sealed class FormResponseIntegrationTests : IntegrationTestBase<FormsIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static int _seq;
 
-    public FormResponseIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public FormResponseIntegrationTests(FormsIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Draft_submit_return_resubmit_approve_close_and_idor_404()

@@ -6,11 +6,14 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Baseera.IntegrationTests;
 
-public sealed class IdentityNavigationIntegrationTests : IClassFixture<BaseeraApiFactory>
+[Collection(CoreIntegrationCollection.Name)]
+public sealed class IdentityNavigationIntegrationTests : IntegrationTestBase<CoreIntegrationFixture>
 {
     private readonly BaseeraApiFactory _factory;
 
-    public IdentityNavigationIntegrationTests(BaseeraApiFactory factory) => _factory = factory;
+    public IdentityNavigationIntegrationTests(CoreIntegrationFixture fixture)
+        : base(fixture) =>
+        _factory = fixture.Factory;
 
     [IntegrationConnectionFact]
     public async Task Identity_navigation_properties_materialize_and_translate()
