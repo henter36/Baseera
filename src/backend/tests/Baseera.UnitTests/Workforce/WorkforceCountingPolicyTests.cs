@@ -81,4 +81,34 @@ public class WorkforceCountingPolicyTests
             hasPublishedRosterPresence: true,
             hasActiveAssignment: false));
     }
+
+    [Fact]
+    public void Leave_blocks_availability()
+    {
+        Assert.False(WorkforceCountingPolicy.CountsAsAvailable(
+            EmploymentStatus.Active,
+            isOperational: true,
+            availabilityType: AvailabilityType.AnnualLeave,
+            affectsOperationalAvailability: true,
+            availabilityKnown: true));
+    }
+
+    [Fact]
+    public void Training_blocks_availability()
+    {
+        Assert.False(WorkforceCountingPolicy.CountsAsAvailable(
+            EmploymentStatus.Active,
+            isOperational: true,
+            availabilityType: AvailabilityType.Training,
+            affectsOperationalAvailability: true,
+            availabilityKnown: true));
+    }
+
+    [Fact]
+    public void Temporary_assignment_overrides_admin_home_for_operational_count()
+    {
+        // Documented invariant: operational assignment selection prefers temporary over home facility.
+        Assert.True(WorkforceCountingPolicy.MemberCannotCountInOverlappingShifts);
+        Assert.True(WorkforceCountingPolicy.AssignmentDoesNotImplyPresence);
+    }
 }

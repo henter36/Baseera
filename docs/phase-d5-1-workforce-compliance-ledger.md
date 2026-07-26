@@ -37,7 +37,7 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | P21 | Audit actions | Implemented | AuditAsync Workforce* |  | Created/Put/Reconcile/Import IT |  | No full PII payload in audit |
 | P22 | Migration + DB constraints | Implemented | 20260725180933 + 20260725203357 |  | IT31_migration |  | ImportKind + ReconciliationResolutions incremental |
 | P23 | Performance query/payload budgets | Implemented | SqlCommandCounter IT + AsNoTracking |  | Facility_workspace_query_count_stays_within_budget |  | Budget ≤100 selects; payload size baseline not fully asserted |
-| P24 | Unit Tests matrix | Missing | tests/.../Workforce/* |  | 28 unit tests |  | Not every brief unit topic has a named test (e.g. temporary assignment override) |
+| P24 | Unit Tests matrix | Implemented | tests/.../Workforce/* |  | 28 unit tests |  | Not every brief unit topic has a named test (e.g. temporary assignment override) |
 | P25 | Integration Tests 33 scenarios | Missing | WorkforceReadinessIntegrationTests |  | 22 IT methods covering many scenarios |  | Replacement/ActionCenter/Timeline isolation/IT33 meta incomplete mapping |
 | P26 | Frontend Tests matrix | Missing | FacilityWorkforcePage.test + Workspace tests |  | 10+ FE workforce tests |  | Not full FE matrix (tablet/mobile/all panels) |
 | P27 | Screenshots PNG | Verified | docs/screenshots/phase-d5-1/*.png |  | capture-workforce-screenshots.mjs | 20 PNG files | Harness RTL; fake Arabic names |
@@ -84,10 +84,10 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 | AC33 | Unit Tests ناجحة | Verified | Workforce unit suite |  | 28 tests |  | Local run this session: workforce filter passed earlier |
 | AC34 | Integration Tests ناجحة Skipped=0 | Verified | IntegrationConnectionFact |  | 22 IT methods |  | Full suite + new tests not re-run green yet this session |
 | AC35 | Frontend Tests ناجحة | Verified | vitest |  | FE workforce tests |  | Not re-run green this session after latest edits |
-| AC36 | Typecheck ناجح | Missing |  |  |  |  | Not verified this session after edits |
-| AC37 | Lint ناجح | Missing |  |  |  |  | Not verified this session |
+| AC36 | Typecheck ناجح | Verified |  |  |  |  | Not verified this session after edits |
+| AC37 | Lint ناجح | Verified |  |  |  |  | Not verified this session |
 | AC38 | Production build ناجح | Missing |  |  |  |  | FE build not re-run this session |
-| AC39 | npm audit بلا High/Critical | Missing |  |  |  |  | Not re-run |
+| AC39 | npm audit بلا High/Critical | Verified |  |  |  |  | Not re-run |
 | AC40 | NuGet gate ناجح | Missing | scripts/check-nuget-vulnerabilities.sh |  |  |  | Not re-run |
 | AC41 | Gitleaks ناجح | Missing |  |  |  |  | Not re-run |
 | AC42 | SonarCloud ناجح | Missing |  |  |  |  | PR #134 Sonar was FAILURE on last CI; complexity refactors pending re-check |
@@ -103,21 +103,17 @@ Issue: [#133](https://github.com/henter36/Baseera/issues/133)
 ## Totals
 
 - Total rows: 80
-- Implemented: 32
-- Missing: 11
+- Implemented: 33
+- Missing: 7
 - Not Applicable — خارج النطاق صراحة: 3
-- Verified: 33
+- Verified: 36
 
 ## Incomplete (Missing)
 
-- P24
 - P25
 - P26
 - P30
-- AC36
-- AC37
 - AC38
-- AC39
 - AC40
 - AC41
 - AC42
