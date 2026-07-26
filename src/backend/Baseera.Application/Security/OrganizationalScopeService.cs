@@ -98,7 +98,7 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
 
         var regionIds = currentUser.Scopes
             .Where(s => s.RegionId.HasValue && (s.ScopeType == ScopeType.Region || s.ScopeType == ScopeType.MultipleRegions))
-            .Select(s => s.RegionId!.Value)
+            .Select(s => s.RegionId.GetValueOrDefault())
             .ToHashSet();
 
         var facilityIdsFromScopes = currentUser.Scopes
@@ -106,7 +106,7 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
                         (s.ScopeType == ScopeType.Facility ||
                          s.ScopeType == ScopeType.MultipleFacilities ||
                          s.ScopeType == ScopeType.FacilityUnit))
-            .Select(s => s.FacilityId!.Value)
+            .Select(s => s.FacilityId.GetValueOrDefault())
             .ToHashSet();
 
         var facilityRegionIds = db.Facilities
@@ -140,12 +140,12 @@ public sealed class OrganizationalScopeService(ICurrentUser currentUser, IBaseer
                         (s.ScopeType == ScopeType.Facility ||
                          s.ScopeType == ScopeType.MultipleFacilities ||
                          s.ScopeType == ScopeType.FacilityUnit))
-            .Select(s => s.FacilityId!.Value)
+            .Select(s => s.FacilityId.GetValueOrDefault())
             .ToHashSet();
 
         var regionIds = currentUser.Scopes
             .Where(s => s.RegionId.HasValue && (s.ScopeType == ScopeType.Region || s.ScopeType == ScopeType.MultipleRegions))
-            .Select(s => s.RegionId!.Value)
+            .Select(s => s.RegionId.GetValueOrDefault())
             .ToHashSet();
 
         return query.Where(f => facilityIds.Contains(f.Id) || regionIds.Contains(f.RegionId));

@@ -30,7 +30,7 @@ export function UsersPage() {
       </div>
       {query.isLoading && <div className="loading">جاري التحميل…</div>}
       {query.isError && <div className="error" role="alert">{(query.error as Error).message}</div>}
-      {query.data && query.data.items.length === 0 && <div className="empty">لا يوجد مستخدمون.</div>}
+      {query.data?.items.length === 0 && <div className="empty">لا يوجد مستخدمون.</div>}
       {query.data && query.data.items.length > 0 && (
         <table>
           <thead>

@@ -167,7 +167,7 @@ public sealed class FormVersionService(
 
                 version.DraftSchemaJson = canonical.CanonicalJson;
                 version.DraftSchemaHash = canonical.SchemaHash;
-                await sod.EnforceSubmitForReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct);
+                await sod.EnforceSubmitForReviewAsync(form, RequireUserId(), request.Reason, ct);
                 version.SubmittedForReviewAtUtc = DateTimeOffset.UtcNow;
             }), cancellationToken);
 
@@ -175,13 +175,13 @@ public sealed class FormVersionService(
         TransitionAsync(new VersionTransitionContext(
             formId, versionId, request, PermissionCodes.FormsRequestChanges, FormAccessCapability.Review,
             FormVersionStatus.ChangesRequested, FormVersionReviewDecisionType.RequestChanges, "FormVersionChangesRequested",
-            async (form, _, ct) => await sod.EnforceReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct)), cancellationToken);
+            async (form, _, ct) => await sod.EnforceReviewAsync(form, RequireUserId(), request.Reason, ct)), cancellationToken);
 
     public Task<FormVersionDetailDto> RejectAsync(Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(new VersionTransitionContext(
             formId, versionId, request, PermissionCodes.FormsReject, FormAccessCapability.Review,
             FormVersionStatus.Rejected, FormVersionReviewDecisionType.Reject, "FormVersionRejected",
-            async (form, _, ct) => await sod.EnforceReviewAsync(form, currentUser.UserId!.Value, request.Reason, ct)), cancellationToken);
+            async (form, _, ct) => await sod.EnforceReviewAsync(form, RequireUserId(), request.Reason, ct)), cancellationToken);
 
     public Task<FormVersionDetailDto> ReopenAsync(Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(new VersionTransitionContext(
@@ -464,6 +464,9 @@ public sealed class FormVersionService(
 
     private void EnsureVersionHistoryPermission() =>
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsViewVersionHistory);
+
+    private Guid RequireUserId() =>
+        currentUser.UserId ?? throw new UnauthorizedAccessException();
 
     private async Task EnsureViewOrNotFoundAsync(FormDefinition form, CancellationToken cancellationToken)
     {

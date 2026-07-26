@@ -145,7 +145,7 @@ public sealed class OperationalDashboardQueryService(
                 note.ClosedAtUtc.HasValue &&
                 note.ClosedAtUtc >= fromUtc &&
                 note.ClosedAtUtc <= toUtc)
-            .GroupBy(note => note.ClosedAtUtc!.Value.AddHours(3).Date)
+            .GroupBy(note => (note.ClosedAtUtc ?? DateTimeOffset.MinValue).AddHours(3).Date)
             .Select(group => new DailyCountRow(group.Key, group.Count()))
             .ToListAsync(cancellationToken));
 
@@ -157,7 +157,7 @@ public sealed class OperationalDashboardQueryService(
                 note.DueAtUtc < now &&
                 note.Status != NoteStatus.Closed &&
                 note.Status != NoteStatus.Cancelled)
-            .GroupBy(note => note.DueAtUtc!.Value.AddHours(3).Date)
+            .GroupBy(note => (note.DueAtUtc ?? DateTimeOffset.MinValue).AddHours(3).Date)
             .Select(group => new DailyCountRow(group.Key, group.Count()))
             .ToListAsync(cancellationToken));
 
@@ -167,7 +167,7 @@ public sealed class OperationalDashboardQueryService(
                 action.CompletedAtUtc.HasValue &&
                 action.CompletedAtUtc >= fromUtc &&
                 action.CompletedAtUtc <= toUtc)
-            .GroupBy(action => action.CompletedAtUtc!.Value.AddHours(3).Date)
+            .GroupBy(action => (action.CompletedAtUtc ?? DateTimeOffset.MinValue).AddHours(3).Date)
             .Select(group => new DailyCountRow(group.Key, group.Count()))
             .ToListAsync(cancellationToken));
 
@@ -376,7 +376,7 @@ public sealed class OperationalDashboardQueryService(
     {
         var grouped = await LoadNoteBreakdownAggregatesAsync(
             notes.Where(note => note.FacilityId.HasValue),
-            note => note.FacilityId!.Value,
+            note => note.FacilityId ?? Guid.Empty,
             now,
             fromUtc,
             toUtc,
@@ -393,7 +393,7 @@ public sealed class OperationalDashboardQueryService(
             actions,
             notes.Where(note => note.FacilityId.HasValue),
             now,
-            note => note.FacilityId!.Value,
+            note => note.FacilityId ?? Guid.Empty,
             cancellationToken);
 
         return grouped
@@ -575,7 +575,7 @@ public sealed class OperationalDashboardQueryService(
             })
             .ToListAsync(cancellationToken);
 
-        var facilityIds = rows.Where(row => row.FacilityId.HasValue).Select(row => row.FacilityId!.Value).Distinct().ToList();
+        var facilityIds = rows.Where(row => row.FacilityId.HasValue).Select(row => row.FacilityId.GetValueOrDefault()).Distinct().ToList();
         var facilities = facilityIds.Count == 0
             ? new Dictionary<Guid, string>()
             : await db.Facilities.AsNoTracking()
@@ -632,8 +632,8 @@ public sealed class OperationalDashboardQueryService(
             .Take(limit)
             .ToListAsync(cancellationToken);
 
-        var facilityIds = grouped.Where(row => row.FacilityId.HasValue).Select(row => row.FacilityId!.Value).ToList();
-        var regionIds = grouped.Where(row => row.RegionId.HasValue).Select(row => row.RegionId!.Value).ToList();
+        var facilityIds = grouped.Where(row => row.FacilityId.HasValue).Select(row => row.FacilityId.GetValueOrDefault()).ToList();
+        var regionIds = grouped.Where(row => row.RegionId.HasValue).Select(row => row.RegionId.GetValueOrDefault()).ToList();
         var facilities = facilityIds.Count == 0
             ? new Dictionary<Guid, string>()
             : await db.Facilities.AsNoTracking()
@@ -647,14 +647,16 @@ public sealed class OperationalDashboardQueryService(
 
         return grouped
             .Where(row => row.FacilityId.HasValue)
-            .Select(row => new OperationalDashboardOverdueLocationQueueItemDto(
-                row.FacilityId!.Value,
-                facilities.TryGetValue(row.FacilityId.Value, out var facilityName)
-                    ? facilityName
-                    : row.FacilityId.Value.ToString(),
-                row.RegionId,
-                row.RegionId.HasValue && regions.TryGetValue(row.RegionId.Value, out var regionName) ? regionName : null,
-                row.OverdueCount))
+            .Select(row =>
+            {
+                var facilityId = row.FacilityId.GetValueOrDefault();
+                return new OperationalDashboardOverdueLocationQueueItemDto(
+                    facilityId,
+                    facilities.TryGetValue(facilityId, out var facilityName) ? facilityName : facilityId.ToString(),
+                    row.RegionId,
+                row.RegionId is Guid regionId && regions.TryGetValue(regionId, out var regionName) ? regionName : null,
+                    row.OverdueCount);
+            })
             .ToList();
     }
 

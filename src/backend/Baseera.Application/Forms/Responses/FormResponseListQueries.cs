@@ -6,20 +6,20 @@ internal static class FormResponseListQueries
 {
     internal sealed class WorkspaceRow
     {
-        public FormFacilityAssignment Assignment { get; init; } = null!;
-        public FormCycle Cycle { get; init; } = null!;
-        public FormCampaign Campaign { get; init; } = null!;
-        public FormCampaignResponsePolicy Policy { get; init; } = null!;
+        public required FormFacilityAssignment Assignment { get; init; }
+        public required FormCycle Cycle { get; init; }
+        public required FormCampaign Campaign { get; init; }
+        public required FormCampaignResponsePolicy Policy { get; init; }
         public FormResponse? Response { get; init; }
     }
 
     internal sealed class InboxRow
     {
-        public FormResponse Response { get; init; } = null!;
-        public FormFacilityAssignment Assignment { get; init; } = null!;
-        public FormCycle Cycle { get; init; } = null!;
-        public FormCampaign Campaign { get; init; } = null!;
-        public FormCampaignResponsePolicy Policy { get; init; } = null!;
+        public required FormResponse Response { get; init; }
+        public required FormFacilityAssignment Assignment { get; init; }
+        public required FormCycle Cycle { get; init; }
+        public required FormCampaign Campaign { get; init; }
+        public required FormCampaignResponsePolicy Policy { get; init; }
     }
 
     public static FormResponseWorkspaceQuery Normalize(FormResponseWorkspaceQuery query)

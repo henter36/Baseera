@@ -77,6 +77,11 @@ app.MapBaseeraApi();
 var applyMigrations = app.Configuration.GetValue("Database:ApplyMigrationsOnStartup", app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"));
 await DatabaseInitializer.InitializeAsync(app.Services, seedDemo, applyMigrations);
 
-app.Run();
+await app.RunAsync();
 
-public partial class Program;
+public partial class Program
+{
+    protected Program()
+    {
+    }
+}

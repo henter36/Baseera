@@ -218,9 +218,9 @@ public sealed class CorrectiveActionQueryService(
         var currentAssignments = await db.CorrectiveActionAssignments
             .Where(a => ids.Contains(a.CorrectiveActionId) && a.IsCurrent)
             .ToListAsync(cancellationToken);
-        var userIds = currentAssignments.Where(a => a.AssignedToUserId.HasValue).Select(a => a.AssignedToUserId!.Value).ToHashSet();
+        var userIds = currentAssignments.Where(a => a.AssignedToUserId.HasValue).Select(a => a.AssignedToUserId.GetValueOrDefault()).ToHashSet();
         var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
-        var deptIds = currentAssignments.Where(a => a.AssignedToDepartmentId.HasValue).Select(a => a.AssignedToDepartmentId!.Value).ToHashSet();
+        var deptIds = currentAssignments.Where(a => a.AssignedToDepartmentId.HasValue).Select(a => a.AssignedToDepartmentId.GetValueOrDefault()).ToHashSet();
         var depts = await db.Departments.Where(d => deptIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.NameAr, cancellationToken);
         var canSensitive = CorrectiveActionAccessHelper.CanViewSensitive(currentUser);
 
@@ -366,7 +366,7 @@ public sealed class CorrectiveActionQueryService(
 
     private static int? OverdueDays(CorrectiveActionStatus status, DateTimeOffset? dueAtUtc, DateTimeOffset now) =>
         CorrectiveActionStateMachine.IsOverdue(status, dueAtUtc, now)
-            ? Math.Max(0, (int)Math.Floor((now - dueAtUtc!.Value).TotalDays))
+            ? Math.Max(0, (int)Math.Floor((now - dueAtUtc.GetValueOrDefault()).TotalDays))
             : null;
 
     private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];

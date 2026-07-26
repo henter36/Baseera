@@ -541,7 +541,8 @@ public sealed class NoteTypeManagementService(
                 existingByTypeId[item.NoteTypeId] = grant;
             }
 
-            var activeGrant = grant!;
+            var activeGrant = grant
+                ?? throw new InvalidOperationException("تعذر تجهيز صلاحية نوع الملاحظة للدور.");
             var before = isNew ? null : CapabilitySnapshot(activeGrant);
             ApplyGrant(item, activeGrant);
             activeGrant.IsActive = true;
@@ -652,7 +653,8 @@ public sealed class NoteTypeManagementService(
                 existingByTypeId[item.NoteTypeId] = overrideRow;
             }
 
-            var activeOverride = overrideRow!;
+            var activeOverride = overrideRow
+                ?? throw new InvalidOperationException("تعذر تجهيز استثناء صلاحية نوع الملاحظة للمستخدم.");
             var before = isNew ? null : OverrideSnapshot(activeOverride);
             ApplyOverride(item, activeOverride, reason.Trim());
             activeOverride.IsActive = true;

@@ -1537,6 +1537,9 @@ public static class DatabaseInitializer
     }
 
     private const string OrganizationModule = "Organization";
+    private const string IdentityModule = "Identity";
+    private const string VehiclesModule = "Vehicles";
+    private const string ArmamentModule = "Armament";
     private const string NotesModule = "Notes";
     private const string CorrectiveActionsModule = "CorrectiveActions";
     private const string EscalationsModule = "Escalations";
@@ -1554,30 +1557,30 @@ public static class DatabaseInitializer
         [
             (PermissionCodes.OrganizationView, "عرض الهيكل التنظيمي", OrganizationModule),
             (PermissionCodes.OrganizationManage, "إدارة الهيكل التنظيمي", OrganizationModule),
-            (PermissionCodes.UsersView, "عرض المستخدمين", "Identity"),
-            (PermissionCodes.UsersManage, "إدارة المستخدمين", "Identity"),
-            (PermissionCodes.RolesManage, "إدارة الأدوار", "Identity"),
-            (PermissionCodes.ScopesManage, "إدارة النطاقات", "Identity"),
+            (PermissionCodes.UsersView, "عرض المستخدمين", IdentityModule),
+            (PermissionCodes.UsersManage, "إدارة المستخدمين", IdentityModule),
+            (PermissionCodes.RolesManage, "إدارة الأدوار", IdentityModule),
+            (PermissionCodes.ScopesManage, "إدارة النطاقات", IdentityModule),
             (PermissionCodes.AuditView, "عرض سجل التدقيق", "Audit"),
             (PermissionCodes.AttachmentsUpload, "رفع المرفقات", "Attachments"),
             (PermissionCodes.AttachmentsDownload, "تنزيل المرفقات", "Attachments"),
             (PermissionCodes.AttachmentsDownloadSensitive, "تنزيل المرفقات الحساسة", "Attachments"),
-            (PermissionCodes.UsersArchive, "أرشفة مستخدم", "Identity"),
-            (PermissionCodes.UsersRestore, "استعادة مستخدم", "Identity"),
+            (PermissionCodes.UsersArchive, "أرشفة مستخدم", IdentityModule),
+            (PermissionCodes.UsersRestore, "استعادة مستخدم", IdentityModule),
             (PermissionCodes.OrganizationArchive, "أرشفة تنظيمي", OrganizationModule),
             (PermissionCodes.OrganizationRestore, "استعادة تنظيمي", OrganizationModule),
-            (PermissionCodes.GrantGlobalScope, "منح نطاق وطني", "Identity"),
-            (PermissionCodes.GrantHeadquartersScope, "منح نطاق المستوى الرئيسي", "Identity"),
-            (PermissionCodes.VehiclesView, "عرض المركبات", "Vehicles"),
-            (PermissionCodes.VehiclesCreate, "إضافة مركبة", "Vehicles"),
-            (PermissionCodes.VehiclesUpdate, "تحديث مركبة", "Vehicles"),
-            (PermissionCodes.VehiclesTransfer, "نقل مركبة", "Vehicles"),
-            (PermissionCodes.VehiclesDecommission, "استبعاد مركبة", "Vehicles"),
-            (PermissionCodes.ArmamentView, "عرض التسليح", "Armament"),
-            (PermissionCodes.ArmamentIssue, "صرف تسليح", "Armament"),
-            (PermissionCodes.ArmamentReceive, "استلام تسليح", "Armament"),
-            (PermissionCodes.ArmamentInventory, "جرد تسليح", "Armament"),
-            (PermissionCodes.ArmamentAdjust, "تسوية تسليح", "Armament"),
+            (PermissionCodes.GrantGlobalScope, "منح نطاق وطني", IdentityModule),
+            (PermissionCodes.GrantHeadquartersScope, "منح نطاق المستوى الرئيسي", IdentityModule),
+            (PermissionCodes.VehiclesView, "عرض المركبات", VehiclesModule),
+            (PermissionCodes.VehiclesCreate, "إضافة مركبة", VehiclesModule),
+            (PermissionCodes.VehiclesUpdate, "تحديث مركبة", VehiclesModule),
+            (PermissionCodes.VehiclesTransfer, "نقل مركبة", VehiclesModule),
+            (PermissionCodes.VehiclesDecommission, "استبعاد مركبة", VehiclesModule),
+            (PermissionCodes.ArmamentView, "عرض التسليح", ArmamentModule),
+            (PermissionCodes.ArmamentIssue, "صرف تسليح", ArmamentModule),
+            (PermissionCodes.ArmamentReceive, "استلام تسليح", ArmamentModule),
+            (PermissionCodes.ArmamentInventory, "جرد تسليح", ArmamentModule),
+            (PermissionCodes.ArmamentAdjust, "تسوية تسليح", ArmamentModule),
             (PermissionCodes.NotesAssign, "إسناد ملاحظة", NotesModule),
             (PermissionCodes.NotesVerifyClosure, "اعتماد إغلاق ملاحظة", NotesModule),
             (PermissionCodes.NotesView, "عرض الملاحظات", NotesModule),

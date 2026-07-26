@@ -61,9 +61,9 @@ public sealed class NoteQueryService(
         var currentAssignments = await db.NoteAssignments
             .Where(a => noteIds.Contains(a.OperationalNoteId) && a.IsCurrent)
             .ToListAsync(cancellationToken);
-        var userIds = currentAssignments.Where(a => a.AssignedToUserId.HasValue).Select(a => a.AssignedToUserId!.Value).ToHashSet();
+        var userIds = currentAssignments.Where(a => a.AssignedToUserId.HasValue).Select(a => a.AssignedToUserId.GetValueOrDefault()).ToHashSet();
         var users = await db.Users.Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.DisplayNameAr, cancellationToken);
-        var deptIds = currentAssignments.Where(a => a.AssignedToDepartmentId.HasValue).Select(a => a.AssignedToDepartmentId!.Value).ToHashSet();
+        var deptIds = currentAssignments.Where(a => a.AssignedToDepartmentId.HasValue).Select(a => a.AssignedToDepartmentId.GetValueOrDefault()).ToHashSet();
         var depts = await db.Departments.Where(d => deptIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.NameAr, cancellationToken);
 
         var items = rows.Select(n =>

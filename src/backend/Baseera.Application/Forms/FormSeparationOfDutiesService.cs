@@ -166,6 +166,12 @@ public sealed class FormSeparationOfDutiesService(
         }
         catch (InvalidOperationException) when (CanAdministrativeOverride(administrativeOverrideReason))
         {
+            var overrideReason = administrativeOverrideReason?.Trim();
+            if (string.IsNullOrWhiteSpace(overrideReason))
+            {
+                throw;
+            }
+
             await audit.WriteAsync(new AuditEntry
             {
                 Action = "FormAdministrativeOverride",
@@ -173,7 +179,7 @@ public sealed class FormSeparationOfDutiesService(
                 EntityType = nameof(FormDefinition),
                 EntityId = form.Id.ToString(),
                 NewValues = new { action, actorId },
-                Reason = administrativeOverrideReason!.Trim(),
+                Reason = overrideReason,
                 Outcome = "Override"
             }, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);

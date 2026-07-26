@@ -46,7 +46,11 @@ try {
   msalInitError = err instanceof Error ? err.message : 'فشل إعداد Entra ID'
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+type AuthChildrenProps = Readonly<{
+  children: ReactNode
+}>
+
+export function AuthProvider({ children }: AuthChildrenProps) {
   const content = <AuthState>{children}</AuthState>
   if (msalInstance) {
     return <MsalProvider instance={msalInstance}>{content}</MsalProvider>
@@ -79,7 +83,7 @@ function handleRedirectOnce(): Promise<AuthenticationResult | null> {
   return redirectHandlingPromise
 }
 
-function AuthState({ children }: { children: ReactNode }) {
+function AuthState({ children }: AuthChildrenProps) {
   const [me, setMe] = useState<Me | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

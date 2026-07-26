@@ -59,7 +59,7 @@ public sealed class CorrectiveActionWorkflowService(
         CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.PendingVerification, actorId, request.Reason.Trim());
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionSubmittedForVerification", action, new { Status = from }, new { action.Status, action.CompletionSummary }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     public Task<CorrectiveActionDetailDto> ReturnForReworkAsync(Guid id, TransitionCorrectiveActionRequest request, CancellationToken cancellationToken = default) =>
@@ -97,7 +97,7 @@ public sealed class CorrectiveActionWorkflowService(
         CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Completed, actorId, request.Reason.Trim());
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionCompleted", action, new { Status = from }, new { action.Status, action.CompletedByUserId, action.CompletionSummary }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     public async Task<CorrectiveActionDetailDto> ReopenAsync(Guid id, ReopenCorrectiveActionRequest request, CancellationToken cancellationToken = default)
@@ -120,7 +120,7 @@ public sealed class CorrectiveActionWorkflowService(
         CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Reopened, actorId, request.Reason.Trim());
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionReopened", action, new { Status = from }, new { action.Status }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     public async Task<CorrectiveActionDetailDto> CancelAsync(Guid id, TransitionCorrectiveActionRequest request, CancellationToken cancellationToken = default)
@@ -144,7 +144,7 @@ public sealed class CorrectiveActionWorkflowService(
         CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Cancelled, actorId, request.Reason.Trim());
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionCancelled", action, new { Status = from }, new { action.Status }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     private async Task<CorrectiveActionDetailDto> TransitionAsync(
@@ -172,7 +172,14 @@ public sealed class CorrectiveActionWorkflowService(
         CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, options.ToStatus, actorId, options.Reason.Trim());
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, options.AuditAction, action, new { Status = from }, new { Status = options.ToStatus }, options.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
+    }
+
+    private async Task<CorrectiveActionDetailDto> LoadSavedDetailAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var detail = await queries.GetDetailAsync(id, cancellationToken);
+        return detail
+            ?? throw new InvalidOperationException("تعذر تحميل الإجراء التصحيحي بعد حفظ انتقال الحالة.");
     }
 
     private sealed record TransitionOptions(

@@ -381,6 +381,29 @@ public sealed class FormCampaignScheduleValidatorTests
 {
     private readonly FormCampaignScheduleRequestValidator _validator = new();
 
+    [Theory]
+    [InlineData("IntervalDays")]
+    [InlineData("IntervalWeeks")]
+    [InlineData("DayOfMonth")]
+    [InlineData("MaxOccurrences")]
+    public void Recurrence_range_validation_keeps_nullable_property_name(string propertyName)
+    {
+        var schedule = propertyName switch
+        {
+            "IntervalDays" => BaseValidationSchedule(intervalDays: 0),
+            "IntervalWeeks" => BaseValidationSchedule(intervalWeeks: 0),
+            "DayOfMonth" => BaseValidationSchedule(dayOfMonth: 0),
+            "MaxOccurrences" => BaseValidationSchedule(maxOccurrences: 0),
+            _ => throw new ArgumentOutOfRangeException(nameof(propertyName), propertyName, null)
+        };
+
+        var result = _validator.Validate(schedule);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.PropertyName == propertyName);
+        Assert.DoesNotContain(result.Errors, error => error.PropertyName.Contains("GetValueOrDefault", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Custom_dates_validator_allows_duplicates_when_distinct_count_within_limit()
     {
@@ -405,6 +428,30 @@ public sealed class FormCampaignScheduleValidatorTests
         var result = _validator.Validate(schedule);
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.ErrorMessage.Contains(FormRecurrenceCalculator.MaxCustomDates.ToString(), StringComparison.Ordinal));
+    }
+
+    private static FormCampaignScheduleRequest BaseValidationSchedule(
+        int? intervalDays = null,
+        int? intervalWeeks = null,
+        int? dayOfMonth = null,
+        int? maxOccurrences = null)
+    {
+        var start = new DateTimeOffset(2026, 7, 1, 9, 0, 0, TimeSpan.FromHours(3));
+        return new FormCampaignScheduleRequest(
+            FormRecurrenceKind.Daily,
+            start,
+            1440,
+            60,
+            0,
+            BusinessDayAdjustment.None,
+            intervalDays,
+            intervalWeeks,
+            null,
+            dayOfMonth,
+            null,
+            null,
+            maxOccurrences,
+            null);
     }
 }
 

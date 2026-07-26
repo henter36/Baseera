@@ -310,8 +310,8 @@ public sealed class NoteRoutingService(
             warnings.Add("لا توجد قاعدة مطابقة.");
         }
 
-        var expectedUser = resolution.MatchedRule?.ProcessingTargetType == NoteRoutingProcessingTargetType.Role
-            ? await SelectEligibleUserAsync(effectiveNote, resolution.MatchedRule.ProcessingRoleId!.Value, cancellationToken)
+        var expectedUser = resolution.MatchedRule is { ProcessingTargetType: NoteRoutingProcessingTargetType.Role, ProcessingRoleId: Guid processingRoleId }
+            ? await SelectEligibleUserAsync(effectiveNote, processingRoleId, cancellationToken)
             : null;
         if (resolution.MatchedRule?.ProcessingTargetType == NoteRoutingProcessingTargetType.Role && expectedUser is null)
         {
@@ -536,7 +536,15 @@ public sealed class NoteRoutingService(
             return NewAssignment(note, decision.Id, actorId, null, rule.ProcessingDepartmentId, now, reason);
         }
 
-        var selected = await SelectEligibleUserAsync(note, rule.ProcessingRoleId!.Value, cancellationToken);
+        if (rule.ProcessingRoleId is not Guid processingRoleId)
+        {
+            decision.ResultStatus = NoteRoutingResultStatus.Failed;
+            decision.FailureCode = "InvalidRoutingRule";
+            decision.FailureMessageSafe = "الدور المحدد في قاعدة التوجيه غير صالح.";
+            return null;
+        }
+
+        var selected = await SelectEligibleUserAsync(note, processingRoleId, cancellationToken);
         if (selected is null)
         {
             decision.ResultStatus = NoteRoutingResultStatus.NoEligibleUser;
@@ -596,7 +604,7 @@ public sealed class NoteRoutingService(
             .Where(assignment => assignment.OperationalNote.Status == NoteStatus.Assigned ||
                                  assignment.OperationalNote.Status == NoteStatus.InProgress ||
                                  assignment.OperationalNote.Status == NoteStatus.Reopened)
-            .GroupBy(assignment => assignment.AssignedToUserId!.Value)
+            .GroupBy(assignment => assignment.AssignedToUserId.GetValueOrDefault())
             .Select(group => new
             {
                 UserId = group.Key,
@@ -606,9 +614,11 @@ public sealed class NoteRoutingService(
             .ToListAsync(cancellationToken);
         var workloadByUser = workloads.ToDictionary(item => item.UserId);
 
+        var requiresSensitive = NoteAccessHelper.RequiresSensitive(note.Classification);
+
         return candidates
             .Where(user => accessByUser.TryGetValue(user.Id, out var access) && access?.View.Allowed == true && access.Process.Allowed)
-            .Where(user => !NoteAccessHelper.RequiresSensitive(note.Classification) || sensitiveViewerIds!.Contains(user.Id))
+            .Where(user => !requiresSensitive || sensitiveViewerIds?.Contains(user.Id) == true)
             .Where(user => NoteAssigneeScopeIntersection.IntersectsAnyUserScopeForRouting(scopesByUser[user.Id], note))
             .Select(user =>
             {

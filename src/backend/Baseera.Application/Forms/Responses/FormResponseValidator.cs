@@ -796,12 +796,12 @@ public sealed class FormResponseValidator : IFormResponseValidator
 
     private sealed record FieldValidationContext
     {
-        public FormFieldSchema Field { get; init; } = null!;
-        public IReadOnlyDictionary<string, object?> Values { get; init; } = null!;
-        public IReadOnlySet<string> Visible { get; init; } = null!;
-        public IReadOnlySet<string> Required { get; init; } = null!;
+        public required FormFieldSchema Field { get; init; }
+        public required IReadOnlyDictionary<string, object?> Values { get; init; }
+        public required IReadOnlySet<string> Visible { get; init; }
+        public required IReadOnlySet<string> Required { get; init; }
         public FormResponseValidationMode Mode { get; init; }
         public IReadOnlyDictionary<Guid, Attachment>? AttachmentsById { get; init; }
-        public List<FormResponseValidationIssueDto> Issues { get; init; } = null!;
+        public required List<FormResponseValidationIssueDto> Issues { get; init; }
     }
 }

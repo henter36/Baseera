@@ -38,7 +38,10 @@ cp src/backend/Baseera.Api/appsettings.example.json src/backend/Baseera.Api/apps
 
 ```bash
 export BASEERA_CONNECTION='Server=<host>,<port>;Database=Baseera;User Id=<user>;Password=<from-secret-store>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=true'
+export ConnectionStrings__Baseera="$BASEERA_CONNECTION"
 ```
+
+يمكن تمرير سر سلسلة الاتصال عبر متغير البيئة `ConnectionStrings__Baseera` أو عبر `dotnet user-secrets` للتطوير المحلي أو GitHub Actions secrets في CI أو secret store مخصص في الإنتاج. ملف `appsettings.example.json` يترك قيمة `ConnectionStrings:Baseera` فارغة عمدًا حتى لا يحتوي المستودع على credential-like placeholders.
 
 ```bash
 # API (Development يسمح بـ TestAuth + Demo Seed عبر appsettings.Development فقط)
