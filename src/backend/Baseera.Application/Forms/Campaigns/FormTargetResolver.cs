@@ -150,10 +150,13 @@ public sealed class FormTargetResolver(
     {
         var byRegion = included.GroupBy(x => x.RegionNameAr).ToDictionary(g => g.Key, g => g.Count());
         var byType = included
-            .GroupBy(x => string.IsNullOrWhiteSpace(x.FacilityType) ? "غير محدد" : x.FacilityType!)
+            .GroupBy(x => ResolveFacilityType(x.FacilityType))
             .ToDictionary(g => g.Key, g => g.Count());
         return (byRegion, byType);
     }
+
+    private static string ResolveFacilityType(string? facilityType) =>
+        string.IsNullOrWhiteSpace(facilityType) ? "غير محدد" : facilityType;
 
     private static IQueryable<Facility> ApplyRegions(
         IQueryable<Facility> query,

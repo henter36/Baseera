@@ -140,19 +140,19 @@ public sealed class FormScopeService(
         var regionIds = currentUser.Scopes
             .Where(s => s.RegionId.HasValue &&
                         (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions))
-            .Select(s => s.RegionId!.Value)
+            .Select(s => s.RegionId.GetValueOrDefault())
             .ToHashSet();
 
         // FacilityUnit scopes intentionally do NOT promote the parent facility to full access.
         var fullFacilityIds = currentUser.Scopes
             .Where(s => s.FacilityId.HasValue &&
                         (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities))
-            .Select(s => s.FacilityId!.Value)
+            .Select(s => s.FacilityId.GetValueOrDefault())
             .ToHashSet();
 
         var unitIds = currentUser.Scopes
             .Where(s => s.FacilityUnitId.HasValue && s.ScopeType == ScopeType.FacilityUnit)
-            .Select(s => s.FacilityUnitId!.Value)
+            .Select(s => s.FacilityUnitId.GetValueOrDefault())
             .ToHashSet();
 
         return (regionIds, fullFacilityIds, unitIds);

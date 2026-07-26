@@ -229,19 +229,19 @@ public sealed class NoteScopeService(
         var regionIds = currentUser.Scopes
             .Where(s => s.RegionId.HasValue &&
                         (s.ScopeType is ScopeType.Region or ScopeType.MultipleRegions))
-            .Select(s => s.RegionId!.Value)
+            .Select(s => s.RegionId.GetValueOrDefault())
             .ToHashSet();
 
         // Notes still promote FacilityUnit parent facilities into the facility set (legacy Phase B behavior).
         var facilityIds = currentUser.Scopes
             .Where(s => s.FacilityId.HasValue &&
                         (s.ScopeType is ScopeType.Facility or ScopeType.MultipleFacilities or ScopeType.FacilityUnit))
-            .Select(s => s.FacilityId!.Value)
+            .Select(s => s.FacilityId.GetValueOrDefault())
             .ToHashSet();
 
         var unitIds = currentUser.Scopes
             .Where(s => s.FacilityUnitId.HasValue && s.ScopeType == ScopeType.FacilityUnit)
-            .Select(s => s.FacilityUnitId!.Value)
+            .Select(s => s.FacilityUnitId.GetValueOrDefault())
             .ToHashSet();
 
         return (regionIds, facilityIds, unitIds);

@@ -94,7 +94,7 @@ public sealed class CorrectiveActionCommandService(
         CorrectiveActionServiceSupport.AppendHistory(db, action.Id, null, CorrectiveActionStatus.Draft, actorId, "إنشاء مسودة");
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionCreated", action, null, new { action.ReferenceNumber, action.OperationalNoteId, action.Priority, action.Classification }, null, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     public async Task<CorrectiveActionDetailDto> UpdateAsync(Guid id, UpdateCorrectiveActionRequest request, CancellationToken cancellationToken = default)
@@ -132,7 +132,7 @@ public sealed class CorrectiveActionCommandService(
         db.Update(action);
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionUpdated", action, old, new { action.Title, action.Description, action.Priority, action.Classification, action.OwnerDepartmentId, action.DueAtUtc }, "تحديث حقول الإجراء", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     public async Task<CorrectiveActionDetailDto> SubmitAsync(Guid id, TransitionCorrectiveActionRequest request, CancellationToken cancellationToken = default)
@@ -153,7 +153,7 @@ public sealed class CorrectiveActionCommandService(
         CorrectiveActionServiceSupport.AppendHistory(db, action.Id, from, CorrectiveActionStatus.Open, actorId, request.Reason.Trim());
         await CorrectiveActionServiceSupport.WriteAuditAsync(audit, "CorrectiveActionSubmitted", action, new { Status = from }, new { Status = CorrectiveActionStatus.Open }, request.Reason.Trim(), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     public async Task ArchiveAsync(Guid id, TransitionCorrectiveActionRequest request, CancellationToken cancellationToken = default)
@@ -198,6 +198,13 @@ public sealed class CorrectiveActionCommandService(
         var note = await db.OperationalNotes.FirstOrDefaultAsync(n => n.Id == noteId, cancellationToken)
             ?? throw new KeyNotFoundException("الملاحظة غير موجودة.");
         await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.View, cancellationToken);
+    }
+
+    private async Task<CorrectiveActionDetailDto> LoadSavedDetailAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var detail = await queries.GetDetailAsync(id, cancellationToken);
+        return detail
+            ?? throw new InvalidOperationException("تعذر تحميل الإجراء التصحيحي بعد حفظ التغيير.");
     }
 
 }

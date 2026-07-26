@@ -56,8 +56,8 @@ public sealed class FormResponseService(
         access.EnsureRespondentWorkspacePermission();
         FormResponseListQueries.EnsureKnownWorkStatus(query.WorkStatus);
         query = FormResponseListQueries.Normalize(query);
-        var page = query.Page!.Value;
-        var pageSize = query.PageSize!.Value;
+        var page = query.Page.GetValueOrDefault();
+        var pageSize = query.PageSize.GetValueOrDefault();
         var now = clock.GetUtcNow();
 
         var scopedFacilityIds = access.FilterFacilities(db.Facilities.AsNoTracking()).Select(f => f.Id);
@@ -756,10 +756,10 @@ public sealed class FormResponseService(
 
     private sealed record WorkspaceMappingContext
     {
-        public FormFacilityAssignment Assignment { get; init; } = null!;
-        public FormCycle Cycle { get; init; } = null!;
-        public FormCampaign Campaign { get; init; } = null!;
-        public FormCampaignResponsePolicy Policy { get; init; } = null!;
+        public required FormFacilityAssignment Assignment { get; init; }
+        public required FormCycle Cycle { get; init; }
+        public required FormCampaign Campaign { get; init; }
+        public required FormCampaignResponsePolicy Policy { get; init; }
         public FormResponse? Response { get; init; }
         public FormAssignmentWorkStatus Work { get; init; }
         public bool Overdue { get; init; }
@@ -769,8 +769,8 @@ public sealed class FormResponseService(
 
     private sealed record ResponseHistoryWrite
     {
-        public FormResponse Response { get; init; } = null!;
-        public string EventType { get; init; } = null!;
+        public required FormResponse Response { get; init; }
+        public required string EventType { get; init; }
         public FormResponseStatus? From { get; init; }
         public FormResponseStatus? To { get; init; }
         public int? SubmissionNumber { get; init; }

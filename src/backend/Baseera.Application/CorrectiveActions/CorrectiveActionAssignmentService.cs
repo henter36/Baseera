@@ -117,7 +117,7 @@ public sealed class CorrectiveActionAssignmentService(
         }, cancellationToken);
 
         await SaveAssignmentChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(action.Id, cancellationToken))!;
+        return await LoadSavedDetailAsync(action.Id, cancellationToken);
     }
 
     private async Task SaveAssignmentChangesAsync(CancellationToken cancellationToken)
@@ -134,6 +134,13 @@ public sealed class CorrectiveActionAssignmentService(
         {
             throw new InvalidOperationException("يوجد تكليف حالي بالفعل لهذا الإجراء التصحيحي.", ex);
         }
+    }
+
+    private async Task<CorrectiveActionDetailDto> LoadSavedDetailAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var detail = await queries.GetDetailAsync(id, cancellationToken);
+        return detail
+            ?? throw new InvalidOperationException("تعذر تحميل الإجراء التصحيحي بعد حفظ التكليف.");
     }
 
     private static bool IsCurrentAssignmentUniqueConflict(DbUpdateException exception)

@@ -39,8 +39,8 @@ public sealed class FormResponseReviewService(
         access.EnsureReviewPermission();
         FormResponseListQueries.EnsureKnownReviewStatus(query.Status);
         query = FormResponseListQueries.Normalize(query);
-        var page = query.Page!.Value;
-        var pageSize = query.PageSize!.Value;
+        var page = query.Page.GetValueOrDefault();
+        var pageSize = query.PageSize.GetValueOrDefault();
         var now = clock.GetUtcNow();
 
         var baseQuery = BuildReviewInboxQuery();
@@ -718,8 +718,8 @@ public sealed class FormResponseReviewService(
 
     private sealed record ReviewDecisionWrite
     {
-        public FormResponse Response { get; init; } = null!;
-        public FormResponseSubmission Submission { get; init; } = null!;
+        public required FormResponse Response { get; init; }
+        public required FormResponseSubmission Submission { get; init; }
         public FormResponseReviewDecisionType Type { get; init; }
         public string? Reason { get; init; }
         public DateTimeOffset? NewDue { get; init; }
@@ -740,8 +740,8 @@ public sealed class FormResponseReviewService(
 
     private sealed record ResponseHistoryWrite
     {
-        public FormResponse Response { get; init; } = null!;
-        public string EventType { get; init; } = null!;
+        public required FormResponse Response { get; init; }
+        public required string EventType { get; init; }
         public FormResponseStatus From { get; init; }
         public FormResponseStatus To { get; init; }
         public string? Reason { get; init; }

@@ -33,7 +33,7 @@ public sealed class FormTemplateService(
         var scopedFormIds = scopedForms.Select(f => f.Id);
         var accessibleDepartmentIds = scopedForms
             .Where(f => f.OwnerDepartmentId != null)
-            .Select(f => f.OwnerDepartmentId!.Value)
+            .Select(f => f.OwnerDepartmentId ?? Guid.Empty)
             .Distinct();
 
         var query = db.FormTemplates.AsNoTracking();

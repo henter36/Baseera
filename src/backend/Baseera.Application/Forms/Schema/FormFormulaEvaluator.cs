@@ -44,7 +44,7 @@ public static class FormFormulaEvaluator
         };
 
     private static IReadOnlyList<decimal> GetNumericArguments(IReadOnlyList<object?> arguments) =>
-        arguments.Select(ToDecimal).Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        arguments.Select(ToDecimal).Where(x => x.HasValue).Select(x => x.GetValueOrDefault()).ToList();
 
     private static object? EvaluateNumericFunction(FormFormulaFunction function, IReadOnlyList<decimal> numbers) =>
         function switch

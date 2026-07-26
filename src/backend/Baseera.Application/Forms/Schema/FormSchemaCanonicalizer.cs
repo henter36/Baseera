@@ -168,8 +168,9 @@ public sealed class FormSchemaCanonicalizer : IFormSchemaCanonicalizer
         group.Groups = group.Groups
             .Select(NormalizeConditionGroup)
             .Where(g => g is not null)
-            .OrderBy(g => BuildConditionSortKey(g!))
-            .ToList()!;
+            .OfType<FormConditionGroup>()
+            .OrderBy(BuildConditionSortKey)
+            .ToList();
         return group;
     }
 
