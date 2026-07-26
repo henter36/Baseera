@@ -2,6 +2,7 @@ namespace Baseera.Application.Organization;
 
 using Baseera.Application.Abstractions;
 using Baseera.Application.Common;
+using Baseera.Domain.Identity;
 using Baseera.Domain.Organization;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -52,7 +53,7 @@ public sealed class OrganizationService(
 {
     public async Task<PagedResult<RegionDto>> ListRegionsAsync(PagedQuery query, CancellationToken cancellationToken = default)
     {
-        EnsurePermission("Organization.View");
+        EnsurePermission(PermissionCodes.OrganizationView);
         var q = scope.FilterRegions(db.Regions.Where(r => !r.IsDeleted));
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
@@ -74,7 +75,7 @@ public sealed class OrganizationService(
 
     public async Task<RegionDto?> GetRegionAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        EnsurePermission("Organization.View");
+        EnsurePermission(PermissionCodes.OrganizationView);
         if (!scope.CanAccessRegion(id))
         {
             return null;
@@ -128,7 +129,7 @@ public sealed class OrganizationService(
 
     public async Task<PagedResult<FacilityDto>> ListFacilitiesAsync(PagedQuery query, Guid? regionId, CancellationToken cancellationToken = default)
     {
-        EnsurePermission("Organization.View");
+        EnsurePermission(PermissionCodes.OrganizationView);
         var q = scope.FilterFacilities(db.Facilities.Where(f => !f.IsDeleted));
         if (regionId.HasValue)
         {
@@ -160,7 +161,7 @@ public sealed class OrganizationService(
 
     public async Task<FacilityDto?> GetFacilityAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        EnsurePermission("Organization.View");
+        EnsurePermission(PermissionCodes.OrganizationView);
         if (!scope.CanAccessFacility(id))
         {
             return null;
@@ -209,7 +210,7 @@ public sealed class OrganizationService(
 
     public async Task<PagedResult<FacilityUnitDto>> ListFacilityUnitsAsync(Guid facilityId, PagedQuery query, CancellationToken cancellationToken = default)
     {
-        EnsurePermission("Organization.View");
+        EnsurePermission(PermissionCodes.OrganizationView);
         if (!scope.CanAccessFacility(facilityId))
         {
             throw new UnauthorizedAccessException("لا صلاحية على نطاق هذا السجن.");
@@ -234,7 +235,7 @@ public sealed class OrganizationService(
 
     public async Task<PagedResult<DepartmentDto>> ListDepartmentsAsync(PagedQuery query, CancellationToken cancellationToken = default)
     {
-        EnsurePermission("Organization.View");
+        EnsurePermission(PermissionCodes.OrganizationView);
         var q = db.Departments.Where(d => !d.IsDeleted);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
