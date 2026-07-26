@@ -5,6 +5,8 @@ using Baseera.Domain.Workforce;
 
 public static class WorkforceAccessPolicy
 {
+    private const string InvalidRowVersionMessage = "إصدار السجل غير صالح.";
+
     public static bool CanViewSummary(IReadOnlyCollection<string> permissions) =>
         permissions.Contains(PermissionCodes.WorkforceViewSummary);
 
@@ -66,7 +68,7 @@ public static class WorkforceAccessPolicy
     {
         if (string.IsNullOrWhiteSpace(incomingBase64))
         {
-            throw new InvalidOperationException("إصدار السجل غير صالح.");
+            throw new InvalidOperationException(InvalidRowVersionMessage);
         }
 
         byte[] incoming;
@@ -76,11 +78,11 @@ public static class WorkforceAccessPolicy
         }
         catch (FormatException)
         {
-            throw new InvalidOperationException("إصدار السجل غير صالح.");
+            throw new InvalidOperationException(InvalidRowVersionMessage);
         }
         catch (ArgumentNullException)
         {
-            throw new InvalidOperationException("إصدار السجل غير صالح.");
+            throw new InvalidOperationException(InvalidRowVersionMessage);
         }
 
         EnsureRowVersion(current, incoming);
@@ -90,7 +92,7 @@ public static class WorkforceAccessPolicy
     {
         if (incoming is null || incoming.Length == 0)
         {
-            throw new InvalidOperationException("إصدار السجل غير صالح.");
+            throw new InvalidOperationException(InvalidRowVersionMessage);
         }
 
         if (!current.SequenceEqual(incoming))

@@ -89,6 +89,42 @@ async function optionalPart<T>(name: string, loader: () => Promise<T>, fallback:
   }
 }
 
+function requireFacilityId(facilityId: string | undefined) {
+  if (!facilityId) throw new Error('facilityId is required')
+  return facilityId
+}
+
+async function loadWorkforceAdminData(
+  facilityId: string,
+  canViewCoverage: boolean,
+  canViewMembers: boolean,
+  canReconcile: boolean,
+) {
+  const partialFailures: string[] = []
+  const summary = await api.workforce.summary(facilityId)
+  const [coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation] = await Promise.all([
+    optionalPart('coverage', () => canViewCoverage ? api.workforce.coverage(facilityId) : Promise.resolve([]), [] as WorkforceCoverageRowPayload[], partialFailures),
+    optionalPart('units', () => canViewCoverage ? api.workforce.units(facilityId) : Promise.resolve([]), [] as WorkforceUnitCoveragePayload[], partialFailures),
+    optionalPart('roles', () => canViewMembers ? api.workforce.roles(facilityId) : Promise.resolve([]), [] as WorkforceRoleDefinitionPayload[], partialFailures),
+    optionalPart('members', () => canViewMembers ? api.workforce.members(facilityId, { pageSize: 50 }) : Promise.resolve([]), [] as WorkforceMemberListItem[], partialFailures),
+    optionalPart('requirements', () => canViewCoverage ? api.workforce.requirements(facilityId) : Promise.resolve([]), [] as StaffingRequirementPayload[], partialFailures),
+    optionalPart('rosters', () => canViewCoverage ? api.workforce.rosters(facilityId) : Promise.resolve([]), [] as DutyRosterPayload[], partialFailures),
+    optionalPart('data-quality', () => api.workforce.dataQuality(facilityId), {
+      totalMembers: summary.totalMembers,
+      missingEmployeeNumber: summary.missingDataRecords,
+      unknownEmploymentStatus: 0,
+      missingHomeOrOperationalFacility: 0,
+      staleVerification: summary.staleRecords,
+      openImportIssues: 0,
+      warnings: summary.warnings,
+      issues: [],
+    } as WorkforceDataQualityPayload, partialFailures),
+    optionalPart('critical-positions', () => canViewCoverage ? api.workforce.criticalPositions(facilityId) : Promise.resolve([]), [] as WorkforceCriticalPosition[], partialFailures),
+    optionalPart('reconciliation', () => canReconcile ? api.workforce.reconciliation(facilityId, { page: 1, pageSize: 50 }) : Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 50 }), { items: [], totalCount: 0, page: 1, pageSize: 50 }, partialFailures),
+  ])
+  return { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation, partialFailures }
+}
+
 export function FacilityWorkforcePage() {
   const { facilityId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -111,31 +147,7 @@ export function FacilityWorkforcePage() {
 
   const query = useQuery({
     queryKey: ['workforce-admin', facilityId, canViewCoverage, canViewMembers, canReconcile],
-    queryFn: async () => {
-      const partialFailures: string[] = []
-      const summary = await api.workforce.summary(facilityId!)
-      const [coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation] = await Promise.all([
-        optionalPart('coverage', () => canViewCoverage ? api.workforce.coverage(facilityId!) : Promise.resolve([]), [] as WorkforceCoverageRowPayload[], partialFailures),
-        optionalPart('units', () => canViewCoverage ? api.workforce.units(facilityId!) : Promise.resolve([]), [] as WorkforceUnitCoveragePayload[], partialFailures),
-        optionalPart('roles', () => canViewMembers ? api.workforce.roles(facilityId!) : Promise.resolve([]), [] as WorkforceRoleDefinitionPayload[], partialFailures),
-        optionalPart('members', () => canViewMembers ? api.workforce.members(facilityId!, { pageSize: 50 }) : Promise.resolve([]), [] as WorkforceMemberListItem[], partialFailures),
-        optionalPart('requirements', () => canViewCoverage ? api.workforce.requirements(facilityId!) : Promise.resolve([]), [] as StaffingRequirementPayload[], partialFailures),
-        optionalPart('rosters', () => canViewCoverage ? api.workforce.rosters(facilityId!) : Promise.resolve([]), [] as DutyRosterPayload[], partialFailures),
-        optionalPart('data-quality', () => api.workforce.dataQuality(facilityId!), {
-          totalMembers: summary.totalMembers,
-          missingEmployeeNumber: summary.missingDataRecords,
-          unknownEmploymentStatus: 0,
-          missingHomeOrOperationalFacility: 0,
-          staleVerification: summary.staleRecords,
-          openImportIssues: 0,
-          warnings: summary.warnings,
-          issues: [],
-        } as WorkforceDataQualityPayload, partialFailures),
-        optionalPart('critical-positions', () => canViewCoverage ? api.workforce.criticalPositions(facilityId!) : Promise.resolve([]), [] as WorkforceCriticalPosition[], partialFailures),
-        optionalPart('reconciliation', () => canReconcile ? api.workforce.reconciliation(facilityId!, { page: 1, pageSize: 50 }) : Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 50 }), { items: [], totalCount: 0, page: 1, pageSize: 50 }, partialFailures),
-      ])
-      return { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation, partialFailures }
-    },
+    queryFn: () => loadWorkforceAdminData(requireFacilityId(facilityId), canViewCoverage, canViewMembers, canReconcile),
     enabled: canView && Boolean(facilityId),
   })
 
@@ -282,7 +294,7 @@ export function FacilityWorkforcePage() {
       {error && <p className="context-action-note" role="alert">{error}</p>}
       {exportNote && <p className="context-action-note" data-testid="export-redaction-note">{exportNote}</p>}
       {query.data.partialFailures.length > 0 && (
-        <p className="context-action-note" role="status">تعذر تحميل بعض أجزاء المركز، وتبقى البيانات المتاحة ظاهرة.</p>
+        <output className="context-action-note">تعذر تحميل بعض أجزاء المركز، وتبقى البيانات المتاحة ظاهرة.</output>
       )}
 
       <nav className="command-section-nav" aria-label="تنقل مركز القوى البشرية">
@@ -604,7 +616,7 @@ function MemberEditForm({
       <label>المسمى<input name="jobTitle" required defaultValue={member.jobTitle} /></label>
       <label>التخصص<input name="primarySpecialty" required defaultValue={member.primarySpecialty} /></label>
       <label>
-        الحالة
+        <span>الحالة</span>
         <select name="employmentStatus" defaultValue={String(member.employmentStatus)}>
           <option value={EmploymentStatus.Active}>نشط</option>
           <option value={EmploymentStatus.SecondedIn}>إعارة واردة</option>
@@ -705,7 +717,7 @@ function AvailabilityForm({
     >
       <h2>تسجيل توفر / غياب</h2>
       <label>
-        العضو
+        <span>العضو</span>
         <select name="workforceMemberId" required defaultValue={members[0]?.id}>
           {members.map((member) => (
             <option key={member.id} value={member.id}>{member.displayName}</option>
@@ -713,7 +725,7 @@ function AvailabilityForm({
         </select>
       </label>
       <label>
-        نوع التوفر
+        <span>نوع التوفر</span>
         <select name="availabilityType" defaultValue={AvailabilityType.AnnualLeave}>
           <option value={AvailabilityType.Available}>متاح</option>
           <option value={AvailabilityType.AnnualLeave}>إجازة سنوية</option>
@@ -836,7 +848,7 @@ function WorkforceImportForm({
       >
         <h2>معاينة استيراد القوى البشرية</h2>
         <label>
-          نوع الاستيراد
+          <span>نوع الاستيراد</span>
           <select name="importKind" defaultValue={WorkforceImportKind.PersonnelMaster} aria-label="نوع الاستيراد">
             {IMPORT_KIND_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>

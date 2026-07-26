@@ -1818,16 +1818,18 @@ function panelForPriorityItem(item: PriorityItem): PanelState {
   if (item.type === 'escalation') return { type: 'escalation', entityId: item.reference }
   if (item.type === 'occupancy') return { type: 'facility-unit', entityId: item.drillDownTarget.routeParameters.unitId ?? 'domain-occupancy' }
   if (item.type === 'resource') return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.reference }
-  if (item.type === 'workforce') {
-    if (item.reference.startsWith('gap:')) return { type: 'workforce-gap', entityId: item.reference }
-    if (item.reference.startsWith('critical:')) return { type: 'workforce-critical-position', entityId: item.reference }
-    if (item.reference.startsWith('roster:')) return { type: 'workforce-roster', entityId: item.reference }
-    if (item.reference.startsWith('requirement:')) return { type: 'workforce-requirement', entityId: item.reference }
-    if (item.reference.startsWith('qualification:')) return { type: 'workforce-qualification', entityId: item.reference }
-    if (item.reference.startsWith('unit:')) return { type: 'workforce-unit', entityId: item.reference }
-    return { type: 'workforce-role', entityId: item.reference }
-  }
+  if (item.type === 'workforce') return workforcePanelForReference(item.reference)
   return { type: 'activity', entityId: item.reference }
+}
+
+function workforcePanelForReference(reference: string): PanelState {
+  if (reference.startsWith('gap:')) return { type: 'workforce-gap', entityId: reference }
+  if (reference.startsWith('critical:')) return { type: 'workforce-critical-position', entityId: reference }
+  if (reference.startsWith('roster:')) return { type: 'workforce-roster', entityId: reference }
+  if (reference.startsWith('requirement:')) return { type: 'workforce-requirement', entityId: reference }
+  if (reference.startsWith('qualification:')) return { type: 'workforce-qualification', entityId: reference }
+  if (reference.startsWith('unit:')) return { type: 'workforce-unit', entityId: reference }
+  return { type: 'workforce-role', entityId: reference }
 }
 
 function panelForActivityItem(item: ActivityItem, index: number): PanelState {

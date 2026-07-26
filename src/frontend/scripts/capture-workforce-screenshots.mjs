@@ -175,7 +175,9 @@ async function main() {
   console.log(`file URL: ${pathToFileURL(harnessPath).href}`)
 }
 
-main().catch((error) => {
+try {
+  await main()
+} catch (error) {
   console.error(error)
   process.exit(1)
-})
+}

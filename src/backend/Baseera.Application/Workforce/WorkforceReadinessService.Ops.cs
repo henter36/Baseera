@@ -41,18 +41,16 @@ public sealed partial class WorkforceReadinessService
                 && c.FacilityId == facilityId
                 && c.EffectiveFromUtc <= now
                 && (c.EffectiveToUtc == null || c.EffectiveToUtc > now))
-            .Select(c => new
-            {
+            .Select(c => new CriticalPositionRequirementRow(
                 c.Id,
                 c.RoleDefinitionId,
-                RoleCode = c.RoleDefinition.Code,
-                RoleNameAr = c.RoleDefinition.NameAr,
+                c.RoleDefinition.Code,
+                c.RoleDefinition.NameAr,
                 c.FacilityUnitId,
                 c.ShiftDefinitionId,
                 c.RequiredPrimaryCount,
                 c.RequiredAlternateCount,
-                c.Criticality
-            })
+                c.Criticality))
             .ToListAsync(cancellationToken);
 
         var roster = await db.DutyRosterAssignments
@@ -62,12 +60,10 @@ public sealed partial class WorkforceReadinessService
                 && a.DutyRoster.Status == DutyRosterStatuses.Published
                 && a.DutyRoster.DutyDate == today
                 && CountedRosterStatuses.Contains(a.Status))
-            .Select(a => new
-            {
+            .Select(a => new CriticalRosterRow(
                 a.RoleDefinitionId,
                 a.DutyRoster.FacilityUnitId,
-                a.DutyRoster.ShiftDefinitionId
-            })
+                a.DutyRoster.ShiftDefinitionId))
             .ToListAsync(cancellationToken);
 
         var actingMemberIds = await db.WorkforceAssignments
@@ -77,53 +73,72 @@ public sealed partial class WorkforceReadinessService
                 && a.AssignmentType == AssignmentType.Acting
                 && a.EffectiveFromUtc <= now
                 && (a.EffectiveToUtc == null || a.EffectiveToUtc > now))
-            .Select(a => new { a.RoleDefinitionId, a.FacilityUnitId })
+            .Select(a => new CriticalActingRow(a.RoleDefinitionId, a.FacilityUnitId))
             .ToListAsync(cancellationToken);
 
-        return requirements.Select(req =>
+        return requirements
+            .Select(req => BuildCriticalPositionDto(req, roster, actingMemberIds))
+            .OrderByDescending(r => r.VacantPrimary)
+            .ThenBy(r => r.RoleCode)
+            .ToList();
+    }
+
+    private static WorkforceCriticalPositionDto BuildCriticalPositionDto(
+        CriticalPositionRequirementRow requirement,
+        IReadOnlyList<CriticalRosterRow> roster,
+        IReadOnlyList<CriticalActingRow> actingMemberIds)
+    {
+        var matchingCount = roster.Count(row => MatchesCriticalRequirement(requirement, row));
+        var primaryFilled = Math.Min(requirement.RequiredPrimaryCount, matchingCount);
+        var alternateFilled = Math.Min(
+            Math.Max(0, matchingCount - requirement.RequiredPrimaryCount),
+            requirement.RequiredAlternateCount);
+        var vacantPrimary = Math.Max(0, requirement.RequiredPrimaryCount - primaryFilled);
+        var vacantAlternate = Math.Max(0, requirement.RequiredAlternateCount - alternateFilled);
+        var acting = actingMemberIds.Count(row => MatchesCriticalRequirement(requirement, row));
+        return new WorkforceCriticalPositionDto
         {
-            var matching = roster.Where(r =>
-                r.RoleDefinitionId == req.RoleDefinitionId
-                && (req.FacilityUnitId == null || r.FacilityUnitId == req.FacilityUnitId)
-                && (req.ShiftDefinitionId == null || r.ShiftDefinitionId == req.ShiftDefinitionId))
-                .ToList();
-            var primaryFilled = Math.Min(req.RequiredPrimaryCount, matching.Count);
-            var alternateFilled = Math.Min(
-                Math.Max(0, matching.Count - req.RequiredPrimaryCount),
-                req.RequiredAlternateCount);
-            var vacantPrimary = Math.Max(0, req.RequiredPrimaryCount - primaryFilled);
-            var vacantAlternate = Math.Max(0, req.RequiredAlternateCount - alternateFilled);
-            var acting = actingMemberIds.Count(a =>
-                a.RoleDefinitionId == req.RoleDefinitionId
-                && (req.FacilityUnitId == null || a.FacilityUnitId == req.FacilityUnitId));
-            var spof = req.RequiredPrimaryCount > 0 && primaryFilled <= 1 && vacantAlternate > 0;
-            var statusAr = vacantPrimary > 0
-                ? "شاغر"
-                : vacantAlternate > 0
-                    ? "بلا بديل كافٍ"
-                    : acting > 0
-                        ? "تكليف مؤقت"
-                        : "مغطى";
-            return new WorkforceCriticalPositionDto
-            {
-                Id = req.Id,
-                RoleDefinitionId = req.RoleDefinitionId,
-                RoleCode = req.RoleCode,
-                RoleNameAr = req.RoleNameAr,
-                FacilityUnitId = req.FacilityUnitId,
-                ShiftDefinitionId = req.ShiftDefinitionId,
-                RequiredPrimaryCount = req.RequiredPrimaryCount,
-                RequiredAlternateCount = req.RequiredAlternateCount,
-                PrimaryFilled = primaryFilled,
-                AlternateFilled = alternateFilled,
-                VacantPrimary = vacantPrimary,
-                VacantAlternate = vacantAlternate,
-                ActingCount = acting,
-                SinglePointOfFailure = spof,
-                Criticality = req.Criticality,
-                StatusAr = statusAr
-            };
-        }).OrderByDescending(r => r.VacantPrimary).ThenBy(r => r.RoleCode).ToList();
+            Id = requirement.Id,
+            RoleDefinitionId = requirement.RoleDefinitionId,
+            RoleCode = requirement.RoleCode,
+            RoleNameAr = requirement.RoleNameAr,
+            FacilityUnitId = requirement.FacilityUnitId,
+            ShiftDefinitionId = requirement.ShiftDefinitionId,
+            RequiredPrimaryCount = requirement.RequiredPrimaryCount,
+            RequiredAlternateCount = requirement.RequiredAlternateCount,
+            PrimaryFilled = primaryFilled,
+            AlternateFilled = alternateFilled,
+            VacantPrimary = vacantPrimary,
+            VacantAlternate = vacantAlternate,
+            ActingCount = acting,
+            SinglePointOfFailure = requirement.RequiredPrimaryCount > 0 && primaryFilled <= 1 && vacantAlternate > 0,
+            Criticality = requirement.Criticality,
+            StatusAr = CriticalPositionStatusAr(vacantPrimary, vacantAlternate, acting)
+        };
+    }
+
+    private static bool MatchesCriticalRequirement(CriticalPositionRequirementRow requirement, CriticalRosterRow row) =>
+        row.RoleDefinitionId == requirement.RoleDefinitionId
+        && (requirement.FacilityUnitId == null || row.FacilityUnitId == requirement.FacilityUnitId)
+        && (requirement.ShiftDefinitionId == null || row.ShiftDefinitionId == requirement.ShiftDefinitionId);
+
+    private static bool MatchesCriticalRequirement(CriticalPositionRequirementRow requirement, CriticalActingRow row) =>
+        row.RoleDefinitionId == requirement.RoleDefinitionId
+        && (requirement.FacilityUnitId == null || row.FacilityUnitId == requirement.FacilityUnitId);
+
+    private static string CriticalPositionStatusAr(int vacantPrimary, int vacantAlternate, int acting)
+    {
+        if (vacantPrimary > 0)
+        {
+            return "شاغر";
+        }
+
+        if (vacantAlternate > 0)
+        {
+            return "بلا بديل كافٍ";
+        }
+
+        return acting > 0 ? "تكليف مؤقت" : "مغطى";
     }
 
     public async Task<(string FileName, string ContentType, byte[] Content)> ExportAsync(
@@ -279,7 +294,7 @@ public sealed partial class WorkforceReadinessService
                 m.HomeFacilityId))
             .ToListAsync(cancellationToken);
 
-        var userIds = members.Where(m => m.UserId.HasValue).Select(m => m.UserId!.Value).Distinct().ToList();
+        var userIds = members.Where(m => m.UserId.HasValue).Select(m => m.UserId.GetValueOrDefault()).Distinct().ToList();
         var existingUsers = userIds.Count == 0
             ? new HashSet<Guid>()
             : (await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).Select(u => u.Id).ToListAsync(cancellationToken))
@@ -331,7 +346,7 @@ public sealed partial class WorkforceReadinessService
             LeaveWhileRostered: DetectLeaveWhileRostered(rosterRows, availability),
             RetirementWhileRostered: DetectRetirementWhileRostered(rosterRows, members),
             StaleMemberIds: members.Where(m => m.LastVerifiedAtUtc is null || m.LastVerifiedAtUtc < staleBefore).Select(m => m.Id).ToList(),
-            InvalidUserLinkMemberIds: members.Where(m => m.UserId.HasValue && !existingUsers.Contains(m.UserId!.Value)).Select(m => m.Id).ToList(),
+            InvalidUserLinkMemberIds: members.Where(m => m.UserId.HasValue && !existingUsers.Contains(m.UserId.GetValueOrDefault())).Select(m => m.Id).ToList(),
             AssignmentOutsideFacilityIds: DetectAssignmentsOutsideFacility(assignments, members),
             UnpublishedRosterIds: unpublishedIds,
             SourceConflictMemberIds: DetectSourceConflictMembers(members),
@@ -407,7 +422,7 @@ public sealed partial class WorkforceReadinessService
     private static IReadOnlyList<Guid> DetectSourceConflictMembers(IReadOnlyList<ReconciliationMember> members) =>
         members
             .Where(m => !string.IsNullOrWhiteSpace(m.ExternalPersonnelId))
-            .GroupBy(m => m.ExternalPersonnelId!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(m => m.ExternalPersonnelId, StringComparer.OrdinalIgnoreCase)
             .Where(group => group
                 .Select(m => m.SourceReference?.Trim())
                 .Where(r => !string.IsNullOrWhiteSpace(r))
@@ -419,7 +434,7 @@ public sealed partial class WorkforceReadinessService
     private static WorkforceReconciliationItemDto ToReconciliationItem(
         WorkforceReconciliationIssue issue,
         DateTimeOffset now) =>
-        Item(
+        Item(new ReconciliationItemSpec(
             issue.IssueKey,
             issue.IssueType.ToString(),
             ToDtoSeverity(issue.Severity),
@@ -428,7 +443,7 @@ public sealed partial class WorkforceReadinessService
             issue.EntityType ?? "WorkforceMember",
             issue.EntityId,
             ReconciliationAction(issue.IssueType),
-            now);
+            now));
 
     private static string ToDtoSeverity(string severity) => severity.ToLowerInvariant() switch
     {
@@ -500,29 +515,51 @@ public sealed partial class WorkforceReadinessService
         AvailabilityType AvailabilityType,
         bool AffectsOperationalAvailability);
 
-    private static WorkforceReconciliationItemDto Item(
-        string id,
-        string issueType,
-        string severity,
-        string titleAr,
-        string detailAr,
-        string entityType,
-        Guid? entityId,
-        string actionAr,
-        DateTimeOffset now) =>
+    private sealed record CriticalPositionRequirementRow(
+        Guid Id,
+        Guid RoleDefinitionId,
+        string RoleCode,
+        string RoleNameAr,
+        Guid? FacilityUnitId,
+        Guid? ShiftDefinitionId,
+        int RequiredPrimaryCount,
+        int RequiredAlternateCount,
+        WorkforceRoleCriticality Criticality);
+
+    private sealed record CriticalRosterRow(
+        Guid RoleDefinitionId,
+        Guid? FacilityUnitId,
+        Guid? ShiftDefinitionId);
+
+    private sealed record CriticalActingRow(
+        Guid RoleDefinitionId,
+        Guid? FacilityUnitId);
+
+    private sealed record ReconciliationItemSpec(
+        string Id,
+        string IssueType,
+        string Severity,
+        string TitleAr,
+        string DetailAr,
+        string EntityType,
+        Guid? EntityId,
+        string ActionAr,
+        DateTimeOffset Now);
+
+    private static WorkforceReconciliationItemDto Item(ReconciliationItemSpec spec) =>
         new()
         {
-            Id = id,
-            IssueType = issueType,
-            Severity = severity,
-            TitleAr = titleAr,
-            DetailAr = detailAr,
-            EntityType = entityType,
-            EntityId = entityId,
+            Id = spec.Id,
+            IssueType = spec.IssueType,
+            Severity = spec.Severity,
+            TitleAr = spec.TitleAr,
+            DetailAr = spec.DetailAr,
+            EntityType = spec.EntityType,
+            EntityId = spec.EntityId,
             SourceSystem = null,
-            SuggestedActionAr = actionAr,
+            SuggestedActionAr = spec.ActionAr,
             ResponsibleHintAr = "ضابط القوى البشرية / مدير السجن",
-            DetectedAtUtc = now
+            DetectedAtUtc = spec.Now
         };
 
     private static int SeverityRank(string severity) => severity switch

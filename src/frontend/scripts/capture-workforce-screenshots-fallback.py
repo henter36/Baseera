@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 OUT = os.path.join(os.path.dirname(__file__), '../../../docs/screenshots/phase-d5-1')
 OUT = os.path.abspath(OUT)
+ARIAL_UNICODE_FONT = '/System/Library/Fonts/Supplemental/Arial Unicode.ttf'
 
 BG = (238, 242, 239)
 SURFACE = (255, 255, 255)
@@ -23,9 +24,9 @@ OK = (23, 114, 69)
 INFO = (37, 99, 166)
 
 try:
-    FONT_L = ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial Unicode.ttf', 28)
-    FONT_M = ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial Unicode.ttf', 18)
-    FONT_S = ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial Unicode.ttf', 14)
+    FONT_L = ImageFont.truetype(ARIAL_UNICODE_FONT, 28)
+    FONT_M = ImageFont.truetype(ARIAL_UNICODE_FONT, 18)
+    FONT_S = ImageFont.truetype(ARIAL_UNICODE_FONT, 14)
 except OSError:
     FONT_L = FONT_M = FONT_S = ImageFont.load_default()
 
@@ -37,7 +38,7 @@ def rtl_text(draw, xy, text, font, fill):
 
 
 def card(draw, box, accent=INFO):
-    x0, y0, x1, y1 = box
+    x0, y0, _, y1 = box
     draw.rounded_rectangle(box, radius=18, fill=SURFACE, outline=(200, 210, 205))
     draw.rectangle((x0, y0 + 8, x0 + 5, y1 - 8), fill=accent)
 
@@ -111,6 +112,30 @@ SCENES = {
 }
 
 
+def render_overview_state(draw, w, kind):
+    status_map = {
+        'overview': ('partial', '64% تغطية', 'توجد فجوات تغطية في أدوار حرجة.', '9/14'),
+        'ready': ('complete', '100% تغطية', 'لا توجد تحذيرات تغطية حالية.', '14/14'),
+        'attention': ('partial', '78% تغطية', 'فوق الحد الآمن وأقل من المطلوب.', '11/14'),
+        'critical': ('critical', '42% تغطية', 'أقل من الحد الآمن في أدوار حرجة.', '6/14'),
+        'unknown': ('missing', 'احتياج غير محدد', 'مصدر التوفر غير معروف.', '-/-'),
+        'partial': ('partial', 'بيانات جزئية', 'تعذر تحميل جزء من التغطية.', '—'),
+    }
+    st, rate, warn, ratio = status_map[kind]
+    strip(draw, w, 160, st, rate, warn, ratio)
+    if w >= 700:
+        metrics(draw, w, 290, [
+            ('المطلوب', 14, INFO), ('المتاح', 9 if kind != 'ready' else 14, OK),
+            ('الحاضر', 8, INFO), ('الفجوة', 0 if kind == 'ready' else 5, WARN if kind != 'ready' else OK),
+            ('الحد الآمن', 11, OK),
+        ])
+        row(draw, w, 400, 'ضابط برج', 'TOWER · عنبر أ · فجوة 1', '67%', WARN)
+        row(draw, w, 480, 'مواقع حرجة غير مغطاة', 'بديل غير متاح لقائد الوردية', 'حرجة', CRIT)
+    else:
+        metrics(draw, w, 290, [('المطلوب', 14, INFO), ('المتاح', 9, OK), ('الفجوة', 5, WARN)])
+        row(draw, w, 400, 'ضابط برج', 'فجوة 1', '67%', WARN)
+
+
 def render(kind: str, w: int, h: int) -> Image.Image:
     img = Image.new('RGB', (w, h), BG)
     draw = ImageDraw.Draw(img)
@@ -118,27 +143,7 @@ def render(kind: str, w: int, h: int) -> Image.Image:
     header(draw, w, 'القوى البشرية والتغطية التشغيلية', subtitle)
 
     if kind in ('overview', 'ready', 'attention', 'critical', 'unknown', 'partial'):
-        status_map = {
-            'overview': ('partial', '64% تغطية', 'توجد فجوات تغطية في أدوار حرجة.', '9/14'),
-            'ready': ('complete', '100% تغطية', 'لا توجد تحذيرات تغطية حالية.', '14/14'),
-            'attention': ('partial', '78% تغطية', 'فوق الحد الآمن وأقل من المطلوب.', '11/14'),
-            'critical': ('critical', '42% تغطية', 'أقل من الحد الآمن في أدوار حرجة.', '6/14'),
-            'unknown': ('missing', 'احتياج غير محدد', 'مصدر التوفر غير معروف.', '-/-'),
-            'partial': ('partial', 'بيانات جزئية', 'تعذر تحميل جزء من التغطية.', '—'),
-        }
-        st, rate, warn, ratio = status_map[kind]
-        strip(draw, w, 160, st, rate, warn, ratio)
-        if w >= 700:
-            metrics(draw, w, 290, [
-                ('المطلوب', 14, INFO), ('المتاح', 9 if kind != 'ready' else 14, OK),
-                ('الحاضر', 8, INFO), ('الفجوة', 0 if kind == 'ready' else 5, WARN if kind != 'ready' else OK),
-                ('الحد الآمن', 11, OK),
-            ])
-            row(draw, w, 400, 'ضابط برج', 'TOWER · عنبر أ · فجوة 1', '67%', WARN)
-            row(draw, w, 480, 'مواقع حرجة غير مغطاة', 'بديل غير متاح لقائد الوردية', 'حرجة', CRIT)
-        else:
-            metrics(draw, w, 290, [('المطلوب', 14, INFO), ('المتاح', 9, OK), ('الفجوة', 5, WARN)])
-            row(draw, w, 400, 'ضابط برج', 'فجوة 1', '67%', WARN)
+        render_overview_state(draw, w, kind)
     elif kind == 'shift':
         header(draw, w, 'تغطية الورديات', subtitle)
         row(draw, w, 160, 'DAY · ضابط برج', 'مطلوب 3 · حاضر 1 · فجوة 1', 'جزئي', WARN)

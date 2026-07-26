@@ -14,6 +14,8 @@ using Microsoft.Extensions.Logging;
 
 public static class DatabaseInitializer
 {
+    private const string SecurityOfficerNameAr = "ضابط أمن";
+
     public static async Task InitializeAsync(
         IServiceProvider services,
         bool seedDemoData,
@@ -1198,7 +1200,7 @@ public static class DatabaseInitializer
         {
             OrganizationId = SeedIds.Organization,
             Code = "SecurityOfficer",
-            NameAr = "ضابط أمن",
+            NameAr = SecurityOfficerNameAr,
             NameEn = "Security Officer",
             Category = WorkforceRoleCategory.Security,
             Criticality = WorkforceRoleCriticality.High,
@@ -1274,10 +1276,10 @@ public static class DatabaseInitializer
 
         var m1 = DemoMember("WF-A1-001", "أحمد القحطاني", "قائد وردية", "قيادة", SeedIds.FacilityA1UnitNorth);
         var m2 = DemoMember("WF-A1-002", "سعد العتيبي", "مشغل تحكم", "تحكم", SeedIds.FacilityA1UnitNorth);
-        var m3 = DemoMember("WF-A1-003", "فهد الشمري", "ضابط أمن", "أمن", SeedIds.FacilityA1UnitSouth);
+        var m3 = DemoMember("WF-A1-003", "فهد الشمري", SecurityOfficerNameAr, "أمن", SeedIds.FacilityA1UnitSouth);
         var m4 = DemoMember("WF-A1-004", "خالد الدوسري", "ضابط مرافقة", "مرافقة", SeedIds.FacilityA1UnitSouth);
         var m5 = DemoMember("WF-A1-005", "ناصر الحربي", "سائق", "نقل", SeedIds.FacilityA1UnitMedical);
-        var m6 = DemoMember("WF-A1-006", "عبدالله المطيري", "ضابط أمن", "أمن", null);
+        var m6 = DemoMember("WF-A1-006", "عبدالله المطيري", SecurityOfficerNameAr, "أمن", null);
         db.WorkforceMembers.AddRange(m1, m2, m3, m4, m5, m6);
 
         db.WorkforceAssignments.AddRange(
@@ -1730,7 +1732,7 @@ public static class DatabaseInitializer
             (RoleCodes.RegionalCoordinator, "منسق منطقة"),
             (RoleCodes.FacilityDirector, "مدير سجن"),
             (RoleCodes.FacilityCoordinator, "منسق سجن"),
-            (RoleCodes.SecurityOfficer, "ضابط أمن"),
+            (RoleCodes.SecurityOfficer, SecurityOfficerNameAr),
             (RoleCodes.ArmamentOfficer, "ضابط تسليح"),
             (RoleCodes.FleetOfficer, "ضابط أسطول"),
             (RoleCodes.WorkforceOfficer, "ضابط قوى عاملة"),

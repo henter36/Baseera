@@ -781,12 +781,15 @@ internal sealed class FacilityWorkspaceReadService(
             yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.UnknownAvailability", $"unknown:{facilityId}", "توفر مجهول", SeverityMediumAr, 750, "حالة التغطية Unknown — لا تُحسب كـ Available.", "تحديث التوفر", PermissionCodes.WorkforceViewSummary));
         }
 
-        if (string.Equals(payload.Summary.ConfidenceLevel, "low", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(payload.Summary.FreshnessStatus, "stale", StringComparison.OrdinalIgnoreCase))
+        if (HasLowWorkforceSourceQuality(payload.Summary))
         {
             yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.WorkforceSourceConflict", $"source:{facilityId}", "تعارض أو ضعف مصدر الحقيقة", SeverityMediumAr, 760, "الثقة أو الحداثة منخفضة — يلزم reconciliation.", "فتح المصالحة", PermissionCodes.WorkforceReconcile));
         }
     }
+
+    private static bool HasLowWorkforceSourceQuality(Application.Workforce.WorkforceSummaryDto summary) =>
+        string.Equals(summary.ConfidenceLevel, "low", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(summary.FreshnessStatus, "stale", StringComparison.OrdinalIgnoreCase);
 
     private async Task<IReadOnlyList<FacilityPriorityItemPayload>> BuildWorkforceRosterPriorityItemsAsync(
         WorkspaceContext context,
