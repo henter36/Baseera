@@ -18,8 +18,8 @@ public sealed class OperationalDashboardQueryCountIntegrationTests(OperationsInt
 {
     private const int SummaryQueryMax = 18;
     private const int TrendsQueryMax = 14;
-    // Raised for Phase D.5.1 workforce widget (summary + coverage) alongside occupancy/resources.
-    private const int FacilityWorkspaceQueryMax = 110;
+    // Includes D.5.2 sensitive custody widget in addition to occupancy/resources/workforce.
+    private const int FacilityWorkspaceQueryMax = 140;
 
     [IntegrationConnectionFact]
     public async Task Summary_query_count_is_bounded_and_independent_of_note_volume()

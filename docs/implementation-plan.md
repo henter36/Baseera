@@ -165,6 +165,16 @@
 - لا ينفذ الأسلحة/الذخائر، ولا Region/HQ Workspaces، ولا الرواتب/البدلات/الترقيات، ولا الحضور البيومتري الخام، ولا تحسين المناوبات بالذكاء الاصطناعي.
 - يغلق Issue #133؛ يبقى Issue #15 مفتوحًا (أسلحة وبقية الشرائح) وIssue #11 مفتوحًا لبقية مجالات مركز القرار.
 
+### Phase D.5.2 — Weapons, Ammunition and Sensitive Custody Readiness (Issue #140، دفعة أخيرة محلية من #15، استمرار #11)
+
+- يضيف Domain مستقلًا للعهد الحساسة عبر `WeaponAsset`, `CustodyTransaction`, `AmmunitionLot`, `InventorySession`, و`WeaponInspection`.
+- يحمي serials عبر protected storage + hash، ويعرض masked values افتراضيًا ولا يضع serials أو مواقع armory التفصيلية في Workspace أو Audit.
+- يفرض سلسلة حيازة append-only، one active custody، four-eyes approval، rowversion، وقيود SQL Server.
+- يضيف صلاحيات `SensitiveCustody.*` منفصلة عن `Resources.*` و`Workspaces.ViewFacility`.
+- يدمج widget `facility.sensitive-custody` وقسم `الأسلحة والعهد الحساسة` في `facility-operations`.
+- لا ينفذ المشتريات أو المالية أو Region/HQ Workspaces أو الترخيص الوطني أو AI أو الصور كدليل قبول.
+- يغلق Issue #140 عند نجاح PR؛ يتم تقييم Issue #15 بعد القبول النهائي الكامل لنطاق موارد السجن، وتبقى Issue #11 مفتوحة.
+
 ## المرحلة E — المشاريع والاستراتيجية
 
 مشاريع متعددة المواقع، مبادرات، أهداف، مؤشرات، مستهدفات، لوحة أداء.

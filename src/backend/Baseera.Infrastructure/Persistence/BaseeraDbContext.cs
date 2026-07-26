@@ -11,6 +11,7 @@ using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
+using Baseera.Domain.SensitiveCustody;
 using Baseera.Domain.Workforce;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -101,6 +102,19 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<WorkforceReadinessSnapshot> WorkforceReadinessSnapshots => Set<WorkforceReadinessSnapshot>();
     public DbSet<WorkforceImportBatch> WorkforceImportBatches => Set<WorkforceImportBatch>();
     public DbSet<WorkforceReconciliationResolution> WorkforceReconciliationResolutions => Set<WorkforceReconciliationResolution>();
+    public DbSet<WeaponTypeDefinition> WeaponTypeDefinitions => Set<WeaponTypeDefinition>();
+    public DbSet<ArmoryLocation> ArmoryLocations => Set<ArmoryLocation>();
+    public DbSet<WeaponAsset> WeaponAssets => Set<WeaponAsset>();
+    public DbSet<CustodyTransaction> CustodyTransactions => Set<CustodyTransaction>();
+    public DbSet<AmmunitionType> AmmunitionTypes => Set<AmmunitionType>();
+    public DbSet<AmmunitionLot> AmmunitionLots => Set<AmmunitionLot>();
+    public DbSet<AmmunitionTransaction> AmmunitionTransactions => Set<AmmunitionTransaction>();
+    public DbSet<SensitiveResourceRequirement> SensitiveResourceRequirements => Set<SensitiveResourceRequirement>();
+    public DbSet<InventorySession> InventorySessions => Set<InventorySession>();
+    public DbSet<InventoryEntry> InventoryEntries => Set<InventoryEntry>();
+    public DbSet<WeaponInspection> WeaponInspections => Set<WeaponInspection>();
+    public DbSet<SensitiveCustodyImportBatch> SensitiveCustodyImportBatches => Set<SensitiveCustodyImportBatch>();
+    public DbSet<SensitiveCustodyReconciliationResolution> SensitiveCustodyReconciliationResolutions => Set<SensitiveCustodyReconciliationResolution>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -196,6 +210,19 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<WorkforceReadinessSnapshot> Application.Abstractions.IBaseeraDbContext.WorkforceReadinessSnapshots => WorkforceReadinessSnapshots;
     IQueryable<WorkforceImportBatch> Application.Abstractions.IBaseeraDbContext.WorkforceImportBatches => WorkforceImportBatches;
     IQueryable<WorkforceReconciliationResolution> Application.Abstractions.IBaseeraDbContext.WorkforceReconciliationResolutions => WorkforceReconciliationResolutions;
+    IQueryable<WeaponTypeDefinition> Application.Abstractions.IBaseeraDbContext.WeaponTypeDefinitions => WeaponTypeDefinitions;
+    IQueryable<ArmoryLocation> Application.Abstractions.IBaseeraDbContext.ArmoryLocations => ArmoryLocations;
+    IQueryable<WeaponAsset> Application.Abstractions.IBaseeraDbContext.WeaponAssets => WeaponAssets;
+    IQueryable<CustodyTransaction> Application.Abstractions.IBaseeraDbContext.CustodyTransactions => CustodyTransactions;
+    IQueryable<AmmunitionType> Application.Abstractions.IBaseeraDbContext.AmmunitionTypes => AmmunitionTypes;
+    IQueryable<AmmunitionLot> Application.Abstractions.IBaseeraDbContext.AmmunitionLots => AmmunitionLots;
+    IQueryable<AmmunitionTransaction> Application.Abstractions.IBaseeraDbContext.AmmunitionTransactions => AmmunitionTransactions;
+    IQueryable<SensitiveResourceRequirement> Application.Abstractions.IBaseeraDbContext.SensitiveResourceRequirements => SensitiveResourceRequirements;
+    IQueryable<InventorySession> Application.Abstractions.IBaseeraDbContext.InventorySessions => InventorySessions;
+    IQueryable<InventoryEntry> Application.Abstractions.IBaseeraDbContext.InventoryEntries => InventoryEntries;
+    IQueryable<WeaponInspection> Application.Abstractions.IBaseeraDbContext.WeaponInspections => WeaponInspections;
+    IQueryable<SensitiveCustodyImportBatch> Application.Abstractions.IBaseeraDbContext.SensitiveCustodyImportBatches => SensitiveCustodyImportBatches;
+    IQueryable<SensitiveCustodyReconciliationResolution> Application.Abstractions.IBaseeraDbContext.SensitiveCustodyReconciliationResolutions => SensitiveCustodyReconciliationResolutions;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -371,6 +398,19 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<DutyRosterAssignment>().HasQueryFilter(e => !e.IsDeleted && !e.DutyRoster.IsDeleted);
         modelBuilder.Entity<WorkforceAvailabilityEvent>().HasQueryFilter(e => !e.IsDeleted && !e.WorkforceMember.IsDeleted);
         modelBuilder.Entity<CriticalPositionRequirement>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<WeaponTypeDefinition>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<ArmoryLocation>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<WeaponAsset>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<CustodyTransaction>().HasQueryFilter(e => !e.IsDeleted && !e.WeaponAsset.IsDeleted);
+        modelBuilder.Entity<AmmunitionType>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<AmmunitionLot>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<AmmunitionTransaction>().HasQueryFilter(e => !e.IsDeleted && !e.AmmunitionLot.IsDeleted);
+        modelBuilder.Entity<SensitiveResourceRequirement>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<InventorySession>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<InventoryEntry>().HasQueryFilter(e => !e.IsDeleted && !e.InventorySession.IsDeleted);
+        modelBuilder.Entity<WeaponInspection>().HasQueryFilter(e => !e.IsDeleted && !e.WeaponAsset.IsDeleted);
+        modelBuilder.Entity<SensitiveCustodyImportBatch>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<SensitiveCustodyReconciliationResolution>().HasQueryFilter(e => !e.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {

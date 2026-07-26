@@ -17,6 +17,7 @@ using Baseera.Application.Notes;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Organization;
 using Baseera.Application.Resources;
+using Baseera.Application.SensitiveCustody;
 using Baseera.Application.Workforce;
 using Baseera.Application.Workspaces;
 using Baseera.Domain.Attachments;
@@ -165,6 +166,7 @@ public static class ApiEndpoints
         MapOccupancyEndpoints(api);
         MapResourceEndpoints(api);
         MapWorkforceEndpoints(api);
+        MapSensitiveCustodyEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
         MapFormCampaignEndpoints(api);
@@ -588,6 +590,250 @@ public static class ApiEndpoints
             await service.ResolveReconciliationAsync(facilityId, itemId, request, ct);
             return Results.NoContent();
         }).RequireAuthorization(AuthPolicies.WorkforceReconcile);
+    }
+
+    private static void MapSensitiveCustodyEndpoints(RouteGroupBuilder api)
+    {
+        var custody = api.MapGroup("/facilities/{facilityId:guid}/sensitive-custody");
+
+        custody.MapGet(SummaryRoute, async (
+            Guid facilityId,
+            ISensitiveCustodyReadinessService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetSummaryAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyViewSummary);
+
+        custody.MapGet("/weapons", async (
+            Guid facilityId,
+            string? search,
+            int? pageSize,
+            IWeaponAssetQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListWeaponsAsync(facilityId, search, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyViewWeapons);
+
+        custody.MapGet("/weapons/{weaponId:guid}", async (
+            Guid facilityId,
+            Guid weaponId,
+            IWeaponAssetQueryService service,
+            CancellationToken ct) =>
+        {
+            var weapon = await service.GetWeaponAsync(facilityId, weaponId, ct);
+            return weapon is null ? Results.NotFound() : Results.Ok(weapon);
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyViewWeapons);
+
+        custody.MapPost("/weapons", async (
+            Guid facilityId,
+            WeaponAssetCreateRequest request,
+            IWeaponAssetCommandService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateWeaponAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/sensitive-custody/weapons/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyManageWeapons);
+
+        custody.MapPut("/weapons/{weaponId:guid}", async (
+            Guid facilityId,
+            Guid weaponId,
+            WeaponAssetUpdateRequest request,
+            IWeaponAssetCommandService service,
+            CancellationToken ct) =>
+        {
+            await service.UpdateWeaponAsync(facilityId, weaponId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyManageWeapons);
+
+        custody.MapGet("/transactions", async (
+            Guid facilityId,
+            int? page,
+            int? pageSize,
+            ICustodyTransactionService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListTransactionsAsync(facilityId, page ?? 1, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyViewCustodyTransactions);
+
+        custody.MapPost("/transactions", async (
+            Guid facilityId,
+            CustodyTransactionCreateRequest request,
+            ICustodyTransactionService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.CreateTransactionAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/sensitive-custody/transactions/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyIssueWeapons);
+
+        custody.MapPost("/transactions/{transactionId:guid}/approve", async (
+            Guid facilityId,
+            Guid transactionId,
+            SensitiveCustodyTransitionRequest request,
+            ICustodyTransactionService service,
+            CancellationToken ct) =>
+        {
+            await service.ApproveAsync(facilityId, transactionId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyApproveTransactions);
+
+        custody.MapPost("/transactions/{transactionId:guid}/handover", async (
+            Guid facilityId,
+            Guid transactionId,
+            SensitiveCustodyTransitionRequest request,
+            ICustodyTransactionService service,
+            CancellationToken ct) =>
+        {
+            await service.HandoverAsync(facilityId, transactionId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyIssueWeapons);
+
+        custody.MapPost("/transactions/{transactionId:guid}/receive", async (
+            Guid facilityId,
+            Guid transactionId,
+            SensitiveCustodyTransitionRequest request,
+            ICustodyTransactionService service,
+            CancellationToken ct) =>
+        {
+            await service.ReceiveAsync(facilityId, transactionId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyReceiveWeapons);
+
+        custody.MapPost("/transactions/{transactionId:guid}/reverse", async (
+            Guid facilityId,
+            Guid transactionId,
+            SensitiveCustodyTransitionRequest request,
+            ICustodyTransactionService service,
+            CancellationToken ct) =>
+        {
+            await service.ReverseAsync(facilityId, transactionId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyApproveTransactions);
+
+        custody.MapGet("/ammunition", async (
+            Guid facilityId,
+            int? page,
+            int? pageSize,
+            IAmmunitionLedgerService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListLotsAsync(facilityId, page ?? 1, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyViewAmmunition);
+
+        custody.MapGet("/ammunition/ledger", async (
+            Guid facilityId,
+            int? page,
+            int? pageSize,
+            IAmmunitionLedgerService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListLedgerAsync(facilityId, page ?? 1, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyViewAmmunition);
+
+        custody.MapPost("/ammunition/transactions", async (
+            Guid facilityId,
+            AmmunitionTransactionRequest request,
+            IAmmunitionLedgerService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.RecordTransactionAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/sensitive-custody/ammunition/transactions/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyManageAmmunition);
+
+        custody.MapGet("/inventories", async (
+            Guid facilityId,
+            int? page,
+            int? pageSize,
+            IInventorySessionService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListInventoriesAsync(facilityId, page ?? 1, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyConductInventory);
+
+        custody.MapPost("/inventories", async (
+            Guid facilityId,
+            InventorySessionCreateRequest request,
+            IInventorySessionService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.StartInventoryAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/sensitive-custody/inventories/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyConductInventory);
+
+        custody.MapPost("/inventories/{inventoryId:guid}/entries", async (
+            Guid facilityId,
+            Guid inventoryId,
+            InventoryEntryRequest request,
+            IInventorySessionService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.AddEntryAsync(facilityId, inventoryId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/sensitive-custody/inventories/{inventoryId}/entries/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyConductInventory);
+
+        custody.MapPost("/inventories/{inventoryId:guid}/complete", async (
+            Guid facilityId,
+            Guid inventoryId,
+            SensitiveCustodyTransitionRequest request,
+            IInventorySessionService service,
+            CancellationToken ct) =>
+        {
+            await service.CompleteAsync(facilityId, inventoryId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyConductInventory);
+
+        custody.MapPost("/inventories/{inventoryId:guid}/approve", async (
+            Guid facilityId,
+            Guid inventoryId,
+            SensitiveCustodyTransitionRequest request,
+            IInventorySessionService service,
+            CancellationToken ct) =>
+        {
+            await service.ApproveInventoryAsync(facilityId, inventoryId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyApproveInventory);
+
+        custody.MapGet("/inspections", async (
+            Guid facilityId,
+            int? page,
+            int? pageSize,
+            IWeaponInspectionService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListInspectionsAsync(facilityId, page ?? 1, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyManageInspections);
+
+        custody.MapPost("/inspections", async (
+            Guid facilityId,
+            WeaponInspectionRequest request,
+            IWeaponInspectionService service,
+            CancellationToken ct) =>
+        {
+            var id = await service.RecordInspectionAsync(facilityId, request, ct);
+            return Results.Created($"/api/v1/facilities/{facilityId}/sensitive-custody/inspections/{id}", new { id });
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyManageInspections);
+
+        custody.MapGet("/data-quality", async (
+            Guid facilityId,
+            ISensitiveCustodyDataQualityService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.GetDataQualityAsync(facilityId, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyViewSummary);
+
+        custody.MapPost("/import/preview", async (
+            Guid facilityId,
+            SensitiveCustodyImportPreviewRequest request,
+            ISensitiveCustodyImportService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.PreviewAsync(facilityId, request, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyImport);
+
+        custody.MapPost("/import/confirm", async (
+            Guid facilityId,
+            SensitiveCustodyImportPreviewRequest request,
+            ISensitiveCustodyImportService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ConfirmAsync(facilityId, request, ct)))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyImport);
+
+        custody.MapPost("/reconcile", async (
+            Guid facilityId,
+            ISensitiveCustodyReconciliationService service,
+            CancellationToken ct) =>
+            Results.Ok(new { count = await service.ReconcileAsync(facilityId, ct) }))
+            .RequireAuthorization(AuthPolicies.SensitiveCustodyReconcile);
     }
 
     private static void MapFormsEndpoints(RouteGroupBuilder api)

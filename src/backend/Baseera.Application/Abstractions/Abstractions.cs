@@ -11,6 +11,7 @@ using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
+using Baseera.Domain.SensitiveCustody;
 using Baseera.Domain.Workforce;
 using System.Data;
 
@@ -113,6 +114,19 @@ public interface IBaseeraDbContext
     IQueryable<WorkforceReadinessSnapshot> WorkforceReadinessSnapshots { get; }
     IQueryable<WorkforceImportBatch> WorkforceImportBatches { get; }
     IQueryable<WorkforceReconciliationResolution> WorkforceReconciliationResolutions { get; }
+    IQueryable<WeaponTypeDefinition> WeaponTypeDefinitions => Enumerable.Empty<WeaponTypeDefinition>().AsQueryable();
+    IQueryable<ArmoryLocation> ArmoryLocations => Enumerable.Empty<ArmoryLocation>().AsQueryable();
+    IQueryable<WeaponAsset> WeaponAssets => Enumerable.Empty<WeaponAsset>().AsQueryable();
+    IQueryable<CustodyTransaction> CustodyTransactions => Enumerable.Empty<CustodyTransaction>().AsQueryable();
+    IQueryable<AmmunitionType> AmmunitionTypes => Enumerable.Empty<AmmunitionType>().AsQueryable();
+    IQueryable<AmmunitionLot> AmmunitionLots => Enumerable.Empty<AmmunitionLot>().AsQueryable();
+    IQueryable<AmmunitionTransaction> AmmunitionTransactions => Enumerable.Empty<AmmunitionTransaction>().AsQueryable();
+    IQueryable<SensitiveResourceRequirement> SensitiveResourceRequirements => Enumerable.Empty<SensitiveResourceRequirement>().AsQueryable();
+    IQueryable<InventorySession> InventorySessions => Enumerable.Empty<InventorySession>().AsQueryable();
+    IQueryable<InventoryEntry> InventoryEntries => Enumerable.Empty<InventoryEntry>().AsQueryable();
+    IQueryable<WeaponInspection> WeaponInspections => Enumerable.Empty<WeaponInspection>().AsQueryable();
+    IQueryable<SensitiveCustodyImportBatch> SensitiveCustodyImportBatches => Enumerable.Empty<SensitiveCustodyImportBatch>().AsQueryable();
+    IQueryable<SensitiveCustodyReconciliationResolution> SensitiveCustodyReconciliationResolutions => Enumerable.Empty<SensitiveCustodyReconciliationResolution>().AsQueryable();
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;

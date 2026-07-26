@@ -80,6 +80,17 @@ describe('FacilityWorkspacePage', () => {
     expect(getWorkspace).toHaveBeenCalledWith('facility-operations', expect.objectContaining({ level: 1, facilityId: 'facility-a' }))
   })
 
+  it('renders sensitive custody summary without exposing serials or armory locations', async () => {
+    renderPage('/workspaces/facilities/facility-a?section=sensitive-custody')
+
+    expect(await screen.findByRole('heading', { name: 'الأسلحة والعهد الحساسة' })).toBeInTheDocument()
+    expect(screen.getByText('80% جاهزية')).toBeInTheDocument()
+    expect(screen.getByText('إجمالي الأسلحة')).toBeInTheDocument()
+    expect(screen.getByText('ذخيرة دون الحد الأدنى')).toBeInTheDocument()
+    expect(screen.queryByText(/SN-REAL-SECRET/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Armory-A1-Sensitive/)).not.toBeInTheDocument()
+  })
+
   it('synchronizes date filters without losing facility context', async () => {
     renderPage('/workspaces/facilities/facility-a')
     await screen.findByRole('heading', { name: 'سجن أ1' })
@@ -514,6 +525,7 @@ const shell = {
     { ...widgetDefinitionBase, key: 'facility.priority-queue', titleAr: 'قائمة الأولويات', defaultSize: 3 },
     { ...widgetDefinitionBase, key: 'facility.form-compliance', titleAr: 'الالتزام بالنماذج', defaultSize: 2 },
     { ...widgetDefinitionBase, key: 'facility.structure', titleAr: 'الوحدات والمرافق', defaultSize: 4 },
+    { ...widgetDefinitionBase, key: 'facility.sensitive-custody', titleAr: 'الأسلحة والعهد الحساسة', defaultSize: 4, containsSensitiveData: true },
     { ...widgetDefinitionBase, key: 'facility.data-quality', titleAr: 'جودة البيانات', defaultSize: 4 },
   ],
   widgets: [
@@ -898,6 +910,106 @@ const shell = {
       allowedActions: [],
     },
     {
+      widgetKey: 'facility.sensitive-custody',
+      generatedAtUtc: '2026-07-24T09:00:00Z',
+      dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+      freshness: { status: 2, labelAr: 'جزئية' },
+      confidence: { level: 2, labelAr: 'متوسطة' },
+      scopeSummary: { level: 1, labelAr: 'Facility', facilityId: 'facility-a', isSensitive: true },
+      isPartial: true,
+      warningMessages: ['توجد عهد حساسة تحتاج تدخلًا.'],
+      payload: {
+        summary: {
+          totalWeapons: 10,
+          serviceableWeapons: 8,
+          issuedWeapons: 3,
+          inArmoryWeapons: 5,
+          underMaintenanceWeapons: 1,
+          outOfServiceWeapons: 1,
+          missingOrUnaccountedWeapons: 1,
+          overdueReturns: 1,
+          inspectionsDue: 2,
+          openDiscrepancies: 1,
+          ammunitionAvailable: 120,
+          ammunitionMinimum: 150,
+          ammunitionGap: 30,
+          pendingApprovals: 1,
+          staleDataItems: 1,
+          lastInventoryAtUtc: '2026-07-20T09:00:00Z',
+          readinessRate: 0.8,
+          verificationCoverage: 0.9,
+          inspectionCompliance: 0.75,
+          freshness: 'partial',
+          confidence: 'medium',
+          warnings: ['توجد عهد حساسة تحتاج تدخلًا.'],
+        },
+        interventions: [{
+          code: 'AmmunitionBelowMinimum',
+          severity: 'Critical',
+          reasonAr: 'الذخيرة المتاحة دون الحد الأدنى التشغيلي.',
+          sourceEntityId: 'ammo-lot-1',
+          sourceEntityType: 'AmmunitionLot',
+          facilityUnitId: null,
+          ownerRoleAr: 'مسؤول التسليح',
+          dueAtUtc: '2026-07-25T09:00:00Z',
+          primaryActionAr: 'تسوية الذخيرة',
+          drillDownTarget: {
+            routeKey: 'facility.sensitive-custody',
+            labelAr: 'فتح العهد الحساسة',
+            routeParameters: { facilityId: 'facility-a', ammunitionLotId: 'ammo-lot-1' },
+            preservedFilters: { facilityId: 'facility-a' },
+            requiredPermission: 'SensitiveCustody.ViewSummary',
+          },
+        }],
+        dataQualityIssues: [{
+          code: 'StaleVerification',
+          count: 1,
+          severity: 'Major',
+          impactAr: 'يوجد تحقق عهدة قديم.',
+          sourceAr: 'Sensitive custody',
+          ownerAr: 'مسؤول التسليح',
+          correctiveActionAr: 'تحديث التحقق',
+          drillDownTarget: {
+            routeKey: 'facility.sensitive-custody',
+            labelAr: 'فتح الجودة',
+            routeParameters: { facilityId: 'facility-a' },
+            preservedFilters: { facilityId: 'facility-a' },
+            requiredPermission: 'SensitiveCustody.ViewSummary',
+          },
+        }],
+        timeline: [{
+          eventType: 'WeaponRegistered',
+          titleAr: 'تسجيل عهدة حساسة',
+          descriptionAr: 'تم تسجيل أصل حساس بدون أرقام تسلسلية في الخط الزمني.',
+          occurredAtUtc: '2026-07-24T09:00:00Z',
+          actorAr: 'النظام',
+          entityReference: 'weapon-1',
+          drillDownTarget: {
+            routeKey: 'facility.sensitive-custody',
+            labelAr: 'فتح السجل',
+            routeParameters: { facilityId: 'facility-a', weaponId: 'weapon-1' },
+            preservedFilters: { facilityId: 'facility-a' },
+            requiredPermission: 'SensitiveCustody.ViewSummary',
+          },
+        }],
+        allowedActions: [{
+          key: 'start-inventory',
+          labelAr: 'بدء جرد',
+          routeKey: 'facility.sensitive-custody.inventory',
+          requiresReason: true,
+          requiresRowVersion: false,
+        }],
+      },
+      drillDownTargets: [{
+        routeKey: 'facility.sensitive-custody',
+        labelAr: 'فتح العهد الحساسة',
+        routeParameters: { facilityId: 'facility-a' },
+        preservedFilters: { facilityId: 'facility-a' },
+        requiredPermission: 'SensitiveCustody.ViewSummary',
+      }],
+      allowedActions: [],
+    },
+    {
       widgetKey: 'facility.data-quality',
       generatedAtUtc: '2026-07-24T09:00:00Z',
       dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
@@ -911,6 +1023,7 @@ const shell = {
           { key: 'structure', labelAr: 'الهيكل التنظيمي والوحدات', statusCode: 'complete', statusAr: 'متاح', confidenceAr: 'مرتفعة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'يدعم قراءة الوحدة والموقع.' },
           { key: 'occupancy', labelAr: 'الإشغال والنزلاء', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا توجد كيانات نزلاء أو سعة معتمدة في النموذج الحالي.', followUpIssue: '#124' },
           { key: 'resources', labelAr: 'القوى والموارد والجاهزية', statusCode: 'partial', statusAr: 'جزئي', confidenceAr: 'متوسطة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'توجد موارد أساسية وجاهزية جزئية مع فجوات احتياج.', followUpIssue: '#15' },
+          { key: 'sensitive-custody', labelAr: 'الأسلحة والعهد الحساسة', statusCode: 'partial', statusAr: 'جزئي', confidenceAr: 'متوسطة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'توجد عهد حساسة تحتاج تدخلًا.', followUpIssue: '#140' },
           { key: 'workforce', labelAr: 'القوى البشرية والتغطية', statusCode: 'partial', statusAr: 'جزئي', confidenceAr: 'متوسطة', lastUpdatedAtUtc: '2026-07-24T09:00:00Z', impactAr: 'توجد فجوات تغطية في أدوار حرجة.', followUpIssue: '#133' },
           { key: 'incidents', labelAr: 'الوقوعات والحوادث', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.', followUpIssue: '#127' },
           { key: 'risks', labelAr: 'المخاطر والمعالجات', statusCode: 'unavailable', statusAr: 'غير متاح', confidenceAr: 'غير معروفة', lastUpdatedAtUtc: null, impactAr: 'لا يوجد Risk/RiskTreatment engine في النطاق الحالي.', followUpIssue: '#16' },

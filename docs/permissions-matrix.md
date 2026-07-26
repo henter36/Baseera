@@ -206,6 +206,34 @@
 
 `Workspaces.ViewFacility` لا يمنح أي صلاحية قوى بشرية بمفرده. المستخدم غير المخول لا يرى قسم `القوى البشرية والتغطية` أو أعداده، والـendpoint المباشر يعيد `403` عند نقص الصلاحية و`404` عند الخروج من النطاق. بذرة التطوير الحالية تمنح مجموعة الملخص لـ HQ Executive ومجموعة الإدارة لـ Decision Support Director وFacility Director وWorkforce Officer؛ Regional/Facility Coordinator لا يحصلان على `Workforce.*` في هذه البذرة.
 
+## صلاحيات الأسلحة والذخائر والعهد الحساسة (Phase D.5.2)
+
+تنطبق على الأسلحة، الذخائر، مواقع العهد الحساسة، سلسلة التسليم والاستلام، الجرد، الفحص، والاستيراد/المطابقة. لا تمتد من `Resources.*` ولا من `Workspaces.ViewFacility`.
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Facility Director | Armament Officer |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:-----------------:|:----------------:|
+| SensitiveCustody.ViewSummary | عرض الملخص الآمن وقسم Workspace دون serials أو مواقع تفصيلية | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SensitiveCustody.ViewWeapons | عرض قائمة الأسلحة مع serial masked | ✓ | | ✓ | | ✓ | ✓ |
+| SensitiveCustody.ViewSerialNumbers | عرض serial المحمي عند الحاجة التشغيلية | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ViewArmoryLocations | عرض مواقع العهد التفصيلية | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ViewAmmunition | عرض الذخيرة والرصيد الآمن | ✓ | | ✓ | | ✓ | ✓ |
+| SensitiveCustody.ViewCustodyTransactions | عرض سلسلة العهد والتسليم | ✓ | | ✓ | | ✓ | ✓ |
+| SensitiveCustody.ManageWeapons | إنشاء وتحديث تعريف السلاح | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.IssueWeapons | إنشاء عمليات صرف/نقل عهدة | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ReceiveWeapons | تأكيد التسليم والاستلام والإرجاع | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ApproveTransactions | اعتماد عمليات العهد الحساسة مع four-eyes | ✓ | | ✓ | | ✓ | |
+| SensitiveCustody.ManageAmmunition | تسجيل حركات الذخيرة | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ConductInventory | بدء الجرد وإضافة قيوده | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ApproveInventory | اعتماد الجرد مع four-eyes | ✓ | | ✓ | | ✓ | |
+| SensitiveCustody.ManageInspections | تسجيل الفحص | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ManageMaintenance | إدارة صيانة السلاح | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.ViewDiscrepancies | عرض فروقات الجرد | ✓ | | ✓ | | ✓ | ✓ |
+| SensitiveCustody.Export | تصدير منضبط ومفصول الصلاحية | ✓ | | ✓ | | | |
+| SensitiveCustody.Import | preview/confirm لاستيراد العهد الحساسة | ✓ | | ✓ | | | ✓ |
+| SensitiveCustody.Reconcile | مصالحة مصادر العهد الحساسة | ✓ | | ✓ | | | ✓ |
+
+المسار خارج نطاق المستخدم يعيد `404` لمنع التعداد، ونقص الصلاحية داخل النطاق يعيد `403`. `ViewWeapons` لا تمنح `ViewSerialNumbers`، و`IssueWeapons` لا تمنح `ApproveTransactions`.
+
 Capabilities النوع:
 
 - CanView
