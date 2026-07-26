@@ -202,7 +202,7 @@
 | Workforce.RecordAvailability | تسجيل التوفر والغياب والقيود | ✓ | | ✓ | | | ✓ | | ✓ |
 | Workforce.Import | استيراد القوى البشرية مع preview/confirm | ✓ | | ✓ | | | ✓ | | ✓ |
 | Workforce.Export | تصدير بيانات القوى البشرية (صلاحية مُعدّة؛ واجهة التصدير غير مشحونة في هذه الشريحة) | ✓ | | ✓ | | | ✓ | | ✓ |
-| Workforce.Reconcile | مصالحة بيانات القوى البشرية (خدمة تطبيقية؛ بدون endpoint HTTP في هذه الشريحة) | ✓ | | ✓ | | | ✓ | | ✓ |
+| Workforce.Reconcile | عرض ومعالجة فروقات مصالحة بيانات القوى البشرية | ✓ | | ✓ | | | ✓ | | ✓ |
 
 `Workspaces.ViewFacility` لا يمنح أي صلاحية قوى بشرية بمفرده. المستخدم غير المخول لا يرى قسم `القوى البشرية والتغطية` أو أعداده، والـendpoint المباشر يعيد `403` عند نقص الصلاحية و`404` عند الخروج من النطاق. بذرة التطوير الحالية تمنح مجموعة الملخص لـ HQ Executive ومجموعة الإدارة لـ Decision Support Director وFacility Director وWorkforce Officer؛ Regional/Facility Coordinator لا يحصلان على `Workforce.*` في هذه البذرة.
 

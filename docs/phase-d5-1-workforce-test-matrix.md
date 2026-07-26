@@ -22,12 +22,18 @@
 - Facility workspace includes `facility.workforce` widget when domain permission exists.
 - Member create is facility-scoped and audited (`WorkforceMemberCreated`).
 - Import confirm idempotency (single member + single batch for same keys).
+- Query-count budget for the Facility Workspace workforce slice.
+- Payload-size budget for the Facility Workspace workforce slice.
+- Bounded large-workforce member list with `pageSize` clamp.
+- Reconciliation list/resolve and critical-position endpoints.
+- Data-quality endpoint returns the stable catalog codes.
 
 ## Frontend
 
 - `FacilityWorkspacePage.test.tsx` — section `workforce` / label `القوى البشرية والتغطية`, widget permission gating.
 - `FacilityWorkforcePage.test.tsx` — admin page permission gates and section rendering.
+- Action Center API-backed roster publish path with success/error states.
 
-## Manual / screenshots
+## Manual
 
-- Desktop workspace workforce section, admin overview/members/import, partial gap strip, mobile overview — see `docs/screenshots/phase-d5-1/README.md`.
+- Manual review is limited to interaction semantics that are not already covered by DOM tests. Screenshots and PNG comparison are not acceptance evidence for Phase D.5.1 hardening.
