@@ -20,7 +20,7 @@ export function AuditPage() {
       <p className="muted">سجل غير قابل للتعديل من واجهة التطبيق.</p>
       {query.isLoading && <div className="loading">جاري التحميل…</div>}
       {query.isError && <div className="error" role="alert">{(query.error as Error).message}</div>}
-      {query.data && query.data.items.length === 0 && <div className="empty">لا توجد أحداث بعد.</div>}
+      {query.data?.items.length === 0 && <div className="empty">لا توجد أحداث بعد.</div>}
       {query.data && query.data.items.length > 0 && (
         <table>
           <thead>

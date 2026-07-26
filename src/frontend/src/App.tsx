@@ -55,7 +55,11 @@ function isReferenceWorkspaceNavEnabled() {
   return import.meta.env.DEV || import.meta.env.VITE_ENABLE_REFERENCE_WORKSPACE === 'true'
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+type AppChildrenProps = Readonly<{
+  children: React.ReactNode
+}>
+
+function Shell({ children }: AppChildrenProps) {
   const { me, logout, hasPermission } = useAuth()
   const [unreadCount, setUnreadCount] = useState(0)
 
@@ -120,7 +124,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Protected({ children }: { children: React.ReactNode }) {
+function Protected({ children }: AppChildrenProps) {
   const { isAuthenticated, loading } = useAuth()
   if (loading) return <div className="loading">جاري تحميل الجلسة…</div>
   if (!isAuthenticated) return <Navigate to="/login" replace />

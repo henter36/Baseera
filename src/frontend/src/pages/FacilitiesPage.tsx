@@ -34,7 +34,7 @@ export function FacilitiesPage() {
       </div>
       {query.isLoading && <div className="loading">جاري التحميل…</div>}
       {query.isError && <div className="error" role="alert">{(query.error as Error).message}</div>}
-      {query.data && query.data.items.length === 0 && <div className="empty">لا توجد سجون ضمن نطاقك.</div>}
+      {query.data?.items.length === 0 && <div className="empty">لا توجد سجون ضمن نطاقك.</div>}
       {query.data && query.data.items.length > 0 && (
         <table>
           <thead>

@@ -58,7 +58,7 @@ export function AttachmentsPage() {
           رفع
         </button>
       </div>
-      {message && <div className={upload.isError ? 'error' : 'muted'} role="status">{message}</div>}
+      {message && <output className={upload.isError ? 'error' : 'muted'} aria-live="polite">{message}</output>}
     </div>
   )
 }
