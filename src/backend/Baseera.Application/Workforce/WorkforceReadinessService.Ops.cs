@@ -61,8 +61,7 @@ public sealed partial class WorkforceReadinessService
                 && a.DutyRoster.FacilityId == facilityId
                 && a.DutyRoster.Status == DutyRosterStatuses.Published
                 && a.DutyRoster.DutyDate == today
-                && a.Status != RosterAssignmentStatus.Cancelled
-                && a.Status != RosterAssignmentStatus.Replaced)
+                && CountedRosterStatuses.Contains(a.Status))
             .Select(a => new
             {
                 a.RoleDefinitionId,
@@ -267,147 +266,30 @@ public sealed partial class WorkforceReadinessService
         var now = timeProvider.GetUtcNow();
         var today = DateOnly.FromDateTime(now.UtcDateTime);
         var staleBefore = now.AddDays(-options.StaleVerificationDays);
-        var items = new List<WorkforceReconciliationItemDto>();
 
         var members = await MembersInFacility(facilityId)
-            .Select(m => new
-            {
+            .Select(m => new ReconciliationMember(
                 m.Id,
-                m.EmployeeNumber,
                 m.ExternalPersonnelId,
-                m.SourceType,
                 m.SourceReference,
                 m.UserId,
                 m.EmploymentStatus,
                 m.LastVerifiedAtUtc,
                 m.CurrentOperationalFacilityId,
-                m.HomeFacilityId
-            })
+                m.HomeFacilityId))
             .ToListAsync(cancellationToken);
-
-        foreach (var group in members.Where(m => !string.IsNullOrWhiteSpace(m.ExternalPersonnelId))
-                     .GroupBy(m => m.ExternalPersonnelId!, StringComparer.OrdinalIgnoreCase)
-                     .Where(g => g.Count() > 1))
-        {
-            items.Add(Item(
-                $"dup-ext:{group.Key}",
-                "DuplicateExternalId",
-                "High",
-                "معرّف خارجي مكرر",
-                $"يوجد {group.Count()} سجلات لنفس المعرّف الخارجي.",
-                "WorkforceMember",
-                group.First().Id,
-                "مراجعة الدمج أو تصحيح المصدر",
-                now));
-        }
-
-        foreach (var group in members.Where(m => !string.IsNullOrWhiteSpace(m.ExternalPersonnelId))
-                     .GroupBy(m => m.ExternalPersonnelId!, StringComparer.OrdinalIgnoreCase))
-        {
-            var refs = group
-                .Select(m => m.SourceReference?.Trim())
-                .Where(r => !string.IsNullOrWhiteSpace(r))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (refs.Count <= 1)
-            {
-                continue;
-            }
-
-            items.Add(Item(
-                $"src-conflict:{group.Key}",
-                "SourceConflict",
-                "Medium",
-                "تعارض مصدر البيانات",
-                "نفس المعرّف الخارجي مرتبط بمراجع مصدر مختلفة.",
-                "WorkforceMember",
-                group.First().Id,
-                "توحيد مرجع المصدر",
-                now));
-        }
-
-        foreach (var member in members.Where(m => m.LastVerifiedAtUtc is null || m.LastVerifiedAtUtc < staleBefore))
-        {
-            items.Add(Item(
-                $"stale:{member.Id:N}",
-                "StaleSourceRecord",
-                "Medium",
-                "سجل يحتاج تحققًا",
-                "آخر تحقق للعضو قديم أو مفقود.",
-                "WorkforceMember",
-                member.Id,
-                "تحديث التحقق من المصدر",
-                now));
-        }
 
         var userIds = members.Where(m => m.UserId.HasValue).Select(m => m.UserId!.Value).Distinct().ToList();
         var existingUsers = userIds.Count == 0
             ? new HashSet<Guid>()
             : (await db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).Select(u => u.Id).ToListAsync(cancellationToken))
                 .ToHashSet();
-        foreach (var member in members.Where(m => m.UserId.HasValue && !existingUsers.Contains(m.UserId!.Value)))
-        {
-            items.Add(Item(
-                $"bad-user:{member.Id:N}",
-                "InvalidUserLink",
-                "High",
-                "ربط مستخدم غير صالح",
-                "UserId يشير إلى مستخدم غير موجود.",
-                "WorkforceMember",
-                member.Id,
-                "إزالة الربط أو تصحيحه",
-                now));
-        }
 
         var assignments = await db.WorkforceAssignments
             .AsNoTracking()
             .Where(a => !a.IsDeleted && a.FacilityId == facilityId)
-            .Select(a => new { a.Id, a.WorkforceMemberId, a.IsPrimary, a.EffectiveFromUtc, a.EffectiveToUtc, a.FacilityId })
+            .Select(a => new ReconciliationAssignment(a.Id, a.WorkforceMemberId, a.IsPrimary, a.EffectiveFromUtc, a.EffectiveToUtc, a.FacilityId))
             .ToListAsync(cancellationToken);
-
-        foreach (var memberGroup in assignments.Where(a => a.IsPrimary).GroupBy(a => a.WorkforceMemberId))
-        {
-            var list = memberGroup.OrderBy(a => a.EffectiveFromUtc).ToList();
-            for (var i = 1; i < list.Count; i++)
-            {
-                if (WorkforceAssignmentPolicy.PeriodsOverlap(
-                        list[i - 1].EffectiveFromUtc,
-                        list[i - 1].EffectiveToUtc,
-                        list[i].EffectiveFromUtc,
-                        list[i].EffectiveToUtc))
-                {
-                    items.Add(Item(
-                        $"conflict-assign:{memberGroup.Key:N}",
-                        "ConflictingAssignments",
-                        "Critical",
-                        "تكليفات أساسية متداخلة",
-                        "يوجد تكليفان أساسيان متداخلان لنفس العضو.",
-                        "WorkforceAssignment",
-                        list[i].Id,
-                        "إنهاء أحد التكليفين",
-                        now));
-                    break;
-                }
-            }
-        }
-
-        foreach (var assignment in assignments.Where(a =>
-                     members.Any(m => m.Id == a.WorkforceMemberId
-                         && m.CurrentOperationalFacilityId.HasValue
-                         && m.CurrentOperationalFacilityId != a.FacilityId
-                         && m.HomeFacilityId != a.FacilityId)))
-        {
-            items.Add(Item(
-                $"assign-out:{assignment.Id:N}",
-                "AssignmentOutsideFacility",
-                "Medium",
-                "تكليف خارج المنشأة التشغيلية",
-                "تكليف لا يطابق الموقع التشغيلي الحالي للعضو.",
-                "WorkforceAssignment",
-                assignment.Id,
-                "مراجعة موقع التكليف",
-                now));
-        }
 
         var rosterRows = await db.DutyRosterAssignments
             .AsNoTracking()
@@ -415,140 +297,208 @@ public sealed partial class WorkforceReadinessService
                 && a.DutyRoster.FacilityId == facilityId
                 && a.DutyRoster.DutyDate == today
                 && a.DutyRoster.Status == DutyRosterStatuses.Published)
-            .Select(a => new { a.Id, a.WorkforceMemberId, a.Status })
+            .Select(a => new ReconciliationRosterRow(a.Id, a.WorkforceMemberId, a.Status))
             .ToListAsync(cancellationToken);
 
+        var memberIds = members.Select(m => m.Id).ToList();
         var availability = await db.WorkforceAvailabilityEvents
             .AsNoTracking()
             .Where(e => !e.IsDeleted
+                && memberIds.Contains(e.WorkforceMemberId)
                 && e.StartsAtUtc <= now
                 && (e.EndsAtUtc == null || e.EndsAtUtc > now))
-            .Select(e => new { e.WorkforceMemberId, e.AvailabilityType, e.AffectsOperationalAvailability })
+            .Select(e => new ReconciliationAvailability(e.WorkforceMemberId, e.AvailabilityType, e.AffectsOperationalAvailability))
             .ToListAsync(cancellationToken);
 
-        foreach (var row in rosterRows)
-        {
-            var member = members.FirstOrDefault(m => m.Id == row.WorkforceMemberId);
-            if (member is null)
-            {
-                continue;
-            }
-
-            if (member.EmploymentStatus is EmploymentStatus.Retired or EmploymentStatus.Terminated)
-            {
-                items.Add(Item(
-                    $"retired-roster:{row.Id:N}",
-                    "RetirementWhileRostered",
-                    "Critical",
-                    "متقاعد/منتهٍ في المناوبة",
-                    "عضو غير نشط ما زال في جدول منشور.",
-                    "DutyRosterAssignment",
-                    row.Id,
-                    "إزالة العضو من المناوبة",
-                    now));
-            }
-
-            var memberAvailability = availability.Where(a => a.WorkforceMemberId == row.WorkforceMemberId).ToList();
-            var blocking = memberAvailability.Any(a =>
-                WorkforceReadinessPolicy.IsAvailabilityBlocking(a.AvailabilityType, a.AffectsOperationalAvailability));
-            if (blocking && row.Status is RosterAssignmentStatus.Planned or RosterAssignmentStatus.Confirmed or RosterAssignmentStatus.Present)
-            {
-                items.Add(Item(
-                    $"leave-roster:{row.Id:N}",
-                    "LeaveWhileRostered",
-                    "High",
-                    "إجازة/غياب مع جدولة",
-                    "العضو مجدول رغم حدث توفر مانع.",
-                    "DutyRosterAssignment",
-                    row.Id,
-                    "تعيين بديل أو تعديل التوفر",
-                    now));
-                items.Add(Item(
-                    $"roster-avail:{row.Id:N}",
-                    "RosterAvailabilityConflict",
-                    "Medium",
-                    "تعارض توفر مع المناوبة",
-                    "العضو غير متاح تشغيليًا ومدرج في جدول منشور.",
-                    "DutyRosterAssignment",
-                    row.Id,
-                    "مراجعة التوفر مقابل المناوبة",
-                    now));
-            }
-        }
-
-        foreach (var group in rosterRows.GroupBy(r => r.WorkforceMemberId).Where(g => g.Count() > 1))
-        {
-            items.Add(Item(
-                $"roster-slots:{group.Key:N}",
-                "ConflictingRosterSlots",
-                "High",
-                "تعارض خانات مناوبة",
-                "العضو مدرج في أكثر من خانة مناوبة لنفس اليوم.",
-                "WorkforceMember",
-                group.Key,
-                "إزالة التعيين المكرر",
-                now));
-        }
-
-        var unpublished = await db.DutyRosters
+        var unpublishedIds = await db.DutyRosters
             .AsNoTracking()
             .Where(r => !r.IsDeleted
                 && r.FacilityId == facilityId
                 && r.DutyDate >= today
                 && r.DutyDate <= today.AddDays(1)
                 && r.Status == DutyRosterStatuses.Draft)
-            .Select(r => new { r.Id, r.DutyDate })
+            .Select(r => r.Id)
             .ToListAsync(cancellationToken);
-        foreach (var roster in unpublished)
-        {
-            items.Add(Item(
-                $"unpub:{roster.Id:N}",
-                "UnpublishedRoster",
-                "Medium",
-                "جدول مناوبة غير منشور",
-                $"مسودة ليوم {roster.DutyDate:yyyy-MM-dd}.",
-                "DutyRoster",
-                roster.Id,
-                "مراجعة ونشر الجدول",
-                now));
-        }
 
-        var critical = await LoadCriticalPositionDtosAsync(facilityId, cancellationToken);
-        foreach (var position in critical.Where(c => c.VacantAlternate > 0 && c.RequiredAlternateCount > 0))
-        {
-            items.Add(Item(
-                $"no-alt:{position.Id:N}",
-                "NoCriticalPositionAlternate",
-                "High",
-                "منصب حرج بلا بديل",
-                $"{position.RoleNameAr}: ينقص {position.VacantAlternate} بديل.",
-                "CriticalPositionRequirement",
-                position.Id,
-                "تعيين بديل مؤهل",
-                now));
-        }
+        var noAlternateCriticalPositionIds = (await LoadCriticalPositionDtosAsync(facilityId, cancellationToken))
+            .Where(c => c.VacantAlternate > 0 && c.RequiredAlternateCount > 0)
+            .Select(c => c.Id)
+            .ToList();
 
-        foreach (var member in members.Where(m => m.EmploymentStatus == EmploymentStatus.Unknown))
-        {
-            items.Add(Item(
-                $"unk-emp:{member.Id:N}",
-                "UnknownAvailability",
-                "Medium",
-                "حالة توظيف غير معروفة",
-                "لا يمكن احتساب التوفر بثقة.",
-                "WorkforceMember",
-                member.Id,
-                "تحديث الحالة من المصدر",
-                now));
-        }
+        var input = new WorkforceReconciliationScanInput(
+            ExternalIds: members.Select(m => (m.Id, m.ExternalPersonnelId)).ToList(),
+            ConflictingPrimaryAssignments: DetectConflictingPrimaryAssignments(assignments),
+            LeaveWhileRostered: DetectLeaveWhileRostered(rosterRows, availability),
+            RetirementWhileRostered: DetectRetirementWhileRostered(rosterRows, members),
+            StaleMemberIds: members.Where(m => m.LastVerifiedAtUtc is null || m.LastVerifiedAtUtc < staleBefore).Select(m => m.Id).ToList(),
+            InvalidUserLinkMemberIds: members.Where(m => m.UserId.HasValue && !existingUsers.Contains(m.UserId!.Value)).Select(m => m.Id).ToList(),
+            AssignmentOutsideFacilityIds: DetectAssignmentsOutsideFacility(assignments, members),
+            UnpublishedRosterIds: unpublishedIds,
+            SourceConflictMemberIds: DetectSourceConflictMembers(members),
+            UnknownAvailabilityMemberIds: members.Where(m => m.EmploymentStatus == EmploymentStatus.Unknown).Select(m => m.Id).ToList(),
+            NoAlternateCriticalPositionIds: noAlternateCriticalPositionIds,
+            DuplicateRosterSlotMemberIds: rosterRows.GroupBy(r => r.WorkforceMemberId).Where(g => g.Count() > 1).Select(g => g.Key).ToList());
 
-        return items
+        return WorkforceReconciliationDetector.Detect(input)
+            .Select(issue => ToReconciliationItem(issue, now))
             .GroupBy(i => i.Id)
             .Select(g => g.First())
             .OrderByDescending(i => SeverityRank(i.Severity))
             .ThenBy(i => i.IssueType)
             .ToList();
     }
+
+    private static IReadOnlyList<(Guid MemberId, Guid AssignmentId)> DetectConflictingPrimaryAssignments(
+        IReadOnlyList<ReconciliationAssignment> assignments)
+    {
+        var conflicts = new List<(Guid MemberId, Guid AssignmentId)>();
+        foreach (var memberGroup in assignments.Where(a => a.IsPrimary).GroupBy(a => a.WorkforceMemberId))
+        {
+            var list = memberGroup.OrderBy(a => a.EffectiveFromUtc).ToList();
+            for (var i = 1; i < list.Count; i++)
+            {
+                if (!WorkforceAssignmentPolicy.PeriodsOverlap(
+                        list[i - 1].EffectiveFromUtc,
+                        list[i - 1].EffectiveToUtc,
+                        list[i].EffectiveFromUtc,
+                        list[i].EffectiveToUtc))
+                {
+                    continue;
+                }
+
+                conflicts.Add((memberGroup.Key, list[i].Id));
+                break;
+            }
+        }
+
+        return conflicts;
+    }
+
+    private static IReadOnlyList<Guid> DetectAssignmentsOutsideFacility(
+        IReadOnlyList<ReconciliationAssignment> assignments,
+        IReadOnlyList<ReconciliationMember> members) =>
+        assignments
+            .Where(a => members.Any(m => m.Id == a.WorkforceMemberId
+                && m.CurrentOperationalFacilityId.HasValue
+                && m.CurrentOperationalFacilityId != a.FacilityId
+                && m.HomeFacilityId != a.FacilityId))
+            .Select(a => a.Id)
+            .ToList();
+
+    private static IReadOnlyList<(Guid MemberId, Guid RosterAssignmentId)> DetectLeaveWhileRostered(
+        IReadOnlyList<ReconciliationRosterRow> rosterRows,
+        IReadOnlyList<ReconciliationAvailability> availability) =>
+        rosterRows
+            .Where(row => row.Status is RosterAssignmentStatus.Planned or RosterAssignmentStatus.Confirmed or RosterAssignmentStatus.Present)
+            .Where(row => availability.Any(a => a.WorkforceMemberId == row.WorkforceMemberId
+                && WorkforceReadinessPolicy.IsAvailabilityBlocking(a.AvailabilityType, a.AffectsOperationalAvailability)))
+            .Select(row => (row.WorkforceMemberId, row.Id))
+            .ToList();
+
+    private static IReadOnlyList<(Guid MemberId, Guid RosterAssignmentId)> DetectRetirementWhileRostered(
+        IReadOnlyList<ReconciliationRosterRow> rosterRows,
+        IReadOnlyList<ReconciliationMember> members) =>
+        rosterRows
+            .Where(row => members.Any(m => m.Id == row.WorkforceMemberId
+                && m.EmploymentStatus is EmploymentStatus.Retired or EmploymentStatus.Terminated))
+            .Select(row => (row.WorkforceMemberId, row.Id))
+            .ToList();
+
+    private static IReadOnlyList<Guid> DetectSourceConflictMembers(IReadOnlyList<ReconciliationMember> members) =>
+        members
+            .Where(m => !string.IsNullOrWhiteSpace(m.ExternalPersonnelId))
+            .GroupBy(m => m.ExternalPersonnelId!, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group
+                .Select(m => m.SourceReference?.Trim())
+                .Where(r => !string.IsNullOrWhiteSpace(r))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count() > 1)
+            .Select(group => group.First().Id)
+            .ToList();
+
+    private static WorkforceReconciliationItemDto ToReconciliationItem(
+        WorkforceReconciliationIssue issue,
+        DateTimeOffset now) =>
+        Item(
+            issue.IssueKey,
+            issue.IssueType.ToString(),
+            ToDtoSeverity(issue.Severity),
+            issue.TitleAr,
+            ReconciliationDetail(issue.IssueType),
+            issue.EntityType ?? "WorkforceMember",
+            issue.EntityId,
+            ReconciliationAction(issue.IssueType),
+            now);
+
+    private static string ToDtoSeverity(string severity) => severity.ToLowerInvariant() switch
+    {
+        "critical" => "Critical",
+        "high" => "High",
+        "medium" => "Medium",
+        _ => "Low"
+    };
+
+    private static string ReconciliationDetail(WorkforceReconciliationIssueType issueType) => issueType switch
+    {
+        WorkforceReconciliationIssueType.DuplicateExternalId => "يوجد أكثر من سجل لنفس المعرّف الخارجي.",
+        WorkforceReconciliationIssueType.ConflictingAssignments => "يوجد تكليفان أساسيان متداخلان لنفس العضو.",
+        WorkforceReconciliationIssueType.LeaveWhileRostered => "العضو مجدول رغم حدث توفر مانع.",
+        WorkforceReconciliationIssueType.RetirementWhileRostered => "عضو غير نشط ما زال في جدول منشور.",
+        WorkforceReconciliationIssueType.StaleSourceRecord => "آخر تحقق للعضو قديم أو مفقود.",
+        WorkforceReconciliationIssueType.InvalidUserLink => "UserId يشير إلى مستخدم غير موجود.",
+        WorkforceReconciliationIssueType.AssignmentOutsideFacility => "تكليف لا يطابق الموقع التشغيلي الحالي للعضو.",
+        WorkforceReconciliationIssueType.UnpublishedRoster => "توجد مسودة جدول مناوبة تحتاج مراجعة ونشرًا.",
+        WorkforceReconciliationIssueType.WorkforceSourceConflict => "نفس المعرّف الخارجي مرتبط بمراجع مصدر مختلفة.",
+        WorkforceReconciliationIssueType.UnknownAvailability => "لا يمكن احتساب التوفر بثقة.",
+        WorkforceReconciliationIssueType.NoCriticalPositionAlternate => "منصب حرج ينقصه بديل مؤهل.",
+        WorkforceReconciliationIssueType.ConflictingRosterSlots => "العضو مدرج في أكثر من خانة مناوبة لنفس اليوم.",
+        _ => "توجد ملاحظة مصالحة تحتاج مراجعة."
+    };
+
+    private static string ReconciliationAction(WorkforceReconciliationIssueType issueType) => issueType switch
+    {
+        WorkforceReconciliationIssueType.DuplicateExternalId => "مراجعة الدمج أو تصحيح المصدر",
+        WorkforceReconciliationIssueType.ConflictingAssignments => "إنهاء أحد التكليفين",
+        WorkforceReconciliationIssueType.LeaveWhileRostered => "تعيين بديل أو تعديل التوفر",
+        WorkforceReconciliationIssueType.RetirementWhileRostered => "إزالة العضو من المناوبة",
+        WorkforceReconciliationIssueType.StaleSourceRecord => "تحديث التحقق من المصدر",
+        WorkforceReconciliationIssueType.InvalidUserLink => "إزالة الربط أو تصحيحه",
+        WorkforceReconciliationIssueType.AssignmentOutsideFacility => "مراجعة موقع التكليف",
+        WorkforceReconciliationIssueType.UnpublishedRoster => "مراجعة ونشر الجدول",
+        WorkforceReconciliationIssueType.WorkforceSourceConflict => "توحيد مرجع المصدر",
+        WorkforceReconciliationIssueType.UnknownAvailability => "تحديث الحالة من المصدر",
+        WorkforceReconciliationIssueType.NoCriticalPositionAlternate => "تعيين بديل مؤهل",
+        WorkforceReconciliationIssueType.ConflictingRosterSlots => "إزالة التعيين المكرر",
+        _ => "مراجعة الملاحظة"
+    };
+
+    private sealed record ReconciliationMember(
+        Guid Id,
+        string? ExternalPersonnelId,
+        string? SourceReference,
+        Guid? UserId,
+        EmploymentStatus EmploymentStatus,
+        DateTimeOffset? LastVerifiedAtUtc,
+        Guid? CurrentOperationalFacilityId,
+        Guid? HomeFacilityId);
+
+    private sealed record ReconciliationAssignment(
+        Guid Id,
+        Guid WorkforceMemberId,
+        bool IsPrimary,
+        DateTimeOffset EffectiveFromUtc,
+        DateTimeOffset? EffectiveToUtc,
+        Guid FacilityId);
+
+    private sealed record ReconciliationRosterRow(
+        Guid Id,
+        Guid WorkforceMemberId,
+        RosterAssignmentStatus Status);
+
+    private sealed record ReconciliationAvailability(
+        Guid WorkforceMemberId,
+        AvailabilityType AvailabilityType,
+        bool AffectsOperationalAvailability);
 
     private static WorkforceReconciliationItemDto Item(
         string id,

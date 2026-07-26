@@ -729,7 +729,16 @@ internal sealed class FacilityWorkspaceReadService(
 
         if (payload.Summary.CriticalPositionsAtRisk > 0)
         {
-            yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.CriticalRoleUncovered", $"critical:{facilityId}", "مواقع حرجة غير مغطاة", SeverityCriticalAr, 920, $"عدد المواقع الحرجة المعرضة للخطر: {payload.Summary.CriticalPositionsAtRisk}", "فتح القوى البشرية", PermissionCodes.WorkforceViewSummary));
+            var canViewCoverage = context.Permissions.Contains(PermissionCodes.WorkforceViewCoverage);
+            yield return WorkforcePriority(context, new WorkforcePrioritySpec(
+                "workforce.CriticalRoleUncovered",
+                $"critical:{facilityId}",
+                "مواقع حرجة غير مغطاة",
+                SeverityCriticalAr,
+                920,
+                canViewCoverage ? $"عدد المواقع الحرجة المعرضة للخطر: {payload.Summary.CriticalPositionsAtRisk}" : "يوجد تنبيه ملخص على تغطية المواقع الحرجة.",
+                canViewCoverage ? "فتح القوى البشرية" : "عرض الملخص",
+                PermissionCodes.WorkforceViewCoverage));
             yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.NoCriticalPositionAlternate", $"critical-alt:{facilityId}", "منصب حرج بلا بديل كافٍ", SeverityHighAr, 910, "يوجد مواقع حرجة بدون بديل تشغيلي كافٍ.", "مراجعة المناصب الحرجة", PermissionCodes.WorkforceViewCoverage));
         }
 
@@ -838,7 +847,7 @@ internal sealed class FacilityWorkspaceReadService(
             query = query.Where(a =>
                 a.Status == Domain.Workforce.RosterAssignmentStatus.Present
                 || a.Status == Domain.Workforce.RosterAssignmentStatus.Confirmed
-                || a.Status == Domain.Workforce.RosterAssignmentStatus.Planned);
+                || a.Status == Domain.Workforce.RosterAssignmentStatus.Late);
         }
 
         return await query.AnyAsync(cancellationToken);
@@ -851,8 +860,7 @@ internal sealed class FacilityWorkspaceReadService(
     {
         var facilityId = payload.Summary.FacilityId;
         var indicators = payload.Summary.FatigueIndicators;
-        if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.QualificationExpiringSoon)
-            || payload.DataQuality.Warnings.Any(w => w.Contains("تحقق", StringComparison.Ordinal)))
+        if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.QualificationExpiringSoon))
         {
             yield return WorkforcePriority(context, new WorkforcePrioritySpec("workforce.QualificationExpired", $"qual:{facilityId}", "مؤهلات منتهية أو قاربت الانتهاء", SeverityHighAr, 840, "توجد مؤشرات انتهاء مؤهلات تؤثر على الجاهزية.", "مراجعة المؤهلات", PermissionCodes.WorkforceViewMembers));
         }
@@ -1099,8 +1107,12 @@ internal sealed class FacilityWorkspaceReadService(
             "DutyRosterPublished",
             "WorkforceAvailabilityRecorded"
         };
+        var workforceAuditEntityIds = FacilityWorkforceAuditEntityIds(facilityId);
         var audits = await db.AuditLogs.AsNoTracking()
-            .Where(log => log.Module == "Workforce" && auditActions.Contains(log.Action))
+            .Where(log => log.Module == "Workforce"
+                && auditActions.Contains(log.Action)
+                && log.EntityId != null
+                && workforceAuditEntityIds.Contains(log.EntityId))
             .OrderByDescending(log => log.OccurredAtUtc)
             .Take(20)
             .Select(log => new { log.Action, log.EntityId, log.OccurredAtUtc, log.UserDisplayName })
@@ -1130,6 +1142,27 @@ internal sealed class FacilityWorkspaceReadService(
             .OrderByDescending(e => e.OccurredAtUtc)
             .Take(20)
             .ToList();
+    }
+
+    private IQueryable<string> FacilityWorkforceAuditEntityIds(Guid facilityId)
+    {
+        var memberIds = db.WorkforceMembers.AsNoTracking()
+            .Where(member => !member.IsDeleted
+                && (member.CurrentOperationalFacilityId == facilityId || member.HomeFacilityId == facilityId))
+            .Select(member => member.Id.ToString());
+        var batchIds = db.WorkforceImportBatches.AsNoTracking()
+            .Where(batch => batch.FacilityId == facilityId)
+            .Select(batch => batch.Id.ToString());
+        var rosterIds = db.DutyRosters.AsNoTracking()
+            .Where(roster => roster.FacilityId == facilityId)
+            .Select(roster => roster.Id.ToString());
+        var availabilityIds = db.WorkforceAvailabilityEvents.AsNoTracking()
+            .Where(evt => !evt.IsDeleted
+                && (evt.WorkforceMember.CurrentOperationalFacilityId == facilityId
+                    || evt.WorkforceMember.HomeFacilityId == facilityId))
+            .Select(evt => evt.Id.ToString());
+
+        return memberIds.Concat(batchIds).Concat(rosterIds).Concat(availabilityIds);
     }
 
     private IQueryable<EscalationOccurrence> BuildScopedEscalations(IQueryable<OperationalNote> notes, IQueryable<CorrectiveAction> actions)

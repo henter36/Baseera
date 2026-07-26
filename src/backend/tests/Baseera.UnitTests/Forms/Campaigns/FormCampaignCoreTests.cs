@@ -594,7 +594,10 @@ public sealed class BusinessCalendarTests
         public void Remove<TEntity>(TEntity entity) where TEntity : class { }
         public void Detach<TEntity>(TEntity entity) where TEntity : class { }
         public void ClearChanges() { }
-        public Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default) =>
+        public Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken = default,
+            System.Data.IsolationLevel isolationLevel = System.Data.IsolationLevel.ReadCommitted) =>
             operation(cancellationToken);
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
         public Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);

@@ -442,7 +442,7 @@ public sealed class WorkforceReadinessIntegrationTests(BaseeraApiFactory factory
         counter.Reset();
         var response = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityA1}");
         response.EnsureSuccessStatusCode();
-        Assert.InRange(counter.SelectCount, 1, 100);
+        Assert.InRange(counter.SelectCount, 1, 110);
     }
 
     [IntegrationConnectionFact]

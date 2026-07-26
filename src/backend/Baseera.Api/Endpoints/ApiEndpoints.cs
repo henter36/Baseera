@@ -454,6 +454,15 @@ public static class ApiEndpoints
             return Results.Created($"/api/v1/facilities/{facilityId}/workforce/qualifications/{id}", new { id });
         }).RequireAuthorization(AuthPolicies.WorkforceManageQualifications);
 
+        workforce.MapGet("/qualifications", async (
+            Guid facilityId,
+            int? page,
+            int? pageSize,
+            IWorkforceReadinessQueryService service,
+            CancellationToken ct) =>
+            Results.Ok(await service.ListQualificationsAsync(facilityId, page ?? 1, pageSize ?? 50, ct)))
+            .RequireAuthorization(AuthPolicies.WorkforceViewMembers);
+
         workforce.MapGet("/requirements", async (
             Guid facilityId,
             IStaffingRequirementService service,

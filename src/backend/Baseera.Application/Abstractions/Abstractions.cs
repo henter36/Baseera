@@ -12,6 +12,7 @@ using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
 using Baseera.Domain.Workforce;
+using System.Data;
 
 public interface IBaseeraDbContext
 {
@@ -118,7 +119,10 @@ public interface IBaseeraDbContext
     void Remove<TEntity>(TEntity entity) where TEntity : class;
     void Detach<TEntity>(TEntity entity) where TEntity : class;
     void ClearChanges();
-    Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default);
+    Task<TResult> ExecuteInTransactionAsync<TResult>(
+        Func<CancellationToken, Task<TResult>> operation,
+        CancellationToken cancellationToken = default,
+        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted);
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<long> NextOperationalNoteSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);

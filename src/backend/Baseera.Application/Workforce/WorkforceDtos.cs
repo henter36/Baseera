@@ -87,6 +87,7 @@ public sealed record WorkforceMemberListItemDto
     public Guid? CurrentOperationalUnitId { get; init; }
     public string? CurrentOperationalUnitNameAr { get; init; }
     public required bool IsOperational { get; init; }
+    public required bool IsSensitiveRole { get; init; }
     public DateTimeOffset? LastVerifiedAtUtc { get; init; }
     public string? RowVersion { get; init; }
     public required IReadOnlyList<string> DataQualityIssues { get; init; }
@@ -122,6 +123,27 @@ public sealed record WorkforceQualificationDto
     public required string Name { get; init; }
     public DateTimeOffset? ExpiresAtUtc { get; init; }
     public required QualificationStatus Status { get; init; }
+}
+
+public sealed record WorkforceQualificationListItemDto
+{
+    public required Guid Id { get; init; }
+    public required Guid MemberId { get; init; }
+    public required string MemberDisplayName { get; init; }
+    public required QualificationType QualificationType { get; init; }
+    public Guid? RoleDefinitionId { get; init; }
+    public string? RoleCode { get; init; }
+    public required string Name { get; init; }
+    public DateTimeOffset? ExpiresAtUtc { get; init; }
+    public required QualificationStatus Status { get; init; }
+}
+
+public sealed record WorkforceQualificationListDto
+{
+    public required IReadOnlyList<WorkforceQualificationListItemDto> Items { get; init; }
+    public required int TotalCount { get; init; }
+    public required int Page { get; init; }
+    public required int PageSize { get; init; }
 }
 
 public sealed record WorkforceAvailabilityDto
@@ -397,4 +419,3 @@ public static class WorkforceExportOptions
 }
 
 public sealed class WorkforceValidationException(string message) : Exception(message);
-

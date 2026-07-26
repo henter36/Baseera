@@ -1188,6 +1188,9 @@ public sealed class WorkspaceFrameworkTests : IDisposable
 
         public Task<WorkforceDataQualityDto> GetDataQualityAsync(Guid facilityId, CancellationToken cancellationToken) =>
             throw new InvalidOperationException("Workforce should not be queried in this test.");
+
+        public Task<WorkforceQualificationListDto> ListQualificationsAsync(Guid facilityId, int page, int pageSize, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Workforce should not be queried in this test.");
     }
 
     private sealed class FakeResourceReadinessQueryService(Guid assetId) : IResourceReadinessQueryService

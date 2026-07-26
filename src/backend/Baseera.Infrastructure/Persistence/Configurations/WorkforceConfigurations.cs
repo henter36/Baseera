@@ -223,6 +223,10 @@ internal sealed class DutyRosterAssignmentConfiguration : IEntityTypeConfigurati
         builder.Property(assignment => assignment.Status).HasConversion<int>();
         builder.Property(assignment => assignment.Notes).HasMaxLength(1000);
         builder.HasIndex(assignment => new { assignment.DutyRosterId, assignment.WorkforceMemberId, assignment.RoleDefinitionId });
+        builder.HasIndex(assignment => new { assignment.DutyRosterId, assignment.WorkforceMemberId })
+            .IsUnique()
+            .HasDatabaseName("IX_DutyRosterAssignments_RosterMember_Active")
+            .HasFilter("[IsDeleted] = 0 AND [Status] <> 6 AND [Status] <> 8");
         builder.HasOne(assignment => assignment.DutyRoster)
             .WithMany(roster => roster.Assignments)
             .HasForeignKey(assignment => assignment.DutyRosterId)
@@ -300,7 +304,12 @@ internal sealed class WorkforceReadinessSnapshotConfiguration : IEntityTypeConfi
         builder.Property(snapshot => snapshot.SourceStatus).HasMaxLength(40).IsRequired();
         builder.Property(snapshot => snapshot.CoverageRate).HasPrecision(9, 4);
         builder.Property(snapshot => snapshot.QualificationCoverage).HasPrecision(9, 4);
+        builder.Property(snapshot => snapshot.CapturedDateUtc).HasColumnType("date");
         builder.HasIndex(snapshot => new { snapshot.FacilityId, snapshot.CapturedAtUtc });
+        builder.HasIndex(snapshot => new { snapshot.FacilityId, snapshot.FacilityUnitId, snapshot.ShiftDefinitionId, snapshot.RoleDefinitionId, snapshot.CapturedDateUtc })
+            .IsUnique()
+            .HasDatabaseName("IX_WorkforceReadinessSnapshots_FacilityScopeDate")
+            .HasFilter(null);
         builder.HasIndex(snapshot => new { snapshot.FacilityId, snapshot.FacilityUnitId, snapshot.ShiftDefinitionId, snapshot.RoleDefinitionId, snapshot.CapturedAtUtc });
         builder.HasOne(snapshot => snapshot.Facility).WithMany().HasForeignKey(snapshot => snapshot.FacilityId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(snapshot => snapshot.FacilityUnit)

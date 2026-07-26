@@ -11,7 +11,7 @@ public sealed class WorkforceReconciliationDetectorTests
         var memberB = Guid.NewGuid();
         var issues = WorkforceReconciliationDetector.Detect(new WorkforceReconciliationScanInput(
             ExternalIds: [(memberA, "EXT-1"), (memberB, "EXT-1")],
-            ConflictingPrimaryMemberIds: [memberA],
+            ConflictingPrimaryAssignments: [(memberA, Guid.NewGuid())],
             LeaveWhileRostered: [],
             RetirementWhileRostered: [],
             StaleMemberIds: [memberB],
@@ -20,7 +20,8 @@ public sealed class WorkforceReconciliationDetectorTests
             UnpublishedRosterIds: [Guid.NewGuid()],
             SourceConflictMemberIds: [],
             UnknownAvailabilityMemberIds: [],
-            NoAlternateCriticalPositionIds: []));
+            NoAlternateCriticalPositionIds: [],
+            DuplicateRosterSlotMemberIds: []));
 
         Assert.Contains(issues, i => i.IssueType == WorkforceReconciliationIssueType.DuplicateExternalId);
         Assert.Contains(issues, i => i.IssueType == WorkforceReconciliationIssueType.ConflictingAssignments);

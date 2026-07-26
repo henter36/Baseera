@@ -14,7 +14,8 @@ public enum WorkforceReconciliationIssueType
     UnpublishedRoster = 7,
     WorkforceSourceConflict = 8,
     UnknownAvailability = 9,
-    NoCriticalPositionAlternate = 10
+    NoCriticalPositionAlternate = 10,
+    ConflictingRosterSlots = 11
 }
 
 public sealed record WorkforceReconciliationIssue(
@@ -37,7 +38,7 @@ public static class WorkforceReconciliationDetector
                      .Where(g => g.Count() > 1))
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"DuplicateExternalId:{group.Key}",
+                $"dup-ext:{group.Key}",
                 WorkforceReconciliationIssueType.DuplicateExternalId,
                 "معرّف خارجي مكرر",
                 "high",
@@ -45,43 +46,43 @@ public static class WorkforceReconciliationDetector
                 "WorkforceMember"));
         }
 
-        foreach (var conflict in input.ConflictingPrimaryMemberIds)
+        foreach (var conflict in input.ConflictingPrimaryAssignments)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"ConflictingAssignments:{conflict}",
+                $"conflict-assign:{conflict.MemberId:N}",
                 WorkforceReconciliationIssueType.ConflictingAssignments,
                 "تكليفات أساسية متداخلة",
-                "high",
-                conflict,
-                "WorkforceMember"));
+                "critical",
+                conflict.AssignmentId,
+                "WorkforceAssignment"));
         }
 
         foreach (var row in input.LeaveWhileRostered)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"LeaveWhileRostered:{row.MemberId}:{row.RosterAssignmentId}",
+                $"leave-roster:{row.RosterAssignmentId:N}",
                 WorkforceReconciliationIssueType.LeaveWhileRostered,
                 "إجازة أثناء التواجد في جدول مناوبة",
                 "high",
-                row.MemberId,
-                "WorkforceMember"));
+                row.RosterAssignmentId,
+                "DutyRosterAssignment"));
         }
 
         foreach (var row in input.RetirementWhileRostered)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"RetirementWhileRostered:{row.MemberId}:{row.RosterAssignmentId}",
+                $"retired-roster:{row.RosterAssignmentId:N}",
                 WorkforceReconciliationIssueType.RetirementWhileRostered,
                 "تقاعد أو إنهاء خدمة مع بقاء في المناوبة",
                 "critical",
-                row.MemberId,
-                "WorkforceMember"));
+                row.RosterAssignmentId,
+                "DutyRosterAssignment"));
         }
 
         foreach (var memberId in input.StaleMemberIds)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"StaleSourceRecord:{memberId}",
+                $"stale:{memberId:N}",
                 WorkforceReconciliationIssueType.StaleSourceRecord,
                 "سجل مصدر قديم يحتاج تحققًا",
                 "medium",
@@ -92,7 +93,7 @@ public static class WorkforceReconciliationDetector
         foreach (var memberId in input.InvalidUserLinkMemberIds)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"InvalidUserLink:{memberId}",
+                $"bad-user:{memberId:N}",
                 WorkforceReconciliationIssueType.InvalidUserLink,
                 "ربط مستخدم غير صالح",
                 "medium",
@@ -103,7 +104,7 @@ public static class WorkforceReconciliationDetector
         foreach (var assignmentId in input.AssignmentOutsideFacilityIds)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"AssignmentOutsideFacility:{assignmentId}",
+                $"assign-out:{assignmentId:N}",
                 WorkforceReconciliationIssueType.AssignmentOutsideFacility,
                 "تكليف خارج منشأة التشغيل",
                 "high",
@@ -114,7 +115,7 @@ public static class WorkforceReconciliationDetector
         foreach (var rosterId in input.UnpublishedRosterIds)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"UnpublishedRoster:{rosterId}",
+                $"unpub:{rosterId:N}",
                 WorkforceReconciliationIssueType.UnpublishedRoster,
                 "جدول مناوبة غير منشور لليوم التشغيلي",
                 "medium",
@@ -125,7 +126,7 @@ public static class WorkforceReconciliationDetector
         foreach (var memberId in input.SourceConflictMemberIds)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"WorkforceSourceConflict:{memberId}",
+                $"src-conflict:{memberId:N}",
                 WorkforceReconciliationIssueType.WorkforceSourceConflict,
                 "تعارض مصادر التواجد",
                 "high",
@@ -136,7 +137,7 @@ public static class WorkforceReconciliationDetector
         foreach (var memberId in input.UnknownAvailabilityMemberIds)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"UnknownAvailability:{memberId}",
+                $"unk-emp:{memberId:N}",
                 WorkforceReconciliationIssueType.UnknownAvailability,
                 "توفر غير معروف",
                 "medium",
@@ -147,12 +148,23 @@ public static class WorkforceReconciliationDetector
         foreach (var criticalId in input.NoAlternateCriticalPositionIds)
         {
             issues.Add(new WorkforceReconciliationIssue(
-                $"NoCriticalPositionAlternate:{criticalId}",
+                $"no-alt:{criticalId:N}",
                 WorkforceReconciliationIssueType.NoCriticalPositionAlternate,
                 "موقع حرج بلا بديل",
                 "critical",
                 criticalId,
                 "CriticalPositionRequirement"));
+        }
+
+        foreach (var memberId in input.DuplicateRosterSlotMemberIds)
+        {
+            issues.Add(new WorkforceReconciliationIssue(
+                $"roster-slots:{memberId:N}",
+                WorkforceReconciliationIssueType.ConflictingRosterSlots,
+                "تعارض خانات مناوبة",
+                "high",
+                memberId,
+                "WorkforceMember"));
         }
 
         return issues;
@@ -161,7 +173,7 @@ public static class WorkforceReconciliationDetector
 
 public sealed record WorkforceReconciliationScanInput(
     IReadOnlyList<(Guid MemberId, string? ExternalPersonnelId)> ExternalIds,
-    IReadOnlyList<Guid> ConflictingPrimaryMemberIds,
+    IReadOnlyList<(Guid MemberId, Guid AssignmentId)> ConflictingPrimaryAssignments,
     IReadOnlyList<(Guid MemberId, Guid RosterAssignmentId)> LeaveWhileRostered,
     IReadOnlyList<(Guid MemberId, Guid RosterAssignmentId)> RetirementWhileRostered,
     IReadOnlyList<Guid> StaleMemberIds,
@@ -170,4 +182,5 @@ public sealed record WorkforceReconciliationScanInput(
     IReadOnlyList<Guid> UnpublishedRosterIds,
     IReadOnlyList<Guid> SourceConflictMemberIds,
     IReadOnlyList<Guid> UnknownAvailabilityMemberIds,
-    IReadOnlyList<Guid> NoAlternateCriticalPositionIds);
+    IReadOnlyList<Guid> NoAlternateCriticalPositionIds,
+    IReadOnlyList<Guid> DuplicateRosterSlotMemberIds);

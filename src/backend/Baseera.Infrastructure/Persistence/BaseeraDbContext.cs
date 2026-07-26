@@ -14,6 +14,7 @@ using Baseera.Domain.Resources;
 using Baseera.Domain.Workforce;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using System.Data;
 
 public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options) : DbContext(options), Application.Abstractions.IBaseeraDbContext
 {
@@ -201,7 +202,8 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
 
     public async Task<TResult> ExecuteInTransactionAsync<TResult>(
         Func<CancellationToken, Task<TResult>> operation,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
     {
         if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
         {
@@ -211,7 +213,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         var strategy = Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
-            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            await using var transaction = await Database.BeginTransactionAsync(isolationLevel, cancellationToken);
             var result = await operation(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return result;

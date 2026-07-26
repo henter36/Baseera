@@ -533,6 +533,7 @@ public class WorkforceReadinessSnapshot : EntityBase
     public WorkforceRoleDefinition? RoleDefinition { get; set; }
 
     public DateTimeOffset CapturedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateOnly CapturedDateUtc { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
     public int Required { get; set; }
     public int MinimumSafe { get; set; }
     public int Assigned { get; set; }
