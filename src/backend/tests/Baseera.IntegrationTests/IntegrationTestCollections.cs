@@ -39,4 +39,3 @@ public sealed class OperationsIntegrationFixture()
 
 public sealed class WorkforceIntegrationFixture()
     : SharedIntegrationFixture("Workforce");
-
