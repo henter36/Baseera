@@ -6,6 +6,7 @@ using Baseera.Infrastructure.Audit;
 using Baseera.Infrastructure.Identity;
 using Baseera.Infrastructure.Persistence;
 using Baseera.Infrastructure.Security;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,7 +25,19 @@ public static class InfrastructureServiceCollectionExtensions
             options.AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>());
         });
 
-        services.AddDataProtection();
+        var dataProtection = services.AddDataProtection()
+            .SetApplicationName("Baseera");
+        var keysPath = configuration["DataProtection:KeysPath"];
+        if (string.IsNullOrWhiteSpace(keysPath))
+        {
+            var attachmentsRoot = configuration["Attachments:RootPath"];
+            keysPath = string.IsNullOrWhiteSpace(attachmentsRoot)
+                ? Path.Combine(Path.GetTempPath(), "baseera-data-protection-keys")
+                : Path.GetFullPath(Path.Combine(attachmentsRoot, "..", "data-protection-keys"));
+        }
+
+        Directory.CreateDirectory(keysPath);
+        dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
         services.AddSingleton<ISensitiveValueProtector, DataProtectionSensitiveValueProtector>();
 
         services.AddScoped<IBaseeraDbContext>(sp => sp.GetRequiredService<BaseeraDbContext>());

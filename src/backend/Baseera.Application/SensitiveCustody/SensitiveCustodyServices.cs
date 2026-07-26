@@ -1077,8 +1077,7 @@ public sealed class SensitiveCustodyService(
     private static bool IsCurrentCustodyConflict(DbUpdateException exception)
     {
         var message = exception.InnerException?.Message ?? exception.Message;
-        return message.Contains("IX_CustodyTransactions_WeaponAssetId", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("unique", StringComparison.OrdinalIgnoreCase);
+        return message.Contains("IX_CustodyTransactions_WeaponAssetId", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task EnsureDestinationEligibleAsync(Guid facilityId, CustodyTransactionCreateRequest request, CancellationToken cancellationToken)

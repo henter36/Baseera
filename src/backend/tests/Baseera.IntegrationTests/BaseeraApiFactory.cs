@@ -79,6 +79,7 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Seed:DemoOrganization", _seedDemoOrganization.ToString());
         builder.UseSetting("Database:ApplyMigrationsOnStartup", _applyMigrationsOnStartup.ToString());
         builder.UseSetting("Attachments:RootPath", Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName));
+        builder.UseSetting("DataProtection:KeysPath", Path.Combine(Path.GetTempPath(), "baseera-test-dp-keys", _databaseName));
         ConfigureTestLogging(builder);
 
         builder.ConfigureAppConfiguration((_, config) =>
@@ -89,7 +90,8 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
                 ["Auth:UseTestAuth"] = "true",
                 ["Seed:DemoOrganization"] = _seedDemoOrganization.ToString(),
                 ["Database:ApplyMigrationsOnStartup"] = _applyMigrationsOnStartup.ToString(),
-                ["Attachments:RootPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName)
+                ["Attachments:RootPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName),
+                ["DataProtection:KeysPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-dp-keys", _databaseName)
             });
         });
 
