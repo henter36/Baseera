@@ -690,6 +690,7 @@ public sealed partial class WorkforceReadinessService(
         counts.OverlappingRoster = await CountOverlappingRosterAsync(facilityId, today, cancellationToken);
         counts.GapWithoutOwner = await HasOpenStaffingGapAsync(facilityId, now, cancellationToken) ? 1 : 0;
         counts.InvalidUserLink = await CountInvalidUserLinksAsync(facilityId, cancellationToken);
+        counts.UnknownAvailability = await CountUnknownAvailabilityAsync(facilityId, now, cancellationToken);
         return counts;
     }
 
@@ -701,7 +702,7 @@ public sealed partial class WorkforceReadinessService(
         {
             MissingNumber = members.Count(m => string.IsNullOrWhiteSpace(m.EmployeeNumber)),
             UnknownStatus = members.Count(m => m.EmploymentStatus == EmploymentStatus.Unknown),
-            MissingFacility = members.Count(m => m.HomeFacilityId is null && m.CurrentOperationalFacilityId is null),
+            MissingFacility = members.Count(m => m.CurrentOperationalFacilityId is null),
             MissingUnit = members.Count(m => m.CurrentOperationalFacilityId == facilityId && m.CurrentOperationalUnitId is null),
             Stale = members.Count(m => m.LastVerifiedAtUtc is null || m.LastVerifiedAtUtc < staleBefore),
             DuplicateExternal = members
@@ -813,29 +814,41 @@ public sealed partial class WorkforceReadinessService(
                 && m.UserId != null
                 && !db.Users.Any(u => u.Id == m.UserId), cancellationToken);
 
+    private async Task<int> CountUnknownAvailabilityAsync(Guid facilityId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        await db.WorkforceMembers.AsNoTracking()
+            .CountAsync(m => !m.IsDeleted
+                && m.CurrentOperationalFacilityId == facilityId
+                && m.EmploymentStatus == EmploymentStatus.Active
+                && m.IsOperational
+                && !db.WorkforceAvailabilityEvents.Any(e => !e.IsDeleted
+                    && e.WorkforceMemberId == m.Id
+                    && e.StartsAtUtc <= now
+                    && (e.EndsAtUtc == null || e.EndsAtUtc > now)), cancellationToken);
+
     private static List<WorkforceDataQualityIssueDto> BuildDataQualityIssues(DataQualityIssueCounts counts)
     {
         var issues = new List<WorkforceDataQualityIssueDto>();
-        AddDataQualityIssue(issues, "missing_employee_number", "أرقام موظفين مفقودة", counts.MissingNumber, SeverityHighValue, "يصعب مطابقة المصدر الخارجي.", "استكمال رقم الموظف.");
-        AddDataQualityIssue(issues, "unknown_status", "حالة توظيف غير معروفة", counts.UnknownStatus, SeverityHighValue, "لا يمكن احتساب الجاهزية بثقة.", "تحديث حالة التوظيف.");
-        AddDataQualityIssue(issues, "missing_facility", "منشأة منزلية/تشغيلية مفقودة", counts.MissingFacility, SeverityCriticalValue, "لا يدخل العضو في نطاق المنشأة.", "ربط العضو بمنشأة.");
-        AddDataQualityIssue(issues, "missing_unit_or_role", "وحدة تشغيلية مفقودة", counts.MissingUnit, SeverityMediumValue, "يصعب توزيع التغطية على الوحدات.", "تعيين وحدة تشغيلية.");
-        AddDataQualityIssue(issues, "stale_source", "سجلات مصدر متقادمة", counts.Stale, SeverityMediumValue, "ثقة البيانات منخفضة.", "إعادة التحقق من المصدر.");
-        AddDataQualityIssue(issues, "duplicate_external_id", "معرّف خارجي مكرر", counts.DuplicateExternal, SeverityHighValue, "ازدواجية سجلات الأفراد.", "دمج أو تصحيح المعرف.");
-        AddDataQualityIssue(issues, "expired_assignment", "تكليفات منتهية ما زالت ظاهرة", counts.ExpiredAssignments, SeverityMediumValue, "تضخيم التغطية الظاهرة.", "أرشفة التكليف المنتهي.");
-        AddDataQualityIssue(issues, "requirement_without_approval", "احتياج بلا مرجع اعتماد", counts.MissingApproval, SeverityMediumValue, "baseline غير موثق.", "إضافة مرجع الاعتماد.");
-        AddDataQualityIssue(issues, "roster_without_commander", "مناوبة بدون قائد", counts.RosterWithoutCommander, SeverityHighValue, "فجوة قيادة في الوردية.", "تعيين دور قيادي.");
-        AddDataQualityIssue(issues, "leave_while_rostered", "إجازة أثناء المناوبة", counts.LeaveWhileRostered, SeverityHighValue, "فجوة حضور متوقعة.", "تعيين بديل.");
-        AddDataQualityIssue(issues, "retired_on_roster", "متقاعد/منتهٍ في المناوبة", counts.RetiredOnRoster, SeverityCriticalValue, "جدولة غير صالحة.", "إزالة من الجدول.");
-        AddDataQualityIssue(issues, "missing_qualification", "مؤهل مطلوب مفقود", counts.MissingQualification, SeverityHighValue, "تغطية غير مؤهلة.", "تسجيل/تجديد المؤهل.");
-        AddDataQualityIssue(issues, "missing_role", "موظف بلا دور تشغيلي", counts.MissingRole, SeverityHighValue, "لا يدخل في تغطية الأدوار.", "إنشاء تكليف.");
-        AddDataQualityIssue(issues, "shift_without_minimum", "مناوبة بلا حد أدنى آمن", counts.ShiftWithoutMinimum, SeverityMediumValue, "لا يمكن الحكم على السلامة.", "تعريف MinimumSafe.");
-        AddDataQualityIssue(issues, "qualification_expired", "مؤهل منتهٍ", counts.ExpiredQualification, SeverityHighValue, "تغطية غير مؤهلة.", "تجديد أو إيقاف الدور.");
-        AddDataQualityIssue(issues, "conflicting_assignment", "موظف في مناوبتين متعارضتين", counts.OverlappingRoster, SeverityCriticalValue, "عد مزدوج/تعارض حضور.", "إزالة التعارض.");
-        AddDataQualityIssue(issues, "gap_without_owner", "فجوة بلا مسؤول", counts.GapWithoutOwner, SeverityMediumValue, "لا يوجد مالك للمتابعة.", "تعيين مسؤول تغطية.");
-        AddDataQualityIssue(issues, "duplicate_employee", "رقم موظف مكرر داخل المنشأة", counts.DuplicateEmployee, SeverityCriticalValue, "ازدواج هوية تشغيلية.", "دمج السجلات.");
-        AddDataQualityIssue(issues, "unknown_availability", "توفر مجهول", counts.UnknownStatus, SeverityMediumValue, "Unknown لا يُحسب Available.", "تحديث التوفر.");
-        AddDataQualityIssue(issues, "invalid_user_link", "ربط مستخدم غير صحيح", counts.InvalidUserLink, SeverityHighValue, "فشل ربط الهوية.", "تصحيح UserId.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.MissingEmployeeNumber, "أرقام موظفين مفقودة", counts.MissingNumber, SeverityHighValue, "يصعب مطابقة المصدر الخارجي.", "استكمال رقم الموظف.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.MissingOperationalFacility, "منشأة تشغيلية مفقودة", counts.MissingFacility, SeverityCriticalValue, "لا يدخل العضو في نطاق المنشأة التشغيلي.", "ربط العضو بمنشأة تشغيلية.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.MissingOperationalUnit, "وحدة تشغيلية مفقودة", counts.MissingUnit, SeverityMediumValue, "يصعب توزيع التغطية على الوحدات.", "تعيين وحدة تشغيلية.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.MissingOperationalRole, "دور تشغيلي مفقود", counts.MissingRole, SeverityHighValue, "لا يدخل في تغطية الأدوار.", "إنشاء تكليف دور فعال.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.UnknownEmploymentStatus, "حالة توظيف غير معروفة", counts.UnknownStatus, SeverityHighValue, "لا يمكن احتساب الجاهزية بثقة.", "تحديث حالة التوظيف.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.UnknownAvailability, "توفر مجهول", counts.UnknownAvailability, SeverityMediumValue, "Unknown لا يُحسب Available.", "تحديث التوفر.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.ExpiredAssignment, "تكليفات منتهية ما زالت ظاهرة", counts.ExpiredAssignments, SeverityMediumValue, "تضخيم التغطية الظاهرة.", "أرشفة التكليف المنتهي.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.ConflictingAssignments, "تكليفات متعارضة", counts.OverlappingRoster, SeverityCriticalValue, "عد مزدوج/تعارض حضور.", "إزالة التعارض.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.RosterWithoutCommander, "مناوبة بدون قائد", counts.RosterWithoutCommander, SeverityHighValue, "فجوة قيادة في الوردية.", "تعيين دور قيادي.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.ShiftWithoutMinimumRequirement, "مناوبة بلا حد أدنى آمن", counts.ShiftWithoutMinimum, SeverityMediumValue, "لا يمكن الحكم على السلامة.", "تعريف MinimumSafe.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.MissingQualification, "مؤهل مطلوب مفقود", counts.MissingQualification, SeverityHighValue, "تغطية غير مؤهلة.", "تسجيل/تجديد المؤهل.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.ExpiredQualification, "مؤهل منتهٍ", counts.ExpiredQualification, SeverityHighValue, "تغطية غير مؤهلة.", "تجديد أو إيقاف الدور.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.StaleSource, "سجلات مصدر متقادمة", counts.Stale, SeverityMediumValue, "ثقة البيانات منخفضة.", "إعادة التحقق من المصدر.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.DuplicateExternalId, "معرّف خارجي مكرر", counts.DuplicateExternal, SeverityHighValue, "ازدواجية سجلات الأفراد.", "دمج أو تصحيح المعرف.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.DuplicateEmployeeNumber, "رقم موظف مكرر داخل المنشأة", counts.DuplicateEmployee, SeverityCriticalValue, "ازدواج هوية تشغيلية.", "دمج السجلات.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.InvalidUserLink, "ربط مستخدم غير صحيح", counts.InvalidUserLink, SeverityHighValue, "فشل ربط الهوية.", "تصحيح UserId.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.RetiredMemberInActiveRoster, "متقاعد/منتهٍ في المناوبة", counts.RetiredOnRoster, SeverityCriticalValue, "جدولة غير صالحة.", "إزالة من الجدول.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.MemberOnLeaveButScheduled, "إجازة أثناء المناوبة", counts.LeaveWhileRostered, SeverityHighValue, "فجوة حضور متوقعة.", "تعيين بديل.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.ConflictingRosterAssignments, "خانات مناوبة متعارضة", counts.OverlappingRoster, SeverityCriticalValue, "عد مزدوج/تعارض حضور.", "إزالة التعارض.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.CoverageGapWithoutResponsibleOwner, "فجوة بلا مسؤول", counts.GapWithoutOwner, SeverityMediumValue, "لا يوجد مالك للمتابعة.", "تعيين مسؤول تغطية.");
+        AddDataQualityIssue(issues, WorkforceOperationalCatalog.DataQuality.RequirementWithoutApprovalReference, "احتياج بلا مرجع اعتماد", counts.MissingApproval, SeverityMediumValue, "baseline غير موثق.", "إضافة مرجع الاعتماد.");
         return issues;
     }
 
@@ -1477,12 +1490,12 @@ public sealed partial class WorkforceReadinessService(
     {
         if (warning.Contains("إجازة", StringComparison.Ordinal))
         {
-            return "leave_while_rostered";
+            return WorkforceOperationalCatalog.DataQuality.MemberOnLeaveButScheduled;
         }
 
         if (warning.Contains("تعارض", StringComparison.Ordinal))
         {
-            return "conflicting_assignment";
+            return WorkforceOperationalCatalog.DataQuality.ConflictingAssignments;
         }
 
         return $"workspace_warning_{index}";
@@ -2253,6 +2266,7 @@ public sealed partial class WorkforceReadinessService(
         public int OverlappingRoster { get; set; }
         public int GapWithoutOwner { get; set; }
         public int InvalidUserLink { get; set; }
+        public int UnknownAvailability { get; set; }
     }
 
     private sealed record ImportContext(

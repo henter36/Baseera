@@ -450,6 +450,59 @@ public sealed class WorkforceReadinessIntegrationTests(WorkforceIntegrationFixtu
     }
 
     [IntegrationConnectionFact]
+    public async Task Facility_workspace_payload_size_stays_within_budget()
+    {
+        await factory.SeedUserAsync(
+            "workforce-payload",
+            "حجم حمولة",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("workforce-payload");
+
+        var response = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityA1}");
+
+        response.EnsureSuccessStatusCode();
+        var payload = await response.Content.ReadAsByteArrayAsync();
+        Assert.InRange(payload.Length, 1, 160_000);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Large_workforce_member_list_remains_bounded()
+    {
+        await factory.SeedUserAsync(
+            "workforce-large",
+            "مجموعة كبيرة",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("workforce-large");
+
+        var createTasks = Enumerable.Range(0, 25)
+            .Select(index => client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/members", new
+            {
+                displayName = $"عضو حجم {index:00}",
+                employeeNumber = $"WF-LG-{Guid.NewGuid():N}"[..16].ToUpperInvariant(),
+                jobTitle = "ضابط",
+                primarySpecialty = "أمن",
+                employmentStatus = 0,
+                isOperational = true,
+                sourceType = 0
+            }))
+            .ToArray();
+
+        foreach (var create in await Task.WhenAll(createTasks))
+        {
+            create.EnsureSuccessStatusCode();
+        }
+
+        var response = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/members?pageSize=10");
+
+        response.EnsureSuccessStatusCode();
+        var members = await response.Content.ReadFromJsonAsync<List<WorkforceMemberListItemResponse>>(JsonOptions);
+        Assert.NotNull(members);
+        Assert.InRange(members!.Count, 1, 10);
+    }
+
+    [IntegrationConnectionFact]
     public async Task IT03_Hq_global_scope_can_read_facility_workforce_summary()
     {
         await factory.SeedUserAsync(
@@ -819,6 +872,8 @@ public sealed class WorkforceReadinessIntegrationTests(WorkforceIntegrationFixtu
     private sealed record CreateResponse(Guid Id);
 
     private sealed record ImportResultResponse(int TotalRows, int ValidRows, int RejectedRows, int DuplicateRows, int AppliedRows);
+
+    private sealed record WorkforceMemberListItemResponse(Guid Id, string DisplayName, string EmployeeNumber);
 
     private sealed record ReconciliationListResponse(
         IReadOnlyList<ReconciliationItemResponse> Items,

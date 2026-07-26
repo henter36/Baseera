@@ -15,6 +15,7 @@ import {
   type FacilityNotesOverviewPayload,
   type OccupancyUnitPayload,
   type OccupancyWorkspacePayload,
+  type DutyRosterPayload,
   type ResourceWorkspacePayload,
   type WorkforceCoverageRowPayload,
   type WorkforceCoverageStatus,
@@ -115,6 +116,9 @@ type ActivityItem = FacilityRecentActivityPayload['items'][number]
 type FacilityUnitItem = FacilityStructurePayload['units'][number]
 type DataQualityDomain = FacilityDataQualityPayload['domains'][number]
 type PanelSummary = PriorityItem | ActivityItem | FacilityUnitItem | OccupancyUnitPayload | DataQualityDomain
+type WorkforceActionCenterItem =
+  | Readonly<{ id: string; label: string; execute: () => void }>
+  | Readonly<{ id: string; label: string; panel: PanelState }>
 
 type CommandData = Readonly<{
   header?: FacilityHeaderPayload
@@ -1040,14 +1044,28 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
   const urgent = data.priority?.items.slice(0, 5) ?? []
   const missingDomains = data.dataQuality?.domains.filter((domain) => domain.statusCode === 'unavailable') ?? []
   const missingDomainChips = missingDomains.slice(0, 3)
+  const queryClient = useQueryClient()
   const canManageRosters = usePermission('Workforce.ManageRosters')
   const canManageAssignments = usePermission('Workforce.ManageAssignments')
   const canManageQualifications = usePermission('Workforce.ManageQualifications')
   const canReconcile = usePermission('Workforce.Reconcile')
   const canImport = usePermission('Workforce.Import')
   const canViewCoverage = usePermission('Workforce.ViewCoverage')
-  const workforceActions = [
-    canManageRosters ? { id: 'publish-roster', label: 'نشر جدول مناوبة', panel: { type: 'workforce-roster' as const, entityId: 'action:publish-roster' } } : null,
+  const facilityId = data.header?.facilityId
+  const publishRosterMutation = useMutation({
+    mutationFn: async () => {
+      if (!facilityId) throw new Error('معرّف السجن غير متاح لتنفيذ الإجراء.')
+      const rosters = await api.workforce.rosters(facilityId)
+      const draft = rosters.find(isDraftRoster)
+      if (!draft) throw new Error('لا يوجد جدول مناوبة مسودة قابل للنشر.')
+      await api.workforce.publishRoster(facilityId, draft.id)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspace'] })
+    },
+  })
+  const workforceActions: WorkforceActionCenterItem[] = [
+    canManageRosters ? { id: 'publish-roster', label: 'نشر أول جدول مناوبة مسودة', execute: () => publishRosterMutation.mutate() } : null,
     canManageAssignments ? { id: 'assign-replacement', label: 'تعيين بديل', panel: { type: 'workforce-member' as const, entityId: 'action:replacement' } } : null,
     canManageAssignments ? { id: 'confirm-assignment', label: 'اعتماد تكليف', panel: { type: 'workforce-requirement' as const, entityId: 'action:assignment' } } : null,
     canManageQualifications ? { id: 'verify-qualification', label: 'التحقق من مؤهل', panel: { type: 'workforce-qualification' as const, entityId: 'action:qualification' } } : null,
@@ -1076,14 +1094,30 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
         <ul className="priority-row-list" aria-label="إجراءات القوى البشرية المسموحة">
           {workforceActions.map((action) => (
             <li key={action.id}>
-              <button type="button" className="priority-row compact" onClick={() => openPanel(action.panel)}>
+              <button
+                type="button"
+                className="priority-row compact"
+                disabled={'execute' in action && publishRosterMutation.isPending}
+                onClick={() => {
+                  if ('execute' in action) {
+                    action.execute()
+                  } else {
+                    openPanel(action.panel)
+                  }
+                }}
+              >
                 <span className="priority-band" aria-hidden="true" />
-                <span className="priority-row-main"><strong>{action.label}</strong><small>يُفتح وفق الصلاحية فقط</small></span>
+                <span className="priority-row-main">
+                  <strong>{action.label}</strong>
+                  <small>{'execute' in action ? 'ينفذ عبر API ثم يحدّث بيانات مساحة العمل' : 'يفتح الصفحة الكاملة لإكمال بيانات الإجراء'}</small>
+                </span>
               </button>
             </li>
           ))}
         </ul>
       )}
+      {publishRosterMutation.isSuccess && <output aria-live="polite">تم نشر جدول مناوبة مسودة وتحديث البيانات.</output>}
+      {publishRosterMutation.isError && <div className="error" role="alert">{workspaceActionError(publishRosterMutation.error)}</div>}
       <ul className="priority-row-list" aria-label="الإجراءات العاجلة">
         {urgent.map((item) => (
           <li key={`${item.type}-${item.reference}`}>
@@ -2018,6 +2052,19 @@ function executeNoteAction(action: NoteWorkspaceAllowedAction, data: NoteWorkspa
   if (action === 'REOPEN') return api.notes.reopen(data.note.id, body)
   if (action === 'CANCEL') return api.notes.cancel(data.note.id, body)
   throw new Error('هذا الإجراء يحتاج نموذجًا متقدمًا في الصفحة الكاملة.')
+}
+
+function isDraftRoster(roster: DutyRosterPayload) {
+  return roster.status === 'Draft'
+}
+
+function workspaceActionError(error: unknown) {
+  if (!(error instanceof ApiError)) return error instanceof Error ? error.message : 'تعذر تنفيذ الإجراء.'
+  if (error.status === 403) return 'ليست لديك صلاحية تنفيذ هذا الإجراء.'
+  if (error.status === 404) return 'السجل غير موجود ضمن نطاق السجن.'
+  if (error.status === 409) return 'تعارض في البيانات. حدّث مساحة العمل ثم أعد المحاولة.'
+  if (error.status === 422) return error.message || 'البيانات غير صالحة.'
+  return error.message
 }
 
 function noteActionLabel(action: NoteWorkspaceAllowedAction) {
