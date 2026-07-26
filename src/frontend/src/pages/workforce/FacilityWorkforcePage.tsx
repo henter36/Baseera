@@ -66,6 +66,8 @@ const IMPORT_KIND_OPTIONS: ReadonlyArray<Readonly<{ value: WorkforceImportKind; 
   { value: WorkforceImportKind.AttendanceSummary, label: 'ملخص الحضور' },
 ]
 
+type WorkforceAdminData = Awaited<ReturnType<typeof loadWorkforceAdminData>>
+
 function errorMessage(error: unknown) {
   if (!(error instanceof ApiError)) return 'تعذر تنفيذ العملية. تحقق من البيانات وحاول مرة أخرى.'
   if (error.status === 403) return 'ليست لديك صلاحية تنفيذ هذه العملية.'
@@ -92,6 +94,14 @@ async function optionalPart<T>(name: string, loader: () => Promise<T>, fallback:
 function requireFacilityId(facilityId: string | undefined) {
   if (!facilityId) throw new Error('facilityId is required')
   return facilityId
+}
+
+function canLoadAdminData(canView: boolean, facilityId: string | undefined) {
+  return canView && Boolean(facilityId)
+}
+
+function canLoadQualifications(canViewMembers: boolean, activeSection: WorkforceSection, facilityId: string | undefined) {
+  return canViewMembers && activeSection === 'qualifications' && Boolean(facilityId)
 }
 
 async function loadWorkforceAdminData(
@@ -148,13 +158,13 @@ export function FacilityWorkforcePage() {
   const query = useQuery({
     queryKey: ['workforce-admin', facilityId, canViewCoverage, canViewMembers, canReconcile],
     queryFn: () => loadWorkforceAdminData(requireFacilityId(facilityId), canViewCoverage, canViewMembers, canReconcile),
-    enabled: canView && Boolean(facilityId),
+    enabled: canLoadAdminData(canView, facilityId),
   })
 
   const qualificationsQuery = useQuery({
     queryKey: ['workforce-qualifications', facilityId],
     queryFn: async () => (await api.workforce.qualifications(facilityId!, { page: 1, pageSize: 100 })).items,
-    enabled: canViewMembers && activeSection === 'qualifications' && Boolean(facilityId),
+    enabled: canLoadQualifications(canViewMembers, activeSection, facilityId),
   })
 
   const importPreviewMutation = useMutation({
@@ -253,13 +263,12 @@ export function FacilityWorkforcePage() {
     onError: (err) => setError(errorMessage(err)),
   })
 
-  if (!facilityId) return <WorkspaceEmpty message="معرّف السجن مطلوب." />
-  if (!canView) return <WorkspaceUnauthorized />
-  if (query.isLoading) return <WorkspaceLoading />
-  if (query.isError) return <WorkspaceError message={errorMessage(query.error) || 'تعذر تحميل مركز القوى البشرية.'} onRetry={() => query.refetch()} />
-  if (!query.data) return <WorkspaceEmpty message="لا توجد بيانات قوى بشرية." />
+  const pageFallback = workforcePageFallback(facilityId, canView, query.isLoading, query.isError, query.error, query.data, () => query.refetch())
+  if (pageFallback) return pageFallback
 
-  const { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation } = query.data
+  const activeFacilityId = requireFacilityId(facilityId)
+  const workforceData = requireWorkforceData(query.data)
+  const { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation } = workforceData
   const setActiveSection = (section: WorkforceSection) => {
     const params = new URLSearchParams(searchParams)
     if (section === 'overview') params.delete('section')
@@ -269,33 +278,19 @@ export function FacilityWorkforcePage() {
 
   return (
     <main className="facility-command-center workforce-admin" dir="rtl">
-      <header className="command-header">
-        <div>
-          <span className="command-eyebrow">مركز القوى البشرية</span>
-          <h1>القوى البشرية والتغطية التشغيلية</h1>
-          <p>قراءة التغطية والورديات والأعضاء والمتطلبات دون خلطها مع موارد المعدات.</p>
-        </div>
-        <div className="command-header-actions">
-          {canExport && (
-            <button
-              type="button"
-              className="command-button ghost"
-              disabled={exportMutation.isPending}
-              onClick={() => exportMutation.mutate()}
-            >
-              {exportMutation.isPending ? 'جار التصدير...' : 'تصدير محدود'}
-            </button>
-          )}
-          <Link className="command-button ghost" to={`/workspaces/facilities/${facilityId}?section=workforce`}>العودة لمساحة السجن</Link>
-        </div>
-      </header>
+      <WorkforceHeader
+        facilityId={activeFacilityId}
+        canExport={canExport}
+        exportPending={exportMutation.isPending}
+        onExport={() => exportMutation.mutate()}
+      />
 
-      {message && <output className="context-action-note" aria-live="polite">{message}</output>}
-      {error && <p className="context-action-note" role="alert">{error}</p>}
-      {exportNote && <p className="context-action-note" data-testid="export-redaction-note">{exportNote}</p>}
-      {query.data.partialFailures.length > 0 && (
-        <output className="context-action-note">تعذر تحميل بعض أجزاء المركز، وتبقى البيانات المتاحة ظاهرة.</output>
-      )}
+      <WorkforceFeedback
+        message={message}
+        error={error}
+        exportNote={exportNote}
+        partialFailures={workforceData.partialFailures}
+      />
 
       <nav className="command-section-nav" aria-label="تنقل مركز القوى البشرية">
         {SECTION_NAV.map(({ key, label }) => (
@@ -305,75 +300,248 @@ export function FacilityWorkforcePage() {
         ))}
       </nav>
 
-      {(activeSection === 'overview' || activeSection === 'coverage') && (
-        <OverviewSection summary={summary} coverage={coverage} criticalPositions={criticalPositions} />
-      )}
-
-      {activeSection === 'shifts' && <ShiftsSection coverage={coverage} rosters={rosters} />}
-      {activeSection === 'units' && <UnitsSection units={units} />}
-      {activeSection === 'roles' && <RolesSection roles={roles} coverage={coverage} />}
-      {activeSection === 'members' && (
-        canViewMembers
-          ? (
-            <MembersSection
-              members={members}
-              canManage={canManageMembers}
-              editingMemberId={editingMemberId}
-              pending={updateMemberMutation.isPending}
-              onEdit={setEditingMemberId}
-              onCancelEdit={() => setEditingMemberId(null)}
-              onSave={(memberId, body) => updateMemberMutation.mutate({ memberId, body })}
-            />
-          )
-          : <WorkspaceUnauthorized />
-      )}
-      {activeSection === 'qualifications' && (
-        canViewMembers
-          ? <QualificationsSection items={qualificationsQuery.data ?? []} loading={qualificationsQuery.isLoading} />
-          : <WorkspaceUnauthorized />
-      )}
-      {activeSection === 'requirements' && <RequirementsSection requirements={requirements} />}
-      {activeSection === 'availability' && (
-        canRecordAvailability
-          ? (
-            <AvailabilityForm
-              members={members}
-              pending={availabilityMutation.isPending}
-              onSubmit={(body) => availabilityMutation.mutate(body)}
-            />
-          )
-          : <WorkspaceUnauthorized />
-      )}
-      {activeSection === 'imports' && (
-        canImport
-          ? (
-            <WorkforceImportForm
-              pending={importPreviewMutation.isPending || importConfirmMutation.isPending}
-              preview={importPreview}
-              canConfirm={Boolean(importRequest && importPreview && importPreview.validRows > 0)}
-              onPreview={(body) => importPreviewMutation.mutate(body)}
-              onConfirm={() => {
-                if (importRequest) importConfirmMutation.mutate(importRequest)
-              }}
-            />
-          )
-          : <WorkspaceUnauthorized />
-      )}
-      {activeSection === 'data-quality' && <DataQualitySection dataQuality={dataQuality} />}
-      {activeSection === 'reconciliation' && (
-        canReconcile
-          ? (
-            <ReconciliationSection
-              items={reconciliation.items}
-              totalCount={reconciliation.totalCount}
-              pending={resolveMutation.isPending}
-              onResolve={(itemId) => resolveMutation.mutate({ itemId, resolutionAction: 'acknowledge' })}
-            />
-          )
-          : <WorkspaceUnauthorized />
-      )}
+      <WorkforceSectionContent
+        activeSection={activeSection}
+        data={{ summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation }}
+        canViewMembers={canViewMembers}
+        canManageMembers={canManageMembers}
+        canRecordAvailability={canRecordAvailability}
+        canImport={canImport}
+        canReconcile={canReconcile}
+        editingMemberId={editingMemberId}
+        updatePending={updateMemberMutation.isPending}
+        qualificationItems={qualificationsQuery.data ?? []}
+        qualificationsLoading={qualificationsQuery.isLoading}
+        availabilityPending={availabilityMutation.isPending}
+        importPending={importPreviewMutation.isPending || importConfirmMutation.isPending}
+        importRequest={importRequest}
+        importPreview={importPreview}
+        reconciliationPending={resolveMutation.isPending}
+        onEditMember={setEditingMemberId}
+        onCancelEditMember={() => setEditingMemberId(null)}
+        onSaveMember={(memberId, body) => updateMemberMutation.mutate({ memberId, body })}
+        onCreateAvailability={(body) => availabilityMutation.mutate(body)}
+        onImportPreview={(body) => importPreviewMutation.mutate(body)}
+        onImportConfirm={() => {
+          if (importRequest) importConfirmMutation.mutate(importRequest)
+        }}
+        onResolveReconciliation={(itemId) => resolveMutation.mutate({ itemId, resolutionAction: 'acknowledge' })}
+      />
     </main>
   )
+}
+
+function requireWorkforceData(data: WorkforceAdminData | undefined) {
+  if (!data) throw new Error('Workforce data is required after page fallback checks.')
+  return data
+}
+
+function workforcePageFallback(
+  facilityId: string | undefined,
+  canView: boolean,
+  isLoading: boolean,
+  isError: boolean,
+  error: unknown,
+  data: WorkforceAdminData | undefined,
+  onRetry: () => void,
+) {
+  if (!facilityId) return <WorkspaceEmpty message="معرّف السجن مطلوب." />
+  if (!canView) return <WorkspaceUnauthorized />
+  if (isLoading) return <WorkspaceLoading />
+  if (isError) return <WorkspaceError message={errorMessage(error) || 'تعذر تحميل مركز القوى البشرية.'} onRetry={onRetry} />
+  if (!data) return <WorkspaceEmpty message="لا توجد بيانات قوى بشرية." />
+  return null
+}
+
+function WorkforceHeader({
+  facilityId,
+  canExport,
+  exportPending,
+  onExport,
+}: Readonly<{
+  facilityId: string
+  canExport: boolean
+  exportPending: boolean
+  onExport: () => void
+}>) {
+  return (
+    <header className="command-header">
+      <div>
+        <span className="command-eyebrow">مركز القوى البشرية</span>
+        <h1>القوى البشرية والتغطية التشغيلية</h1>
+        <p>قراءة التغطية والورديات والأعضاء والمتطلبات دون خلطها مع موارد المعدات.</p>
+      </div>
+      <div className="command-header-actions">
+        {canExport && (
+          <button
+            type="button"
+            className="command-button ghost"
+            disabled={exportPending}
+            onClick={onExport}
+          >
+            {exportButtonLabel(exportPending)}
+          </button>
+        )}
+        <Link className="command-button ghost" to={`/workspaces/facilities/${facilityId}?section=workforce`}>العودة لمساحة السجن</Link>
+      </div>
+    </header>
+  )
+}
+
+function exportButtonLabel(exportPending: boolean) {
+  return exportPending ? 'جار التصدير...' : 'تصدير محدود'
+}
+
+function WorkforceFeedback({
+  message,
+  error,
+  exportNote,
+  partialFailures,
+}: Readonly<{
+  message: string
+  error: string
+  exportNote: string
+  partialFailures: string[]
+}>) {
+  return (
+    <>
+      {message && <output className="context-action-note" aria-live="polite">{message}</output>}
+      {error && <p className="context-action-note" role="alert">{error}</p>}
+      {exportNote && <p className="context-action-note" data-testid="export-redaction-note">{exportNote}</p>}
+      {partialFailures.length > 0 && (
+        <output className="context-action-note">تعذر تحميل بعض أجزاء المركز، وتبقى البيانات المتاحة ظاهرة.</output>
+      )}
+    </>
+  )
+}
+
+function WorkforceSectionContent({
+  activeSection,
+  data,
+  canViewMembers,
+  canManageMembers,
+  canRecordAvailability,
+  canImport,
+  canReconcile,
+  editingMemberId,
+  updatePending,
+  qualificationItems,
+  qualificationsLoading,
+  availabilityPending,
+  importPending,
+  importRequest,
+  importPreview,
+  reconciliationPending,
+  onEditMember,
+  onCancelEditMember,
+  onSaveMember,
+  onCreateAvailability,
+  onImportPreview,
+  onImportConfirm,
+  onResolveReconciliation,
+}: Readonly<{
+  activeSection: WorkforceSection
+  data: Omit<WorkforceAdminData, 'partialFailures'>
+  canViewMembers: boolean
+  canManageMembers: boolean
+  canRecordAvailability: boolean
+  canImport: boolean
+  canReconcile: boolean
+  editingMemberId: string | null
+  updatePending: boolean
+  qualificationItems: WorkforceQualificationListItem[]
+  qualificationsLoading: boolean
+  availabilityPending: boolean
+  importPending: boolean
+  importRequest: WorkforceImportPreviewRequest | null
+  importPreview: WorkforceImportResult | null
+  reconciliationPending: boolean
+  onEditMember: (id: string) => void
+  onCancelEditMember: () => void
+  onSaveMember: (memberId: string, body: WorkforceMemberUpdateRequest) => void
+  onCreateAvailability: (body: Parameters<typeof api.workforce.createAvailability>[1]) => void
+  onImportPreview: (body: WorkforceImportPreviewRequest) => void
+  onImportConfirm: () => void
+  onResolveReconciliation: (itemId: string) => void
+}>) {
+  const {
+    summary,
+    coverage,
+    units,
+    roles,
+    members,
+    requirements,
+    rosters,
+    dataQuality,
+    criticalPositions,
+    reconciliation,
+  } = data
+
+  switch (activeSection) {
+    case 'overview':
+    case 'coverage':
+      return <OverviewSection summary={summary} coverage={coverage} criticalPositions={criticalPositions} />
+    case 'shifts':
+      return <ShiftsSection coverage={coverage} rosters={rosters} />
+    case 'units':
+      return <UnitsSection units={units} />
+    case 'roles':
+      return <RolesSection roles={roles} coverage={coverage} />
+    case 'members':
+      return canViewMembers ? (
+        <MembersSection
+          members={members}
+          canManage={canManageMembers}
+          editingMemberId={editingMemberId}
+          pending={updatePending}
+          onEdit={onEditMember}
+          onCancelEdit={onCancelEditMember}
+          onSave={onSaveMember}
+        />
+      ) : <WorkspaceUnauthorized />
+    case 'qualifications':
+      return canViewMembers
+        ? <QualificationsSection items={qualificationItems} loading={qualificationsLoading} />
+        : <WorkspaceUnauthorized />
+    case 'requirements':
+      return <RequirementsSection requirements={requirements} />
+    case 'availability':
+      return canRecordAvailability
+        ? <AvailabilityForm members={members} pending={availabilityPending} onSubmit={onCreateAvailability} />
+        : <WorkspaceUnauthorized />
+    case 'imports':
+      return canImport
+        ? (
+          <WorkforceImportForm
+            pending={importPending}
+            preview={importPreview}
+            canConfirm={canConfirmImport(importRequest, importPreview)}
+            onPreview={onImportPreview}
+            onConfirm={onImportConfirm}
+          />
+        )
+        : <WorkspaceUnauthorized />
+    case 'data-quality':
+      return <DataQualitySection dataQuality={dataQuality} />
+    case 'reconciliation':
+      return canReconcile
+        ? (
+          <ReconciliationSection
+            items={reconciliation.items}
+            totalCount={reconciliation.totalCount}
+            pending={reconciliationPending}
+            onResolve={onResolveReconciliation}
+          />
+        )
+        : <WorkspaceUnauthorized />
+  }
+}
+
+function canConfirmImport(
+  importRequest: WorkforceImportPreviewRequest | null,
+  importPreview: WorkforceImportResult | null,
+) {
+  return Boolean(importRequest && importPreview && importPreview.validRows > 0)
 }
 
 function OverviewSection({
