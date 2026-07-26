@@ -1615,17 +1615,18 @@ code {
   flex-wrap: wrap;
   gap: 0.65rem 1rem;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
   border-radius: 16px;
+  border-inline-start: 5px solid var(--command-info);
   background: rgba(255, 255, 255, 0.55);
-  box-shadow: inset 5px 0 0 var(--command-info);
   color: var(--command-text-secondary);
 }
 
-.duty-status-band[data-status="complete"] { box-shadow: inset 5px 0 0 var(--command-stable); }
+.duty-status-band[data-status="complete"] { border-inline-start-color: var(--command-stable); }
 .duty-status-band[data-status="partial"],
-.duty-status-band[data-status="attention"] { box-shadow: inset 5px 0 0 var(--command-warning); }
-.duty-status-band[data-status="missing"] { box-shadow: inset 5px 0 0 var(--command-border-strong); }
+.duty-status-band[data-status="attention"] { border-inline-start-color: var(--command-warning); }
+.duty-status-band[data-status="missing"] { border-inline-start-color: var(--command-border-strong); }
 
 .duty-status-band span {
   font-size: 0.92rem;
@@ -1644,17 +1645,18 @@ code {
   width: 100%;
   align-items: center;
   border: 0;
+  border-inline-start: 4px solid var(--command-info);
   border-radius: 14px;
-  padding: 0.8rem 0.95rem;
+  padding-block: 0.8rem;
+  padding-inline: 0.95rem;
   background: rgba(255, 255, 255, 0.6);
   color: var(--command-text-primary);
   text-align: start;
-  box-shadow: inset 4px 0 0 var(--command-info);
 }
 
-.shift-coverage-row[data-status="partial"] { box-shadow: inset 4px 0 0 var(--command-warning); }
-.shift-coverage-row[data-status="complete"] { box-shadow: inset 4px 0 0 var(--command-stable); }
-.shift-coverage-row[data-status="missing"] { box-shadow: inset 4px 0 0 var(--command-border-strong); }
+.shift-coverage-row[data-status="partial"] { border-inline-start-color: var(--command-warning); }
+.shift-coverage-row[data-status="complete"] { border-inline-start-color: var(--command-stable); }
+.shift-coverage-row[data-status="missing"] { border-inline-start-color: var(--command-border-strong); }
 
 .shift-coverage-row span {
   display: grid;
