@@ -49,16 +49,14 @@ public sealed class SensitiveCustodyPolicyTests
     }
 
     [Fact]
-    public void SerialProtection_DoesNotExposeRawSerial()
+    public void SerialProtection_HashDoesNotExposeRawSerial()
     {
         const string serial = "SN-REAL-12345";
         var hash = SensitiveSerialProtection.Hash(serial);
-        var protectedValue = SensitiveSerialProtection.ProtectForStorage(serial);
-        var masked = SensitiveSerialProtection.Mask(hash);
+        var masked = SensitiveSerialProtection.MaskPlaintext(serial);
 
         Assert.DoesNotContain(serial, hash, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(serial, protectedValue, StringComparison.OrdinalIgnoreCase);
-        Assert.StartsWith("***-", masked, StringComparison.Ordinal);
+        Assert.Equal("***-2345", masked);
         Assert.NotEqual(serial, masked);
     }
 

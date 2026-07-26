@@ -81,12 +81,19 @@ public sealed class SensitiveCustodyIntegrationTests(OperationsIntegrationFixtur
         create.EnsureSuccessStatusCode();
         var created = await create.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
         Assert.NotNull(created);
+        string storedCiphertext;
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var protector = scope.ServiceProvider.GetRequiredService<Baseera.Application.Abstractions.ISensitiveValueProtector>();
             var stored = await db.WeaponAssets.AsNoTracking().SingleAsync(w => w.Id == created!.Id);
+            storedCiphertext = stored.SerialNumberEncrypted;
             Assert.DoesNotContain(serial, stored.SerialNumberEncrypted, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(serial, stored.SerialNumberHash, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(
+                SensitiveSerialProtection.NormalizeSerial(serial),
+                protector.Unprotect(stored.SerialNumberEncrypted));
+            Assert.Equal(SensitiveSerialProtection.Hash(serial), stored.SerialNumberHash);
         }
 
         var viewer = factory.CreateAuthenticatedClient("sensitive-viewer");
@@ -95,11 +102,180 @@ public sealed class SensitiveCustodyIntegrationTests(OperationsIntegrationFixtur
         list.EnsureSuccessStatusCode();
         var body = await list.Content.ReadAsStringAsync();
         Assert.DoesNotContain(serial, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(storedCiphertext, body, StringComparison.OrdinalIgnoreCase);
         var rows = JsonSerializer.Deserialize<IReadOnlyList<WeaponListItemResponse>>(body, JsonOptions);
         Assert.NotNull(rows);
         var row = Assert.Single(rows!, item => item.Id == created!.Id);
-        Assert.StartsWith("***-", row.MaskedSerial, StringComparison.Ordinal);
+        Assert.Equal(SensitiveSerialProtection.RedactedMask, row.MaskedSerial);
         Assert.Null(row.FullSerial);
+
+        var officerList = await createClient.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/weapons?search={Uri.EscapeDataString(serial)}");
+        officerList.EnsureSuccessStatusCode();
+        var officerRows = await officerList.Content.ReadFromJsonAsync<IReadOnlyList<WeaponListItemResponse>>(JsonOptions);
+        var officerRow = Assert.Single(officerRows!, item => item.Id == created!.Id);
+        Assert.Equal(SensitiveSerialProtection.NormalizeSerial(serial), officerRow.FullSerial);
+        Assert.Equal(SensitiveSerialProtection.MaskPlaintext(SensitiveSerialProtection.NormalizeSerial(serial)), officerRow.MaskedSerial);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Custody_lifecycle_completes_and_reverse_restores_previous_state()
+    {
+        var (weaponTypeId, armoryId, armoryBId) = await SeedSensitiveReferencePairAsync();
+        await factory.SeedUserAsync(
+            "custody-issuer",
+            "ضابط تسليح",
+            [RoleCodes.ArmamentOfficer],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        await factory.SeedUserAsync(
+            "custody-approver",
+            "مدير سجن",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var issuer = factory.CreateAuthenticatedClient("custody-issuer");
+        var approver = factory.CreateAuthenticatedClient("custody-approver");
+
+        var createWeapon = await issuer.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/weapons", new
+        {
+            weaponTypeId,
+            internalAssetCode = $"LIF-{Guid.NewGuid():N}"[..16],
+            serialNumber = $"SN-{Guid.NewGuid():N}",
+            caliber = "9mm",
+            currentArmoryLocationId = armoryId,
+            currentStatus = WeaponStatus.InArmory,
+            condition = WeaponCondition.Serviceable,
+            criticality = WeaponCriticality.High,
+            sourceReference = "lifecycle"
+        });
+        createWeapon.EnsureSuccessStatusCode();
+        var weapon = await createWeapon.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
+        Assert.NotNull(weapon);
+
+        var createTx = await issuer.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions", new
+        {
+            weaponAssetId = weapon!.Id,
+            transactionType = CustodyTransactionType.TransferBetweenArmories,
+            toCustodyType = CustodyLocationType.Armory,
+            toCustodyReferenceId = armoryBId,
+            purposeCode = "TRANSFER",
+            reason = "نقل اختبار دورة العهدة"
+        });
+        createTx.EnsureSuccessStatusCode();
+        var createdTx = await createTx.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
+        Assert.NotNull(createdTx);
+
+        await TransitionAsync(approver, createdTx!.Id, "approve");
+        await TransitionAsync(issuer, createdTx.Id, "handover");
+        await TransitionAsync(issuer, createdTx.Id, "receive");
+        await TransitionAsync(issuer, createdTx.Id, "complete");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var transaction = await db.CustodyTransactions.AsNoTracking().SingleAsync(t => t.Id == createdTx.Id);
+            var storedWeapon = await db.WeaponAssets.AsNoTracking().SingleAsync(w => w.Id == weapon.Id);
+            Assert.Equal(CustodyTransactionStatus.Completed, transaction.Status);
+            Assert.True(transaction.IsCurrent);
+            Assert.Equal(weapon.Id, storedWeapon.Id);
+            Assert.Equal(WeaponStatus.InArmory, storedWeapon.CurrentStatus);
+            Assert.Equal(createdTx.Id, storedWeapon.CurrentCustodyTransactionId);
+            Assert.Equal(CustodyLocationType.Armory, storedWeapon.CurrentCustodyLocationType);
+            Assert.Equal(armoryBId, storedWeapon.CurrentArmoryLocationId);
+            Assert.Null(storedWeapon.CurrentFacilityUnitId);
+            Assert.Equal(armoryId, transaction.FromCustodyReferenceId);
+            Assert.True(transaction.PreviousTransactionId is null);
+        }
+
+        var reverseForbidden = await issuer.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions/{createdTx.Id}/reverse",
+            new { rowVersion = await GetTransactionRowVersionAsync(issuer, createdTx.Id), reason = "عكس غير مصرح" });
+        // issuer has Approve? ArmamentOfficer does NOT have ApproveTransactions - should 403
+        Assert.Equal(HttpStatusCode.Forbidden, reverseForbidden.StatusCode);
+
+        await TransitionAsync(approver, createdTx.Id, "reverse");
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var transaction = await db.CustodyTransactions.AsNoTracking().SingleAsync(t => t.Id == createdTx.Id);
+            var storedWeapon = await db.WeaponAssets.AsNoTracking().SingleAsync(w => w.Id == weapon.Id);
+            Assert.Equal(CustodyTransactionStatus.Reversed, transaction.Status);
+            Assert.False(transaction.IsCurrent);
+            Assert.Equal(WeaponStatus.InArmory, storedWeapon.CurrentStatus);
+            Assert.Null(storedWeapon.CurrentCustodyTransactionId);
+            Assert.Equal(CustodyLocationType.Armory, storedWeapon.CurrentCustodyLocationType);
+            Assert.Equal(armoryId, storedWeapon.CurrentArmoryLocationId);
+            Assert.Equal(0, await db.CustodyTransactions.CountAsync(t => t.WeaponAssetId == weapon.Id && t.IsCurrent && !t.IsDeleted));
+        }
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Custody_complete_requires_receive_permission_and_rejects_stale_rowversion()
+    {
+        var (weaponTypeId, armoryId) = await SeedSensitiveReferenceAsync();
+        await factory.SeedUserAsync(
+            "custody-complete-officer",
+            "ضابط تسليح",
+            [RoleCodes.ArmamentOfficer],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        await factory.SeedUserAsync(
+            "custody-complete-director",
+            "مدير سجن",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var officer = factory.CreateAuthenticatedClient("custody-complete-officer");
+        var director = factory.CreateAuthenticatedClient("custody-complete-director");
+
+        var createWeapon = await officer.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/weapons", new
+        {
+            weaponTypeId,
+            internalAssetCode = $"CMP-{Guid.NewGuid():N}"[..16],
+            serialNumber = $"SN-{Guid.NewGuid():N}",
+            caliber = "9mm",
+            currentArmoryLocationId = armoryId,
+            currentStatus = WeaponStatus.InArmory,
+            condition = WeaponCondition.Serviceable,
+            criticality = WeaponCriticality.High
+        });
+        createWeapon.EnsureSuccessStatusCode();
+        var weapon = await createWeapon.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
+
+        var createTx = await officer.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions", new
+        {
+            weaponAssetId = weapon!.Id,
+            transactionType = CustodyTransactionType.ReturnToArmory,
+            toCustodyType = CustodyLocationType.Armory,
+            toCustodyReferenceId = armoryId,
+            purposeCode = "RETURN",
+            reason = "إرجاع مباشر"
+        });
+        createTx.EnsureSuccessStatusCode();
+        var createdTx = await createTx.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
+        var rowVersion = await GetTransactionRowVersionAsync(officer, createdTx!.Id);
+
+        var forbidden = await director.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions/{createdTx.Id}/complete",
+            new { rowVersion, reason = "إكمال بدون صلاحية" });
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        var stale = await officer.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions/{createdTx.Id}/complete",
+            new { rowVersion = Convert.ToBase64String(Guid.NewGuid().ToByteArray()), reason = "إكمال بنسخة قديمة" });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+        var outOfScope = await officer.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityB1}/sensitive-custody/transactions/{createdTx.Id}/complete",
+            new { rowVersion, reason = "خارج النطاق" });
+        Assert.Equal(HttpStatusCode.NotFound, outOfScope.StatusCode);
+
+        var beforeComplete = await director.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions/{createdTx.Id}/reverse",
+            new { rowVersion = await GetTransactionRowVersionAsync(director, createdTx.Id), reason = "عكس قبل الإكمال" });
+        Assert.Equal(HttpStatusCode.Conflict, beforeComplete.StatusCode);
+
+        var complete = await officer.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions/{createdTx.Id}/complete",
+            new { rowVersion = await GetTransactionRowVersionAsync(officer, createdTx.Id), reason = "إكمال مسموح" });
+        Assert.Equal(HttpStatusCode.NoContent, complete.StatusCode);
     }
 
     [IntegrationConnectionFact]
@@ -186,6 +362,12 @@ public sealed class SensitiveCustodyIntegrationTests(OperationsIntegrationFixtur
 
     private async Task<(Guid WeaponTypeId, Guid ArmoryId)> SeedSensitiveReferenceAsync()
     {
+        var pair = await SeedSensitiveReferencePairAsync();
+        return (pair.WeaponTypeId, pair.ArmoryAId);
+    }
+
+    private async Task<(Guid WeaponTypeId, Guid ArmoryAId, Guid ArmoryBId)> SeedSensitiveReferencePairAsync()
+    {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
         var typeCode = $"WT-{Guid.NewGuid():N}"[..16];
@@ -203,7 +385,7 @@ public sealed class SensitiveCustodyIntegrationTests(OperationsIntegrationFixtur
             IsSensitive = true,
             IsActive = true
         };
-        var armory = new ArmoryLocation
+        var armoryA = new ArmoryLocation
         {
             OrganizationId = SeedIds.Organization,
             FacilityId = SeedIds.FacilityA1,
@@ -212,13 +394,60 @@ public sealed class SensitiveCustodyIntegrationTests(OperationsIntegrationFixtur
             LocationClassification = "Sensitive",
             IsActive = true
         };
+        var armoryB = new ArmoryLocation
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            Code = $"ARB-{Guid.NewGuid():N}"[..16],
+            Name = "Armory-A1-B-Test",
+            LocationClassification = "Sensitive",
+            IsActive = true
+        };
         db.WeaponTypeDefinitions.Add(weaponType);
-        db.ArmoryLocations.Add(armory);
+        db.ArmoryLocations.Add(armoryA);
+        db.ArmoryLocations.Add(armoryB);
         await db.SaveChangesAsync();
-        return (weaponType.Id, armory.Id);
+        return (weaponType.Id, armoryA.Id, armoryB.Id);
+    }
+
+    private async Task TransitionAsync(HttpClient client, Guid transactionId, string action)
+    {
+        var rowVersion = await GetTransactionRowVersionFromDbAsync(transactionId);
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions/{transactionId}/{action}",
+            new { rowVersion, reason = $"transition-{action}" });
+        if (response.StatusCode != HttpStatusCode.NoContent)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Fail($"{action} returned {(int)response.StatusCode} {response.StatusCode}: {body}");
+        }
+    }
+
+    private async Task<string> GetTransactionRowVersionAsync(HttpClient client, Guid transactionId)
+    {
+        var list = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/sensitive-custody/transactions?page=1&pageSize=100");
+        list.EnsureSuccessStatusCode();
+        var rows = await list.Content.ReadFromJsonAsync<IReadOnlyList<TransactionListItemResponse>>(JsonOptions);
+        var row = Assert.Single(rows!, item => item.Id == transactionId);
+        Assert.False(string.IsNullOrWhiteSpace(row.RowVersion));
+        return row.RowVersion;
+    }
+
+    private async Task<string> GetTransactionRowVersionFromDbAsync(Guid transactionId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var rowVersion = await db.CustodyTransactions
+            .AsNoTracking()
+            .Where(t => t.Id == transactionId)
+            .Select(t => t.RowVersion)
+            .SingleAsync();
+        return Convert.ToBase64String(rowVersion);
     }
 
     private sealed record CreateResponse(Guid Id);
 
     private sealed record WeaponListItemResponse(Guid Id, string MaskedSerial, string? FullSerial);
+
+    private sealed record TransactionListItemResponse(Guid Id, string RowVersion, CustodyTransactionStatus Status);
 }
