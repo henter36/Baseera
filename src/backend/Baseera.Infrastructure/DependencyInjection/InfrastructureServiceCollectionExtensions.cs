@@ -5,6 +5,7 @@ using Baseera.Infrastructure.Attachments;
 using Baseera.Infrastructure.Audit;
 using Baseera.Infrastructure.Identity;
 using Baseera.Infrastructure.Persistence;
+using Baseera.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +23,9 @@ public static class InfrastructureServiceCollectionExtensions
             options.AddInterceptors(new AuditImmutabilityInterceptor());
             options.AddInterceptors(sp.GetServices<Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor>());
         });
+
+        services.AddDataProtection();
+        services.AddSingleton<ISensitiveValueProtector, DataProtectionSensitiveValueProtector>();
 
         services.AddScoped<IBaseeraDbContext>(sp => sp.GetRequiredService<BaseeraDbContext>());
         services.AddHttpContextAccessor();

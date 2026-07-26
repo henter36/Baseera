@@ -67,32 +67,40 @@ public static class SensitiveCustodyOperationalCatalog
 
 public static class SensitiveSerialProtection
 {
+    public const string RedactedMask = "***-******";
+    public const string UnavailableMask = "غير متوفر";
+
+    public static string NormalizeSerial(string value) =>
+        value.Trim().ToUpperInvariant();
+
     public static string Hash(string value)
     {
-        var normalized = Normalize(value);
+        var normalized = NormalizeSerial(value);
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
         return Convert.ToHexString(bytes);
     }
 
-    public static string ProtectForStorage(string value)
+    public static string MaskPlaintext(string? plaintext)
     {
-        var hash = Hash(value);
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes($"serial-hash:{hash}"));
+        if (string.IsNullOrWhiteSpace(plaintext))
+        {
+            return UnavailableMask;
+        }
+
+        var suffix = plaintext.Length <= 4 ? plaintext : plaintext[^4..];
+        return $"***-{suffix}";
     }
 
     public static string Mask(string? serialHash)
     {
         if (string.IsNullOrWhiteSpace(serialHash))
         {
-            return "غير متوفر";
+            return UnavailableMask;
         }
 
         var suffix = serialHash.Length <= 6 ? serialHash : serialHash[^6..];
         return $"***-{suffix}";
     }
-
-    private static string Normalize(string value) =>
-        value.Trim().ToUpperInvariant();
 }
 
 public static class SensitiveCustodyReadinessPolicy
