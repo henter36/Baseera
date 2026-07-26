@@ -28,15 +28,15 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         }
         catch (UnauthorizedAccessException ex)
         {
-            await WriteProblem(context, StatusCodes.Status403Forbidden, "ممنوع", ex.Message);
+            await WriteProblemAsync(context, StatusCodes.Status403Forbidden, "ممنوع", ex.Message);
         }
         catch (KeyNotFoundException ex)
         {
-            await WriteProblem(context, StatusCodes.Status404NotFound, "غير موجود", ex.Message);
+            await WriteProblemAsync(context, StatusCodes.Status404NotFound, "غير موجود", ex.Message);
         }
         catch (ArgumentException ex)
         {
-            await WriteProblem(
+            await WriteProblemAsync(
                 context,
                 StatusCodes.Status400BadRequest,
                 "طلب غير صالح",
@@ -44,31 +44,37 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         }
         catch (WorkforceValidationException ex)
         {
-            await WriteProblem(
+            await WriteProblemAsync(
                 context,
-                StatusCodes.Status422UnprocessableEntity,
+                StatusCodes.Status400BadRequest,
                 "أخطاء تحقق",
                 ex.Message);
+        }
+        catch (OperationCanceledException)
+            when (context.RequestAborted.IsCancellationRequested)
+        {
         }
         catch (Baseera.Application.Forms.Responses.FormResponseConflictException ex)
         {
             context.Response.StatusCode = StatusCodes.Status409Conflict;
-            await context.Response.WriteAsJsonAsync(ex.Payload);
+            await context.Response.WriteAsJsonAsync(ex.Payload, context.RequestAborted);
         }
         catch (Baseera.Application.Forms.Responses.FormResponseValidationException ex)
         {
             context.Response.StatusCode = StatusCodes.Status422UnprocessableEntity;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                type = "about:blank",
-                title = "أخطاء تحقق",
-                status = 422,
-                issues = ex.Issues
-            });
+            await context.Response.WriteAsJsonAsync(
+                new
+                {
+                    type = "about:blank",
+                    title = "أخطاء تحقق",
+                    status = StatusCodes.Status422UnprocessableEntity,
+                    issues = ex.Issues
+                },
+                context.RequestAborted);
         }
         catch (InvalidOperationException ex)
         {
-            await WriteProblem(context, StatusCodes.Status409Conflict, "تعارض", ex.Message);
+            await WriteProblemAsync(context, StatusCodes.Status409Conflict, "تعارض", ex.Message);
         }
         catch (FluentValidation.ValidationException ex)
         {
@@ -76,31 +82,35 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 .GroupBy(e => e.PropertyName)
                 .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title = "خطأ في التحقق",
-                status = 400,
-                errors
-            });
+            await context.Response.WriteAsJsonAsync(
+                new
+                {
+                    type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    title = "خطأ في التحقق",
+                    status = StatusCodes.Status400BadRequest,
+                    errors
+                },
+                context.RequestAborted);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled exception");
-            await WriteProblem(context, StatusCodes.Status500InternalServerError, "خطأ داخلي", "حدث خطأ غير متوقع.");
+            await WriteProblemAsync(context, StatusCodes.Status500InternalServerError, "خطأ داخلي", "حدث خطأ غير متوقع.");
         }
     }
 
-    private static async Task WriteProblem(HttpContext context, int status, string title, string detail)
+    private static Task WriteProblemAsync(HttpContext context, int status, string title, string detail)
     {
         context.Response.StatusCode = status;
-        await context.Response.WriteAsJsonAsync(new
-        {
-            type = "about:blank",
-            title,
-            status,
-            detail
-        });
+        return context.Response.WriteAsJsonAsync(
+            new
+            {
+                type = "about:blank",
+                title,
+                status,
+                detail
+            },
+            context.RequestAborted);
     }
 }
 
@@ -125,12 +135,14 @@ public sealed class ProvisionedUserMiddleware(RequestDelegate next)
         if (context.User.Identity?.IsAuthenticated == true && !currentUser.IsAuthenticated)
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new
-            {
-                title = "غير مصرح",
-                detail = "الحساب غير مُفعّل أو غير مُهيّأ في المنصة.",
-                status = 403
-            });
+            await context.Response.WriteAsJsonAsync(
+                new
+                {
+                    title = "غير مصرح",
+                    detail = "الحساب غير مُفعّل أو غير مُهيّأ في المنصة.",
+                    status = StatusCodes.Status403Forbidden
+                },
+                context.RequestAborted);
             return;
         }
 
