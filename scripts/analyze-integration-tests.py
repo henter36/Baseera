@@ -25,11 +25,11 @@ def extract_tests() -> list[TestMethod]:
     tests: list[TestMethod] = []
     method_pattern = re.compile(
         r"\[(?:IntegrationConnectionFact|Fact|Theory)[^\]]*\]\s+"
-        r"public\s+(?:async\s+)?(?:Task|void)\s+([A-Za-z0-9_]+)\s*\(",
+        r"public\s+(?:async\s+)?(?:Task|void)\s+(\w+)\s*\(",
         re.MULTILINE,
     )
     endpoint_pattern = re.compile(r'"(/api/v1/[^"\s{}]+)')
-    status_pattern = re.compile(r"HttpStatusCode\.([A-Za-z0-9_]+)")
+    status_pattern = re.compile(r"HttpStatusCode\.(\w+)")
 
     for path in sorted(TEST_ROOT.glob("*.cs")):
         text = path.read_text(encoding="utf-8")
