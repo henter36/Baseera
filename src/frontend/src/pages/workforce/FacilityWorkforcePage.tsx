@@ -19,7 +19,7 @@ import {
   type WorkforceImportResult,
   type WorkforceMemberListItem,
   type WorkforceMemberUpdateRequest,
-  type WorkforceQualificationPayload,
+  type WorkforceQualificationListItem,
   type WorkforceReconciliationItem,
   type WorkforceRoleDefinitionPayload,
   type WorkforceSummaryPayload,
@@ -80,6 +80,15 @@ function sectionFromSearch(searchParams: URLSearchParams): WorkforceSection {
   return SECTION_NAV.some((item) => item.key === section) ? section as WorkforceSection : 'overview'
 }
 
+async function optionalPart<T>(name: string, loader: () => Promise<T>, fallback: T, failures: string[]) {
+  try {
+    return await loader()
+  } catch {
+    failures.push(name)
+    return fallback
+  }
+}
+
 export function FacilityWorkforcePage() {
   const { facilityId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -103,35 +112,37 @@ export function FacilityWorkforcePage() {
   const query = useQuery({
     queryKey: ['workforce-admin', facilityId, canViewCoverage, canViewMembers, canReconcile],
     queryFn: async () => {
-      const [summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation] = await Promise.all([
-        api.workforce.summary(facilityId!),
-        canViewCoverage ? api.workforce.coverage(facilityId!) : Promise.resolve([] as WorkforceCoverageRowPayload[]),
-        canViewCoverage ? api.workforce.units(facilityId!) : Promise.resolve([] as WorkforceUnitCoveragePayload[]),
-        canViewMembers ? api.workforce.roles(facilityId!) : Promise.resolve([] as WorkforceRoleDefinitionPayload[]),
-        canViewMembers ? api.workforce.members(facilityId!, { pageSize: 50 }) : Promise.resolve([] as WorkforceMemberListItem[]),
-        canViewCoverage ? api.workforce.requirements(facilityId!) : Promise.resolve([] as StaffingRequirementPayload[]),
-        canViewCoverage ? api.workforce.rosters(facilityId!) : Promise.resolve([] as DutyRosterPayload[]),
-        api.workforce.dataQuality(facilityId!),
-        canViewCoverage ? api.workforce.criticalPositions(facilityId!) : Promise.resolve([] as WorkforceCriticalPosition[]),
-        canReconcile ? api.workforce.reconciliation(facilityId!, { page: 1, pageSize: 50 }) : Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 50 }),
+      const partialFailures: string[] = []
+      const summary = await api.workforce.summary(facilityId!)
+      const [coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation] = await Promise.all([
+        optionalPart('coverage', () => canViewCoverage ? api.workforce.coverage(facilityId!) : Promise.resolve([]), [] as WorkforceCoverageRowPayload[], partialFailures),
+        optionalPart('units', () => canViewCoverage ? api.workforce.units(facilityId!) : Promise.resolve([]), [] as WorkforceUnitCoveragePayload[], partialFailures),
+        optionalPart('roles', () => canViewMembers ? api.workforce.roles(facilityId!) : Promise.resolve([]), [] as WorkforceRoleDefinitionPayload[], partialFailures),
+        optionalPart('members', () => canViewMembers ? api.workforce.members(facilityId!, { pageSize: 50 }) : Promise.resolve([]), [] as WorkforceMemberListItem[], partialFailures),
+        optionalPart('requirements', () => canViewCoverage ? api.workforce.requirements(facilityId!) : Promise.resolve([]), [] as StaffingRequirementPayload[], partialFailures),
+        optionalPart('rosters', () => canViewCoverage ? api.workforce.rosters(facilityId!) : Promise.resolve([]), [] as DutyRosterPayload[], partialFailures),
+        optionalPart('data-quality', () => api.workforce.dataQuality(facilityId!), {
+          totalMembers: summary.totalMembers,
+          missingEmployeeNumber: summary.missingDataRecords,
+          unknownEmploymentStatus: 0,
+          missingHomeOrOperationalFacility: 0,
+          staleVerification: summary.staleRecords,
+          openImportIssues: 0,
+          warnings: summary.warnings,
+          issues: [],
+        } as WorkforceDataQualityPayload, partialFailures),
+        optionalPart('critical-positions', () => canViewCoverage ? api.workforce.criticalPositions(facilityId!) : Promise.resolve([]), [] as WorkforceCriticalPosition[], partialFailures),
+        optionalPart('reconciliation', () => canReconcile ? api.workforce.reconciliation(facilityId!, { page: 1, pageSize: 50 }) : Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 50 }), { items: [], totalCount: 0, page: 1, pageSize: 50 }, partialFailures),
       ])
-      return { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation }
+      return { summary, coverage, units, roles, members, requirements, rosters, dataQuality, criticalPositions, reconciliation, partialFailures }
     },
     enabled: canView && Boolean(facilityId),
   })
 
   const qualificationsQuery = useQuery({
-    queryKey: ['workforce-qualifications', facilityId, query.data?.members.map((m) => m.id).join(',')],
-    queryFn: async () => {
-      const members = query.data?.members ?? []
-      const details = await Promise.all(members.slice(0, 30).map((member) => api.workforce.member(facilityId!, member.id)))
-      return details.flatMap((detail) => detail.qualifications.map((qualification) => ({
-        ...qualification,
-        memberId: detail.member.id,
-        memberDisplayName: detail.member.displayName,
-      })))
-    },
-    enabled: canViewMembers && activeSection === 'qualifications' && Boolean(facilityId) && Boolean(query.data),
+    queryKey: ['workforce-qualifications', facilityId],
+    queryFn: async () => (await api.workforce.qualifications(facilityId!, { page: 1, pageSize: 100 })).items,
+    enabled: canViewMembers && activeSection === 'qualifications' && Boolean(facilityId),
   })
 
   const importPreviewMutation = useMutation({
@@ -270,6 +281,9 @@ export function FacilityWorkforcePage() {
       {message && <output className="context-action-note" aria-live="polite">{message}</output>}
       {error && <p className="context-action-note" role="alert">{error}</p>}
       {exportNote && <p className="context-action-note" data-testid="export-redaction-note">{exportNote}</p>}
+      {query.data.partialFailures.length > 0 && (
+        <p className="context-action-note" role="status">تعذر تحميل بعض أجزاء المركز، وتبقى البيانات المتاحة ظاهرة.</p>
+      )}
 
       <nav className="command-section-nav" aria-label="تنقل مركز القوى البشرية">
         {SECTION_NAV.map(({ key, label }) => (
@@ -604,7 +618,7 @@ function MemberEditForm({
       </label>
       <label>معرّف الوحدة<input name="currentOperationalUnitId" defaultValue={member.currentOperationalUnitId ?? ''} /></label>
       <label><input type="checkbox" name="isOperational" defaultChecked={member.isOperational} /> تشغيلي</label>
-      <label><input type="checkbox" name="isSensitiveRole" /> دور حساس</label>
+      <label><input type="checkbox" name="isSensitiveRole" defaultChecked={member.isSensitiveRole} /> دور حساس</label>
       <div className="inline-action-row">
         <button type="submit" className="command-button primary" disabled={pending}>{pending ? 'جار الحفظ...' : 'حفظ'}</button>
         <button type="button" className="command-button ghost" onClick={onCancel}>إلغاء</button>
@@ -617,7 +631,7 @@ function QualificationsSection({
   items,
   loading,
 }: Readonly<{
-  items: Array<WorkforceQualificationPayload & { memberId: string; memberDisplayName: string }>
+  items: WorkforceQualificationListItem[]
   loading: boolean
 }>) {
   if (loading) return <WorkspaceLoading />
@@ -808,9 +822,9 @@ function WorkforceImportForm({
           sourceSystem: getFormString(data, 'sourceSystem').trim(),
           sourceReference: getFormString(data, 'sourceReference').trim(),
           fileHash: getFormString(data, 'fileHash').trim(),
-          rows: [{
-            employeeNumber: getFormString(data, 'employeeNumber').trim(),
-            displayName: getFormString(data, 'displayName').trim(),
+        rows: [{
+          employeeNumber: getFormString(data, 'employeeNumber').trim(),
+          displayName: getFormString(data, 'displayName').trim(),
             externalPersonnelId: getOptionalFormString(data, 'externalPersonnelId'),
             employmentStatus: EmploymentStatus.Active,
             jobTitle: getFormString(data, 'jobTitle').trim(),
@@ -829,14 +843,14 @@ function WorkforceImportForm({
             ))}
           </select>
         </label>
-        <label>النظام المصدر<input name="sourceSystem" required defaultValue="manual-csv" /></label>
-        <label>مرجع الاستيراد<input name="sourceReference" required defaultValue="D5-1-demo-import" /></label>
-        <label>بصمة الملف<input name="fileHash" required defaultValue="phase-d5-1-demo-hash" /></label>
-        <label>رقم الموظف<input name="employeeNumber" required defaultValue={`EMP-${Date.now().toString().slice(-6)}`} /></label>
-        <label>الاسم المعروض<input name="displayName" required defaultValue="ناصر الدوسري" /></label>
-        <label>المعرّف الخارجي<input name="externalPersonnelId" /></label>
-        <label>المسمى الوظيفي<input name="jobTitle" required defaultValue="ضابط أمن" /></label>
-        <label>التخصص الأساسي<input name="primarySpecialty" required defaultValue="أمن" /></label>
+      <label>النظام المصدر<input name="sourceSystem" required /></label>
+      <label>مرجع الاستيراد<input name="sourceReference" required /></label>
+      <label>بصمة الملف<input name="fileHash" required /></label>
+      <label>رقم الموظف<input name="employeeNumber" required /></label>
+      <label>الاسم المعروض<input name="displayName" required /></label>
+      <label>المعرّف الخارجي<input name="externalPersonnelId" /></label>
+      <label>المسمى الوظيفي<input name="jobTitle" required /></label>
+      <label>التخصص الأساسي<input name="primarySpecialty" required /></label>
         <label>معرّف الوحدة التشغيلية<input name="currentOperationalUnitId" /></label>
         <input type="hidden" name="sourceType" value={WorkforceSourceType.Import} />
         <button type="submit" className="command-button" disabled={pending}>{pending ? 'جار المعاينة...' : 'معاينة الاستيراد'}</button>

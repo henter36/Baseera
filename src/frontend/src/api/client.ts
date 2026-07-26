@@ -1588,6 +1588,7 @@ export type WorkforceMemberListItem = {
   currentOperationalUnitId?: string | null
   currentOperationalUnitNameAr?: string | null
   isOperational: boolean
+  isSensitiveRole: boolean
   lastVerifiedAtUtc?: string | null
   rowVersion?: string | null
   dataQualityIssues: string[]
@@ -1612,6 +1613,19 @@ export type WorkforceQualificationPayload = {
   name: string
   expiresAtUtc?: string | null
   status: QualificationStatus
+}
+
+export type WorkforceQualificationListItem = WorkforceQualificationPayload & {
+  memberId: string
+  memberDisplayName: string
+  roleCode?: string | null
+}
+
+export type WorkforceQualificationList = {
+  items: WorkforceQualificationListItem[]
+  totalCount: number
+  page: number
+  pageSize: number
 }
 
 export type WorkforceAvailabilityPayload = {
@@ -3193,6 +3207,8 @@ export const api = {
       postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/assignments`, body),
     createQualification: (facilityId: string, body: WorkforceQualificationRequest) =>
       postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/workforce/qualifications`, body),
+    qualifications: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<WorkforceQualificationList>(`/api/v1/facilities/${facilityId}/workforce/qualifications?${buildSimpleQuery(filters)}`),
     requirements: (facilityId: string) =>
       request<StaffingRequirementPayload[]>(`/api/v1/facilities/${facilityId}/workforce/requirements`),
     createRequirement: (facilityId: string, body: StaffingRequirementRequest) =>

@@ -17,6 +17,7 @@ const {
   importPreview,
   member,
   members,
+  qualifications,
   reconciliation,
   requirements,
   resolveReconciliation,
@@ -36,6 +37,7 @@ const {
   importPreview: vi.fn(),
   member: vi.fn(),
   members: vi.fn(),
+  qualifications: vi.fn(),
   reconciliation: vi.fn(),
   requirements: vi.fn(),
   resolveReconciliation: vi.fn(),
@@ -63,6 +65,7 @@ vi.mock('../../api/client', async () => {
         units,
         roles,
         members,
+        qualifications,
         member,
         updateMember,
         requirements,
@@ -180,6 +183,7 @@ describe('FacilityWorkforcePage', () => {
       currentOperationalUnitId: 'unit-1',
       currentOperationalUnitNameAr: 'عنبر أ',
       isOperational: true,
+      isSensitiveRole: true,
       lastVerifiedAtUtc: '2026-07-25T09:00:00.000Z',
       rowVersion: 'AQID',
       dataQualityIssues: [],
@@ -193,6 +197,7 @@ describe('FacilityWorkforcePage', () => {
         jobTitle: 'ضابط أمن',
         primarySpecialty: 'أمن',
         isOperational: true,
+        isSensitiveRole: true,
         dataQualityIssues: [],
       },
       assignments: [],
@@ -204,6 +209,22 @@ describe('FacilityWorkforcePage', () => {
         status: 0,
       }],
       availability: [],
+    })
+    qualifications.mockResolvedValue({
+      items: [{
+        id: 'qual-1',
+        memberId: 'member-1',
+        memberDisplayName: 'ناصر الدوسري',
+        qualificationType: 0,
+        roleDefinitionId: 'role-tower',
+        roleCode: 'TOWER',
+        name: 'رخصة برج',
+        expiresAtUtc: '2026-08-01T00:00:00.000Z',
+        status: 0,
+      }],
+      totalCount: 1,
+      page: 1,
+      pageSize: 100,
     })
     requirements.mockResolvedValue([{
       id: 'req-1',
@@ -346,15 +367,20 @@ describe('FacilityWorkforcePage', () => {
 
     const importForm = await screen.findByRole('form', { name: 'معاينة استيراد القوى البشرية' })
     await user.selectOptions(within(importForm).getByLabelText('نوع الاستيراد'), String(WorkforceImportKind.Qualifications))
-    await user.clear(within(importForm).getByLabelText('رقم الموظف'))
+    await user.type(within(importForm).getByLabelText('النظام المصدر'), 'manual-csv')
+    await user.type(within(importForm).getByLabelText('مرجع الاستيراد'), 'D5-1-test-import')
+    await user.type(within(importForm).getByLabelText('بصمة الملف'), 'phase-d5-1-test-hash')
     await user.type(within(importForm).getByLabelText('رقم الموظف'), 'IMP-A1-001')
+    await user.type(within(importForm).getByLabelText('الاسم المعروض'), 'ناصر الدوسري')
+    await user.type(within(importForm).getByLabelText('المسمى الوظيفي'), 'ضابط أمن')
+    await user.type(within(importForm).getByLabelText('التخصص الأساسي'), 'أمن')
     await user.click(within(importForm).getByRole('button', { name: 'معاينة الاستيراد' }))
 
     await waitFor(() => expect(importPreview).toHaveBeenCalledWith('facility-a', expect.objectContaining({
       importKind: WorkforceImportKind.Qualifications,
       sourceSystem: 'manual-csv',
-      sourceReference: 'D5-1-demo-import',
-      fileHash: 'phase-d5-1-demo-hash',
+      sourceReference: 'D5-1-test-import',
+      fileHash: 'phase-d5-1-test-hash',
       rows: [expect.objectContaining({
         employeeNumber: 'IMP-A1-001',
         displayName: 'ناصر الدوسري',
@@ -387,6 +413,7 @@ describe('FacilityWorkforcePage', () => {
       primarySpecialty: 'أمن',
       rowVersion: 'AQID',
       isOperational: true,
+      isSensitiveRole: true,
     })))
   })
 

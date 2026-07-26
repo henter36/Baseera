@@ -40,12 +40,12 @@ The script:
 1. Serves `docs/screenshots/phase-d5-1/harness.html` (RTL Arabic command center: dark/teal strip, coverage rail, shift rows, unit heat, panels).
 2. Uses Playwright Chromium via `npx playwright` (`dir=rtl`, hash routes).
 3. Writes PNGs under `docs/screenshots/phase-d5-1/` and rejects any file &lt; 5KB.
-4. Syncs a copy to `src/frontend/public/workforce-screenshot-harness.html` for optional Vite preview.
+4. Keeps the harness under `docs/screenshots/phase-d5-1` so it never ships in the production Vite build.
 
 Optional: open the harness directly while `npm run dev` is running:
 
 ```text
-http://localhost:5173/workforce-screenshot-harness.html#overview
+docs/screenshots/phase-d5-1/harness.html#overview
 ```
 
 Auth note: full React pages require API + session (`VITE_AUTH_MODE=test`). The harness is the repeatable offline path; frontend Vitest covers React behavior with mocked APIs.

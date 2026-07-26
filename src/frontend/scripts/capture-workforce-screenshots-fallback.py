@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from PIL import Image, ImageDraw, ImageFont
 
-OUT = os.path.join(os.path.dirname(__file__), '../../../../docs/screenshots/phase-d5-1')
+OUT = os.path.join(os.path.dirname(__file__), '../../../docs/screenshots/phase-d5-1')
 OUT = os.path.abspath(OUT)
 
 BG = (238, 242, 239)

@@ -9,7 +9,7 @@
  */
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
-import { readFile, mkdir, access, stat, copyFile } from 'node:fs/promises'
+import { readFile, mkdir, access, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -18,7 +18,6 @@ const frontendRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(frontendRoot, '../..')
 const outDir = path.join(repoRoot, 'docs/screenshots/phase-d5-1')
 const harnessPath = path.join(outDir, 'harness.html')
-const publicHarnessPath = path.join(frontendRoot, 'public/workforce-screenshot-harness.html')
 
 const CAPTURES = [
   { file: 'desktop-overview.png', scene: 'overview', width: 1440, height: 1000 },
@@ -51,6 +50,7 @@ function run(cmd, args, cwd) {
       shell: process.platform === 'win32',
     })
     child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}`))))
+    child.on('error', reject)
   })
 }
 
@@ -114,7 +114,13 @@ async function startStaticServer() {
     })
     res.end(html)
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject)
+      resolve()
+    })
+  })
   const { port } = server.address()
   return { server, baseUrl: `http://127.0.0.1:${port}/` }
 }
@@ -122,12 +128,6 @@ async function startStaticServer() {
 async function main() {
   await access(harnessPath)
   await mkdir(outDir, { recursive: true })
-  try {
-    await mkdir(path.dirname(publicHarnessPath), { recursive: true })
-    await copyFile(harnessPath, publicHarnessPath)
-  } catch (error) {
-    console.warn('Could not sync public harness copy:', error.message)
-  }
 
   await ensurePlaywright()
   const { chromium } = await import('playwright')
