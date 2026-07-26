@@ -5,6 +5,8 @@ using Baseera.Domain.Identity;
 using Baseera.Domain.SensitiveCustody;
 using Baseera.Domain.Workforce;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
 
 public interface ISensitiveCustodyReadinessService
 {
@@ -32,6 +34,7 @@ public interface ICustodyTransactionService
     Task ApproveAsync(Guid facilityId, Guid transactionId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken);
     Task HandoverAsync(Guid facilityId, Guid transactionId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken);
     Task ReceiveAsync(Guid facilityId, Guid transactionId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken);
+    Task CompleteAsync(Guid facilityId, Guid transactionId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken);
     Task ReverseAsync(Guid facilityId, Guid transactionId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken);
 }
 
@@ -87,6 +90,8 @@ public sealed class SensitiveCustodyService(
     IOrganizationalScopeService scope,
     ICurrentUser currentUser,
     IAuditService audit,
+    ISensitiveValueProtector sensitiveValueProtector,
+    ILogger<SensitiveCustodyService> logger,
     TimeProvider timeProvider)
     : ISensitiveCustodyReadinessService,
       IWeaponAssetQueryService,
@@ -102,6 +107,12 @@ public sealed class SensitiveCustodyService(
     private const string MissingPermissionMessage = "لا تملك الصلاحية المطلوبة.";
     private const string FacilityNotFoundMessage = "السجن غير موجود.";
     private const string SensitiveModule = "SensitiveCustody";
+    private const string SeverityCritical = "Critical";
+    private const string SeverityHigh = "High";
+    private const string SeverityMedium = "Medium";
+    private const string WeaponAssetEntityType = "WeaponAsset";
+    private const string WeaponAssetsSource = "WeaponAssets";
+    private const string RecordInspectionActionAr = "تسجيل فحص";
     private readonly SensitiveCustodyOptions options = new();
 
     public async Task<SensitiveCustodyWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, CancellationToken cancellationToken)
@@ -175,24 +186,11 @@ public sealed class SensitiveCustodyService(
                 && e.ResolvedAtUtc == null,
                 cancellationToken);
 
-        var ammunition = await db.AmmunitionLots
-            .AsNoTracking()
-            .Where(lot => !lot.IsDeleted && lot.FacilityId == facilityId)
-            .Select(lot => new
-            {
-                Available = lot.CurrentQuantity - lot.ReservedQuantity - lot.QuarantinedQuantity - lot.DamagedQuantity
-            })
-            .ToListAsync(cancellationToken);
-        var availableAmmunition = ammunition.Sum(a => Math.Max(0, a.Available));
-
-        var minimumAmmunition = await ActiveRequirements(facilityId, now)
-            .Where(r => r.AmmunitionTypeId != null)
-            .SumAsync(r => (int?)r.MinimumOperationalQuantity, cancellationToken) ?? 0;
-
+        var ammunitionMetrics = await LoadAmmunitionMetricsAsync(facilityId, now, cancellationToken);
         var lastInventory = await db.InventorySessions
             .AsNoTracking()
             .Where(s => !s.IsDeleted && s.FacilityId == facilityId && s.Status == InventoryStatus.Approved)
-            .MaxAsync(s => (DateTimeOffset?)s.CompletedAtUtc, cancellationToken);
+            .MaxAsync(s => s.CompletedAtUtc, cancellationToken);
 
         return new SensitiveCustodySummaryDto
         {
@@ -210,9 +208,9 @@ public sealed class SensitiveCustodyService(
             DueInspections = weaponCounts.DueInspections,
             OpenDiscrepancies = openDiscrepancies,
             PendingApprovals = pendingApprovals,
-            AvailableAmmunition = availableAmmunition,
-            MinimumAmmunition = minimumAmmunition,
-            AmmunitionGap = Math.Max(0, minimumAmmunition - availableAmmunition),
+            AvailableAmmunition = ammunitionMetrics.Available,
+            MinimumAmmunition = ammunitionMetrics.Minimum,
+            AmmunitionGap = Math.Max(0, ammunitionMetrics.Minimum - ammunitionMetrics.Available),
             StaleRecords = weaponCounts.Stale,
             ReadinessRate = SensitiveCustodyReadinessPolicy.Rate(weaponCounts.Operational, weaponCounts.Total),
             VerificationCoverage = SensitiveCustodyReadinessPolicy.Rate(weaponCounts.Verified, weaponCounts.Total),
@@ -221,6 +219,26 @@ public sealed class SensitiveCustodyService(
             LastInventoryAtUtc = lastInventory,
             GeneratedAtUtc = now
         };
+    }
+
+    private async Task<(int Available, int Minimum)> LoadAmmunitionMetricsAsync(
+        Guid facilityId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var ammunition = await db.AmmunitionLots
+            .AsNoTracking()
+            .Where(lot => !lot.IsDeleted && lot.FacilityId == facilityId)
+            .Select(lot => new
+            {
+                Available = lot.CurrentQuantity - lot.ReservedQuantity - lot.QuarantinedQuantity - lot.DamagedQuantity
+            })
+            .ToListAsync(cancellationToken);
+        var availableAmmunition = ammunition.Sum(a => Math.Max(0, a.Available));
+        var minimumAmmunition = await ActiveRequirements(facilityId, now)
+            .Where(r => r.AmmunitionTypeId != null)
+            .SumAsync(r => (int?)r.MinimumOperationalQuantity, cancellationToken) ?? 0;
+        return (availableAmmunition, minimumAmmunition);
     }
 
     public async Task<IReadOnlyList<WeaponAssetListItemDto>> ListWeaponsAsync(
@@ -232,22 +250,30 @@ public sealed class SensitiveCustodyService(
         Require(PermissionCodes.SensitiveCustodyViewWeapons);
         await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
         var boundedPageSize = Math.Clamp(pageSize, 1, options.MaxPageSize);
+        var canViewArmory = currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewArmoryLocations);
+        var canViewSerial = currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewSerialNumbers);
         var query = WeaponsInFacility(facilityId);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
-            query = query.Where(w => w.InternalAssetCode.Contains(term));
+            if (canViewSerial)
+            {
+                var serialHash = SensitiveSerialProtection.Hash(term);
+                query = query.Where(w => w.InternalAssetCode.Contains(term) || w.SerialNumberHash == serialHash);
+            }
+            else
+            {
+                query = query.Where(w => w.InternalAssetCode.Contains(term));
+            }
         }
 
-        var canViewArmory = currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewArmoryLocations);
-        var canViewSerial = currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewSerialNumbers);
         var rows = await query
             .OrderBy(w => w.InternalAssetCode)
             .Take(boundedPageSize)
             .Select(w => new WeaponProjectionRow(
                 w.Id,
                 w.InternalAssetCode,
-                w.SerialNumberEncrypted,
+                canViewSerial ? w.SerialNumberEncrypted : null,
                 w.SerialNumberHash,
                 w.WeaponType.NameAr,
                 w.Caliber,
@@ -275,7 +301,7 @@ public sealed class SensitiveCustodyService(
             .Select(w => new WeaponProjectionRow(
                 w.Id,
                 w.InternalAssetCode,
-                w.SerialNumberEncrypted,
+                canViewSerial ? w.SerialNumberEncrypted : null,
                 w.SerialNumberHash,
                 w.WeaponType.NameAr,
                 w.Caliber,
@@ -357,12 +383,13 @@ public sealed class SensitiveCustodyService(
             throw new InvalidOperationException("يوجد سلاح بنفس رقم السجل المحمي.");
         }
 
+        var normalizedSerial = SensitiveSerialProtection.NormalizeSerial(request.SerialNumber);
         var weapon = new WeaponAsset
         {
             OrganizationId = facility.Region.OrganizationId,
             WeaponTypeId = request.WeaponTypeId,
             InternalAssetCode = request.InternalAssetCode.Trim(),
-            SerialNumberEncrypted = SensitiveSerialProtection.ProtectForStorage(request.SerialNumber),
+            SerialNumberEncrypted = sensitiveValueProtector.Protect(normalizedSerial),
             SerialNumberHash = serialHash,
             Manufacturer = request.Manufacturer,
             Model = request.Model,
@@ -443,6 +470,7 @@ public sealed class SensitiveCustodyService(
         }
 
         await EnsureDestinationEligibleAsync(facilityId, request, cancellationToken);
+        var snapshot = await LoadCurrentCustodySnapshotAsync(weapon, cancellationToken);
         var now = timeProvider.GetUtcNow();
         var requiresApproval = SensitiveCustodyTransactionPolicy.RequiresApproval(request.TransactionType);
         var transaction = new CustodyTransaction
@@ -451,8 +479,8 @@ public sealed class SensitiveCustodyService(
             FacilityId = facilityId,
             WeaponAssetId = weapon.Id,
             TransactionType = request.TransactionType,
-            FromCustodyType = weapon.CurrentCustodyLocationType,
-            FromCustodyReferenceId = weapon.CurrentCustodyTransactionId,
+            FromCustodyType = snapshot.LocationType,
+            FromCustodyReferenceId = snapshot.LocationReferenceId,
             ToCustodyType = request.ToCustodyType,
             ToCustodyReferenceId = request.ToCustodyReferenceId,
             IssuedAtUtc = now,
@@ -460,7 +488,12 @@ public sealed class SensitiveCustodyService(
             PurposeCode = request.PurposeCode.Trim(),
             Reason = request.Reason.Trim(),
             CreatedBy = ActorReference(),
-            Status = requiresApproval ? CustodyTransactionStatus.PendingApproval : CustodyTransactionStatus.Approved
+            Status = requiresApproval ? CustodyTransactionStatus.PendingApproval : CustodyTransactionStatus.Approved,
+            PreviousTransactionId = snapshot.TransactionId,
+            PreviousWeaponStatus = snapshot.WeaponStatus,
+            PreviousCustodyLocationType = snapshot.LocationType,
+            PreviousFacilityUnitId = weapon.CurrentFacilityUnitId,
+            PreviousArmoryLocationId = weapon.CurrentArmoryLocationId
         };
 
         db.Add(transaction);
@@ -477,6 +510,20 @@ public sealed class SensitiveCustodyService(
 
     public Task ReceiveAsync(Guid facilityId, Guid transactionId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken) =>
         TransitionAsync(facilityId, transactionId, CustodyTransactionStatus.Received, PermissionCodes.SensitiveCustodyReceiveWeapons, "CustodyReceived", request, cancellationToken);
+
+    Task ICustodyTransactionService.CompleteAsync(
+        Guid facilityId,
+        Guid transactionId,
+        SensitiveCustodyTransitionRequest request,
+        CancellationToken cancellationToken) =>
+        TransitionAsync(
+            facilityId,
+            transactionId,
+            CustodyTransactionStatus.Completed,
+            PermissionCodes.SensitiveCustodyReceiveWeapons,
+            "CustodyTransactionCompleted",
+            request,
+            cancellationToken);
 
     public Task ReverseAsync(Guid facilityId, Guid transactionId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken) =>
         TransitionAsync(facilityId, transactionId, CustodyTransactionStatus.Reversed, PermissionCodes.SensitiveCustodyApproveTransactions, "CustodyReversed", request, cancellationToken);
@@ -639,7 +686,7 @@ public sealed class SensitiveCustodyService(
         return entry.Id;
     }
 
-    public async Task CompleteAsync(Guid facilityId, Guid inventoryId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken)
+    async Task IInventorySessionService.CompleteAsync(Guid facilityId, Guid inventoryId, SensitiveCustodyTransitionRequest request, CancellationToken cancellationToken)
     {
         Require(PermissionCodes.SensitiveCustodyConductInventory);
         var session = await LoadInventoryAsync(facilityId, inventoryId, cancellationToken);
@@ -815,7 +862,7 @@ public sealed class SensitiveCustodyService(
         var interventions = new List<SensitiveCustodyInterventionDto>();
         interventions.AddRange(await WeaponInterventionsAsync(facilityId, now, cancellationToken));
         interventions.AddRange(await AmmunitionInterventionsAsync(facilityId, now, cancellationToken));
-        interventions.AddRange(await InventoryInterventionsAsync(facilityId, now, cancellationToken));
+        interventions.AddRange(await InventoryInterventionsAsync(facilityId, cancellationToken));
         return interventions
             .OrderByDescending(i => SeverityRank(i.Severity))
             .ThenBy(i => i.Code)
@@ -887,29 +934,151 @@ public sealed class SensitiveCustodyService(
             await ApplyCompletedTransactionAsync(transaction, nextStatus, cancellationToken);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new InvalidOperationException("تم تعديل السجل بواسطة مستخدم آخر.");
+        }
+        catch (DbUpdateException ex) when (IsCurrentCustodyConflict(ex))
+        {
+            throw new InvalidOperationException("يوجد بالفعل معاملة عهدة حالية لهذا السلاح.");
+        }
+
         await AuditAsync(auditAction, "CustodyTransaction", transaction.Id, cancellationToken);
     }
 
     private async Task ApplyCompletedTransactionAsync(CustodyTransaction transaction, CustodyTransactionStatus nextStatus, CancellationToken cancellationToken)
     {
         var weapon = await LoadWeaponForCommandAsync(transaction.FacilityId, transaction.WeaponAssetId, cancellationToken);
-        var previous = await db.CustodyTransactions
-            .Where(t => !t.IsDeleted && t.WeaponAssetId == transaction.WeaponAssetId && t.IsCurrent)
+        var currentRows = await db.CustodyTransactions
+            .Where(t => !t.IsDeleted && t.WeaponAssetId == transaction.WeaponAssetId && t.IsCurrent && t.Id != transaction.Id)
             .ToListAsync(cancellationToken);
-        foreach (var item in previous)
+        foreach (var item in currentRows)
         {
             item.IsCurrent = false;
         }
 
         if (nextStatus == CustodyTransactionStatus.Completed)
         {
-            transaction.IsCurrent = !SensitiveCustodyReadinessPolicy.IsFinal(SensitiveCustodyTransactionPolicy.CompletionStatus(transaction.TransactionType));
-            transaction.ReturnedAtUtc ??= transaction.TransactionType == CustodyTransactionType.ReturnToArmory ? timeProvider.GetUtcNow() : null;
-            weapon.CurrentStatus = SensitiveCustodyTransactionPolicy.CompletionStatus(transaction.TransactionType);
-            weapon.CurrentCustodyLocationType = transaction.ToCustodyType;
-            weapon.CurrentCustodyTransactionId = transaction.Id;
+            ApplyCompletedState(transaction, weapon);
+            return;
         }
+
+        await ApplyReversedStateAsync(transaction, weapon, cancellationToken);
+    }
+
+    private void ApplyCompletedState(CustodyTransaction transaction, WeaponAsset weapon)
+    {
+        var completionStatus = SensitiveCustodyTransactionPolicy.CompletionStatus(transaction.TransactionType);
+        var isFinal = SensitiveCustodyReadinessPolicy.IsFinal(completionStatus);
+        transaction.IsCurrent = !isFinal;
+        if (transaction.TransactionType == CustodyTransactionType.ReturnToArmory)
+        {
+            transaction.ReturnedAtUtc ??= timeProvider.GetUtcNow();
+        }
+
+        weapon.CurrentStatus = completionStatus;
+        weapon.CurrentCustodyTransactionId = transaction.Id;
+        ApplyWeaponLocation(weapon, transaction.ToCustodyType, transaction.ToCustodyReferenceId);
+    }
+
+    private async Task ApplyReversedStateAsync(CustodyTransaction transaction, WeaponAsset weapon, CancellationToken cancellationToken)
+    {
+        transaction.IsCurrent = false;
+        CustodyTransaction? previous = null;
+        if (transaction.PreviousTransactionId is Guid previousId)
+        {
+            previous = await db.CustodyTransactions.FirstOrDefaultAsync(
+                t => !t.IsDeleted
+                    && t.Id == previousId
+                    && t.WeaponAssetId == transaction.WeaponAssetId
+                    && t.FacilityId == transaction.FacilityId
+                    && t.OrganizationId == transaction.OrganizationId,
+                cancellationToken);
+        }
+
+        if (previous is not null)
+        {
+            previous.IsCurrent = !SensitiveCustodyReadinessPolicy.IsFinal(SensitiveCustodyTransactionPolicy.CompletionStatus(previous.TransactionType));
+            weapon.CurrentStatus = SensitiveCustodyTransactionPolicy.CompletionStatus(previous.TransactionType);
+            weapon.CurrentCustodyTransactionId = previous.Id;
+            ApplyWeaponLocation(weapon, previous.ToCustodyType, previous.ToCustodyReferenceId);
+            return;
+        }
+
+        weapon.CurrentStatus = transaction.PreviousWeaponStatus;
+        weapon.CurrentCustodyTransactionId = null;
+        ApplyWeaponLocation(
+            weapon,
+            transaction.PreviousCustodyLocationType,
+            ResolvePreviousLocationReference(transaction));
+    }
+
+    private static Guid? ResolvePreviousLocationReference(CustodyTransaction transaction) =>
+        transaction.PreviousCustodyLocationType switch
+        {
+            CustodyLocationType.Armory => transaction.PreviousArmoryLocationId,
+            CustodyLocationType.FacilityUnit => transaction.PreviousFacilityUnitId,
+            _ => transaction.FromCustodyReferenceId
+        };
+
+    private static void ApplyWeaponLocation(WeaponAsset weapon, CustodyLocationType locationType, Guid? locationReferenceId)
+    {
+        weapon.CurrentCustodyLocationType = locationType;
+        weapon.CurrentArmoryLocationId = locationType == CustodyLocationType.Armory ? locationReferenceId : null;
+        weapon.CurrentFacilityUnitId = locationType == CustodyLocationType.FacilityUnit ? locationReferenceId : null;
+    }
+
+    private async Task<CurrentCustodySnapshot> LoadCurrentCustodySnapshotAsync(WeaponAsset weapon, CancellationToken cancellationToken)
+    {
+        if (weapon.CurrentCustodyTransactionId is Guid currentTransactionId)
+        {
+            var current = await db.CustodyTransactions
+                .AsNoTracking()
+                .Where(t => !t.IsDeleted
+                    && t.Id == currentTransactionId
+                    && t.WeaponAssetId == weapon.Id
+                    && t.FacilityId == weapon.CurrentFacilityId)
+                .Select(t => new { t.ToCustodyType, t.ToCustodyReferenceId })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (current is not null)
+            {
+                return new CurrentCustodySnapshot(
+                    current.ToCustodyType,
+                    current.ToCustodyReferenceId,
+                    weapon.CurrentCustodyTransactionId,
+                    weapon.CurrentStatus);
+            }
+        }
+
+        return weapon.CurrentCustodyLocationType switch
+        {
+            CustodyLocationType.Armory => new CurrentCustodySnapshot(
+                CustodyLocationType.Armory,
+                weapon.CurrentArmoryLocationId,
+                weapon.CurrentCustodyTransactionId,
+                weapon.CurrentStatus),
+            CustodyLocationType.FacilityUnit => new CurrentCustodySnapshot(
+                CustodyLocationType.FacilityUnit,
+                weapon.CurrentFacilityUnitId,
+                weapon.CurrentCustodyTransactionId,
+                weapon.CurrentStatus),
+            _ => new CurrentCustodySnapshot(
+                weapon.CurrentCustodyLocationType,
+                null,
+                weapon.CurrentCustodyTransactionId,
+                weapon.CurrentStatus)
+        };
+    }
+
+    private static bool IsCurrentCustodyConflict(DbUpdateException exception)
+    {
+        var message = exception.InnerException?.Message ?? exception.Message;
+        return message.Contains("IX_CustodyTransactions_WeaponAssetId", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("unique", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task EnsureDestinationEligibleAsync(Guid facilityId, CustodyTransactionCreateRequest request, CancellationToken cancellationToken)
@@ -1113,25 +1282,62 @@ public sealed class SensitiveCustodyService(
     {
         if (status == WeaponStatus.Missing)
         {
-            return Intervention(SensitiveCustodyOperationalCatalog.Interventions.WeaponMissing, "Critical", $"السلاح {assetCode} مفقود.", "WeaponAsset", id, "فتح بلاغ فقد", $"weapon:{id}");
+            return Intervention(new InterventionInput(
+                SensitiveCustodyOperationalCatalog.Interventions.WeaponMissing,
+                SeverityCritical,
+                $"السلاح {assetCode} مفقود.",
+                WeaponAssetEntityType,
+                id,
+                "فتح بلاغ فقد",
+                $"weapon:{id}"));
         }
 
         if (status == WeaponStatus.UnderInvestigation)
         {
-            return Intervention(SensitiveCustodyOperationalCatalog.Interventions.WeaponUnaccountedFor, "Critical", $"السلاح {assetCode} قيد التحقيق.", "WeaponAsset", id, "متابعة التحقيق", $"weapon:{id}");
+            return Intervention(new InterventionInput(
+                SensitiveCustodyOperationalCatalog.Interventions.WeaponUnaccountedFor,
+                SeverityCritical,
+                $"السلاح {assetCode} قيد التحقيق.",
+                WeaponAssetEntityType,
+                id,
+                "متابعة التحقيق",
+                $"weapon:{id}"));
         }
 
         if (condition == WeaponCondition.Unserviceable)
         {
-            return Intervention(SensitiveCustodyOperationalCatalog.Interventions.WeaponUnserviceable, "High", $"السلاح {assetCode} غير صالح.", "WeaponAsset", id, "إرساله للصيانة", $"weapon:{id}");
+            return Intervention(new InterventionInput(
+                SensitiveCustodyOperationalCatalog.Interventions.WeaponUnserviceable,
+                SeverityHigh,
+                $"السلاح {assetCode} غير صالح.",
+                WeaponAssetEntityType,
+                id,
+                "إرساله للصيانة",
+                $"weapon:{id}"));
         }
 
         if (nextInspectionDue is not null)
         {
-            return Intervention(SensitiveCustodyOperationalCatalog.Interventions.WeaponInspectionExpired, "High", $"فحص السلاح {assetCode} مستحق.", "WeaponAsset", id, "تسجيل فحص", $"weapon:{id}", nextInspectionDue);
+            return Intervention(new InterventionInput(
+                SensitiveCustodyOperationalCatalog.Interventions.WeaponInspectionExpired,
+                SeverityHigh,
+                $"فحص السلاح {assetCode} مستحق.",
+                WeaponAssetEntityType,
+                id,
+                RecordInspectionActionAr,
+                $"weapon:{id}",
+                nextInspectionDue));
         }
 
-        return Intervention(SensitiveCustodyOperationalCatalog.Interventions.UnverifiedWeapon, "Medium", $"السلاح {assetCode} غير متحقق.", "WeaponAsset", id, "تنفيذ تحقق", $"weapon:{id}", lastVerified);
+        return Intervention(new InterventionInput(
+            SensitiveCustodyOperationalCatalog.Interventions.UnverifiedWeapon,
+            SeverityMedium,
+            $"السلاح {assetCode} غير متحقق.",
+            WeaponAssetEntityType,
+            id,
+            "تنفيذ تحقق",
+            $"weapon:{id}",
+            lastVerified));
     }
 
     private async Task<IReadOnlyList<SensitiveCustodyInterventionDto>> AmmunitionInterventionsAsync(Guid facilityId, DateTimeOffset now, CancellationToken cancellationToken)
@@ -1142,11 +1348,19 @@ public sealed class SensitiveCustodyService(
             .Select(l => new { l.Id, l.ExpiryDateUtc })
             .ToListAsync(cancellationToken);
         return expired
-            .Select(l => Intervention(SensitiveCustodyOperationalCatalog.Interventions.AmmunitionExpired, "High", "دفعة ذخيرة منتهية ما زالت متاحة.", "AmmunitionLot", l.Id, "حجر أو إتلاف", $"ammunition:{l.Id}", l.ExpiryDateUtc))
+            .Select(l => Intervention(new InterventionInput(
+                SensitiveCustodyOperationalCatalog.Interventions.AmmunitionExpired,
+                SeverityHigh,
+                "دفعة ذخيرة منتهية ما زالت متاحة.",
+                "AmmunitionLot",
+                l.Id,
+                "حجر أو إتلاف",
+                $"ammunition:{l.Id}",
+                l.ExpiryDateUtc)))
             .ToList();
     }
 
-    private async Task<IReadOnlyList<SensitiveCustodyInterventionDto>> InventoryInterventionsAsync(Guid facilityId, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SensitiveCustodyInterventionDto>> InventoryInterventionsAsync(Guid facilityId, CancellationToken cancellationToken)
     {
         var discrepancies = await db.InventoryEntries.AsNoTracking()
             .Where(e => !e.IsDeleted
@@ -1157,48 +1371,68 @@ public sealed class SensitiveCustodyService(
             .Select(e => new { e.Id, e.DiscrepancyType, e.VerifiedAtUtc })
             .ToListAsync(cancellationToken);
         return discrepancies
-            .Select(e => Intervention(SensitiveCustodyOperationalCatalog.Interventions.InventoryDiscrepancyCritical, "Critical", $"فرق جرد غير محلول: {e.DiscrepancyType}.", "InventoryEntry", e.Id, "معالجة الفرق", $"inventory-entry:{e.Id}", e.VerifiedAtUtc))
+            .Select(e => Intervention(new InterventionInput(
+                SensitiveCustodyOperationalCatalog.Interventions.InventoryDiscrepancyCritical,
+                SeverityCritical,
+                $"فرق جرد غير محلول: {e.DiscrepancyType}.",
+                "InventoryEntry",
+                e.Id,
+                "معالجة الفرق",
+                $"inventory-entry:{e.Id}",
+                e.VerifiedAtUtc)))
             .ToList();
     }
 
-    private static SensitiveCustodyInterventionDto Intervention(
-        string code,
-        string severity,
-        string reason,
-        string entityType,
-        Guid? entityId,
-        string primaryAction,
-        string drillDown,
-        DateTimeOffset? dueAt = null) =>
+    private static SensitiveCustodyInterventionDto Intervention(InterventionInput input) =>
         new()
         {
-            Code = code,
-            Severity = severity,
-            ReasonAr = reason,
-            SourceEntityType = entityType,
-            SourceEntityId = entityId,
+            Code = input.Code,
+            Severity = input.Severity,
+            ReasonAr = input.Reason,
+            SourceEntityType = input.EntityType,
+            SourceEntityId = input.EntityId,
             OwnerRole = "ArmamentOfficer",
-            DueAtUtc = dueAt,
-            PrimaryAction = primaryAction,
-            DrillDown = drillDown
+            DueAtUtc = input.DueAt,
+            PrimaryAction = input.PrimaryAction,
+            DrillDown = input.DrillDown
         };
 
     private static int SeverityRank(string severity) =>
         severity switch
         {
-            "Critical" => 4,
-            "High" => 3,
-            "Medium" => 2,
+            SeverityCritical => 4,
+            SeverityHigh => 3,
+            SeverityMedium => 2,
             _ => 1
         };
 
-    private static WeaponAssetListItemDto ToWeaponListItem(WeaponProjectionRow row, bool canViewSerial, bool canViewArmory) =>
-        new()
+    private WeaponAssetListItemDto ToWeaponListItem(WeaponProjectionRow row, bool canViewSerial, bool canViewArmory)
+    {
+        string? fullSerial = null;
+        string maskedSerial;
+        if (canViewSerial && !string.IsNullOrEmpty(row.SerialNumberEncrypted))
+        {
+            if (TryUnprotectSerial(row.SerialNumberEncrypted, out var plaintext))
+            {
+                fullSerial = plaintext;
+                maskedSerial = SensitiveSerialProtection.MaskPlaintext(plaintext);
+            }
+            else
+            {
+                maskedSerial = SensitiveSerialProtection.UnavailableMask;
+            }
+        }
+        else
+        {
+            maskedSerial = SensitiveSerialProtection.RedactedMask;
+        }
+
+        return new WeaponAssetListItemDto
         {
             Id = row.Id,
             InternalAssetCode = row.InternalAssetCode,
-            MaskedSerial = SensitiveSerialProtection.Mask(row.SerialNumberHash),
-            FullSerial = canViewSerial ? row.SerialNumberEncrypted : null,
+            MaskedSerial = maskedSerial,
+            FullSerial = fullSerial,
             TypeNameAr = row.TypeNameAr,
             Caliber = row.Caliber,
             CurrentStatus = row.CurrentStatus,
@@ -1211,6 +1445,28 @@ public sealed class SensitiveCustodyService(
             NextInspectionDueAtUtc = row.NextInspectionDueAtUtc,
             LastVerifiedAtUtc = row.LastVerifiedAtUtc
         };
+    }
+
+    private bool TryUnprotectSerial(string protectedValue, out string plaintext)
+    {
+        try
+        {
+            plaintext = sensitiveValueProtector.Unprotect(protectedValue);
+            return true;
+        }
+        catch (CryptographicException)
+        {
+            logger.LogWarning("Failed to unprotect sensitive custody serial for authorized projection.");
+            plaintext = string.Empty;
+            return false;
+        }
+        catch (FormatException)
+        {
+            logger.LogWarning("Failed to unprotect sensitive custody serial due to invalid protected value format.");
+            plaintext = string.Empty;
+            return false;
+        }
+    }
 
     private static CustodyTransactionDto ToTransactionDto(CustodyTransactionProjectionRow row) =>
         new()
@@ -1258,7 +1514,7 @@ public sealed class SensitiveCustodyService(
         new("AMMUNITION", "تسجيل حركة ذخيرة", currentUser.HasPermission(PermissionCodes.SensitiveCustodyManageAmmunition), "تحتاج صلاحية إدارة الذخيرة.")
     ];
 
-    private SensitiveCustodyImportResult ValidateImport(SensitiveCustodyImportPreviewRequest request)
+    private static SensitiveCustodyImportResult ValidateImport(SensitiveCustodyImportPreviewRequest request)
     {
         var errors = new List<string>();
         if (request.Rows.Count > 1000)
@@ -1267,10 +1523,13 @@ public sealed class SensitiveCustodyService(
         }
 
         var duplicateRows = request.Rows
-            .Where(r => !string.IsNullOrWhiteSpace(r.AssetCode))
-            .GroupBy(r => r.AssetCode!.Trim(), StringComparer.OrdinalIgnoreCase)
-            .Where(g => g.Count() > 1)
-            .Sum(g => g.Count());
+            .Select(row => row.AssetCode?.Trim())
+            .Where(assetCode => !string.IsNullOrWhiteSpace(assetCode))
+            .GroupBy(
+                assetCode => assetCode,
+                StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Sum(group => group.Count());
         var rejected = request.Rows.Count(r => string.IsNullOrWhiteSpace(r.AssetCode) && request.ImportKind == SensitiveCustodyImportKind.WeaponMaster);
         return new SensitiveCustodyImportResult(
             request.Rows.Count,
@@ -1360,7 +1619,7 @@ public sealed class SensitiveCustodyService(
     private sealed record WeaponProjectionRow(
         Guid Id,
         string InternalAssetCode,
-        string SerialNumberEncrypted,
+        string? SerialNumberEncrypted,
         string SerialNumberHash,
         string TypeNameAr,
         string Caliber,
@@ -1373,6 +1632,22 @@ public sealed class SensitiveCustodyService(
         DateTimeOffset? LastInspectionAtUtc,
         DateTimeOffset? NextInspectionDueAtUtc,
         DateTimeOffset? LastVerifiedAtUtc);
+
+    private sealed record CurrentCustodySnapshot(
+        CustodyLocationType LocationType,
+        Guid? LocationReferenceId,
+        Guid? TransactionId,
+        WeaponStatus WeaponStatus);
+
+    private sealed record InterventionInput(
+        string Code,
+        string Severity,
+        string Reason,
+        string EntityType,
+        Guid? EntityId,
+        string PrimaryAction,
+        string DrillDown,
+        DateTimeOffset? DueAt = null);
 
     private sealed record CustodyTransactionProjectionRow(
         Guid Id,

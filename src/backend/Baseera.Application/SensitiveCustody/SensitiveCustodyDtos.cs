@@ -222,7 +222,7 @@ public sealed record CustodyTransactionCreateRequest
 public sealed record SensitiveCustodyTransitionRequest
 {
     public required string RowVersion { get; init; }
-    public required string Reason { get; init; }
+    public string Reason { get; init; } = string.Empty;
 }
 
 public sealed record AmmunitionTransactionRequest

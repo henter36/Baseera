@@ -695,6 +695,17 @@ public static class ApiEndpoints
             return Results.NoContent();
         }).RequireAuthorization(AuthPolicies.SensitiveCustodyReceiveWeapons);
 
+        custody.MapPost("/transactions/{transactionId:guid}/complete", async (
+            Guid facilityId,
+            Guid transactionId,
+            SensitiveCustodyTransitionRequest request,
+            ICustodyTransactionService service,
+            CancellationToken ct) =>
+        {
+            await service.CompleteAsync(facilityId, transactionId, request, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.SensitiveCustodyReceiveWeapons);
+
         custody.MapPost("/transactions/{transactionId:guid}/reverse", async (
             Guid facilityId,
             Guid transactionId,
