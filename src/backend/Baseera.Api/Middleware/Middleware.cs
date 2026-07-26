@@ -50,9 +50,10 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 "أخطاء تحقق",
                 ex.Message);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
             when (context.RequestAborted.IsCancellationRequested)
         {
+            logger.LogDebug(ex, "Request processing was canceled by the client.");
         }
         catch (Baseera.Application.Forms.Responses.FormResponseConflictException ex)
         {
