@@ -715,13 +715,7 @@ function PanelDetail({
   }
 
   if (panel.type === 'facility-unit') {
-    if (summary && 'unitNameAr' in summary) {
-      return <OccupancyUnitPanel summary={summary} />
-    }
-    if (summary && 'unitId' in summary) {
-      return <FacilityUnitPanel summary={summary} />
-    }
-    return <DomainGapPanel type={panel.type} summary={summary} />
+    return <FacilityUnitPanelDetail panel={panel} summary={summary} />
   }
 
   if (isWorkforcePanelType(panel.type)) {
@@ -741,6 +735,24 @@ function PanelDetail({
   }
 
   return <ActivityPreviewPanel summary={summary} />
+}
+
+function FacilityUnitPanelDetail({
+  panel,
+  summary,
+}: Readonly<{
+  panel: PanelState
+  summary?: PanelSummary
+}>) {
+  if (summary && 'unitNameAr' in summary) {
+    return <OccupancyUnitPanel summary={summary} />
+  }
+
+  if (summary && 'unitId' in summary) {
+    return <FacilityUnitPanel summary={summary} />
+  }
+
+  return <DomainGapPanel type={panel.type} summary={summary} />
 }
 
 function SensitiveCustodyPreviewPanel({ type, summary, entityId }: Readonly<{ type: PanelType; summary?: PanelSummary; entityId: string }>) {
@@ -2152,7 +2164,7 @@ function sensitiveCustodyStatus(summary: SensitiveCustodyWorkspacePayload['summa
 }
 
 function sensitiveCustodyTone(payload?: SensitiveCustodyWorkspacePayload): WorkspaceVisualTone {
-  if (!payload) return domainTone(undefined)
+  if (!payload) return domainTone()
   const status = sensitiveCustodyStatus(payload.summary)
   if (status === 'partial') return 'danger'
   if (status === 'complete') return 'ok'
