@@ -2,7 +2,7 @@
 
 | المجال | الحالة الفعلية | الفجوة | الملفات | المعالجة |
 | ------ | -------------- | ------ | ------- | -------- |
-| حالة المرحلة | README وتقرير الإكمال يصفان D.5.1 كـ Not Ready / قيد التنفيذ. | Issue #133 لا يمكن إغلاقه قبل تحديث الحالة بناء على أدلة تشغيل. | `README.md`, `docs/phase-d5-1-workforce-completion-report.md` | تحديث الحالة بعد التحقق وإزالة لغة Not Ready. |
+| حالة المرحلة | قبل هذه الجولة، كان README وتقرير الإكمال يصفان D.5.1 كـ Not Ready / قيد التنفيذ. | Issue #133 لا يمكن إغلاقه قبل تحديث الحالة بناء على أدلة تشغيل. | `README.md`, `docs/phase-d5-1-workforce-completion-report.md` | تحديث الحالة بعد التحقق وإزالة لغة Not Ready الحالية. |
 | Compliance Ledger | يحتوي حالات `Implemented` و`Missing` وصفوف Screenshots/PNG كدليل قبول. | القيم لا تطابق بوابة القبول النهائية، والصور ليست دليل قبول لهذه الجولة. | `docs/phase-d5-1-workforce-compliance-ledger.md` | تحويل الصفوف إلى `Verified` أو `Not Applicable — خارج النطاق` وإزالة أدلة الصور. |
 | كتالوج التدخلات | التدخلات موجودة في `FacilityWorkspaceReadService` كسلاسل نصية موزعة. | لا يوجد عقد مركزي يثبت مفاتيح التدخلات المطلوبة أو يمنع الانحراف. | `FacilityWorkspaceReadService.cs` | إضافة `WorkforceOperationalCatalog.Interventions` واستخدامه في Workspace. |
 | جودة البيانات | API يعيد issues متعددة، لكنه يدمج الوحدة/الدور ويعيد `unknown_availability` من حالة التوظيف. | الكتالوج المطلوب يحتاج أكواد مستقرة منفصلة وحساب unknown availability من غياب إشارة توفر. | `WorkforceServices.cs`, `WorkforceDtos.cs` | إضافة `WorkforceOperationalCatalog.DataQuality` وفصل الأكواد والحسابات. |

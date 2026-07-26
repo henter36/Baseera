@@ -32,3 +32,5 @@ Base path: `/api/v1/facilities/{facilityId}/workforce`
 Missing permission → 403. Out-of-scope / missing entity → 404. Duplicate org employee number on create → conflict/`InvalidOperationException` mapped by API error pipeline. Duplicate primary assignment windows rejected. Published roster mutation rejected.
 
 Workspace shell loads `facility.workforce` widget when `Workforce.ViewSummary` is present; coverage/roles inside payload are permission-gated.
+
+`/data-quality` exposes `missingOperationalFacility` for the operational-facility metric. The older `missingHomeOrOperationalFacility` remains populated for backward compatibility with clients that still read the combined legacy field.

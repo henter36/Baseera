@@ -661,7 +661,8 @@ public sealed partial class WorkforceReadinessService(
             TotalMembers = members.Count,
             MissingEmployeeNumber = counts.MissingNumber,
             UnknownEmploymentStatus = counts.UnknownStatus,
-            MissingHomeOrOperationalFacility = counts.MissingFacility,
+            MissingHomeOrOperationalFacility = counts.MissingHomeOrOperationalFacility,
+            MissingOperationalFacility = counts.MissingFacility,
             StaleVerification = counts.Stale,
             OpenImportIssues = counts.DuplicateExternal,
             Warnings = warnings,
@@ -702,6 +703,7 @@ public sealed partial class WorkforceReadinessService(
         {
             MissingNumber = members.Count(m => string.IsNullOrWhiteSpace(m.EmployeeNumber)),
             UnknownStatus = members.Count(m => m.EmploymentStatus == EmploymentStatus.Unknown),
+            MissingHomeOrOperationalFacility = members.Count(m => m.HomeFacilityId is null && m.CurrentOperationalFacilityId is null),
             MissingFacility = members.Count(m => m.CurrentOperationalFacilityId is null),
             MissingUnit = members.Count(m => m.CurrentOperationalFacilityId == facilityId && m.CurrentOperationalUnitId is null),
             Stale = members.Count(m => m.LastVerifiedAtUtc is null || m.LastVerifiedAtUtc < staleBefore),
@@ -814,8 +816,10 @@ public sealed partial class WorkforceReadinessService(
                 && m.UserId != null
                 && !db.Users.Any(u => u.Id == m.UserId), cancellationToken);
 
-    private async Task<int> CountUnknownAvailabilityAsync(Guid facilityId, DateTimeOffset now, CancellationToken cancellationToken) =>
-        await db.WorkforceMembers.AsNoTracking()
+    private async Task<int> CountUnknownAvailabilityAsync(Guid facilityId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        return await db.WorkforceMembers.AsNoTracking()
             .CountAsync(m => !m.IsDeleted
                 && m.CurrentOperationalFacilityId == facilityId
                 && m.EmploymentStatus == EmploymentStatus.Active
@@ -823,7 +827,14 @@ public sealed partial class WorkforceReadinessService(
                 && !db.WorkforceAvailabilityEvents.Any(e => !e.IsDeleted
                     && e.WorkforceMemberId == m.Id
                     && e.StartsAtUtc <= now
-                    && (e.EndsAtUtc == null || e.EndsAtUtc > now)), cancellationToken);
+                    && (e.EndsAtUtc == null || e.EndsAtUtc > now))
+                && !db.DutyRosterAssignments.Any(a => !a.IsDeleted
+                    && a.WorkforceMemberId == m.Id
+                    && CountedRosterStatuses.Contains(a.Status)
+                    && a.DutyRoster.FacilityId == facilityId
+                    && a.DutyRoster.DutyDate == today
+                    && a.DutyRoster.Status == DutyRosterStatuses.Published), cancellationToken);
+    }
 
     private static List<WorkforceDataQualityIssueDto> BuildDataQualityIssues(DataQualityIssueCounts counts)
     {
@@ -2249,6 +2260,7 @@ public sealed partial class WorkforceReadinessService(
     {
         public int MissingNumber { get; set; }
         public int UnknownStatus { get; set; }
+        public int MissingHomeOrOperationalFacility { get; set; }
         public int MissingFacility { get; set; }
         public int MissingUnit { get; set; }
         public int Stale { get; set; }

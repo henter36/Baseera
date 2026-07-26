@@ -863,11 +863,6 @@ internal sealed class FacilityWorkspaceReadService(
     {
         var facilityId = payload.Summary.FacilityId;
         var indicators = payload.Summary.FatigueIndicators;
-        if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.QualificationExpiringSoon))
-        {
-            yield return WorkforcePriority(context, new WorkforcePrioritySpec(WorkforceOperationalCatalog.Interventions.QualificationExpired, $"qual:{facilityId}", "مؤهلات منتهية أو قاربت الانتهاء", SeverityHighAr, 840, "توجد مؤشرات انتهاء مؤهلات تؤثر على الجاهزية.", "مراجعة المؤهلات", PermissionCodes.WorkforceViewMembers));
-        }
-
         if (indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.ExcessiveOvertimeHours)
             || indicators.Contains(Application.Workforce.WorkforceFatiguePolicy.ConsecutiveShiftsWithoutRest))
         {

@@ -503,6 +503,60 @@ public sealed class WorkforceReadinessIntegrationTests(WorkforceIntegrationFixtu
     }
 
     [IntegrationConnectionFact]
+    public async Task Data_quality_does_not_count_published_roster_presence_as_unknown_availability()
+    {
+        await factory.SeedUserAsync(
+            "workforce-roster-source",
+            "مصدر الجدول",
+            [RoleCodes.FacilityDirector],
+            (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("workforce-roster-source");
+
+        var before = await ReadDataQualityIssueCountAsync(client, "unknown_availability");
+        var create = await client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/members", new
+        {
+            displayName = "عضو حاضر من الجدول",
+            employeeNumber = $"WF-RS-{Guid.NewGuid():N}"[..16].ToUpperInvariant(),
+            jobTitle = "ضابط",
+            primarySpecialty = "أمن",
+            employmentStatus = 0,
+            isOperational = true,
+            sourceType = 0
+        });
+        create.EnsureSuccessStatusCode();
+        var member = await create.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
+        Assert.NotNull(member);
+
+        var (shiftId, roleId) = await CreateUniqueShiftAndGetRoleAsync();
+        var roster = await client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/rosters", new
+        {
+            shiftDefinitionId = shiftId,
+            dutyDate = DateOnly.FromDateTime(DateTime.UtcNow.Date)
+        });
+        roster.EnsureSuccessStatusCode();
+        var rosterId = await roster.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
+        Assert.NotNull(rosterId);
+
+        var assignment = await client.PostAsJsonAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/rosters/{rosterId!.Id}/assignments",
+            new
+            {
+                workforceMemberId = member!.Id,
+                roleDefinitionId = roleId,
+                status = 2
+            });
+        assignment.EnsureSuccessStatusCode();
+
+        var publish = await client.PostAsync(
+            $"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/rosters/{rosterId.Id}/publish",
+            null);
+        publish.EnsureSuccessStatusCode();
+
+        var after = await ReadDataQualityIssueCountAsync(client, "unknown_availability");
+        Assert.Equal(before, after);
+    }
+
+    [IntegrationConnectionFact]
     public async Task IT03_Hq_global_scope_can_read_facility_workforce_summary()
     {
         await factory.SeedUserAsync(
@@ -825,6 +879,40 @@ public sealed class WorkforceReadinessIntegrationTests(WorkforceIntegrationFixtu
             .FirstAsync();
     }
 
+    private async Task<(Guid ShiftId, Guid RoleId)> CreateUniqueShiftAndGetRoleAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var shift = new ShiftDefinition
+        {
+            OrganizationId = SeedIds.Organization,
+            FacilityId = SeedIds.FacilityA1,
+            Code = $"RS-{Guid.NewGuid():N}"[..12].ToUpperInvariant(),
+            Name = "وردية مصدر الجدول",
+            StartLocalTime = new TimeOnly(8, 0),
+            EndLocalTime = new TimeOnly(16, 0),
+            CrossesMidnight = false,
+            Timezone = "Asia/Riyadh",
+            IsActive = true
+        };
+        db.ShiftDefinitions.Add(shift);
+        var roleId = await db.WorkforceRoleDefinitions.AsNoTracking()
+            .Where(r => !r.IsDeleted)
+            .Select(r => r.Id)
+            .FirstAsync();
+        await db.SaveChangesAsync();
+        return (shift.Id, roleId);
+    }
+
+    private static async Task<int> ReadDataQualityIssueCountAsync(HttpClient client, string code)
+    {
+        var response = await client.GetAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/workforce/data-quality");
+        response.EnsureSuccessStatusCode();
+        var dataQuality = await response.Content.ReadFromJsonAsync<DataQualityResponse>(JsonOptions);
+        Assert.NotNull(dataQuality);
+        return dataQuality!.Issues.SingleOrDefault(issue => issue.Code == code)?.Count ?? 0;
+    }
+
     private async Task SeedCustomRoleUserAsync(
         string subject,
         string displayName,
@@ -874,6 +962,10 @@ public sealed class WorkforceReadinessIntegrationTests(WorkforceIntegrationFixtu
     private sealed record ImportResultResponse(int TotalRows, int ValidRows, int RejectedRows, int DuplicateRows, int AppliedRows);
 
     private sealed record WorkforceMemberListItemResponse(Guid Id, string DisplayName, string EmployeeNumber);
+
+    private sealed record DataQualityResponse(IReadOnlyList<DataQualityIssueResponse> Issues);
+
+    private sealed record DataQualityIssueResponse(string Code, int Count);
 
     private sealed record ReconciliationListResponse(
         IReadOnlyList<ReconciliationItemResponse> Items,

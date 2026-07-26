@@ -49,7 +49,7 @@ Allowed statuses:
 
 ## Totals
 
-- Verified: 20
-- Not Applicable — خارج النطاق: 4
+- Verified: 17
+- Not Applicable — خارج النطاق: 3
 - Blocked — مانع خارجي موثق: 0
 - Missing: 0

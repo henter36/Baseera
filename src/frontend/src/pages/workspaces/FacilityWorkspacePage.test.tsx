@@ -882,6 +882,7 @@ const shell = {
           missingEmployeeNumber: 0,
           unknownEmploymentStatus: 1,
           missingHomeOrOperationalFacility: 0,
+          missingOperationalFacility: 0,
           staleVerification: 1,
           openImportIssues: 0,
           warnings: ['سجلات تحقق قديمة'],

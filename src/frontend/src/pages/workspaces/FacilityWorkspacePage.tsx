@@ -310,7 +310,7 @@ export function FacilityWorkspacePage() {
       )}
 
       {isActionCenterOpen && (
-        <ActionCenter data={data} onClose={() => setIsActionCenterOpen(false)} openPanel={openPanel} />
+        <ActionCenter facilityId={facilityId} data={data} onClose={() => setIsActionCenterOpen(false)} openPanel={openPanel} />
       )}
     </main>
   )
@@ -1040,7 +1040,12 @@ function ActivityPreviewPanel({ summary }: Readonly<{ summary?: PanelSummary }>)
   )
 }
 
-function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData; onClose: () => void; openPanel: (panel: PanelState) => void }>) {
+function ActionCenter({
+  facilityId,
+  data,
+  onClose,
+  openPanel,
+}: Readonly<{ facilityId: string; data: CommandData; onClose: () => void; openPanel: (panel: PanelState) => void }>) {
   const urgent = data.priority?.items.slice(0, 5) ?? []
   const missingDomains = data.dataQuality?.domains.filter((domain) => domain.statusCode === 'unavailable') ?? []
   const missingDomainChips = missingDomains.slice(0, 3)
@@ -1051,10 +1056,8 @@ function ActionCenter({ data, onClose, openPanel }: Readonly<{ data: CommandData
   const canReconcile = usePermission('Workforce.Reconcile')
   const canImport = usePermission('Workforce.Import')
   const canViewCoverage = usePermission('Workforce.ViewCoverage')
-  const facilityId = data.header?.facilityId
   const publishRosterMutation = useMutation({
     mutationFn: async () => {
-      if (!facilityId) throw new Error('معرّف السجن غير متاح لتنفيذ الإجراء.')
       const rosters = await api.workforce.rosters(facilityId)
       const draft = rosters.find(isDraftRoster)
       if (!draft) throw new Error('لا يوجد جدول مناوبة مسودة قابل للنشر.')

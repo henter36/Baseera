@@ -9,22 +9,22 @@ public sealed class WorkforceOperationalCatalogTests
     {
         var expected = new[]
         {
-            WorkforceOperationalCatalog.Interventions.ShiftBelowMinimum,
-            WorkforceOperationalCatalog.Interventions.CriticalRoleUncovered,
-            WorkforceOperationalCatalog.Interventions.UnitStaffingGap,
-            WorkforceOperationalCatalog.Interventions.NoShiftCommander,
-            WorkforceOperationalCatalog.Interventions.NoQualifiedDriver,
-            WorkforceOperationalCatalog.Interventions.QualificationExpired,
-            WorkforceOperationalCatalog.Interventions.QualificationExpiring,
-            WorkforceOperationalCatalog.Interventions.HighAbsenceRate,
-            WorkforceOperationalCatalog.Interventions.ExcessiveOvertime,
-            WorkforceOperationalCatalog.Interventions.ConsecutiveShiftRisk,
-            WorkforceOperationalCatalog.Interventions.NoCriticalPositionAlternate,
-            WorkforceOperationalCatalog.Interventions.ConflictingAssignments,
-            WorkforceOperationalCatalog.Interventions.WorkforceDataStale,
-            WorkforceOperationalCatalog.Interventions.WorkforceSourceConflict,
-            WorkforceOperationalCatalog.Interventions.UnknownAvailability,
-            WorkforceOperationalCatalog.Interventions.UnpublishedRoster
+            "workforce.ShiftBelowMinimum",
+            "workforce.CriticalRoleUncovered",
+            "workforce.UnitStaffingGap",
+            "workforce.NoShiftCommander",
+            "workforce.NoQualifiedDriver",
+            "workforce.QualificationExpired",
+            "workforce.QualificationExpiring",
+            "workforce.HighAbsenceRate",
+            "workforce.ExcessiveOvertime",
+            "workforce.ConsecutiveShiftRisk",
+            "workforce.NoCriticalPositionAlternate",
+            "workforce.ConflictingAssignments",
+            "workforce.WorkforceDataStale",
+            "workforce.WorkforceSourceConflict",
+            "workforce.UnknownAvailability",
+            "workforce.UnpublishedRoster"
         };
 
         Assert.Equal(expected.Length, WorkforceOperationalCatalog.Interventions.SupportedKeys.Count);
@@ -39,27 +39,27 @@ public sealed class WorkforceOperationalCatalogTests
     {
         var expected = new[]
         {
-            WorkforceOperationalCatalog.DataQuality.MissingEmployeeNumber,
-            WorkforceOperationalCatalog.DataQuality.MissingOperationalFacility,
-            WorkforceOperationalCatalog.DataQuality.MissingOperationalUnit,
-            WorkforceOperationalCatalog.DataQuality.MissingOperationalRole,
-            WorkforceOperationalCatalog.DataQuality.UnknownEmploymentStatus,
-            WorkforceOperationalCatalog.DataQuality.UnknownAvailability,
-            WorkforceOperationalCatalog.DataQuality.ExpiredAssignment,
-            WorkforceOperationalCatalog.DataQuality.ConflictingAssignments,
-            WorkforceOperationalCatalog.DataQuality.RosterWithoutCommander,
-            WorkforceOperationalCatalog.DataQuality.ShiftWithoutMinimumRequirement,
-            WorkforceOperationalCatalog.DataQuality.MissingQualification,
-            WorkforceOperationalCatalog.DataQuality.ExpiredQualification,
-            WorkforceOperationalCatalog.DataQuality.StaleSource,
-            WorkforceOperationalCatalog.DataQuality.DuplicateExternalId,
-            WorkforceOperationalCatalog.DataQuality.DuplicateEmployeeNumber,
-            WorkforceOperationalCatalog.DataQuality.InvalidUserLink,
-            WorkforceOperationalCatalog.DataQuality.RetiredMemberInActiveRoster,
-            WorkforceOperationalCatalog.DataQuality.MemberOnLeaveButScheduled,
-            WorkforceOperationalCatalog.DataQuality.ConflictingRosterAssignments,
-            WorkforceOperationalCatalog.DataQuality.CoverageGapWithoutResponsibleOwner,
-            WorkforceOperationalCatalog.DataQuality.RequirementWithoutApprovalReference
+            "missing_employee_number",
+            "missing_operational_facility",
+            "missing_operational_unit",
+            "missing_operational_role",
+            "unknown_employment_status",
+            "unknown_availability",
+            "expired_assignment",
+            "conflicting_assignment",
+            "roster_without_commander",
+            "shift_without_minimum_requirement",
+            "missing_qualification",
+            "expired_qualification",
+            "stale_source",
+            "duplicate_external_id",
+            "duplicate_employee_number",
+            "invalid_user_link",
+            "retired_member_in_active_roster",
+            "member_on_leave_but_scheduled",
+            "conflicting_roster_assignments",
+            "coverage_gap_without_responsible_owner",
+            "requirement_without_approval_reference"
         };
 
         Assert.Equal(expected.Length, WorkforceOperationalCatalog.DataQuality.SupportedCodes.Count);

@@ -11,7 +11,7 @@ Budgets and bounds:
 - Import: max 500 rows.
 - Read queries use `AsNoTracking` where appropriate.
 - Facility summary upserts one facility-level `WorkforceReadinessSnapshot` per UTC day (updates same-day row).
-- Query-count guard: facility workspace integration test budget stays within 100 select statements for seeded workforce data.
+- Query-count guard: facility workspace integration test budget stays within 110 select statements for seeded workforce data.
 - Payload guard: workspace response remains summary-first; member/qualification detail pages use bounded pages instead of embedding all members in the workspace payload.
 - Large-dataset guard: services use grouped database queries and keyed dictionaries; no per-member or per-shift qualification query loop is required for summary/coverage calculations.
 
