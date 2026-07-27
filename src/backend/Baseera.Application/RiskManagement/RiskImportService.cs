@@ -128,77 +128,98 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
         Guid organizationId, Guid facilityId, RiskImportPreviewRequest request, CancellationToken cancellationToken)
     {
         var categories = await Db.RiskCategories.Where(c => c.OrganizationId == organizationId).ToDictionaryAsync(c => c.Code, cancellationToken);
-        var matrixIds = request.Rows.Select(r => r.MatrixId).Distinct().ToList();
-        var matrices = await Db.RiskAssessmentMatrices
+        var matrices = await LoadMatricesAsync(organizationId, request.Rows, cancellationToken);
+        var existingTitles = await LoadExistingTitleKeysAsync(facilityId, cancellationToken);
+
+        var seenInBatch = new HashSet<string>();
+        var results = request.Rows
+            .Select(row => ValidateRow(row, categories, matrices, existingTitles, seenInBatch))
+            .ToList();
+
+        return (results, categories, matrices);
+    }
+
+    private async Task<Dictionary<Guid, RiskAssessmentMatrix>> LoadMatricesAsync(Guid organizationId, IReadOnlyList<RiskImportRow> rows, CancellationToken cancellationToken)
+    {
+        var matrixIds = rows.Select(r => r.MatrixId).Distinct().ToList();
+        return await Db.RiskAssessmentMatrices
             .Include(m => m.LikelihoodLevels)
             .Include(m => m.ImpactLevels).ThenInclude(l => l.ImpactDimension)
             .Include(m => m.RatingBands)
             .Where(m => matrixIds.Contains(m.Id) && m.OrganizationId == organizationId)
             .ToDictionaryAsync(m => m.Id, cancellationToken);
+    }
 
-        var existingTitles = (await Db.RiskRecords.AsNoTracking()
+    private async Task<HashSet<(string TitleKey, Guid CategoryId)>> LoadExistingTitleKeysAsync(Guid facilityId, CancellationToken cancellationToken)
+    {
+        var existing = await Db.RiskRecords.AsNoTracking()
             .Where(r => r.FacilityId == facilityId)
             .Select(r => new { r.Title, r.RiskCategoryId })
-            .ToListAsync(cancellationToken))
-            .Select(r => (r.Title.Trim().ToUpperInvariant(), r.RiskCategoryId))
-            .ToHashSet();
+            .ToListAsync(cancellationToken);
+        return existing.Select(r => (r.Title.Trim().ToUpperInvariant(), r.RiskCategoryId)).ToHashSet();
+    }
 
-        var seenInBatch = new HashSet<string>();
-        var results = new List<RiskImportRowResult>();
-
-        foreach (var row in request.Rows)
+    private static RiskImportRowResult ValidateRow(
+        RiskImportRow row,
+        Dictionary<string, RiskCategory> categories,
+        Dictionary<Guid, RiskAssessmentMatrix> matrices,
+        HashSet<(string TitleKey, Guid CategoryId)> existingTitles,
+        HashSet<string> seenInBatch)
+    {
+        var errors = new List<string>();
+        categories.TryGetValue(row.CategoryCode, out var category);
+        if (category is null)
         {
-            var errors = new List<string>();
-
-            if (!categories.TryGetValue(row.CategoryCode, out var category))
-            {
-                errors.Add("رمز تصنيف الخطر غير موجود.");
-            }
-
-            if (!matrices.TryGetValue(row.MatrixId, out var matrix) || matrix.Status != MatrixStatus.Active)
-            {
-                errors.Add("مصفوفة التقييم غير موجودة أو غير نشطة.");
-            }
-            else
-            {
-                if (!matrix.LikelihoodLevels.Any(l => l.Code == row.LikelihoodCode))
-                {
-                    errors.Add("رمز مستوى الاحتمالية غير موجود ضمن المصفوفة.");
-                }
-
-                foreach (var (dimensionCode, impactCode) in row.ImpactCodesByDimensionCode)
-                {
-                    if (!matrix.ImpactLevels.Any(l => l.ImpactDimension.Code == dimensionCode && l.Code == impactCode))
-                    {
-                        errors.Add($"رمز مستوى الأثر '{impactCode}' غير صالح للبُعد '{dimensionCode}'.");
-                    }
-                }
-
-                if (row.ImpactCodesByDimensionCode.Count == 0)
-                {
-                    errors.Add("يلزم تقييم بُعد أثر واحد على الأقل.");
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(row.Title))
-            {
-                errors.Add("عنوان الخطر مطلوب.");
-            }
-
-            var isDuplicate = false;
-            if (category is not null && !string.IsNullOrWhiteSpace(row.Title))
-            {
-                var titleKey = row.Title.Trim().ToUpperInvariant();
-                if (existingTitles.Contains((titleKey, category.Id)) || !seenInBatch.Add($"{category.Id}|{titleKey}"))
-                {
-                    isDuplicate = true;
-                }
-            }
-
-            results.Add(new RiskImportRowResult(row.RowKey, errors.Count == 0, isDuplicate, errors));
+            errors.Add("رمز تصنيف الخطر غير موجود.");
         }
 
-        return (results, categories, matrices);
+        ValidateMatrixAndImpacts(row, matrices, errors);
+
+        if (string.IsNullOrWhiteSpace(row.Title))
+        {
+            errors.Add("عنوان الخطر مطلوب.");
+        }
+
+        var isDuplicate = IsDuplicateRow(row, category, existingTitles, seenInBatch);
+        return new RiskImportRowResult(row.RowKey, errors.Count == 0, isDuplicate, errors);
+    }
+
+    private static void ValidateMatrixAndImpacts(RiskImportRow row, Dictionary<Guid, RiskAssessmentMatrix> matrices, List<string> errors)
+    {
+        if (!matrices.TryGetValue(row.MatrixId, out var matrix) || matrix.Status != MatrixStatus.Active)
+        {
+            errors.Add("مصفوفة التقييم غير موجودة أو غير نشطة.");
+            return;
+        }
+
+        if (!matrix.LikelihoodLevels.Any(l => l.Code == row.LikelihoodCode))
+        {
+            errors.Add("رمز مستوى الاحتمالية غير موجود ضمن المصفوفة.");
+        }
+
+        foreach (var (dimensionCode, impactCode) in row.ImpactCodesByDimensionCode)
+        {
+            if (!matrix.ImpactLevels.Any(l => l.ImpactDimension.Code == dimensionCode && l.Code == impactCode))
+            {
+                errors.Add($"رمز مستوى الأثر '{impactCode}' غير صالح للبُعد '{dimensionCode}'.");
+            }
+        }
+
+        if (row.ImpactCodesByDimensionCode.Count == 0)
+        {
+            errors.Add("يلزم تقييم بُعد أثر واحد على الأقل.");
+        }
+    }
+
+    private static bool IsDuplicateRow(RiskImportRow row, RiskCategory? category, HashSet<(string TitleKey, Guid CategoryId)> existingTitles, HashSet<string> seenInBatch)
+    {
+        if (category is null || string.IsNullOrWhiteSpace(row.Title))
+        {
+            return false;
+        }
+
+        var titleKey = row.Title.Trim().ToUpperInvariant();
+        return existingTitles.Contains((titleKey, category.Id)) || !seenInBatch.Add($"{category.Id}|{titleKey}");
     }
 
     private async Task CreateRiskFromRowAsync(Guid organizationId, Guid facilityId, RiskImportRow row, RiskCategory category, RiskAssessmentMatrix matrix, CancellationToken cancellationToken)
