@@ -1,0 +1,34 @@
+# Phase D.6 — احتساب الدرجة
+
+## المبدأ
+
+الدرجة **تُحسب دائمًا على الخادم** عبر `Baseera.Application.RiskManagement.RiskScoringEngine` (منطق صرف، بلا وصول لقاعدة بيانات، 10 اختبارات وحدة). لا يوجد أي حقل "Score" قابل للإرسال من العميل في `RiskAssessmentCreateRequest` — الحقل غير موجود أصلًا في الـ DTO.
+
+## الصيغ المدعومة (`ScoreFormulaType`)
+
+| الصيغة | الحساب | الاستخدام |
+| --- | --- | --- |
+| `LikelihoodTimesMaximumImpact` (افتراضي) | `الاحتمالية × أعلى قيمة أثر بين الأبعاد المقيَّمة` | حين لا تُعرَّف أوزان؛ الأكثر تحفظًا (يعتمد على أسوأ بُعد). |
+| `LikelihoodTimesWeightedImpact` | `الاحتمالية × (Σ (قيمة البُعد × وزنه) / Σ الأوزان)` | حين تُعرَّف أوزان لكل بُعد ضمن `RiskAssessmentMatrix.ImpactWeightingJson` (JSON بيانات فقط: `Dictionary<Guid, decimal>`، **وليس** كودًا أو Script حرًّا). |
+
+لا صيغة أخرى مسموحة؛ محاولة استخدام صيغة غير مدعومة ترمي `NotSupportedException`.
+
+## اختيار نطاق التصنيف
+
+`RiskScoringEngine.SelectRatingBand` يبحث عن أول نطاق تُغطّي درجته `MinimumScore..MaximumScore`. بما أن `RiskMatrixValidation.ValidateRatingBands` يفرض تغطية متتابعة بلا فجوة عند اعتماد المصفوفة، فإن عدم وجود نطاق مطابق يعني خللًا في إعداد المصفوفة نفسها (`InvalidOperationException` دفاعية).
+
+## التفسير القابل للعرض
+
+كل تقييم يُعاد للعميل عبر `RiskScoreExplanationDto` يتضمن: رمز المصفوفة وإصدارها، نص الصيغة بالعربية، مستوى الاحتمالية وقيمته، تفصيل كل بُعد أثر (اسم البُعد، اسم المستوى، القيمة الرقمية، المبرر إن وُجد)، الدرجة المحسوبة، ورمز/تسمية نطاق التصنيف. هذا يُغني عن "درجة غامضة" — كل رقم قابل لإعادة اشتقاقه يدويًا من التفصيل المعروض.
+
+## قاعدة المبرر الإلزامي
+
+عند احتساب درجة تقع ضمن نطاق `Severity = High` أو `Critical`، يُشترط حقل `Rationale` غير فارغ في `IRiskAssessmentService.CreateAsync`، وإلا `InvalidOperationException` (409). مُختبر بوحدة (`High_severity_assessment_requires_rationale` في التكامل، ووحدة `RiskScoringEngineTests` للحساب نفسه).
+
+## القيود الحاكمة (مطبَّقة فعليًا)
+
+* لا صيغة كود/Script حر — enum مغلق فقط.
+* Deterministic — نفس المدخلات تنتج دائمًا نفس الدرجة (لا عشوائية، لا استدعاء خدمة خارجية).
+* Versioned — كل تقييم يحمل `MatrixVersion` وقت إنشائه.
+* Validated — `RiskMatrixValidation` يمنع نطاقات متضاربة قبل التفعيل.
+* Tested — 10 اختبارات وحدة (`RiskScoringEngineTests.cs`) تغطي كلا الصيغتين، الأخطاء المتوقعة، واختيار النطاق.

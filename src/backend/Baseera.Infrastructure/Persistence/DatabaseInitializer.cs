@@ -332,6 +332,51 @@ public static class DatabaseInitializer
             PermissionCodes.SensitiveCustodyApproveInventory,
             PermissionCodes.SensitiveCustodyExport
         ];
+        string[] riskSummary =
+        [
+            PermissionCodes.RisksViewSummary
+        ];
+        string[] riskViewer =
+        [
+            PermissionCodes.RisksViewSummary,
+            PermissionCodes.RisksView
+        ];
+        string[] riskManager =
+        [
+            PermissionCodes.RisksViewSummary,
+            PermissionCodes.RisksView,
+            PermissionCodes.RisksViewSensitive,
+            PermissionCodes.RisksCreate,
+            PermissionCodes.RisksUpdate,
+            PermissionCodes.RisksAssignOwner,
+            PermissionCodes.RisksManageCategories,
+            PermissionCodes.RisksAssess,
+            PermissionCodes.RisksManageControls,
+            PermissionCodes.RisksManageTreatments,
+            PermissionCodes.RisksCompleteTreatmentActions,
+            PermissionCodes.RisksRequestAcceptance,
+            PermissionCodes.RisksRequestClosure,
+            PermissionCodes.RisksReopen,
+            PermissionCodes.RisksEscalate,
+            PermissionCodes.RisksLinkSources,
+            PermissionCodes.RisksImport,
+            PermissionCodes.RisksManageMatrices
+        ];
+        string[] riskApprover =
+        [
+            PermissionCodes.RisksReviewAssessment,
+            PermissionCodes.RisksApproveAssessment,
+            // Treatment plan approval and treatment-action verification are both four-eyes-gated (the
+            // creator/submitter can never approve or verify their own work) rather than permission-gated:
+            // the spec defines no separate "approve treatment" permission, so the approver role is granted
+            // the same RisksManageTreatments permission the creator role uses to submit.
+            PermissionCodes.RisksManageTreatments,
+            PermissionCodes.RisksVerifyTreatmentActions,
+            PermissionCodes.RisksApproveAcceptance,
+            PermissionCodes.RisksApproveClosure,
+            PermissionCodes.RisksApproveMatrices,
+            PermissionCodes.RisksExport
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -344,7 +389,8 @@ public static class DatabaseInitializer
             caViewOnly,
             ownNotifications,
             dashboardReadOnly,
-            PermissionCodes.WorkspacesView);
+            PermissionCodes.WorkspacesView,
+            riskSummary);
 
         var readonlyUser = roles.First(r => r.Code == RoleCodes.ReadOnlyUser);
         Grant(readonlyUser, PermissionCodes.OrganizationView, PermissionCodes.NotesView, caViewOnly, ownNotifications, dashboardReadOnly, PermissionCodes.WorkspacesView);
@@ -371,7 +417,8 @@ public static class DatabaseInitializer
             occupancySummary,
             resourceSummary,
             workforceSummary,
-            sensitiveCustodySummary);
+            sensitiveCustodySummary,
+            riskSummary);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -396,7 +443,9 @@ public static class DatabaseInitializer
             PermissionCodes.ResourcesExport,
             workforceManager,
             sensitiveCustodyViewer,
-            sensitiveCustodyApprover);
+            sensitiveCustodyApprover,
+            riskViewer,
+            riskApprover);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -425,7 +474,8 @@ public static class DatabaseInitializer
             workspaceRegion,
             occupancyManager,
             resourceManager,
-            sensitiveCustodySummary);
+            sensitiveCustodySummary,
+            riskSummary);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -473,7 +523,9 @@ public static class DatabaseInitializer
             resourceManager,
             workforceManager,
             sensitiveCustodyViewer,
-            sensitiveCustodyApprover);
+            sensitiveCustodyApprover,
+            riskViewer,
+            riskApprover);
 
         string[] formsDesigner =
         [
@@ -608,6 +660,15 @@ public static class DatabaseInitializer
             PermissionCodes.OrganizationView,
             workspaceFacility,
             workforceManager,
+            ownNotifications);
+
+        var riskOfficer = roles.First(r => r.Code == RoleCodes.RiskOfficer);
+        Grant(riskOfficer,
+            PermissionCodes.OrganizationView,
+            PermissionCodes.AttachmentsUpload,
+            PermissionCodes.AttachmentsDownload,
+            workspaceFacility,
+            riskManager,
             ownNotifications);
 
         await db.SaveChangesAsync(cancellationToken);
@@ -1601,6 +1662,7 @@ public static class DatabaseInitializer
     private const string ResourcesModule = "Resources";
     private const string WorkforceModule = "Workforce";
     private const string FormsModule = "Forms";
+    private const string RiskManagementModule = "RiskManagement";
 
     private static List<Permission> BuildPermissions()
     {
@@ -1781,7 +1843,32 @@ public static class DatabaseInitializer
             (PermissionCodes.SensitiveCustodyViewDiscrepancies, "عرض فروقات الجرد الحساس", SensitiveCustodyModule),
             (PermissionCodes.SensitiveCustodyExport, "تصدير بيانات العهد الحساسة", SensitiveCustodyModule),
             (PermissionCodes.SensitiveCustodyImport, "استيراد بيانات العهد الحساسة", SensitiveCustodyModule),
-            (PermissionCodes.SensitiveCustodyReconcile, "مصالحة بيانات العهد الحساسة", SensitiveCustodyModule)
+            (PermissionCodes.SensitiveCustodyReconcile, "مصالحة بيانات العهد الحساسة", SensitiveCustodyModule),
+            (PermissionCodes.RisksViewSummary, "عرض ملخص المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksView, "عرض سجل المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksViewSensitive, "عرض المخاطر الحساسة", RiskManagementModule),
+            (PermissionCodes.RisksCreate, "تسجيل خطر جديد", RiskManagementModule),
+            (PermissionCodes.RisksUpdate, "تحديث بيانات الخطر", RiskManagementModule),
+            (PermissionCodes.RisksAssignOwner, "تعيين مالك الخطر", RiskManagementModule),
+            (PermissionCodes.RisksManageCategories, "إدارة تصنيفات المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksAssess, "تقييم المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksReviewAssessment, "مراجعة تقييم المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksApproveAssessment, "اعتماد تقييم المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksManageControls, "إدارة الضوابط الحالية", RiskManagementModule),
+            (PermissionCodes.RisksManageTreatments, "إدارة خطط المعالجة", RiskManagementModule),
+            (PermissionCodes.RisksCompleteTreatmentActions, "إكمال إجراءات المعالجة", RiskManagementModule),
+            (PermissionCodes.RisksVerifyTreatmentActions, "التحقق من إجراءات المعالجة", RiskManagementModule),
+            (PermissionCodes.RisksRequestAcceptance, "طلب قبول الخطر", RiskManagementModule),
+            (PermissionCodes.RisksApproveAcceptance, "اعتماد قبول الخطر", RiskManagementModule),
+            (PermissionCodes.RisksRequestClosure, "طلب إغلاق الخطر", RiskManagementModule),
+            (PermissionCodes.RisksApproveClosure, "اعتماد إغلاق الخطر", RiskManagementModule),
+            (PermissionCodes.RisksReopen, "إعادة فتح الخطر", RiskManagementModule),
+            (PermissionCodes.RisksEscalate, "تصعيد الخطر", RiskManagementModule),
+            (PermissionCodes.RisksLinkSources, "ربط مصادر وأدلة الخطر", RiskManagementModule),
+            (PermissionCodes.RisksExport, "تصدير بيانات المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksImport, "استيراد بيانات المخاطر", RiskManagementModule),
+            (PermissionCodes.RisksManageMatrices, "إدارة مصفوفات التقييم", RiskManagementModule),
+            (PermissionCodes.RisksApproveMatrices, "اعتماد مصفوفات التقييم", RiskManagementModule)
         ];
 
         return items.Select(i => new Permission
@@ -1809,6 +1896,7 @@ public static class DatabaseInitializer
             (RoleCodes.ArmamentOfficer, "ضابط تسليح"),
             (RoleCodes.FleetOfficer, "ضابط أسطول"),
             (RoleCodes.WorkforceOfficer, "ضابط قوى عاملة"),
+            (RoleCodes.RiskOfficer, "ضابط مخاطر"),
             (RoleCodes.IncidentOfficer, "ضابط وقائع"),
             (RoleCodes.PrisonerCaseOfficer, "ضابط حالات نزلاء"),
             (RoleCodes.ProjectManager, "مدير مشاريع"),

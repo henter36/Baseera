@@ -356,6 +356,40 @@ internal sealed class FacilitySensitiveCustodyWorkspaceWidgetProvider(
     }
 }
 
+internal sealed class FacilityRiskWorkspaceWidgetProvider(
+    IFacilityWorkspaceReadService readService,
+    TimeProvider timeProvider) : IWorkspaceWidgetProvider
+{
+    public WidgetDefinition Definition { get; } = FacilityWorkspaceWidgetDefinitions.Create(new FacilityWorkspaceWidgetDefinitionSpec
+    {
+        Key = FacilityWorkspaceDefinitionProvider.RiskWidgetKey,
+        TitleAr = "المخاطر والمعالجات",
+        TitleEn = "Risks and Treatments",
+        DescriptionAr = "سجل المخاطر ودورة حياتها وحالة المعالجة دون كشف تفاصيل المخاطر الحساسة في الملخص.",
+        Category = WidgetCategory.Risk,
+        RequiredPermission = PermissionCodes.RisksViewSummary,
+        DataCapability = "Risk.Readiness",
+        Size = WidgetSize.Wide
+    });
+
+    public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        var payload = await readService.GetRiskAsync(context, cancellationToken);
+        var generatedAt = timeProvider.GetUtcNow();
+        var isFresh = payload.Summary.LastUpdatedAtUtc is not null && payload.Summary.LastUpdatedAtUtc > generatedAt.AddDays(-1);
+        var confidence = FacilityWorkspaceConfidenceMapper.ToLevel(isFresh ? "high" : "medium");
+
+        return Envelope(
+            context,
+            Definition.Key,
+            generatedAt,
+            payload,
+            confidence,
+            [new DrillDownTarget("facility.risks", "فتح المخاطر والمعالجات", new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() }, FacilityWorkspaceDrillDownFilters.Preserve(context), PermissionCodes.RisksViewSummary)],
+            payload.Interventions.Select(i => i.ReasonAr).Distinct().Take(3).ToList());
+    }
+}
+
 internal sealed class FacilityRecentActivityWorkspaceWidgetProvider(
     IFacilityWorkspaceReadService readService,
     TimeProvider timeProvider) : IWorkspaceWidgetProvider

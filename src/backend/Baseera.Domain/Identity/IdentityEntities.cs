@@ -249,6 +249,31 @@ public static class PermissionCodes
     public const string SensitiveCustodyExport = "SensitiveCustody.Export";
     public const string SensitiveCustodyImport = "SensitiveCustody.Import";
     public const string SensitiveCustodyReconcile = "SensitiveCustody.Reconcile";
+    public const string RisksViewSummary = "Risks.ViewSummary";
+    public const string RisksView = "Risks.View";
+    public const string RisksViewSensitive = "Risks.ViewSensitive";
+    public const string RisksCreate = "Risks.Create";
+    public const string RisksUpdate = "Risks.Update";
+    public const string RisksAssignOwner = "Risks.AssignOwner";
+    public const string RisksManageCategories = "Risks.ManageCategories";
+    public const string RisksAssess = "Risks.Assess";
+    public const string RisksReviewAssessment = "Risks.ReviewAssessment";
+    public const string RisksApproveAssessment = "Risks.ApproveAssessment";
+    public const string RisksManageControls = "Risks.ManageControls";
+    public const string RisksManageTreatments = "Risks.ManageTreatments";
+    public const string RisksCompleteTreatmentActions = "Risks.CompleteTreatmentActions";
+    public const string RisksVerifyTreatmentActions = "Risks.VerifyTreatmentActions";
+    public const string RisksRequestAcceptance = "Risks.RequestAcceptance";
+    public const string RisksApproveAcceptance = "Risks.ApproveAcceptance";
+    public const string RisksRequestClosure = "Risks.RequestClosure";
+    public const string RisksApproveClosure = "Risks.ApproveClosure";
+    public const string RisksReopen = "Risks.Reopen";
+    public const string RisksEscalate = "Risks.Escalate";
+    public const string RisksLinkSources = "Risks.LinkSources";
+    public const string RisksExport = "Risks.Export";
+    public const string RisksImport = "Risks.Import";
+    public const string RisksManageMatrices = "Risks.ManageMatrices";
+    public const string RisksApproveMatrices = "Risks.ApproveMatrices";
 }
 
 public static class RoleCodes
@@ -265,6 +290,7 @@ public static class RoleCodes
     public const string ArmamentOfficer = "ArmamentOfficer";
     public const string FleetOfficer = "FleetOfficer";
     public const string WorkforceOfficer = "WorkforceOfficer";
+    public const string RiskOfficer = "RiskOfficer";
     public const string IncidentOfficer = "IncidentOfficer";
     public const string PrisonerCaseOfficer = "PrisonerCaseOfficer";
     public const string ProjectManager = "ProjectManager";

@@ -2,6 +2,7 @@ namespace Baseera.Application.Workspaces;
 
 using Baseera.Application.Occupancy;
 using Baseera.Application.Resources;
+using Baseera.Application.RiskManagement;
 using Baseera.Application.SensitiveCustody;
 using Baseera.Application.Workforce;
 
@@ -151,4 +152,5 @@ internal sealed record FacilityWorkspaceMetrics(
     OccupancyWorkspacePayload? Occupancy,
     ResourceWorkspacePayload? Resources = null,
     WorkforceWorkspacePayload? Workforce = null,
-    SensitiveCustodyWorkspacePayload? SensitiveCustody = null);
+    SensitiveCustodyWorkspacePayload? SensitiveCustody = null,
+    RiskWorkspacePayload? Risk = null);

@@ -234,6 +234,39 @@
 
 المسار خارج نطاق المستخدم يعيد `404` لمنع التعداد، ونقص الصلاحية داخل النطاق يعيد `403`. `ViewWeapons` لا تمنح `ViewSerialNumbers`، و`IssueWeapons` لا تمنح `ApproveTransactions`.
 
+## صلاحيات سجل المخاطر ومركز المعالجة (Phase D.6)
+
+تنطبق على سجل المخاطر، المصفوفات، التقييمات، الضوابط، خطط ومعالجة المخاطر، المراجعات، الروابط النمطية، والاستيراد/المصالحة. لا تمتد من `Workspaces.ViewFacility`. دور جديد `RiskOfficer` (ضابط مخاطر) يحمل حزمة الإدارة الكاملة على مستوى السجن.
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Facility Director | Risk Officer |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:-----------------:|:------------:|
+| Risks.ViewSummary | عرض ملخص المخاطر وودجت مساحة العمل دون تفاصيل | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Risks.View | عرض سجل المخاطر وتفاصيله | ✓ | | ✓ | | ✓ | ✓ |
+| Risks.ViewSensitive | عرض المخاطر ذات التصنيف الحساس | ✓ | | ✓ | | ✓ | ✓ |
+| Risks.Create / Risks.Update | تسجيل/تحديث بيانات الخطر | ✓ | | | | | ✓ |
+| Risks.AssignOwner | تعيين مالك الخطر | ✓ | | | | | ✓ |
+| Risks.ManageCategories | إدارة تصنيفات المخاطر | ✓ | | | | | ✓ |
+| Risks.Assess | إنشاء/إرسال تقييم | ✓ | | | | | ✓ |
+| Risks.ReviewAssessment | مراجعة التقييم (four-eyes مقابل المُقيِّم) | ✓ | | ✓ | | ✓ | |
+| Risks.ApproveAssessment | اعتماد التقييم (four-eyes مقابل المُقيِّم) | ✓ | | ✓ | | ✓ | |
+| Risks.ManageControls | إدارة الضوابط الحالية | ✓ | | | | | ✓ |
+| Risks.ManageTreatments | إنشاء/تنفيذ خطط المعالجة، **واعتمادها** (فصل المهام لا الصلاحية يمنع الاعتماد الذاتي) | ✓ | | | | ✓ | ✓ |
+| Risks.CompleteTreatmentActions | تنفيذ/تقديم إجراء معالجة للتحقق | ✓ | | | | | ✓ |
+| Risks.VerifyTreatmentActions | التحقق من اكتمال إجراء معالجة (four-eyes مقابل المُنفِّذ) | ✓ | | ✓ | | ✓ | |
+| Risks.RequestAcceptance | طلب قبول الخطر | ✓ | | | | | ✓ |
+| Risks.ApproveAcceptance | اعتماد قبول الخطر (four-eyes) | ✓ | | ✓ | | ✓ | |
+| Risks.RequestClosure | طلب إغلاق الخطر | ✓ | | | | | ✓ |
+| Risks.ApproveClosure | اعتماد إغلاق الخطر (four-eyes) | ✓ | | ✓ | | ✓ | |
+| Risks.Reopen | إعادة فتح خطر مغلق | ✓ | | | | | ✓ |
+| Risks.Escalate | تصعيد الخطر | ✓ | | | | | ✓ |
+| Risks.LinkSources | ربط/فك ربط مصادر وأدلة | ✓ | | | | | ✓ |
+| Risks.Export | تصدير بيانات المخاطر | ✓ | | ✓ | | ✓ | |
+| Risks.Import | الاستيراد المنضبط والمصالحة | ✓ | | | | | ✓ |
+| Risks.ManageMatrices | إدارة مصفوفات التقييم | ✓ | | | | | ✓ |
+| Risks.ApproveMatrices | اعتماد وتفعيل مصفوفات التقييم | ✓ | | ✓ | | ✓ | |
+
+المسار خارج نطاق المستخدم يعيد `404`، ونقص الصلاحية داخل النطاق يعيد `403`. `Risks.View` لا تمنح `Risks.ViewSensitive`. `Risks.Assess` لا تمنح `Risks.ApproveAssessment`. `Risks.RequestAcceptance`/`Risks.RequestClosure` لا تمنحان صلاحيات الاعتماد المقابلة. اعتماد خطة المعالجة والتحقق من إجراءاتها يستخدمان **فصل المهام (four-eyes) بدل صلاحية منفصلة** — تفصيل القرار في `docs/phase-d6-risk-permissions.md`. `RegionalDirector` و`HeadquartersExecutive` يريان `Risks.ViewSummary` فقط (عدادات دون تفاصيل)، اتساقًا مع بقية جداول هذه المرحلة.
+
 Capabilities النوع:
 
 - CanView

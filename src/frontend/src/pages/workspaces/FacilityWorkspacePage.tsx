@@ -25,6 +25,11 @@ import {
   type FacilityPriorityQueuePayload,
   type FacilityRecentActivityPayload,
   type FacilityStructurePayload,
+  type RiskWorkspacePayload,
+  type RiskWorkspaceSummary,
+  type RiskDetail,
+  type RiskListItem,
+  type RiskCommandBody,
   type NoteWorkspaceAllowedAction,
   type NoteWorkspaceDetail,
   type WorkspaceConfidence,
@@ -142,6 +147,7 @@ type CommandData = Readonly<{
   resources?: ResourceWorkspacePayload
   sensitiveCustody?: SensitiveCustodyWorkspacePayload
   workforce?: WorkforceWorkspacePayload
+  risk?: RiskWorkspacePayload
   priority?: FacilityPriorityQueuePayload
   activity?: FacilityRecentActivityPayload
   structure?: FacilityStructurePayload
@@ -308,6 +314,7 @@ export function FacilityWorkspacePage() {
       {panel && (
         <CommandContextPanel
           panel={panel}
+          facilityId={facilityId}
           shell={query.data}
           queue={data.priority}
           activity={data.activity}
@@ -461,7 +468,12 @@ function OperationalPulse({ data }: Readonly<{ data: CommandData }>) {
         detail={`${data.forms?.overdueForms ?? 0} متأخرة · ${data.forms?.remainingForms ?? 0} متبقية`}
         tone={(data.forms?.overdueForms ?? 0) > 0 ? 'warn' : 'ok'}
       />
-      <OperationalPulseItem label="المخاطر" value={risks?.statusAr ?? 'غير متاح'} detail={risks?.impactAr ?? 'مصدر بيانات المخاطر غير متاح حاليًا'} tone={domainTone(risks)} />
+      <OperationalPulseItem
+        label="المخاطر"
+        value={data.risk ? `${data.risk.summary.openRisks} مفتوح` : risks?.statusAr ?? 'غير متاح'}
+        detail={data.risk ? `${data.risk.summary.criticalRisks} حرجة · ${data.risk.summary.overdueTreatmentActions} معالجة متأخرة` : risks?.impactAr ?? 'مصدر بيانات المخاطر غير متاح حاليًا'}
+        tone={riskPulseTone(data.risk)}
+      />
       <OperationalPulseItem label="المشاريع" value={projects?.statusAr ?? 'غير متاح'} detail={projects?.impactAr ?? 'مصدر بيانات المشاريع غير متاح حاليًا'} tone={domainTone(projects)} />
       <OperationalPulseItem label="الخطط" value={plans?.statusAr ?? 'غير متاح'} detail={plans?.impactAr ?? 'مصدر بيانات الخطط غير متاح حاليًا'} tone={domainTone(plans)} />
       <OperationalPulseItem label="القرارات" value={decisions?.statusAr ?? 'غير متاح'} detail={decisions?.impactAr ?? 'مصدر بيانات القرارات غير متاح حاليًا'} tone={domainTone(decisions)} />
@@ -543,7 +555,7 @@ function SectionDeck({
   }
 
   if (activeSection === 'risks') {
-    return <CommandSection title="المخاطر والمعالجات"><DomainUnavailableSection domain={domainFor(data, 'risks')} panelType="risk" openPanel={openPanel} /></CommandSection>
+    return <CommandSection title="المخاطر والمعالجات"><RiskSection data={data} openPanel={openPanel} /></CommandSection>
   }
 
   if (activeSection === 'projects') {
@@ -642,6 +654,7 @@ function InterventionQueue({
 
 function CommandContextPanel({
   panel,
+  facilityId,
   shell,
   queue,
   activity,
@@ -652,6 +665,7 @@ function CommandContextPanel({
   onChanged,
 }: Readonly<{
   panel: PanelState
+  facilityId: string
   shell: WorkspaceShellDto
   queue?: FacilityPriorityQueuePayload
   activity?: FacilityRecentActivityPayload
@@ -688,22 +702,27 @@ function CommandContextPanel({
         <h2 id="context-panel-title">{title}</h2>
         {summaryReason(summary) !== '-' && <p>{summaryReason(summary)}</p>}
       </div>
-      <PanelDetail panel={panel} summary={summary} onChanged={onChanged} />
+      <PanelDetail panel={panel} facilityId={facilityId} summary={summary} onChanged={onChanged} />
     </dialog>
   )
 }
 
 function PanelDetail({
   panel,
+  facilityId,
   summary,
   onChanged,
-}: Readonly<{ panel: PanelState; summary?: PanelSummary; onChanged: () => void }>) {
+}: Readonly<{ panel: PanelState; facilityId: string; summary?: PanelSummary; onChanged: () => void }>) {
   if (panel.type === 'note') {
     return <NotePanel noteId={panel.entityId} summary={summary} onChanged={onChanged} />
   }
 
   if (panel.type === 'corrective-action') {
     return <CorrectiveActionPanel actionId={panel.entityId} summary={summary} />
+  }
+
+  if (panel.type === 'risk' && !panel.entityId.startsWith('domain-')) {
+    return <RiskPanel facilityId={facilityId} riskId={panel.entityId} onChanged={onChanged} />
   }
 
   if (panel.type === 'form-assignment') {
@@ -893,6 +912,171 @@ function CorrectiveActionPanel({ actionId }: Readonly<{ actionId: string; summar
       <div className="context-action-note">الإجراءات المركبة لهذا الإجراء متاحة من الصفحة الكاملة حتى يتم استخراج نماذجها داخل مركز القرار.</div>
     </div>
   )
+}
+
+function RiskPanel({
+  facilityId,
+  riskId,
+  onChanged,
+}: Readonly<{ facilityId: string; riskId: string; onChanged: () => void }>) {
+  const queryClient = useQueryClient()
+  const [reasonDraft, setReasonDraft] = useState('')
+  const [pendingCommand, setPendingCommand] = useState<string | null>(null)
+  const detailQuery = useQuery({
+    queryKey: ['workspace-panel', 'risk', facilityId, riskId],
+    queryFn: () => api.risks.get(facilityId, riskId),
+  })
+
+  const commandMutation = useMutation({
+    mutationFn: (body: RiskCommandBody) => api.risks.executeCommand(facilityId, riskId, body),
+    onSuccess: () => {
+      setReasonDraft('')
+      setPendingCommand(null)
+      void queryClient.invalidateQueries({ queryKey: ['workspace-panel', 'risk', facilityId, riskId] })
+      void queryClient.invalidateQueries({ queryKey: ['risk-register'] })
+      onChanged()
+    },
+  })
+
+  if (detailQuery.isLoading) return <PanelLoading />
+  if (detailQuery.isError) return <PanelError error={detailQuery.error} />
+  if (!detailQuery.data) return <WorkspaceEmpty message="لا توجد تفاصيل متاحة." />
+
+  const risk = detailQuery.data
+  const conflict = commandMutation.error instanceof ApiError && commandMutation.error.status === 409
+
+  const runCommand = (command: string, reason?: string) => {
+    setPendingCommand(command)
+    commandMutation.mutate({ command, reason, rowVersion: risk.rowVersion })
+  }
+
+  const wiredActions = new Set(['StartMonitoring', 'Escalate', 'Reopen'])
+  const informationalActions = risk.allowedActions.filter((action) => !wiredActions.has(action))
+
+  return (
+    <div className="context-stack">
+      <ContextSection title="ملخص الخطر">
+        <StatusRail
+          tone={risk.isDataStale ? 'warn' : 'info'}
+          rows={[
+            ['الرمز', risk.riskCode],
+            ['العنوان', risk.title],
+            ['التصنيف', risk.categoryNameAr],
+            ['الحالة', risk.statusAr],
+            ['المالك', risk.ownerDisplayName ?? 'بلا مالك'],
+            ['موعد المراجعة القادم', risk.nextReviewDueAtUtc ? formatDate(risk.nextReviewDueAtUtc) : '-'],
+          ]}
+        />
+      </ContextSection>
+
+      <ContextSection title="التقييم والاتجاه">
+        <StatusRail
+          tone="info"
+          rows={[
+            ['التقييم الأصلي', scoreSummary(risk.inherentAssessment)],
+            ['التقييم الحالي', scoreSummary(risk.currentAssessment)],
+            ['التقييم المتبقي', scoreSummary(risk.residualAssessment)],
+            ['الاتجاه', `${risk.trendAr} — ${risk.trendReasonAr}`],
+          ]}
+        />
+      </ContextSection>
+
+      <ContextSection title="الضوابط والمعالجة والمصادر">
+        <StatusRail
+          tone={risk.overdueTreatmentActionCount > 0 ? 'danger' : 'info'}
+          rows={[
+            ['ضوابط قائمة', String(risk.openControlCount)],
+            ['خطط معالجة مفتوحة', String(risk.openTreatmentPlanCount)],
+            ['إجراءات متأخرة', String(risk.overdueTreatmentActionCount)],
+            ['مصادر وأدلة مرتبطة', String(risk.sourceCount)],
+          ]}
+        />
+      </ContextSection>
+
+      {risk.allowedActions.includes('StartMonitoring') && (
+        <ContextSection title="بدء المتابعة">
+          <button
+            type="button"
+            className="command-button"
+            disabled={commandMutation.isPending}
+            onClick={() => runCommand('StartMonitoring')}
+          >
+            بدء متابعة الخطر
+          </button>
+        </ContextSection>
+      )}
+
+      {risk.allowedActions.includes('Escalate') && (
+        <ContextSection title="تصعيد الخطر">
+          <textarea
+            aria-label="سبب التصعيد"
+            value={pendingCommand === 'Escalate' ? reasonDraft : ''}
+            onChange={(event) => {
+              setPendingCommand('Escalate')
+              setReasonDraft(event.target.value)
+            }}
+            placeholder="سبب التصعيد"
+          />
+          <button
+            type="button"
+            className="command-button"
+            disabled={commandMutation.isPending || !reasonDraft.trim()}
+            onClick={() => runCommand('Escalate', reasonDraft.trim())}
+          >
+            تصعيد
+          </button>
+        </ContextSection>
+      )}
+
+      {risk.allowedActions.includes('Reopen') && (
+        <ContextSection title="إعادة فتح الخطر">
+          <textarea
+            aria-label="سبب إعادة الفتح"
+            value={pendingCommand === 'Reopen' ? reasonDraft : ''}
+            onChange={(event) => {
+              setPendingCommand('Reopen')
+              setReasonDraft(event.target.value)
+            }}
+            placeholder="الدليل أو سبب إعادة الفتح"
+          />
+          <button
+            type="button"
+            className="command-button"
+            disabled={commandMutation.isPending || !reasonDraft.trim()}
+            onClick={() => runCommand('Reopen', reasonDraft.trim())}
+          >
+            إعادة فتح
+          </button>
+        </ContextSection>
+      )}
+
+      {commandMutation.isError && (
+        <div className="context-action-note" data-tone="danger">
+          {conflict
+            ? 'حدث تعارض في RowVersion أو انتقال غير صالح. أعد تحميل البيانات والمحاولة مجددًا.'
+            : commandMutation.error instanceof ApiError
+              ? commandMutation.error.message
+              : 'تعذر تنفيذ الإجراء.'}
+          {conflict && (
+            <button type="button" className="command-button ghost" onClick={() => detailQuery.refetch()}>
+              إعادة تحميل
+            </button>
+          )}
+        </div>
+      )}
+
+      {informationalActions.length > 0 && (
+        <div className="context-action-note">
+          إجراءات إضافية متاحة من الصفحة الكاملة عند استخراجها: {informationalActions.join('، ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function scoreSummary(assessment: RiskDetail['inherentAssessment']): string {
+  if (!assessment) return 'لا يوجد تقييم معتمد'
+  return `${assessment.calculatedScore} (${assessment.ratingBandLabelAr})`
 }
 
 function EscalationPreviewPanel({ summary }: Readonly<{ summary?: PanelSummary }>) {
@@ -1495,6 +1679,131 @@ function SensitiveCustodySection({ data, openPanel }: Readonly<{ data: CommandDa
   )
 }
 
+function RiskSection({ data, openPanel }: Readonly<{ data: CommandData; openPanel: (panel: PanelState) => void }>) {
+  const risk = data.risk
+  const riskGap = domainFor(data, 'risks')
+  const facilityId = data.header?.facilityId
+  const registerQuery = useQuery({
+    queryKey: ['risk-register', facilityId],
+    queryFn: () => api.risks.list(facilityId ?? '', { pageSize: 10 }),
+    enabled: Boolean(risk && facilityId),
+    placeholderData: keepPreviousData,
+  })
+
+  if (!risk) {
+    return (
+      <div className="command-section-stack">
+        <DomainUnavailableSection domain={riskGap} panelType="risk" openPanel={openPanel} compact />
+      </div>
+    )
+  }
+
+  const summary = risk.summary
+  return (
+    <div className="command-section-stack">
+      <div className="occupancy-command-strip" data-status={riskStatus(summary)}>
+        <div>
+          <span className="command-eyebrow">حالة سجل المخاطر</span>
+          <h3>{summary.openRisks} خطر مفتوح</h3>
+          <p>متوسط العمر {summary.averageOpenRiskAgeDays} يوم · آخر تحديث {summary.lastUpdatedAtUtc ? SHORT_DATE_FORMAT.format(new Date(summary.lastUpdatedAtUtc)) : 'غير متاح'}</p>
+        </div>
+        <strong>{summary.criticalRisks}/{summary.highRisks}</strong>
+      </div>
+
+      <div className="workforce-rail readiness-rail" aria-label="مؤشرات المخاطر">
+        <CommandMetric label="حرجة" value={summary.criticalRisks} tone={summary.criticalRisks > 0 ? 'danger' : 'ok'} />
+        <CommandMetric label="عالية" value={summary.highRisks} tone={summary.highRisks > 0 ? 'warn' : 'ok'} />
+        <CommandMetric label="اتجاه تصاعدي" value={summary.increasingTrendRisks} tone={summary.increasingTrendRisks > 0 ? 'warn' : 'ok'} />
+        <CommandMetric label="متكررة" value={summary.recurringRisks} tone={summary.recurringRisks > 0 ? 'warn' : 'ok'} />
+        <CommandMetric label="بلا مالك" value={summary.risksWithoutOwner} tone={summary.risksWithoutOwner > 0 ? 'warn' : 'ok'} />
+        <CommandMetric label="بلا معالجة" value={summary.risksWithoutTreatment} tone={summary.risksWithoutTreatment > 0 ? 'warn' : 'ok'} />
+      </div>
+
+      <div className="duty-status-band" data-status={riskStatus(summary)}>
+        <span>مراجعات متأخرة {summary.overdueReviewRisks}</span>
+        <span>معالجات متأخرة {summary.overdueTreatmentActions}</span>
+        <span>قبول قارب الاستحقاق {summary.acceptedRisksNearingReview}</span>
+        <span>بيانات قديمة {summary.staleDataRisks}</span>
+      </div>
+
+      {risk.interventions.length > 0 && (
+        <ul className="priority-row-list" aria-label="تدخلات المخاطر">
+          {risk.interventions.map((item) => (
+            <li key={`${item.interventionType}-${item.riskRecordId}`}>
+              <button
+                type="button"
+                className="priority-row compact"
+                data-tone={riskSeverityTone(item.severityAr)}
+                onClick={() => openPanel({ type: 'risk', entityId: item.riskRecordId })}
+              >
+                <span className="priority-band" aria-hidden="true" />
+                <span><strong>{item.riskCode} — {item.titleAr}</strong><small>{item.reasonAr}</small></span>
+                <b>{item.primaryActionAr}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {registerQuery.data && registerQuery.data.items.length > 0 && (
+        <table className="risk-register-table" aria-label="سجل المخاطر">
+          <thead>
+            <tr>
+              <th>الرمز</th>
+              <th>العنوان</th>
+              <th>الحالة</th>
+              <th>التصنيف</th>
+              <th>الاتجاه</th>
+              <th>المالك</th>
+            </tr>
+          </thead>
+          <tbody>
+            {registerQuery.data.items.map((item) => (
+              <RiskRegisterRow key={item.id} item={item} openPanel={openPanel} />
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function RiskRegisterRow({ item, openPanel }: Readonly<{ item: RiskListItem; openPanel: (panel: PanelState) => void }>) {
+  return (
+    <tr>
+      <td>
+        <button type="button" className="link-button" onClick={() => openPanel({ type: 'risk', entityId: item.id })}>
+          {item.riskCode}
+        </button>
+      </td>
+      <td>{item.title}</td>
+      <td>{item.statusAr}</td>
+      <td>{item.residualRatingLabelAr ?? item.inherentRatingLabelAr ?? '-'}</td>
+      <td>{item.trendAr}</td>
+      <td>{item.ownerDisplayName ?? 'بلا مالك'}</td>
+    </tr>
+  )
+}
+
+function riskStatus(summary: RiskWorkspaceSummary): string {
+  if (summary.criticalRisks > 0) return 'partial'
+  if (summary.openRisks === 0) return 'complete'
+  return 'complete'
+}
+
+function riskPulseTone(risk?: RiskWorkspacePayload): WorkspaceVisualTone {
+  if (!risk) return 'muted'
+  if (risk.summary.criticalRisks > 0) return 'danger'
+  if (risk.summary.highRisks > 0 || risk.summary.increasingTrendRisks > 0) return 'warn'
+  return 'ok'
+}
+
+function riskSeverityTone(severityAr: string): WorkspaceVisualTone {
+  if (severityAr === 'حرج' || severityAr === 'حرجة') return 'danger'
+  if (severityAr === 'عالية') return 'warn'
+  return 'info'
+}
+
 function WorkforceCoverageSection({ data, openPanel }: Readonly<{ data: CommandData; openPanel: (panel: PanelState) => void }>) {
   const workforce = data.workforce
   const workforceGap = domainFor(data, 'workforce')
@@ -1956,6 +2265,7 @@ function extractCommandData(shell: WorkspaceShellDto): CommandData {
     resources: payloadFor<ResourceWorkspacePayload>(shell.widgets, 'facility.resources'),
     sensitiveCustody: payloadFor<SensitiveCustodyWorkspacePayload>(shell.widgets, 'facility.sensitive-custody'),
     workforce: payloadFor<WorkforceWorkspacePayload>(shell.widgets, 'facility.workforce'),
+    risk: payloadFor<RiskWorkspacePayload>(shell.widgets, 'facility.risks'),
     priority: payloadFor<FacilityPriorityQueuePayload>(shell.widgets, 'facility.priority-queue'),
     activity: payloadFor<FacilityRecentActivityPayload>(shell.widgets, 'facility.recent-activity'),
     structure: payloadFor<FacilityStructurePayload>(shell.widgets, 'facility.structure'),

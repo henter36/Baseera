@@ -167,6 +167,7 @@ public static class ApiEndpoints
         MapResourceEndpoints(api);
         MapWorkforceEndpoints(api);
         MapSensitiveCustodyEndpoints(api);
+        RiskManagementEndpoints.MapRiskManagementEndpoints(api);
         MapFormsEndpoints(api);
         MapFormTemplateEndpoints(api);
         MapFormCampaignEndpoints(api);

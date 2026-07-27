@@ -11,6 +11,7 @@ using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
+using Baseera.Domain.RiskManagement;
 using Baseera.Domain.SensitiveCustody;
 using Baseera.Domain.Workforce;
 using Microsoft.EntityFrameworkCore;
@@ -115,6 +116,23 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<WeaponInspection> WeaponInspections => Set<WeaponInspection>();
     public DbSet<SensitiveCustodyImportBatch> SensitiveCustodyImportBatches => Set<SensitiveCustodyImportBatch>();
     public DbSet<SensitiveCustodyReconciliationResolution> SensitiveCustodyReconciliationResolutions => Set<SensitiveCustodyReconciliationResolution>();
+    public DbSet<RiskCategory> RiskCategories => Set<RiskCategory>();
+    public DbSet<RiskRecord> RiskRecords => Set<RiskRecord>();
+    public DbSet<RiskStatusHistory> RiskStatusHistories => Set<RiskStatusHistory>();
+    public DbSet<RiskAssessmentMatrix> RiskAssessmentMatrices => Set<RiskAssessmentMatrix>();
+    public DbSet<LikelihoodLevel> LikelihoodLevels => Set<LikelihoodLevel>();
+    public DbSet<ImpactDimension> ImpactDimensions => Set<ImpactDimension>();
+    public DbSet<ImpactLevel> ImpactLevels => Set<ImpactLevel>();
+    public DbSet<RiskRatingBand> RiskRatingBands => Set<RiskRatingBand>();
+    public DbSet<RiskAssessment> RiskAssessments => Set<RiskAssessment>();
+    public DbSet<RiskAssessmentImpact> RiskAssessmentImpacts => Set<RiskAssessmentImpact>();
+    public DbSet<RiskControl> RiskControls => Set<RiskControl>();
+    public DbSet<RiskTreatmentPlan> RiskTreatmentPlans => Set<RiskTreatmentPlan>();
+    public DbSet<RiskTreatmentAction> RiskTreatmentActions => Set<RiskTreatmentAction>();
+    public DbSet<RiskSourceLink> RiskSourceLinks => Set<RiskSourceLink>();
+    public DbSet<RiskReview> RiskReviews => Set<RiskReview>();
+    public DbSet<RiskImportBatch> RiskImportBatches => Set<RiskImportBatch>();
+    public DbSet<RiskReconciliationRecord> RiskReconciliationRecords => Set<RiskReconciliationRecord>();
 
     IQueryable<Organization> Application.Abstractions.IBaseeraDbContext.Organizations => Organizations;
     IQueryable<Region> Application.Abstractions.IBaseeraDbContext.Regions => Regions;
@@ -223,6 +241,23 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<WeaponInspection> Application.Abstractions.IBaseeraDbContext.WeaponInspections => WeaponInspections;
     IQueryable<SensitiveCustodyImportBatch> Application.Abstractions.IBaseeraDbContext.SensitiveCustodyImportBatches => SensitiveCustodyImportBatches;
     IQueryable<SensitiveCustodyReconciliationResolution> Application.Abstractions.IBaseeraDbContext.SensitiveCustodyReconciliationResolutions => SensitiveCustodyReconciliationResolutions;
+    IQueryable<RiskCategory> Application.Abstractions.IBaseeraDbContext.RiskCategories => RiskCategories;
+    IQueryable<RiskRecord> Application.Abstractions.IBaseeraDbContext.RiskRecords => RiskRecords;
+    IQueryable<RiskStatusHistory> Application.Abstractions.IBaseeraDbContext.RiskStatusHistories => RiskStatusHistories;
+    IQueryable<RiskAssessmentMatrix> Application.Abstractions.IBaseeraDbContext.RiskAssessmentMatrices => RiskAssessmentMatrices;
+    IQueryable<LikelihoodLevel> Application.Abstractions.IBaseeraDbContext.LikelihoodLevels => LikelihoodLevels;
+    IQueryable<ImpactDimension> Application.Abstractions.IBaseeraDbContext.ImpactDimensions => ImpactDimensions;
+    IQueryable<ImpactLevel> Application.Abstractions.IBaseeraDbContext.ImpactLevels => ImpactLevels;
+    IQueryable<RiskRatingBand> Application.Abstractions.IBaseeraDbContext.RiskRatingBands => RiskRatingBands;
+    IQueryable<RiskAssessment> Application.Abstractions.IBaseeraDbContext.RiskAssessments => RiskAssessments;
+    IQueryable<RiskAssessmentImpact> Application.Abstractions.IBaseeraDbContext.RiskAssessmentImpacts => RiskAssessmentImpacts;
+    IQueryable<RiskControl> Application.Abstractions.IBaseeraDbContext.RiskControls => RiskControls;
+    IQueryable<RiskTreatmentPlan> Application.Abstractions.IBaseeraDbContext.RiskTreatmentPlans => RiskTreatmentPlans;
+    IQueryable<RiskTreatmentAction> Application.Abstractions.IBaseeraDbContext.RiskTreatmentActions => RiskTreatmentActions;
+    IQueryable<RiskSourceLink> Application.Abstractions.IBaseeraDbContext.RiskSourceLinks => RiskSourceLinks;
+    IQueryable<RiskReview> Application.Abstractions.IBaseeraDbContext.RiskReviews => RiskReviews;
+    IQueryable<RiskImportBatch> Application.Abstractions.IBaseeraDbContext.RiskImportBatches => RiskImportBatches;
+    IQueryable<RiskReconciliationRecord> Application.Abstractions.IBaseeraDbContext.RiskReconciliationRecords => RiskReconciliationRecords;
 
     public void Detach<TEntity>(TEntity entity) where TEntity : class => Entry(entity).State = EntityState.Detached;
     public void ClearChanges() => ChangeTracker.Clear();
@@ -295,6 +330,31 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         return rows.Single().Value;
     }
 
+    public async Task<long> NextRiskRecordSequenceValueAsync(CancellationToken cancellationToken = default)
+    {
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            var codes = await RiskRecords.IgnoreQueryFilters().Select(r => r.RiskCode).ToListAsync(cancellationToken);
+            long max = 0;
+            foreach (var code in codes)
+            {
+                if (code.StartsWith("RSK-", StringComparison.OrdinalIgnoreCase)
+                    && long.TryParse(code.AsSpan(4), out var parsed)
+                    && parsed > max)
+                {
+                    max = parsed;
+                }
+            }
+
+            return max + 1;
+        }
+
+        var rows = await Database
+            .SqlQueryRaw<SequenceValueRow>("SELECT NEXT VALUE FOR [RiskRecordReferenceSequence] AS [Value]")
+            .ToListAsync(cancellationToken);
+        return rows.Single().Value;
+    }
+
     public async Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default)
     {
         if (formDefinitionId == Guid.Empty)
@@ -335,6 +395,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
             .StartsAt(1)
             .IncrementsBy(1);
         modelBuilder.HasSequence<long>("MaintenanceWorkOrderNumberSequence")
+            .StartsAt(1)
+            .IncrementsBy(1);
+        modelBuilder.HasSequence<long>("RiskRecordReferenceSequence")
             .StartsAt(1)
             .IncrementsBy(1);
 
@@ -411,6 +474,23 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<WeaponInspection>().HasQueryFilter(e => !e.IsDeleted && !e.WeaponAsset.IsDeleted);
         modelBuilder.Entity<SensitiveCustodyImportBatch>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<SensitiveCustodyReconciliationResolution>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<RiskCategory>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<RiskRecord>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<RiskStatusHistory>().HasQueryFilter(h => !h.RiskRecord.IsDeleted);
+        modelBuilder.Entity<RiskAssessmentMatrix>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<LikelihoodLevel>().HasQueryFilter(e => !e.IsDeleted && !e.Matrix.IsDeleted);
+        modelBuilder.Entity<ImpactDimension>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<ImpactLevel>().HasQueryFilter(e => !e.IsDeleted && !e.Matrix.IsDeleted);
+        modelBuilder.Entity<RiskRatingBand>().HasQueryFilter(e => !e.IsDeleted && !e.Matrix.IsDeleted);
+        modelBuilder.Entity<RiskAssessment>().HasQueryFilter(e => !e.IsDeleted && !e.RiskRecord.IsDeleted);
+        modelBuilder.Entity<RiskAssessmentImpact>().HasQueryFilter(e => !e.IsDeleted && !e.RiskAssessment.IsDeleted);
+        modelBuilder.Entity<RiskControl>().HasQueryFilter(e => !e.IsDeleted && !e.RiskRecord.IsDeleted);
+        modelBuilder.Entity<RiskTreatmentPlan>().HasQueryFilter(e => !e.IsDeleted && !e.RiskRecord.IsDeleted);
+        modelBuilder.Entity<RiskTreatmentAction>().HasQueryFilter(e => !e.IsDeleted && !e.TreatmentPlan.IsDeleted);
+        modelBuilder.Entity<RiskSourceLink>().HasQueryFilter(e => !e.IsDeleted && !e.RiskRecord.IsDeleted);
+        modelBuilder.Entity<RiskReview>().HasQueryFilter(e => !e.IsDeleted && !e.RiskRecord.IsDeleted);
+        modelBuilder.Entity<RiskImportBatch>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<RiskReconciliationRecord>().HasQueryFilter(e => !e.IsDeleted);
 
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {
@@ -450,6 +530,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         ResourceStatusEventAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
         FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(this);
+        RiskStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(this);
     }
 
 }
@@ -579,6 +660,21 @@ internal static class NoteRoutingAppendOnlyGuard
     }
 }
 
+internal static class RiskStatusHistoryAppendOnlyGuard
+{
+    public static void EnsureEntriesAreAppendOnly(DbContext context)
+    {
+        var invalidEntries = context.ChangeTracker
+            .Entries<RiskStatusHistory>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (invalidEntries.Any())
+        {
+            throw new InvalidOperationException("RiskStatusHistory is append-only and cannot be modified or deleted.");
+        }
+    }
+}
+
 internal static class ResourceStatusEventAppendOnlyGuard
 {
     public static void EnsureEntriesAreAppendOnly(DbContext context)
@@ -607,6 +703,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             ResourceStatusEventAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(eventData.Context);
+            RiskStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChanges(eventData, result);
@@ -626,6 +723,7 @@ public sealed class AuditImmutabilityInterceptor : SaveChangesInterceptor
             NoteRoutingAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             ResourceStatusEventAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
             FormSchemaSnapshotImmutabilityGuard.EnsureImmutable(eventData.Context);
+            RiskStatusHistoryAppendOnlyGuard.EnsureEntriesAreAppendOnly(eventData.Context);
         }
 
         return base.SavingChangesAsync(eventData, result, cancellationToken);
