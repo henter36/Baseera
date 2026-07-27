@@ -104,18 +104,55 @@ public sealed class RiskRegisterQueryService(IBaseeraDbContext db, ICurrentUser 
             aggregate?.LastUpdated);
     }
 
+    private sealed record RiskListRow(
+        Guid Id,
+        string RiskCode,
+        string Title,
+        string CategoryNameAr,
+        RiskType RiskType,
+        RiskStatus Status,
+        string? InherentCode,
+        string? InherentLabel,
+        string? ResidualCode,
+        string? ResidualLabel,
+        decimal? CurrentScore,
+        RiskTrend CurrentTrend,
+        string? OwnerName,
+        TreatmentStrategy? TreatmentStrategy,
+        DateTimeOffset FirstIdentifiedAtUtc,
+        DateTimeOffset? NextReviewDueAtUtc,
+        DateTimeOffset? DataFreshAsOfUtc,
+        int SourceCount);
+
     public async Task<RiskPagedResult<RiskListItemDto>> ListAsync(Guid facilityId, RiskListFilters filters, CancellationToken cancellationToken = default)
     {
         Require(PermissionCodes.RisksView);
         await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
         var canSeeSensitive = User.HasPermission(PermissionCodes.RisksViewSensitive);
 
-        var query = Db.RiskRecords.AsNoTracking()
+        var query = ApplyScope(facilityId);
+        query = ApplyFilters(query, filters, canSeeSensitive);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var page = Math.Max(filters.Page, 1);
+        var pageSize = Math.Clamp(filters.PageSize, 1, 50);
+        var now = DateTimeOffset.UtcNow;
+
+        var rows = await ProjectListItems(query, page, pageSize).ToListAsync(cancellationToken);
+        var mapped = rows.Select(row => MapListItem(row, now)).ToList();
+
+        return new RiskPagedResult<RiskListItemDto>(mapped, page, pageSize, totalCount);
+    }
+
+    private IQueryable<RiskRecord> ApplyScope(Guid facilityId) =>
+        Db.RiskRecords.AsNoTracking()
             .Include(r => r.RiskCategory)
             .Include(r => r.CurrentRatingBand)
             .Include(r => r.OwnerWorkforceMember)
             .Where(r => r.FacilityId == facilityId);
 
+    private static IQueryable<RiskRecord> ApplyFilters(IQueryable<RiskRecord> query, RiskListFilters filters, bool canSeeSensitive)
+    {
         if (!canSeeSensitive)
         {
             query = query.Where(r => r.ConfidentialityLevel == Domain.Attachments.ClassificationLevel.Internal);
@@ -147,82 +184,82 @@ public sealed class RiskRegisterQueryService(IBaseeraDbContext db, ICurrentUser 
             query = query.Where(r => r.RiskCategoryId == categoryId);
         }
 
-        if (filters.WithoutOwner == true)
-        {
-            query = query.Where(r => r.OwnerWorkforceMemberId == null && r.OwnerUserId == null);
-        }
-        else if (filters.OwnerWorkforceMemberId is Guid ownerId)
-        {
-            query = query.Where(r => r.OwnerWorkforceMemberId == ownerId);
-        }
+        query = ApplyOwnerFilter(query, filters);
 
         if (filters.WithoutTreatment == true)
         {
             query = query.Where(r => !r.TreatmentPlans.Any());
         }
 
-        var totalCount = await query.CountAsync(cancellationToken);
-        var page = Math.Max(filters.Page, 1);
-        var pageSize = Math.Clamp(filters.PageSize, 1, 50);
-        var now = DateTimeOffset.UtcNow;
+        return query;
+    }
 
-        var items = await query
+    private static IQueryable<RiskRecord> ApplyOwnerFilter(IQueryable<RiskRecord> query, RiskListFilters filters)
+    {
+        if (filters.WithoutOwner == true)
+        {
+            return query.Where(r => r.OwnerWorkforceMemberId == null && r.OwnerUserId == null);
+        }
+
+        if (filters.OwnerWorkforceMemberId is Guid ownerId)
+        {
+            return query.Where(r => r.OwnerWorkforceMemberId == ownerId);
+        }
+
+        return query;
+    }
+
+    private static IQueryable<RiskListRow> ProjectListItems(IQueryable<RiskRecord> query, int page, int pageSize) =>
+        query
             .OrderByDescending(r => r.CurrentScore ?? -1)
             .ThenByDescending(r => r.FirstIdentifiedAtUtc)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(r => new
-            {
+            .Select(r => new RiskListRow(
                 r.Id,
                 r.RiskCode,
                 r.Title,
-                CategoryNameAr = r.RiskCategory.NameAr,
+                r.RiskCategory.NameAr,
                 r.RiskType,
                 r.Status,
-                InherentCode = r.CurrentInherentAssessment != null ? r.CurrentInherentAssessment.RatingBand.Code : null,
-                InherentLabel = r.CurrentInherentAssessment != null ? r.CurrentInherentAssessment.RatingBand.LabelAr : null,
-                ResidualCode = r.CurrentResidualAssessment != null ? r.CurrentResidualAssessment.RatingBand.Code : null,
-                ResidualLabel = r.CurrentResidualAssessment != null ? r.CurrentResidualAssessment.RatingBand.LabelAr : null,
+                r.CurrentInherentAssessment != null ? r.CurrentInherentAssessment.RatingBand.Code : null,
+                r.CurrentInherentAssessment != null ? r.CurrentInherentAssessment.RatingBand.LabelAr : null,
+                r.CurrentResidualAssessment != null ? r.CurrentResidualAssessment.RatingBand.Code : null,
+                r.CurrentResidualAssessment != null ? r.CurrentResidualAssessment.RatingBand.LabelAr : null,
                 r.CurrentScore,
                 r.CurrentTrend,
-                OwnerName = r.OwnerWorkforceMember != null ? r.OwnerWorkforceMember.DisplayName : null,
+                r.OwnerWorkforceMember != null ? r.OwnerWorkforceMember.DisplayName : null,
                 r.TreatmentStrategy,
                 r.FirstIdentifiedAtUtc,
                 r.NextReviewDueAtUtc,
                 r.DataFreshAsOfUtc,
-                SourceCount = r.SourceLinks.Count(l => !l.IsDeleted)
-            })
-            .ToListAsync(cancellationToken);
+                r.SourceLinks.Count(l => !l.IsDeleted)));
 
-        var mapped = items.Select(i => new RiskListItemDto(
-            i.Id,
-            i.RiskCode,
-            i.Title,
-            i.CategoryNameAr,
-            i.RiskType,
-            RiskManagementDisplay.RiskTypeAr(i.RiskType),
-            i.Status,
-            RiskManagementDisplay.StatusAr(i.Status),
-            i.InherentCode,
-            i.InherentLabel,
-            i.ResidualCode,
-            i.ResidualLabel,
-            i.CurrentScore,
-            i.CurrentTrend,
-            RiskManagementDisplay.TrendAr(i.CurrentTrend),
-            i.OwnerName,
-            i.TreatmentStrategy,
-            i.TreatmentStrategy.HasValue ? RiskManagementDisplay.TreatmentStrategyAr(i.TreatmentStrategy.Value) : null,
-            i.FirstIdentifiedAtUtc,
-            i.NextReviewDueAtUtc,
-            (int)(now - i.FirstIdentifiedAtUtc).TotalDays,
-            i.SourceCount,
-            i.DataFreshAsOfUtc is null || i.DataFreshAsOfUtc < now.AddDays(-90),
-            PrimaryActionFor(i.Status)))
-            .ToList();
-
-        return new RiskPagedResult<RiskListItemDto>(mapped, page, pageSize, totalCount);
-    }
+    private static RiskListItemDto MapListItem(RiskListRow row, DateTimeOffset now) => new(
+        row.Id,
+        row.RiskCode,
+        row.Title,
+        row.CategoryNameAr,
+        row.RiskType,
+        RiskManagementDisplay.RiskTypeAr(row.RiskType),
+        row.Status,
+        RiskManagementDisplay.StatusAr(row.Status),
+        row.InherentCode,
+        row.InherentLabel,
+        row.ResidualCode,
+        row.ResidualLabel,
+        row.CurrentScore,
+        row.CurrentTrend,
+        RiskManagementDisplay.TrendAr(row.CurrentTrend),
+        row.OwnerName,
+        row.TreatmentStrategy,
+        row.TreatmentStrategy.HasValue ? RiskManagementDisplay.TreatmentStrategyAr(row.TreatmentStrategy.Value) : null,
+        row.FirstIdentifiedAtUtc,
+        row.NextReviewDueAtUtc,
+        (int)(now - row.FirstIdentifiedAtUtc).TotalDays,
+        row.SourceCount,
+        row.DataFreshAsOfUtc is null || row.DataFreshAsOfUtc < now.AddDays(-90),
+        PrimaryActionFor(row.Status));
 
     private static string PrimaryActionFor(RiskStatus status) => status switch
     {
@@ -357,59 +394,74 @@ public sealed class RiskRegisterQueryService(IBaseeraDbContext db, ICurrentUser 
     private List<string> ComputeAllowedActions(RiskRecord risk)
     {
         var actions = new List<string>();
-        bool Has(string permission) => User.HasPermission(permission);
-        var notClosed = risk.Status is not (RiskStatus.Closed or RiskStatus.Archived);
+        actions.AddRange(BuildActiveWorkActions(risk));
+        actions.AddRange(BuildLifecycleTransitionActions(risk));
+        actions.AddRange(BuildDecisionActions(risk));
 
-        if (notClosed)
-        {
-            if (Has(PermissionCodes.RisksAssess)) actions.Add("Assess");
-            if (Has(PermissionCodes.RisksManageControls)) actions.Add("AddControl");
-            if (Has(PermissionCodes.RisksManageTreatments)) actions.Add("CreateTreatmentPlan");
-            if (Has(PermissionCodes.RisksLinkSources)) actions.Add("LinkSource");
-            if (Has(PermissionCodes.RisksAssignOwner)) actions.Add("AssignOwner");
-            if (Has(PermissionCodes.RisksEscalate)) actions.Add("Escalate");
-        }
-
-        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.Monitoring) && Has(PermissionCodes.RisksUpdate))
-        {
-            actions.Add("StartMonitoring");
-        }
-
-        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.PendingAcceptance) && Has(PermissionCodes.RisksRequestAcceptance))
-        {
-            actions.Add("RequestAcceptance");
-        }
-
-        if (risk.Status == RiskStatus.PendingAcceptance && Has(PermissionCodes.RisksApproveAcceptance))
-        {
-            actions.Add("DecideAcceptance");
-        }
-
-        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.PendingClosure) && Has(PermissionCodes.RisksRequestClosure))
-        {
-            actions.Add("RequestClosure");
-        }
-
-        if (risk.Status == RiskStatus.PendingClosure && Has(PermissionCodes.RisksApproveClosure))
-        {
-            actions.Add("DecideClosure");
-        }
-
-        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.Reopened) && Has(PermissionCodes.RisksReopen))
-        {
-            actions.Add("Reopen");
-        }
-
-        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.Archived) && Has(PermissionCodes.RisksUpdate))
-        {
-            actions.Add("Archive");
-        }
-
-        if (Has(PermissionCodes.RisksUpdate))
+        if (User.HasPermission(PermissionCodes.RisksUpdate))
         {
             actions.Add("Update");
         }
 
         return actions;
+    }
+
+    /// <summary>Actions available only while the risk is neither Closed nor Archived.</summary>
+    private IEnumerable<string> BuildActiveWorkActions(RiskRecord risk)
+    {
+        if (risk.Status is RiskStatus.Closed or RiskStatus.Archived)
+        {
+            yield break;
+        }
+
+        if (User.HasPermission(PermissionCodes.RisksAssess)) yield return "Assess";
+        if (User.HasPermission(PermissionCodes.RisksManageControls)) yield return "AddControl";
+        if (User.HasPermission(PermissionCodes.RisksManageTreatments)) yield return "CreateTreatmentPlan";
+        if (User.HasPermission(PermissionCodes.RisksLinkSources)) yield return "LinkSource";
+        if (User.HasPermission(PermissionCodes.RisksAssignOwner)) yield return "AssignOwner";
+        if (User.HasPermission(PermissionCodes.RisksEscalate)) yield return "Escalate";
+    }
+
+    /// <summary>Actions that request a lifecycle transition the state machine itself allows from the current status.</summary>
+    private IEnumerable<string> BuildLifecycleTransitionActions(RiskRecord risk)
+    {
+        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.Monitoring) && User.HasPermission(PermissionCodes.RisksUpdate))
+        {
+            yield return "StartMonitoring";
+        }
+
+        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.PendingAcceptance) && User.HasPermission(PermissionCodes.RisksRequestAcceptance))
+        {
+            yield return "RequestAcceptance";
+        }
+
+        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.PendingClosure) && User.HasPermission(PermissionCodes.RisksRequestClosure))
+        {
+            yield return "RequestClosure";
+        }
+
+        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.Reopened) && User.HasPermission(PermissionCodes.RisksReopen))
+        {
+            yield return "Reopen";
+        }
+
+        if (RiskLifecycleStateMachine.CanTransition(risk.Status, RiskStatus.Archived) && User.HasPermission(PermissionCodes.RisksUpdate))
+        {
+            yield return "Archive";
+        }
+    }
+
+    /// <summary>Four-eyes decision actions available only while a pending review sits in the matching status.</summary>
+    private IEnumerable<string> BuildDecisionActions(RiskRecord risk)
+    {
+        if (risk.Status == RiskStatus.PendingAcceptance && User.HasPermission(PermissionCodes.RisksApproveAcceptance))
+        {
+            yield return "DecideAcceptance";
+        }
+
+        if (risk.Status == RiskStatus.PendingClosure && User.HasPermission(PermissionCodes.RisksApproveClosure))
+        {
+            yield return "DecideClosure";
+        }
     }
 }

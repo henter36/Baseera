@@ -37,70 +37,16 @@ public sealed class RiskReviewService(IBaseeraDbContext db, ICurrentUser current
     {
         var risk = await EnsureRiskVisibleAsync(facilityId, riskId, cancellationToken);
         var now = DateTimeOffset.UtcNow;
-
-        var review = new RiskReview
-        {
-            RiskRecordId = riskId,
-            ReviewType = request.ReviewType,
-            SubjectReferenceType = request.SubjectReferenceType ?? nameof(RiskRecord),
-            SubjectReferenceId = request.SubjectReferenceId ?? riskId,
-            RequestedBy = ActorReference(),
-            RequestedAtUtc = now,
-            Status = RiskReviewStatus.Requested,
-            Comments = request.Comments,
-            CreatedBy = ActorReference()
-        };
+        var review = NewReviewRequest(riskId, request, now);
 
         switch (request.ReviewType)
         {
             case RiskReviewType.RiskAcceptance:
-                Require(PermissionCodes.RisksRequestAcceptance);
-                if (request.AcceptedUntilUtc is null || request.AcceptedUntilUtc <= now)
-                {
-                    throw new InvalidOperationException("تاريخ نهاية القبول مطلوب ويجب أن يكون في المستقبل.");
-                }
-
-                if (request.ReviewFrequencyDays is null or <= 0)
-                {
-                    throw new InvalidOperationException("مدة المراجعة الدورية مطلوبة.");
-                }
-
-                if (string.IsNullOrWhiteSpace(request.Comments))
-                {
-                    throw new InvalidOperationException("مبرر قبول الخطر مطلوب.");
-                }
-
-                RiskLifecycleStateMachine.EnsureAllowed(risk.Status, RiskStatus.PendingAcceptance);
-                review.RequestedAcceptedUntilUtc = request.AcceptedUntilUtc;
-                review.RequestedReviewFrequencyDays = request.ReviewFrequencyDays;
-                TransitionRisk(risk, RiskStatus.PendingAcceptance, "طلب قبول الخطر.");
-                risk.AcceptedUntilUtc = request.AcceptedUntilUtc;
-                await AuditAsync(RiskAuditActions.RiskAcceptanceRequested, nameof(RiskRecord), risk.Id, null, cancellationToken);
+                await PrepareAcceptanceRequestAsync(risk, review, request, now, cancellationToken);
                 break;
 
             case RiskReviewType.ClosureApproval:
-                Require(PermissionCodes.RisksRequestClosure);
-                if (string.IsNullOrWhiteSpace(request.ClosureReason))
-                {
-                    throw new InvalidOperationException("مبرر الإغلاق مطلوب.");
-                }
-
-                if (risk.CurrentResidualAssessmentId is null)
-                {
-                    throw new InvalidOperationException("لا يمكن طلب إغلاق الخطر دون تقييم متبقٍ معتمد.");
-                }
-
-                var residualApproved = await Db.RiskAssessments.AnyAsync(
-                    a => a.Id == risk.CurrentResidualAssessmentId && a.Status == AssessmentStatus.Approved, cancellationToken);
-                if (!residualApproved)
-                {
-                    throw new InvalidOperationException("التقييم المتبقي الحالي غير معتمد بعد.");
-                }
-
-                RiskLifecycleStateMachine.EnsureAllowed(risk.Status, RiskStatus.PendingClosure);
-                TransitionRisk(risk, RiskStatus.PendingClosure, "طلب إغلاق الخطر.");
-                risk.ClosureReason = request.ClosureReason;
-                await AuditAsync(RiskAuditActions.RiskClosureRequested, nameof(RiskRecord), risk.Id, null, cancellationToken);
+                await PrepareClosureRequestAsync(risk, request.ClosureReason, cancellationToken);
                 break;
 
             case RiskReviewType.PeriodicReview:
@@ -117,6 +63,71 @@ public sealed class RiskReviewService(IBaseeraDbContext db, ICurrentUser current
         await Db.SaveChangesAsync(cancellationToken);
         await Db.SaveChangesAsync(cancellationToken);
         return review.Id;
+    }
+
+    private RiskReview NewReviewRequest(Guid riskId, RiskReviewRequestDto request, DateTimeOffset now) => new()
+    {
+        RiskRecordId = riskId,
+        ReviewType = request.ReviewType,
+        SubjectReferenceType = request.SubjectReferenceType ?? nameof(RiskRecord),
+        SubjectReferenceId = request.SubjectReferenceId ?? riskId,
+        RequestedBy = ActorReference(),
+        RequestedAtUtc = now,
+        Status = RiskReviewStatus.Requested,
+        Comments = request.Comments,
+        CreatedBy = ActorReference()
+    };
+
+    private async Task PrepareAcceptanceRequestAsync(RiskRecord risk, RiskReview review, RiskReviewRequestDto request, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        Require(PermissionCodes.RisksRequestAcceptance);
+        if (request.AcceptedUntilUtc is null || request.AcceptedUntilUtc <= now)
+        {
+            throw new InvalidOperationException("تاريخ نهاية القبول مطلوب ويجب أن يكون في المستقبل.");
+        }
+
+        if (request.ReviewFrequencyDays is null or <= 0)
+        {
+            throw new InvalidOperationException("مدة المراجعة الدورية مطلوبة.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Comments))
+        {
+            throw new InvalidOperationException("مبرر قبول الخطر مطلوب.");
+        }
+
+        RiskLifecycleStateMachine.EnsureAllowed(risk.Status, RiskStatus.PendingAcceptance);
+        review.RequestedAcceptedUntilUtc = request.AcceptedUntilUtc;
+        review.RequestedReviewFrequencyDays = request.ReviewFrequencyDays;
+        TransitionRisk(risk, RiskStatus.PendingAcceptance, "طلب قبول الخطر.");
+        risk.AcceptedUntilUtc = request.AcceptedUntilUtc;
+        await AuditAsync(RiskAuditActions.RiskAcceptanceRequested, nameof(RiskRecord), risk.Id, null, cancellationToken);
+    }
+
+    private async Task PrepareClosureRequestAsync(RiskRecord risk, string? closureReason, CancellationToken cancellationToken)
+    {
+        Require(PermissionCodes.RisksRequestClosure);
+        if (string.IsNullOrWhiteSpace(closureReason))
+        {
+            throw new InvalidOperationException("مبرر الإغلاق مطلوب.");
+        }
+
+        if (risk.CurrentResidualAssessmentId is null)
+        {
+            throw new InvalidOperationException("لا يمكن طلب إغلاق الخطر دون تقييم متبقٍ معتمد.");
+        }
+
+        var residualApproved = await Db.RiskAssessments.AnyAsync(
+            a => a.Id == risk.CurrentResidualAssessmentId && a.Status == AssessmentStatus.Approved, cancellationToken);
+        if (!residualApproved)
+        {
+            throw new InvalidOperationException("التقييم المتبقي الحالي غير معتمد بعد.");
+        }
+
+        RiskLifecycleStateMachine.EnsureAllowed(risk.Status, RiskStatus.PendingClosure);
+        TransitionRisk(risk, RiskStatus.PendingClosure, "طلب إغلاق الخطر.");
+        risk.ClosureReason = closureReason;
+        await AuditAsync(RiskAuditActions.RiskClosureRequested, nameof(RiskRecord), risk.Id, null, cancellationToken);
     }
 
     public async Task DecideAsync(Guid facilityId, Guid riskId, Guid reviewId, RiskReviewDecisionRequest request, CancellationToken cancellationToken = default)
