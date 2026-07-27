@@ -1453,15 +1453,19 @@ public sealed class SensitiveCustodyService(
             plaintext = sensitiveValueProtector.Unprotect(protectedValue);
             return true;
         }
-        catch (CryptographicException)
+        catch (CryptographicException ex)
         {
-            logger.LogWarning("Failed to unprotect sensitive custody serial for authorized projection.");
+            logger.LogWarning(
+                ex,
+                "Failed to unprotect sensitive custody serial for authorized projection.");
             plaintext = string.Empty;
             return false;
         }
-        catch (FormatException)
+        catch (FormatException ex)
         {
-            logger.LogWarning("Failed to unprotect sensitive custody serial due to invalid protected value format.");
+            logger.LogWarning(
+                ex,
+                "Failed to unprotect sensitive custody serial due to invalid protected value format.");
             plaintext = string.Empty;
             return false;
         }
