@@ -32,7 +32,7 @@ EnvironmentSecurityGuard.EnsureEntraConfiguredForRestrictedEnvironments(
 
 builder.Services.AddBaseeraApplication();
 builder.Services.Configure<WorkspaceFrameworkOptions>(builder.Configuration.GetSection("Workspaces"));
-builder.Services.AddBaseeraInfrastructure(builder.Configuration);
+builder.Services.AddBaseeraInfrastructure(builder.Configuration, builder.Environment);
 builder.Services.AddBaseeraBackgroundJobs();
 builder.Services.AddBaseeraReporting();
 builder.Services.AddBaseeraHealthChecks(builder.Configuration, builder.Environment, useTestAuth, seedDemo);

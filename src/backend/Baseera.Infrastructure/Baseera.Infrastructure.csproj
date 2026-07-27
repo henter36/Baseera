@@ -23,4 +23,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Baseera.UnitTests" />
+    <InternalsVisibleTo Include="Baseera.IntegrationTests" />
+  </ItemGroup>
+
 </Project>
