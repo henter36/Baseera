@@ -215,7 +215,7 @@ public sealed class SensitiveCustodyService(
             ReadinessRate = SensitiveCustodyReadinessPolicy.Rate(weaponCounts.Operational, weaponCounts.Total),
             VerificationCoverage = SensitiveCustodyReadinessPolicy.Rate(weaponCounts.Verified, weaponCounts.Total),
             FreshnessStatus = weaponCounts.Stale == 0 ? "Fresh" : "Stale",
-            ConfidenceLevel = openDiscrepancies == 0 && weaponCounts.Stale == 0 ? "High" : "Medium",
+            ConfidenceLevel = openDiscrepancies == 0 && weaponCounts.Stale == 0 ? SeverityHigh : SeverityMedium,
             LastInventoryAtUtc = lastInventory,
             GeneratedAtUtc = now
         };
@@ -785,29 +785,29 @@ public sealed class SensitiveCustodyService(
         var staleBefore = now.AddDays(-options.StaleVerificationDays);
         var issues = new List<SensitiveCustodyDataQualityIssueDto>
         {
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.MissingAssetCode, "High", "لا يمكن تتبع عهدة بلا كود داخلي.", "WeaponAssets", "تحديث كود الأصل", "weapons",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.MissingAssetCode, SeverityHigh, "لا يمكن تتبع عهدة بلا كود داخلي.", WeaponAssetsSource, "تحديث كود الأصل", "weapons",
                 WeaponsInFacility(facilityId).CountAsync(w => w.InternalAssetCode == "", cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.MissingEncryptedSerial, "Critical", "السجل الحساس غير محمي.", "WeaponAssets", "إعادة إدخال السجل المشفر", "weapons",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.MissingEncryptedSerial, SeverityCritical, "السجل الحساس غير محمي.", WeaponAssetsSource, "إعادة إدخال السجل المشفر", "weapons",
                 WeaponsInFacility(facilityId).CountAsync(w => w.SerialNumberEncrypted == "" || w.SerialNumberHash == "", cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.UnknownStatus, "High", "الحالة المجهولة لا تدخل في الجاهزية.", "WeaponAssets", "تحديث الحالة", "weapons",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.UnknownStatus, SeverityHigh, "الحالة المجهولة لا تدخل في الجاهزية.", WeaponAssetsSource, "تحديث الحالة", "weapons",
                 WeaponsInFacility(facilityId).CountAsync(w => w.CurrentStatus == WeaponStatus.Unknown, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.UnknownCondition, "High", "الصلاحية التشغيلية غير قابلة للاعتماد.", "WeaponAssets", "تسجيل فحص", "inspections",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.UnknownCondition, SeverityHigh, "الصلاحية التشغيلية غير قابلة للاعتماد.", WeaponAssetsSource, RecordInspectionActionAr, "inspections",
                 WeaponsInFacility(facilityId).CountAsync(w => w.Condition == WeaponCondition.Unknown, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.StaleVerification, "Medium", "آخر تحقق قديم.", "WeaponAssets", "تنفيذ تحقق أو جرد", "inventories",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.StaleVerification, SeverityMedium, "آخر تحقق قديم.", WeaponAssetsSource, "تنفيذ تحقق أو جرد", "inventories",
                 WeaponsInFacility(facilityId).CountAsync(w => w.LastVerifiedAtUtc == null || w.LastVerifiedAtUtc < staleBefore, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.ExpiredInspection, "High", "فحص السلاح مستحق أو منته.", "WeaponInspections", "تسجيل فحص", "inspections",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.ExpiredInspection, SeverityHigh, "فحص السلاح مستحق أو منته.", "WeaponInspections", RecordInspectionActionAr, "inspections",
                 WeaponsInFacility(facilityId).CountAsync(w => w.NextInspectionDueAtUtc != null && w.NextInspectionDueAtUtc < now, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.OpenTransactionWithoutCompletion, "High", "توجد عهدة غير مكتملة.", "CustodyTransactions", "إكمال أو عكس العهدة", "transactions",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.OpenTransactionWithoutCompletion, SeverityHigh, "توجد عهدة غير مكتملة.", "CustodyTransactions", "إكمال أو عكس العهدة", "transactions",
                 db.CustodyTransactions.CountAsync(t => !t.IsDeleted && t.FacilityId == facilityId && !new[] { CustodyTransactionStatus.Completed, CustodyTransactionStatus.Reversed, CustodyTransactionStatus.Cancelled, CustodyTransactionStatus.Rejected }.Contains(t.Status), cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.OverdueReturn, "Critical", "توجد عهد متأخرة في الإعادة.", "CustodyTransactions", "تسجيل الإعادة أو التصعيد", "transactions",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.OverdueReturn, SeverityCritical, "توجد عهد متأخرة في الإعادة.", "CustodyTransactions", "تسجيل الإعادة أو التصعيد", "transactions",
                 db.CustodyTransactions.CountAsync(t => !t.IsDeleted && t.FacilityId == facilityId && t.ExpectedReturnAtUtc != null && t.ExpectedReturnAtUtc < now && t.ReturnedAtUtc == null, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.InventoryDiscrepancyUnresolved, "Critical", "فروقات الجرد تحتاج معالجة.", "InventoryEntries", "فتح معالجة الفرق", "inventories",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.InventoryDiscrepancyUnresolved, SeverityCritical, "فروقات الجرد تحتاج معالجة.", "InventoryEntries", "فتح معالجة الفرق", "inventories",
                 db.InventoryEntries.CountAsync(e => !e.IsDeleted && e.InventorySession.FacilityId == facilityId && e.DiscrepancyType != InventoryDiscrepancyType.None && e.ResolvedAtUtc == null, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.AmmunitionNegativeProjection, "Critical", "رصيد ذخيرة سلبي غير مقبول.", "AmmunitionLots", "مراجعة ledger", "ammunition",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.AmmunitionNegativeProjection, SeverityCritical, "رصيد ذخيرة سلبي غير مقبول.", "AmmunitionLots", "مراجعة ledger", "ammunition",
                 db.AmmunitionLots.CountAsync(l => !l.IsDeleted && l.FacilityId == facilityId && l.CurrentQuantity < 0, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.ExpiredAmmunitionStillAvailable, "High", "ذخيرة منتهية لا يجب أن تكون متاحة.", "AmmunitionLots", "حجر أو إتلاف الدفعة", "ammunition",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.ExpiredAmmunitionStillAvailable, SeverityHigh, "ذخيرة منتهية لا يجب أن تكون متاحة.", "AmmunitionLots", "حجر أو إتلاف الدفعة", "ammunition",
                 db.AmmunitionLots.CountAsync(l => !l.IsDeleted && l.FacilityId == facilityId && l.ExpiryDateUtc != null && l.ExpiryDateUtc < now && l.CurrentQuantity > 0, cancellationToken)),
-            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.MissingRequirementBaseline, "Medium", "لا توجد حدود دنيا موثقة.", "SensitiveResourceRequirements", "تسجيل متطلبات معتمدة", "requirements",
+            await IssueAsync(SensitiveCustodyOperationalCatalog.DataQuality.MissingRequirementBaseline, SeverityMedium, "لا توجد حدود دنيا موثقة.", "SensitiveResourceRequirements", "تسجيل متطلبات معتمدة", "requirements",
                 MissingRequirementCountAsync(facilityId, now, cancellationToken))
         };
 
@@ -1446,7 +1446,7 @@ public sealed class SensitiveCustodyService(
         };
     }
 
-    private bool TryUnprotectSerial(string protectedValue, out string plaintext)
+    internal bool TryUnprotectSerial(string protectedValue, out string plaintext)
     {
         try
         {
@@ -1513,7 +1513,7 @@ public sealed class SensitiveCustodyService(
         new("APPROVE_TRANSACTION", "اعتماد عملية عهدة", currentUser.HasPermission(PermissionCodes.SensitiveCustodyApproveTransactions), "تحتاج صلاحية الاعتماد."),
         new("INVENTORY", "بدء جرد", currentUser.HasPermission(PermissionCodes.SensitiveCustodyConductInventory), "تحتاج صلاحية الجرد."),
         new("APPROVE_INVENTORY", "اعتماد جرد", currentUser.HasPermission(PermissionCodes.SensitiveCustodyApproveInventory), "تحتاج صلاحية اعتماد الجرد."),
-        new("INSPECTION", "تسجيل فحص", currentUser.HasPermission(PermissionCodes.SensitiveCustodyManageInspections), "تحتاج صلاحية إدارة الفحص."),
+        new("INSPECTION", RecordInspectionActionAr, currentUser.HasPermission(PermissionCodes.SensitiveCustodyManageInspections), "تحتاج صلاحية إدارة الفحص."),
         new("AMMUNITION", "تسجيل حركة ذخيرة", currentUser.HasPermission(PermissionCodes.SensitiveCustodyManageAmmunition), "تحتاج صلاحية إدارة الذخيرة.")
     ];
 
