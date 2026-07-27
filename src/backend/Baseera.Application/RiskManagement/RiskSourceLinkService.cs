@@ -6,12 +6,12 @@ using Baseera.Domain.RiskManagement;
 using Microsoft.EntityFrameworkCore;
 
 /// <summary>
-/// Typed evidence/source links — never a generic JSON blob. Scope is verified before linking for the
-/// entity types this codebase already models (Note, CorrectiveAction, ResourceAsset, WorkforceMember,
-/// RiskRecord). Types belonging to domains not yet built in Baseera (Project, EmergencyPlan, Decision,
-/// Occurrence, WorkforceCoverageGap/QualificationIssue, SensitiveCustodyDiscrepancy, DataQualityIssue) are
-/// accepted with existence left unverified — this is a documented, honest gap (see
-/// docs/phase-d6-risk-source-linking.md), not silently pretended away.
+/// Typed evidence/source links — never a generic JSON blob. Scope is verified before linking, and only for
+/// the entity types this codebase can actually resolve and scope-check today (Note, CorrectiveAction,
+/// ResourceAsset, RiskRecord). Every other type in RiskSourceEntityType belongs to a domain not yet built in
+/// Baseera (Project, EmergencyPlan, Decision, Occurrence, WorkforceCoverageGap/QualificationIssue,
+/// SensitiveCustodyDiscrepancy, DataQualityIssue, ...) and is rejected outright rather than accepted with
+/// scope unverified — fail closed, not silently pretended safe (see docs/phase-d6-risk-source-linking.md).
 /// </summary>
 public sealed class RiskSourceLinkService(IBaseeraDbContext db, ICurrentUser currentUser, IOrganizationalScopeService scope, IAuditService audit)
     : RiskServiceBase(db, currentUser, scope, audit), IRiskSourceLinkService
@@ -19,7 +19,7 @@ public sealed class RiskSourceLinkService(IBaseeraDbContext db, ICurrentUser cur
     private static readonly HashSet<RiskSourceEntityType> ScopeCheckedTypes =
     [
         RiskSourceEntityType.Note, RiskSourceEntityType.CorrectiveAction, RiskSourceEntityType.ResourceAsset,
-        RiskSourceEntityType.WorkforceCoverageGap, RiskSourceEntityType.WorkforceQualificationIssue, RiskSourceEntityType.RiskRecord
+        RiskSourceEntityType.RiskRecord
     ];
 
     public async Task<IReadOnlyList<RiskSourceLinkDto>> ListAsync(Guid facilityId, Guid riskId, CancellationToken cancellationToken = default)
@@ -103,7 +103,7 @@ public sealed class RiskSourceLinkService(IBaseeraDbContext db, ICurrentUser cur
     {
         if (!ScopeCheckedTypes.Contains(type))
         {
-            return;
+            throw new InvalidOperationException("نوع المصدر هذا غير مدعوم بعد لربطه بخطر (لا يوجد تحقق نطاق متاح له).");
         }
 
         var inScope = type switch
@@ -113,10 +113,8 @@ public sealed class RiskSourceLinkService(IBaseeraDbContext db, ICurrentUser cur
                 .Join(Db.OperationalNotes, ca => ca.OperationalNoteId, n => n.Id, (ca, n) => new { ca.Id, n.FacilityId })
                 .AnyAsync(x => x.Id == entityId && x.FacilityId == facilityId, cancellationToken),
             RiskSourceEntityType.ResourceAsset => await Db.ResourceAssets.AnyAsync(r => r.Id == entityId && r.OperationalFacilityId == facilityId, cancellationToken),
-            RiskSourceEntityType.WorkforceCoverageGap or RiskSourceEntityType.WorkforceQualificationIssue =>
-                await Db.WorkforceMembers.AnyAsync(w => w.Id == entityId && (w.CurrentOperationalFacilityId == facilityId || w.HomeFacilityId == facilityId), cancellationToken),
             RiskSourceEntityType.RiskRecord => await Db.RiskRecords.AnyAsync(r => r.Id == entityId && r.FacilityId == facilityId, cancellationToken),
-            _ => true
+            _ => false
         };
 
         if (!inScope)

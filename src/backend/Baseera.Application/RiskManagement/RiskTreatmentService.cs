@@ -55,9 +55,27 @@ public sealed class RiskTreatmentService(IBaseeraDbContext db, ICurrentUser curr
             throw new InvalidOperationException("لا يمكن إنشاء خطة معالجة لخطر مغلق أو مؤرشف.");
         }
 
-        if (request.OwnerWorkforceMemberId is Guid ownerId && !await Db.WorkforceMembers.AnyAsync(w => w.Id == ownerId, cancellationToken))
+        if (request.OwnerWorkforceMemberId is Guid ownerId)
         {
-            throw new InvalidOperationException("عضو القوى البشرية المحدد كمالك للخطة غير موجود.");
+            await EnsureWorkforceMemberInFacilityAsync(facilityId, ownerId, "عضو القوى البشرية المحدد كمالك للخطة غير موجود ضمن نطاق هذا السجن.", cancellationToken);
+        }
+
+        // TargetScore is never accepted from the client — it is always derived from the two target levels
+        // (when both are supplied), matching the "score is always server-computed" principle applied to the
+        // main assessment score. A treatment plan only models one target impact level (not a full per-dimension
+        // breakdown), so the product of the two numeric values is the only well-defined computation here.
+        decimal? targetScore = null;
+        if (request.TargetLikelihoodLevelId is Guid targetLikelihoodId && request.TargetImpactLevelId is Guid targetImpactId)
+        {
+            var targetLikelihood = await Db.LikelihoodLevels.FirstOrDefaultAsync(l => l.Id == targetLikelihoodId, cancellationToken)
+                ?? throw new InvalidOperationException("مستوى الاحتمالية المستهدف غير موجود.");
+            var targetImpact = await Db.ImpactLevels.FirstOrDefaultAsync(l => l.Id == targetImpactId, cancellationToken)
+                ?? throw new InvalidOperationException("مستوى الأثر المستهدف غير موجود.");
+            targetScore = targetLikelihood.NumericValue * targetImpact.NumericValue;
+        }
+        else if (request.TargetLikelihoodLevelId is not null || request.TargetImpactLevelId is not null)
+        {
+            throw new InvalidOperationException("يجب تحديد مستوى الاحتمالية ومستوى الأثر المستهدفين معًا أو عدم تحديد أي منهما.");
         }
 
         var plan = new RiskTreatmentPlan
@@ -72,7 +90,7 @@ public sealed class RiskTreatmentService(IBaseeraDbContext db, ICurrentUser curr
             DueAtUtc = request.DueAtUtc,
             TargetLikelihoodLevelId = request.TargetLikelihoodLevelId,
             TargetImpactLevelId = request.TargetImpactLevelId,
-            TargetScore = request.TargetScore,
+            TargetScore = targetScore,
             Status = TreatmentPlanStatus.Draft,
             ApprovalStatus = RiskApprovalStatus.Pending,
             CreatedBy = ActorReference()
@@ -130,7 +148,10 @@ public sealed class RiskTreatmentService(IBaseeraDbContext db, ICurrentUser curr
                 plan.CancellationReason = request.Reason;
                 break;
 
+            // Start (from Approved) and Unblock (from Blocked) both move the plan into InProgress; the state
+            // machine itself validates which starting status is legitimate for the command actually sent.
             case RiskTreatmentPlanCommandTypes.Start:
+            case RiskTreatmentPlanCommandTypes.Unblock:
                 RiskTreatmentPlanStateMachine.EnsureAllowed(plan.Status, TreatmentPlanStatus.InProgress);
                 plan.Status = TreatmentPlanStatus.InProgress;
                 break;
@@ -139,11 +160,6 @@ public sealed class RiskTreatmentService(IBaseeraDbContext db, ICurrentUser curr
                 RequireReason(request.Reason);
                 RiskTreatmentPlanStateMachine.EnsureAllowed(plan.Status, TreatmentPlanStatus.Blocked);
                 plan.Status = TreatmentPlanStatus.Blocked;
-                break;
-
-            case RiskTreatmentPlanCommandTypes.Unblock:
-                RiskTreatmentPlanStateMachine.EnsureAllowed(plan.Status, TreatmentPlanStatus.InProgress);
-                plan.Status = TreatmentPlanStatus.InProgress;
                 break;
 
             case RiskTreatmentPlanCommandTypes.Complete:
@@ -193,9 +209,9 @@ public sealed class RiskTreatmentService(IBaseeraDbContext db, ICurrentUser curr
             throw new InvalidOperationException("إجراء الاعتمادية المحدد غير موجود ضمن نفس الخطة.");
         }
 
-        if (request.AssignedToWorkforceMemberId is Guid memberId && !await Db.WorkforceMembers.AnyAsync(w => w.Id == memberId, cancellationToken))
+        if (request.AssignedToWorkforceMemberId is Guid memberId)
         {
-            throw new InvalidOperationException("عضو القوى البشرية المسند إليه غير موجود.");
+            await EnsureWorkforceMemberInFacilityAsync(facilityId, memberId, "عضو القوى البشرية المسند إليه غير موجود ضمن نطاق هذا السجن.", cancellationToken);
         }
 
         var action = new RiskTreatmentAction
