@@ -65,10 +65,27 @@ public static class RiskScoringEngine
         return weightedSum / totalWeight;
     }
 
-    /// <summary>Rating bands must be contiguous and non-overlapping (validated at matrix activation time), so exactly one band always matches.</summary>
-    public static RiskRatingBand SelectRatingBand(IReadOnlyList<RiskRatingBand> bands, decimal score) =>
-        bands.FirstOrDefault(b => score >= b.MinimumScore && score <= b.MaximumScore)
-        ?? throw new InvalidOperationException("لا يوجد نطاق تصنيف يغطي هذه الدرجة ضمن المصفوفة الحالية. يجب مراجعة إعداد المصفوفة.");
+    /// <summary>
+    /// Rating bands must be contiguous and non-overlapping (validated at matrix activation time), so exactly
+    /// one band always matches. Scores are not assumed to be integers — the weighted-impact formula can
+    /// produce fractional values — so every band but the last treats its upper bound as exclusive; the last
+    /// band's upper bound stays inclusive so the top of the range is always covered.
+    /// </summary>
+    public static RiskRatingBand SelectRatingBand(IReadOnlyList<RiskRatingBand> bands, decimal score)
+    {
+        var ordered = bands.OrderBy(b => b.MinimumScore).ToList();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var isLast = i == ordered.Count - 1;
+            var upperInclusive = isLast || score < ordered[i + 1].MinimumScore;
+            if (score >= ordered[i].MinimumScore && upperInclusive)
+            {
+                return ordered[i];
+            }
+        }
+
+        throw new InvalidOperationException("لا يوجد نطاق تصنيف يغطي هذه الدرجة ضمن المصفوفة الحالية. يجب مراجعة إعداد المصفوفة.");
+    }
 }
 
 /// <summary>Structural validation applied before a matrix can move to PendingApproval/Active.</summary>
@@ -89,10 +106,12 @@ public static class RiskMatrixValidation
                 throw new InvalidOperationException($"نطاق التصنيف {ordered[i].Code} غير صالح: الحد الأدنى أكبر من الحد الأعلى.");
             }
 
-            // Bands must be strictly contiguous over the scored range (min(next) = max(previous) + 1): no gap, no overlap.
-            if (i > 0 && ordered[i].MinimumScore != ordered[i - 1].MaximumScore + 1)
+            // Bands must touch with no overlap; SelectRatingBand treats every band's upper bound as exclusive
+            // except the last, so a fractional score (from the weighted-impact formula) at a shared boundary
+            // still resolves to exactly one band.
+            if (i > 0 && ordered[i].MinimumScore != ordered[i - 1].MaximumScore)
             {
-                throw new InvalidOperationException("نطاقات التصنيف يجب أن تكون متتابعة دون تداخل أو فجوة (الحد الأدنى للنطاق التالي = الحد الأعلى للنطاق السابق + 1).");
+                throw new InvalidOperationException("نطاقات التصنيف يجب أن تكون متلامسة دون تداخل أو فجوة (الحد الأدنى للنطاق التالي = الحد الأعلى للنطاق السابق).");
             }
         }
     }

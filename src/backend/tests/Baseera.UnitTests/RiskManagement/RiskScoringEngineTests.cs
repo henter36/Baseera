@@ -74,9 +74,9 @@ public sealed class RiskScoringEngineTests
         var bands = new List<RiskRatingBand>
         {
             new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
-            new() { Code = "MED", MinimumScore = 6, MaximumScore = 12 },
-            new() { Code = "HIGH", MinimumScore = 13, MaximumScore = 20 },
-            new() { Code = "CRIT", MinimumScore = 21, MaximumScore = 25 }
+            new() { Code = "MED", MinimumScore = 5, MaximumScore = 12 },
+            new() { Code = "HIGH", MinimumScore = 12, MaximumScore = 20 },
+            new() { Code = "CRIT", MinimumScore = 20, MaximumScore = 25 }
         };
 
         Assert.Equal("MED", RiskScoringEngine.SelectRatingBand(bands, 10).Code);
@@ -84,14 +84,55 @@ public sealed class RiskScoringEngineTests
     }
 
     [Fact]
-    public void SelectRatingBand_ThrowsWhenNoBandCoversScore()
+    public void SelectRatingBand_TreatsSharedBoundaryAsBelongingToTheHigherBand()
     {
         var bands = new List<RiskRatingBand>
         {
-            new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 }
+            new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
+            new() { Code = "MED", MinimumScore = 5, MaximumScore = 12 }
         };
 
-        Assert.Throws<InvalidOperationException>(() => RiskScoringEngine.SelectRatingBand(bands, 99));
+        Assert.Equal("LOW", RiskScoringEngine.SelectRatingBand(bands, 4.99m).Code);
+        Assert.Equal("MED", RiskScoringEngine.SelectRatingBand(bands, 5m).Code);
+    }
+
+    [Fact]
+    public void SelectRatingBand_ResolvesFractionalScoreFromWeightedFormula()
+    {
+        // Likelihood 3 x weighted-average impact 2.33 = 6.99, exercising the exact scenario the
+        // integer "+1" contiguity rule used to miss for LikelihoodTimesWeightedImpact.
+        var bands = new List<RiskRatingBand>
+        {
+            new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
+            new() { Code = "MED", MinimumScore = 5, MaximumScore = 12 }
+        };
+
+        Assert.Equal("MED", RiskScoringEngine.SelectRatingBand(bands, 6.99m).Code);
+    }
+
+    [Fact]
+    public void SelectRatingBand_ThrowsWhenScoreIsBelowEveryBand()
+    {
+        // The last band's upper bound is intentionally open-ended (it always covers "at or above its
+        // minimum"), so only a score below the lowest band's minimum can be unmatched.
+        var bands = new List<RiskRatingBand>
+        {
+            new() { Code = "LOW", MinimumScore = 10, MaximumScore = 20 }
+        };
+
+        Assert.Throws<InvalidOperationException>(() => RiskScoringEngine.SelectRatingBand(bands, 1));
+    }
+
+    [Fact]
+    public void SelectRatingBand_LastBandCoversAnyScoreAtOrAboveItsMinimum()
+    {
+        var bands = new List<RiskRatingBand>
+        {
+            new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
+            new() { Code = "CRIT", MinimumScore = 5, MaximumScore = 25 }
+        };
+
+        Assert.Equal("CRIT", RiskScoringEngine.SelectRatingBand(bands, 999).Code);
     }
 
     [Fact]
@@ -128,7 +169,7 @@ public sealed class RiskScoringEngineTests
         var bands = new List<RiskRatingBand>
         {
             new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
-            new() { Code = "MED", MinimumScore = 6, MaximumScore = 12 }
+            new() { Code = "MED", MinimumScore = 5, MaximumScore = 12 }
         };
 
         RiskMatrixValidation.ValidateRatingBands(bands);

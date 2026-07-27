@@ -290,8 +290,6 @@ internal sealed class RiskTreatmentActionConfiguration : IEntityTypeConfiguratio
         builder.HasIndex(a => new { a.TreatmentPlanId, a.Status, a.DueAtUtc });
         builder.HasOne(a => a.AssignedToWorkforceMember).WithMany().HasForeignKey(a => a.AssignedToWorkforceMemberId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(a => a.AssignedToUser).WithMany().HasForeignKey(a => a.AssignedToUserId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(a => a.AssignedOrganization).WithMany().HasForeignKey(a => a.AssignedOrganizationId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne(a => a.AssignedFacilityUnit).WithMany().HasForeignKey(a => a.AssignedFacilityUnitId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(a => a.DependencyAction).WithMany().HasForeignKey(a => a.DependencyActionId).OnDelete(DeleteBehavior.Restrict);
         builder.ConfigureRowVersion();
     }

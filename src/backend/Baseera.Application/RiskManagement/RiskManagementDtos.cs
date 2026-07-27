@@ -383,7 +383,6 @@ public sealed class RiskTreatmentPlanCreateRequest
     public required DateTimeOffset DueAtUtc { get; init; }
     public Guid? TargetLikelihoodLevelId { get; init; }
     public Guid? TargetImpactLevelId { get; init; }
-    public decimal? TargetScore { get; init; }
 }
 
 public static class RiskTreatmentPlanCommandTypes

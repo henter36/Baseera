@@ -33,7 +33,7 @@ HasIndex(m => m.OrganizationId).IsUnique().HasFilter("[IsDefault] = 1 AND [IsDel
 
 * وجود نطاق تصنيف واحد على الأقل.
 * لكل نطاق: الحد الأدنى ≤ الحد الأعلى.
-* النطاقات متتابعة تمامًا بلا فجوة ولا تداخل: `min(التالي) = max(السابق) + 1`.
+* النطاقات متلامسة تمامًا بلا فجوة ولا تداخل: `min(التالي) = max(السابق)` (وليس `+1`). هذا مقصود: صيغة `LikelihoodTimesWeightedImpact` تُنتج درجات كسرية (مثلاً 6.99)، فلا يصح افتراض حدود صحيحة (integer) بين النطاقات. `RiskScoringEngine.SelectRatingBand` يتعامل مع الحد الأعلى لكل نطاق (عدا الأخير) على أنه **غير شامل** (exclusive) — أي أن نقطة التماس تنتمي دائمًا للنطاق الأعلى — بينما الحد الأعلى للنطاق الأخير يبقى شاملًا (inclusive) لضمان تغطية أي درجة تفوقه أيضًا.
 
 `RiskMatrixValidation.ValidateWeights` يفرض وزنًا موجبًا لكل بُعد أثر مستخدم عند اختيار صيغة `LikelihoodTimesWeightedImpact` (انظر `phase-d6-risk-scoring.md`).
 

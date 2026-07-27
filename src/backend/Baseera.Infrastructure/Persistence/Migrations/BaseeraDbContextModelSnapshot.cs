@@ -6754,12 +6754,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("AssignedFacilityUnitId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("AssignedOrganizationId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("AssignedToUserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -6846,10 +6840,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(160)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AssignedFacilityUnitId");
-
-                    b.HasIndex("AssignedOrganizationId");
 
                     b.HasIndex("AssignedToUserId");
 
@@ -11530,16 +11520,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskTreatmentAction", b =>
                 {
-                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "AssignedFacilityUnit")
-                        .WithMany()
-                        .HasForeignKey("AssignedFacilityUnitId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Baseera.Domain.Organization.Organization", "AssignedOrganization")
-                        .WithMany()
-                        .HasForeignKey("AssignedOrganizationId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Baseera.Domain.Identity.User", "AssignedToUser")
                         .WithMany()
                         .HasForeignKey("AssignedToUserId")
@@ -11560,10 +11540,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TreatmentPlanId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("AssignedFacilityUnit");
-
-                    b.Navigation("AssignedOrganization");
 
                     b.Navigation("AssignedToUser");
 

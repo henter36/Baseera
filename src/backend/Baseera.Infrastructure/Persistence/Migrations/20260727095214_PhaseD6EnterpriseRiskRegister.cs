@@ -778,8 +778,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     Description = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: true),
                     AssignedToWorkforceMemberId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     AssignedToUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    AssignedOrganizationId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
-                    AssignedFacilityUnitId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     Status = table.Column<int>(type: "int", nullable: false),
                     Priority = table.Column<int>(type: "int", nullable: false),
                     StartAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -805,18 +803,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_RiskTreatmentActions", x => x.Id);
                     table.CheckConstraint("CK_RiskTreatmentActions_NoSelfDependency", "[DependencyActionId] IS NULL OR [DependencyActionId] <> [Id]");
-                    table.ForeignKey(
-                        name: "FK_RiskTreatmentActions_FacilityUnits_AssignedFacilityUnitId",
-                        column: x => x.AssignedFacilityUnitId,
-                        principalTable: "FacilityUnits",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_RiskTreatmentActions_Organizations_AssignedOrganizationId",
-                        column: x => x.AssignedOrganizationId,
-                        principalTable: "Organizations",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_RiskTreatmentActions_RiskTreatmentActions_DependencyActionId",
                         column: x => x.DependencyActionId,
@@ -1091,16 +1077,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                 name: "IX_RiskStatusHistories_RiskRecordId_ChangedAtUtc",
                 table: "RiskStatusHistories",
                 columns: new[] { "RiskRecordId", "ChangedAtUtc" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RiskTreatmentActions_AssignedFacilityUnitId",
-                table: "RiskTreatmentActions",
-                column: "AssignedFacilityUnitId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_RiskTreatmentActions_AssignedOrganizationId",
-                table: "RiskTreatmentActions",
-                column: "AssignedOrganizationId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_RiskTreatmentActions_AssignedToUserId",

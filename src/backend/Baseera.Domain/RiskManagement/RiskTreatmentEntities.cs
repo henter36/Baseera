@@ -2,7 +2,6 @@ namespace Baseera.Domain.RiskManagement;
 
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
-using Baseera.Domain.Organization;
 using Baseera.Domain.Workforce;
 
 public class RiskTreatmentPlan : SoftDeletableEntity
@@ -42,10 +41,6 @@ public class RiskTreatmentAction : SoftDeletableEntity
     public WorkforceMember? AssignedToWorkforceMember { get; set; }
     public Guid? AssignedToUserId { get; set; }
     public User? AssignedToUser { get; set; }
-    public Guid? AssignedOrganizationId { get; set; }
-    public Organization? AssignedOrganization { get; set; }
-    public Guid? AssignedFacilityUnitId { get; set; }
-    public FacilityUnit? AssignedFacilityUnit { get; set; }
     public RiskTreatmentActionStatus Status { get; set; } = RiskTreatmentActionStatus.Draft;
     public RiskPriority Priority { get; set; } = RiskPriority.Medium;
     public DateTimeOffset? StartAtUtc { get; set; }
