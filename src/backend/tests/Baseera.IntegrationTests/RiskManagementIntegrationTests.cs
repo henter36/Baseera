@@ -218,12 +218,10 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
         await factory.SeedUserAsync("matrix-national", "مدير نظام", [RoleCodes.SystemAdministrator], (ScopeType.Global, null, null));
         var client = factory.CreateAuthenticatedClient("matrix-national");
 
-        var list = await client.GetAsync($"/api/v1/risk-matrices?organizationId={SeedIds.Organization}");
-        list.EnsureSuccessStatusCode();
-
+        var matrixCode = $"NAT-{Guid.NewGuid():N}"[..8];
         var create = await client.PostAsJsonAsync($"/api/v1/risk-matrices?organizationId={SeedIds.Organization}", new
         {
-            code = $"NAT-{Guid.NewGuid():N}"[..8],
+            code = matrixCode,
             name = "مصفوفة وطنية",
             scoreFormula = 0,
             effectiveFromUtc = DateTimeOffset.UtcNow,
@@ -232,7 +230,18 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
             impactLevels = new[] { new { impactDimensionId = dimensionId, code = "I1", name = "I1", numericValue = 1 } },
             ratingBands = new[] { new { code = "ONLY", labelAr = "الوحيد", minimumScore = 1m, maximumScore = 1m, severity = 0, escalationRequired = false, colorToken = "info" } }
         });
-        create.EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var created = await create.Content.ReadFromJsonAsync<CreateResponse>(JsonOptions);
+        Assert.NotNull(created);
+        Assert.NotEqual(Guid.Empty, created!.Id);
+
+        var list = await client.GetAsync($"/api/v1/risk-matrices?organizationId={SeedIds.Organization}");
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        var matrices = await list.Content.ReadFromJsonAsync<List<RiskMatrixDto>>(JsonOptions);
+        Assert.NotNull(matrices);
+        var listed = Assert.Single(matrices!, m => m.Id == created.Id);
+        Assert.Equal(matrixCode, listed.Code);
+        Assert.Equal(MatrixStatus.Draft, listed.Status);
     }
 
     [IntegrationConnectionFact]
@@ -563,6 +572,45 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
 
         Assert.NotNull(payload);
         Assert.Contains(payload!.Issues, issue => issue.Code == RiskDataQualityCodes.MissingOwner && issue.Count > 0);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task RiskOfficer_permission_bundle_matches_documented_exclusions()
+    {
+        // Automated check tying docs/permissions-matrix.md's "18 of 25, excludes 6 approval permissions
+        // plus Export" claim to the actual seeded RolePermissions — if DatabaseInitializer's riskManager/
+        // riskApprover bundles ever drift, this test (not just the prose) catches it.
+        var allRiskPermissionCodes = typeof(PermissionCodes)
+            .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+            .Where(f => f.FieldType == typeof(string))
+            .Select(f => (string)f.GetValue(null)!)
+            .Where(code => code.StartsWith("Risks.", StringComparison.Ordinal))
+            .ToHashSet();
+        Assert.Equal(25, allRiskPermissionCodes.Count);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var grantedCodes = await db.RolePermissions
+            .Where(rp => rp.Role.Code == RoleCodes.RiskOfficer)
+            .Join(db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => p.Code)
+            .Where(code => code.StartsWith("Risks."))
+            .ToListAsync();
+        var grantedRiskCodes = grantedCodes.ToHashSet();
+
+        Assert.Equal(18, grantedRiskCodes.Count);
+
+        var excludedCodes = allRiskPermissionCodes.Except(grantedRiskCodes).ToHashSet();
+        var expectedExcluded = new HashSet<string>
+        {
+            PermissionCodes.RisksReviewAssessment,
+            PermissionCodes.RisksApproveAssessment,
+            PermissionCodes.RisksVerifyTreatmentActions,
+            PermissionCodes.RisksApproveAcceptance,
+            PermissionCodes.RisksApproveClosure,
+            PermissionCodes.RisksApproveMatrices,
+            PermissionCodes.RisksExport
+        };
+        Assert.Equal(expectedExcluded, excludedCodes);
     }
 
     // ---------- helpers ----------
