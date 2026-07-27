@@ -5,6 +5,7 @@ using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Resources;
+using Baseera.Application.RiskManagement;
 using Baseera.Application.SensitiveCustody;
 using Baseera.Application.Workforce;
 using Baseera.Domain.CorrectiveActions;
@@ -28,6 +29,8 @@ internal interface IFacilityWorkspaceReadService
         throw new NotSupportedException("Workforce workspace read is not implemented by this test double.");
     Task<SensitiveCustodyWorkspacePayload> GetSensitiveCustodyAsync(WorkspaceContext context, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Sensitive custody workspace read is not implemented by this test double.");
+    Task<RiskWorkspacePayload> GetRiskAsync(WorkspaceContext context, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Risk workspace read is not implemented by this test double.");
     Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityRecentActivityPayload> GetRecentActivityAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken);
@@ -42,12 +45,14 @@ internal sealed class FacilityWorkspaceFacilityDomainQueries(
     IOccupancyQueryService occupancy,
     IResourceReadinessQueryService resources,
     IWorkforceReadinessQueryService workforce,
-    ISensitiveCustodyReadinessService? sensitiveCustody = null)
+    ISensitiveCustodyReadinessService? sensitiveCustody = null,
+    IRiskReadinessService? risk = null)
 {
     public IOccupancyQueryService Occupancy { get; } = occupancy;
     public IResourceReadinessQueryService Resources { get; } = resources;
     public IWorkforceReadinessQueryService Workforce { get; } = workforce;
     public ISensitiveCustodyReadinessService SensitiveCustody { get; } = sensitiveCustody ?? new UnavailableSensitiveCustodyReadinessService();
+    public IRiskReadinessService Risk { get; } = risk ?? new UnavailableRiskReadinessService();
 }
 
 internal sealed class UnavailableSensitiveCustodyReadinessService : ISensitiveCustodyReadinessService
@@ -60,6 +65,18 @@ internal sealed class UnavailableSensitiveCustodyReadinessService : ISensitiveCu
 
     public Task<IReadOnlyList<SensitiveCustodyTimelineItemDto>> GetTimelineAsync(Guid facilityId, int limit, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Sensitive custody timeline read is not implemented by this test double.");
+}
+
+internal sealed class UnavailableRiskReadinessService : IRiskReadinessService
+{
+    public Task<RiskWorkspaceSummaryDto> GetWorkspaceSummaryAsync(Guid facilityId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Risk workspace read is not implemented by this test double.");
+
+    public Task<IReadOnlyList<RiskInterventionItemDto>> GetInterventionsAsync(Guid facilityId, int limit, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Risk interventions read is not implemented by this test double.");
+
+    public Task<RiskWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Risk workspace read is not implemented by this test double.");
 }
 
 internal sealed class FacilityWorkspaceReadService(
@@ -77,6 +94,7 @@ internal sealed class FacilityWorkspaceReadService(
     private const string DomainKeyWorkforce = "workforce";
     private const string DataQualityComplete = "complete";
     private const string DataQualityPartial = "partial";
+    private const string DataQualityMissing = "missing";
     private const string SeverityCriticalAr = "حرجة";
     private const string SeverityHighAr = "عالية";
     private const string SeverityMediumAr = "متوسطة";
@@ -121,7 +139,10 @@ internal sealed class FacilityWorkspaceReadService(
             var sensitiveCustodyPayload = currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewSummary)
                 ? await GetSensitiveCustodyAsync(context, cancellationToken)
                 : null;
-            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload, workforcePayload, sensitiveCustodyPayload);
+            var riskPayload = currentUser.HasPermission(PermissionCodes.RisksViewSummary)
+                ? await GetRiskAsync(context, cancellationToken)
+                : null;
+            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload, workforcePayload, sensitiveCustodyPayload, riskPayload);
         });
     }
 
@@ -189,6 +210,14 @@ internal sealed class FacilityWorkspaceReadService(
                 cancellationToken));
     }
 
+    public async Task<RiskWorkspacePayload> GetRiskAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"risk:{CacheKey(context)}", async () =>
+            await facilityDomain.Risk.GetWorkspacePayloadAsync(
+                FacilityWorkspaceContextGuard.RequireFacilityId(context),
+                cancellationToken));
+    }
+
     public async Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
         return await GetOrAddAsync($"priority:{CacheKey(context)}", async () =>
@@ -218,6 +247,10 @@ internal sealed class FacilityWorkspaceReadService(
             if (currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewSummary))
             {
                 items.AddRange(await BuildSensitiveCustodyPriorityItemsAsync(context, cancellationToken));
+            }
+            if (currentUser.HasPermission(PermissionCodes.RisksViewSummary))
+            {
+                items.AddRange(await BuildRiskPriorityItemsAsync(context, cancellationToken));
             }
 
             return new FacilityPriorityQueuePayload(
@@ -326,7 +359,6 @@ internal sealed class FacilityWorkspaceReadService(
                 AvailableDomain("escalations", "التصعيدات والتنبيهات", metrics.Alerts.OpenEscalations + metrics.Alerts.PersonalUnreadNotifications, metrics.Alerts.LastEscalationProcessedAtUtc ?? context.ToUtc, "التنبيهات الشخصية منفصلة عن حالة المنشأة."),
                 AvailableDomain("forms", "النماذج والالتزام", metrics.FormCompliance.TargetedForms, context.ToUtc, "يعتمد على قواعد لوحة الالتزام الحالية."),
                 MissingDomain("incidents", "الوقوعات والحوادث", "لا يوجد نموذج Incident/Occurrence مستقل خارج الملاحظات والتصعيدات.", "#127"),
-                MissingDomain("risks", "المخاطر والمعالجات", "لا يوجد Risk/RiskTreatment engine في النطاق الحالي.", "#16"),
                 MissingDomain("projects", "المشاريع والمبادرات", "لا توجد كيانات Project أو Initiative مرتبطة بالسجن.", "#126"),
                 MissingDomain("plans", "الخطط والطوارئ", "لا توجد كيانات OperationalPlan أو EmergencyPlan.", "#128"),
                 MissingDomain("decisions", "القرارات والتوجيهات", "لا توجد كيانات Decision أو Directive تنفيذية.", "#125")
@@ -361,6 +393,15 @@ internal sealed class FacilityWorkspaceReadService(
             else
             {
                 domains.Insert(8, MissingDomain("sensitive-custody", "الأسلحة والعهد الحساسة", "لا يملك المستخدم صلاحية عرض العهد الحساسة أو لم تُحمّل بيانات المجال.", "#140"));
+            }
+
+            if (metrics.Risk is not null)
+            {
+                domains.Insert(9, RiskDomain(metrics.Risk));
+            }
+            else
+            {
+                domains.Insert(9, MissingDomain("risks", "المخاطر والمعالجات", "لا يملك المستخدم صلاحية عرض المخاطر أو لم تُحمّل بيانات المجال.", "#16"));
             }
 
             return new FacilityDataQualityPayload(domains);
@@ -787,6 +828,32 @@ internal sealed class FacilityWorkspaceReadService(
                 OwnerAr = item.OwnerRole,
                 ActionLabelAr = item.PrimaryAction,
                 DrillDownTarget = SensitiveCustodyTarget(context)
+            })
+            .Take(PriorityLimit)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<FacilityPriorityItemPayload>> BuildRiskPriorityItemsAsync(
+        WorkspaceContext context,
+        CancellationToken cancellationToken)
+    {
+        var payload = await GetRiskAsync(context, cancellationToken);
+        return payload.Interventions
+            .Select(item => new FacilityPriorityItemPayload
+            {
+                // "risk" (not the raw InterventionType) so the frontend's shared Priority Queue can route
+                // to RiskPanel; the intervention code travels in Reference (before the risk id) for display.
+                Type = "risk",
+                Reference = $"{item.InterventionType}:{item.RiskRecordId}",
+                TitleAr = item.TitleAr,
+                SeverityAr = item.SeverityAr,
+                PriorityRank = item.PriorityRank,
+                ReasonAr = item.ReasonAr,
+                DueAtUtc = item.DueAtUtc,
+                OverdueDays = null,
+                OwnerAr = item.OwnerAr,
+                ActionLabelAr = item.PrimaryActionAr,
+                DrillDownTarget = RiskTarget(context)
             })
             .Take(PriorityLimit)
             .ToList();
@@ -1361,7 +1428,7 @@ internal sealed class FacilityWorkspaceReadService(
     {
         if (summary.TotalRegistered == 0)
         {
-            return ("missing", "مفقود");
+            return (DataQualityMissing, "مفقود");
         }
 
         if (summary.IsPartial)
@@ -1397,7 +1464,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             Key = "sensitive-custody",
             LabelAr = "الأسلحة والعهد الحساسة",
-            StatusCode = hasWeapons ? DataQualityComplete : "missing",
+            StatusCode = hasWeapons ? DataQualityComplete : DataQualityMissing,
             StatusAr = hasWeapons ? "متاح" : "مفقود",
             ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
             LastUpdatedAtUtc = payload.Summary.GeneratedAtUtc,
@@ -1408,11 +1475,29 @@ internal sealed class FacilityWorkspaceReadService(
         };
     }
 
+    private static FacilityDataQualityDomainPayload RiskDomain(RiskWorkspacePayload payload)
+    {
+        var hasRisks = payload.Summary.OpenRisks > 0;
+        return new()
+        {
+            Key = "risks",
+            LabelAr = "المخاطر والمعالجات",
+            StatusCode = hasRisks ? DataQualityComplete : DataQualityMissing,
+            StatusAr = hasRisks ? "متاح" : "لا توجد مخاطر مسجلة",
+            ConfidenceAr = payload.Summary.LastUpdatedAtUtc is null ? "غير معروفة" : "عالية",
+            LastUpdatedAtUtc = payload.Summary.LastUpdatedAtUtc,
+            ImpactAr = payload.Interventions.Count > 0
+                ? string.Join(" ", payload.Interventions.Select(i => i.ReasonAr).Distinct().Take(3))
+                : "يدخل سجل المخاطر في مركز التدخلات دون كشف تفاصيل حساسة.",
+            FollowUpIssue = null
+        };
+    }
+
     private static (string StatusCode, string StatusAr) ResolveWorkforceDataQualityStatus(WorkforceSummaryDto summary)
     {
         if (summary.TotalMembers == 0)
         {
-            return ("missing", "مفقود");
+            return (DataQualityMissing, "مفقود");
         }
 
         if (summary.IsPartial)
@@ -1483,6 +1568,14 @@ internal sealed class FacilityWorkspaceReadService(
             new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             PermissionCodes.SensitiveCustodyViewSummary);
+
+    private static DrillDownTarget RiskTarget(WorkspaceContext context) =>
+        new(
+            "facility.risks",
+            "فتح المخاطر والمعالجات",
+            new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+            FacilityWorkspaceDrillDownFilters.Preserve(context),
+            PermissionCodes.RisksViewSummary);
 
 }
 

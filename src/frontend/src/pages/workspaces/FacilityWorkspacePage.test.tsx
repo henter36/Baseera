@@ -2,15 +2,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../api/client'
 import { FacilityWorkspacePage } from './FacilityWorkspacePage'
 
-const { getWorkspace, getNoteWorkspaceDetail, getCorrectiveAction, getCorrectiveActionHistory, workforceRosters, publishRoster, currentPermissions } = vi.hoisted(() => ({
+const { getWorkspace, getNoteWorkspaceDetail, getCorrectiveAction, getCorrectiveActionHistory, workforceRosters, publishRoster, riskList, riskGet, riskExecuteCommand, currentPermissions } = vi.hoisted(() => ({
   getWorkspace: vi.fn(),
   getNoteWorkspaceDetail: vi.fn(),
   getCorrectiveAction: vi.fn(),
   getCorrectiveActionHistory: vi.fn(),
   workforceRosters: vi.fn(),
   publishRoster: vi.fn(),
+  riskList: vi.fn(),
+  riskGet: vi.fn(),
+  riskExecuteCommand: vi.fn(),
   currentPermissions: new Set<string>(),
 }))
 
@@ -42,6 +46,12 @@ vi.mock('../../api/client', async () => {
         rosters: workforceRosters,
         publishRoster,
       },
+      risks: {
+        ...actual.api.risks,
+        list: riskList,
+        get: riskGet,
+        executeCommand: riskExecuteCommand,
+      },
     },
   }
 })
@@ -60,6 +70,12 @@ describe('FacilityWorkspacePage', () => {
     workforceRosters.mockResolvedValue([{ id: 'roster-draft', shiftDefinitionId: 'shift-day', dutyDate: '2026-07-26', status: 'Draft', assignmentCount: 2 }])
     publishRoster.mockReset()
     publishRoster.mockResolvedValue(undefined)
+    riskList.mockReset()
+    riskList.mockResolvedValue({ items: [], page: 1, pageSize: 10, totalCount: 0 })
+    riskGet.mockReset()
+    riskGet.mockResolvedValue(riskDetail)
+    riskExecuteCommand.mockReset()
+    riskExecuteCommand.mockResolvedValue(undefined)
     currentPermissions.clear()
     currentPermissions.add('Workspaces.View')
     currentPermissions.add('Workspaces.ViewFacility')
@@ -89,6 +105,51 @@ describe('FacilityWorkspacePage', () => {
     expect(screen.getByText('ذخيرة دون الحد الأدنى')).toBeInTheDocument()
     expect(screen.queryByText(/SN-REAL-SECRET/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Armory-A1-Sensitive/)).not.toBeInTheDocument()
+  })
+
+  it('renders risk section summary and interventions without a Data Gap placeholder', async () => {
+    renderPage('/workspaces/facilities/facility-a?section=risks')
+
+    expect(await screen.findByText('4 خطر مفتوح')).toBeInTheDocument()
+    expect(screen.getByText('RSK-00000001 — اختراق محتمل للسياج الخارجي')).toBeInTheDocument()
+    expect(screen.queryByText('لا يوجد Risk/RiskTreatment engine في النطاق الحالي.')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the Data Gap panel when the risk widget is absent (no permission)', async () => {
+    getWorkspace.mockResolvedValueOnce({
+      ...shell,
+      widgets: shell.widgets.filter((widget: { widgetKey: string }) => widget.widgetKey !== 'facility.risks'),
+    })
+    renderPage('/workspaces/facilities/facility-a?section=risks')
+
+    expect(await screen.findByText('لا يوجد Risk/RiskTreatment engine في النطاق الحالي.')).toBeInTheDocument()
+  })
+
+  it('opens the risk context panel and shows server-authored allowed actions only', async () => {
+    renderPage('/workspaces/facilities/facility-a?section=risks')
+    await screen.findByText('RSK-00000001 — اختراق محتمل للسياج الخارجي')
+
+    fireEvent.click(screen.getByText('RSK-00000001 — اختراق محتمل للسياج الخارجي'))
+
+    expect(await screen.findByText('20 (عالية)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'بدء متابعة الخطر' })).toBeInTheDocument()
+    // "AddControl" is in allowedActions but this panel does not wire a dedicated control-creation form yet;
+    // it must appear only in the informational note, never as a clickable button that does nothing.
+    expect(screen.queryByRole('button', { name: 'AddControl' })).not.toBeInTheDocument()
+    expect(screen.getByText(/AddControl/)).toBeInTheDocument()
+  })
+
+  it('surfaces a RowVersion conflict with a reload action when a risk command returns 409', async () => {
+    riskExecuteCommand.mockRejectedValueOnce(new ApiError(409, 'تعارض'))
+    renderPage('/workspaces/facilities/facility-a?section=risks')
+    await screen.findByText('RSK-00000001 — اختراق محتمل للسياج الخارجي')
+    fireEvent.click(screen.getByText('RSK-00000001 — اختراق محتمل للسياج الخارجي'))
+    await screen.findByRole('button', { name: 'بدء متابعة الخطر' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'بدء متابعة الخطر' }))
+
+    expect(await screen.findByText(/تعارض في RowVersion/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'إعادة تحميل' })).toBeInTheDocument()
   })
 
   it('synchronizes date filters without losing facility context', async () => {
@@ -1010,6 +1071,53 @@ const shell = {
       allowedActions: [],
     },
     {
+      widgetKey: 'facility.risks',
+      generatedAtUtc: '2026-07-24T09:00:00Z',
+      dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
+      freshness: { status: 2, labelAr: 'جزئية' },
+      confidence: { level: 2, labelAr: 'متوسطة' },
+      scopeSummary: { level: 1, labelAr: 'Facility', facilityId: 'facility-a', isSensitive: false },
+      isPartial: true,
+      warningMessages: ['يوجد خطر حرج بلا معالجة.'],
+      payload: {
+        summary: {
+          openRisks: 4,
+          criticalRisks: 1,
+          highRisks: 1,
+          increasingTrendRisks: 1,
+          recurringRisks: 0,
+          overdueReviewRisks: 1,
+          risksWithoutOwner: 1,
+          risksWithoutTreatment: 1,
+          overdueTreatmentActions: 2,
+          acceptedRisksNearingReview: 0,
+          staleDataRisks: 0,
+          averageOpenRiskAgeDays: 12.5,
+          lastUpdatedAtUtc: '2026-07-24T09:00:00Z',
+        },
+        interventions: [{
+          interventionType: 'CriticalRiskActive',
+          severityAr: 'حرج',
+          priorityRank: 100,
+          riskRecordId: 'risk-1',
+          riskCode: 'RSK-00000001',
+          titleAr: 'اختراق محتمل للسياج الخارجي',
+          reasonAr: 'خطر بدرجة حرجة قيد النشاط.',
+          dueAtUtc: null,
+          ownerAr: null,
+          primaryActionAr: 'مراجعة فورية',
+        }],
+      },
+      drillDownTargets: [{
+        routeKey: 'facility.risks',
+        labelAr: 'فتح المخاطر والمعالجات',
+        routeParameters: { facilityId: 'facility-a' },
+        preservedFilters: { facilityId: 'facility-a' },
+        requiredPermission: 'Risks.ViewSummary',
+      }],
+      allowedActions: [],
+    },
+    {
       widgetKey: 'facility.data-quality',
       generatedAtUtc: '2026-07-24T09:00:00Z',
       dataEffectiveAtUtc: '2026-07-24T09:00:00Z',
@@ -1186,3 +1294,54 @@ const correctiveActionHistory = [{
   assignmentId: 'assignment-1',
   metadataJson: null,
 }]
+
+const riskDetail = {
+  id: 'risk-1',
+  riskCode: 'RSK-00000001',
+  title: 'اختراق محتمل للسياج الخارجي',
+  description: 'وصف تفصيلي للخطر',
+  riskCategoryId: 'cat-1',
+  categoryNameAr: 'أمني',
+  riskType: 0,
+  riskTypeAr: 'أمني',
+  status: 3,
+  statusAr: 'نشط',
+  treatmentStrategy: null,
+  treatmentStrategyAr: null,
+  confidentialityLevel: 0,
+  facilityId: 'facility-a',
+  facilityUnitId: null,
+  ownerWorkforceMemberId: null,
+  ownerDisplayName: null,
+  firstIdentifiedAtUtc: '2026-07-10T00:00:00Z',
+  lastReviewedAtUtc: null,
+  nextReviewDueAtUtc: null,
+  acceptedUntilUtc: null,
+  closedAtUtc: null,
+  closureReason: null,
+  reopenedCount: 0,
+  inherentAssessment: {
+    matrixCode: 'MTX-1',
+    matrixVersion: 1,
+    formulaAr: 'الاحتمالية × أعلى قيمة أثر',
+    likelihoodLabelAr: 'محتملة',
+    likelihoodValue: 4,
+    impactBreakdown: [{ dimensionNameAr: 'أمني', impactLevelNameAr: 'مرتفع', numericValue: 5, rationaleAr: null }],
+    calculatedScore: 20,
+    ratingBandCode: 'HIGH',
+    ratingBandLabelAr: 'عالية',
+  },
+  currentAssessment: null,
+  residualAssessment: null,
+  trend: 3,
+  trendAr: 'غير معروف',
+  trendReasonAr: 'لا يوجد تقييم كافٍ لتحديد الاتجاه.',
+  recurrencePattern: 0,
+  sourceCount: 0,
+  openControlCount: 0,
+  openTreatmentPlanCount: 0,
+  overdueTreatmentActionCount: 0,
+  isDataStale: false,
+  allowedActions: ['StartMonitoring', 'Escalate', 'AddControl'],
+  rowVersion: 'rv-risk-1',
+}

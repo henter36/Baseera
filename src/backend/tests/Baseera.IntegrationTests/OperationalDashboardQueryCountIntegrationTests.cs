@@ -19,7 +19,10 @@ public sealed class OperationalDashboardQueryCountIntegrationTests(OperationsInt
     private const int SummaryQueryMax = 18;
     private const int TrendsQueryMax = 14;
     // Includes D.5.2 sensitive custody widget in addition to occupancy/resources/workforce.
-    private const int FacilityWorkspaceQueryMax = 140;
+    // Bumped 140 -> 150 for Phase D.6: the workspace now also loads a Risk widget (summary + top
+    // interventions), optimized to ~8-10 round trips regardless of risk volume (see
+    // docs/phase-d6-risk-performance.md), same pattern as every prior domain addition.
+    private const int FacilityWorkspaceQueryMax = 150;
 
     [IntegrationConnectionFact]
     public async Task Summary_query_count_is_bounded_and_independent_of_note_volume()

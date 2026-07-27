@@ -11,6 +11,7 @@ using Baseera.Domain.Notes;
 using Baseera.Domain.Occupancy;
 using Baseera.Domain.Organization;
 using Baseera.Domain.Resources;
+using Baseera.Domain.RiskManagement;
 using Baseera.Domain.SensitiveCustody;
 using Baseera.Domain.Workforce;
 using System.Data;
@@ -127,6 +128,23 @@ public interface IBaseeraDbContext
     IQueryable<WeaponInspection> WeaponInspections => Enumerable.Empty<WeaponInspection>().AsQueryable();
     IQueryable<SensitiveCustodyImportBatch> SensitiveCustodyImportBatches => Enumerable.Empty<SensitiveCustodyImportBatch>().AsQueryable();
     IQueryable<SensitiveCustodyReconciliationResolution> SensitiveCustodyReconciliationResolutions => Enumerable.Empty<SensitiveCustodyReconciliationResolution>().AsQueryable();
+    IQueryable<RiskCategory> RiskCategories => Enumerable.Empty<RiskCategory>().AsQueryable();
+    IQueryable<RiskRecord> RiskRecords => Enumerable.Empty<RiskRecord>().AsQueryable();
+    IQueryable<RiskStatusHistory> RiskStatusHistories => Enumerable.Empty<RiskStatusHistory>().AsQueryable();
+    IQueryable<RiskAssessmentMatrix> RiskAssessmentMatrices => Enumerable.Empty<RiskAssessmentMatrix>().AsQueryable();
+    IQueryable<LikelihoodLevel> LikelihoodLevels => Enumerable.Empty<LikelihoodLevel>().AsQueryable();
+    IQueryable<ImpactDimension> ImpactDimensions => Enumerable.Empty<ImpactDimension>().AsQueryable();
+    IQueryable<ImpactLevel> ImpactLevels => Enumerable.Empty<ImpactLevel>().AsQueryable();
+    IQueryable<RiskRatingBand> RiskRatingBands => Enumerable.Empty<RiskRatingBand>().AsQueryable();
+    IQueryable<RiskAssessment> RiskAssessments => Enumerable.Empty<RiskAssessment>().AsQueryable();
+    IQueryable<RiskAssessmentImpact> RiskAssessmentImpacts => Enumerable.Empty<RiskAssessmentImpact>().AsQueryable();
+    IQueryable<RiskControl> RiskControls => Enumerable.Empty<RiskControl>().AsQueryable();
+    IQueryable<RiskTreatmentPlan> RiskTreatmentPlans => Enumerable.Empty<RiskTreatmentPlan>().AsQueryable();
+    IQueryable<RiskTreatmentAction> RiskTreatmentActions => Enumerable.Empty<RiskTreatmentAction>().AsQueryable();
+    IQueryable<RiskSourceLink> RiskSourceLinks => Enumerable.Empty<RiskSourceLink>().AsQueryable();
+    IQueryable<RiskReview> RiskReviews => Enumerable.Empty<RiskReview>().AsQueryable();
+    IQueryable<RiskImportBatch> RiskImportBatches => Enumerable.Empty<RiskImportBatch>().AsQueryable();
+    IQueryable<RiskReconciliationRecord> RiskReconciliationRecords => Enumerable.Empty<RiskReconciliationRecord>().AsQueryable();
 
     void Add<TEntity>(TEntity entity) where TEntity : class;
     void Update<TEntity>(TEntity entity) where TEntity : class;
@@ -142,6 +160,7 @@ public interface IBaseeraDbContext
     Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default);
     Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default);
+    Task<long> NextRiskRecordSequenceValueAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ICurrentUser

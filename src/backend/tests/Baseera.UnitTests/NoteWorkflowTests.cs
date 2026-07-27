@@ -171,6 +171,7 @@ public sealed class NoteScopeShapeTests
         public Task<long> NextCorrectiveActionSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
         public Task<int> AllocateFormVersionNumberAsync(Guid formDefinitionId, CancellationToken cancellationToken = default) => Task.FromResult(1);
+        public Task<long> NextRiskRecordSequenceValueAsync(CancellationToken cancellationToken = default) => Task.FromResult(1L);
     }
 }
 

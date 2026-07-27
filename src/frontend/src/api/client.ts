@@ -3013,6 +3013,175 @@ async function downloadFile(path: string): Promise<{ blob: Blob; fileName: strin
   return { blob, fileName }
 }
 
+export type RiskWorkspaceSummary = {
+  openRisks: number
+  criticalRisks: number
+  highRisks: number
+  increasingTrendRisks: number
+  recurringRisks: number
+  overdueReviewRisks: number
+  risksWithoutOwner: number
+  risksWithoutTreatment: number
+  overdueTreatmentActions: number
+  acceptedRisksNearingReview: number
+  staleDataRisks: number
+  averageOpenRiskAgeDays: number
+  lastUpdatedAtUtc: string | null
+}
+
+export type RiskListItem = {
+  id: string
+  riskCode: string
+  title: string
+  categoryNameAr: string
+  riskType: number
+  riskTypeAr: string
+  status: number
+  statusAr: string
+  inherentRatingCode: string | null
+  inherentRatingLabelAr: string | null
+  residualRatingCode: string | null
+  residualRatingLabelAr: string | null
+  currentScore: number | null
+  trend: number
+  trendAr: string
+  ownerDisplayName: string | null
+  treatmentStrategy: number | null
+  treatmentStrategyAr: string | null
+  firstIdentifiedAtUtc: string
+  nextReviewDueAtUtc: string | null
+  ageDays: number
+  sourceCount: number
+  isDataStale: boolean
+  allowedPrimaryAction: string
+}
+
+export type RiskPagedResult<T> = {
+  items: T[]
+  page: number
+  pageSize: number
+  totalCount: number
+}
+
+export type RiskImpactBreakdown = {
+  dimensionNameAr: string
+  impactLevelNameAr: string
+  numericValue: number
+  rationaleAr: string | null
+}
+
+export type RiskScoreExplanation = {
+  matrixCode: string
+  matrixVersion: number
+  formulaAr: string
+  likelihoodLabelAr: string
+  likelihoodValue: number
+  impactBreakdown: RiskImpactBreakdown[]
+  calculatedScore: number
+  ratingBandCode: string
+  ratingBandLabelAr: string
+}
+
+export type RiskDetail = {
+  id: string
+  riskCode: string
+  title: string
+  description: string | null
+  riskCategoryId: string
+  categoryNameAr: string
+  riskType: number
+  riskTypeAr: string
+  status: number
+  statusAr: string
+  treatmentStrategy: number | null
+  treatmentStrategyAr: string | null
+  confidentialityLevel: number
+  facilityId: string | null
+  facilityUnitId: string | null
+  ownerWorkforceMemberId: string | null
+  ownerDisplayName: string | null
+  firstIdentifiedAtUtc: string
+  lastReviewedAtUtc: string | null
+  nextReviewDueAtUtc: string | null
+  acceptedUntilUtc: string | null
+  closedAtUtc: string | null
+  closureReason: string | null
+  reopenedCount: number
+  inherentAssessment: RiskScoreExplanation | null
+  currentAssessment: RiskScoreExplanation | null
+  residualAssessment: RiskScoreExplanation | null
+  trend: number
+  trendAr: string
+  trendReasonAr: string
+  recurrencePattern: number
+  sourceCount: number
+  openControlCount: number
+  openTreatmentPlanCount: number
+  overdueTreatmentActionCount: number
+  isDataStale: boolean
+  allowedActions: string[]
+  rowVersion: string
+}
+
+export type RiskInterventionItem = {
+  interventionType: string
+  severityAr: string
+  priorityRank: number
+  riskRecordId: string
+  riskCode: string
+  titleAr: string
+  reasonAr: string
+  dueAtUtc: string | null
+  ownerAr: string | null
+  primaryActionAr: string
+}
+
+export type RiskWorkspacePayload = {
+  summary: RiskWorkspaceSummary
+  interventions: RiskInterventionItem[]
+}
+
+export type RiskCreateRequest = {
+  title: string
+  description?: string
+  riskCategoryId: string
+  riskType: number
+  confidentialityLevel?: number
+  facilityUnitId?: string
+  ownerWorkforceMemberId?: string
+  sourceType?: number
+  sourceReference?: string
+}
+
+export type RiskCommandBody = {
+  command: string
+  ownerWorkforceMemberId?: string
+  ownerUserId?: string
+  reason?: string
+  rowVersion: string
+}
+
+export type RiskCategoryItem = {
+  id: string
+  code: string
+  nameAr: string
+  nameEn: string | null
+  parentCategoryId: string | null
+  isActive: boolean
+  displayOrder: number
+  rowVersion: string
+}
+
+export type RiskDataQualityIssue = {
+  code: string
+  severityAr: string
+  count: number
+  impactAr: string
+  sourceEntity: string
+  responsibleRoleAr: string
+  correctiveActionAr: string
+}
+
 export const api = {
   me: () => request<Me>('/api/v1/me'),
   regions: (search = '') =>
@@ -3306,6 +3475,29 @@ export const api = {
       postJson<void>(`/api/v1/facilities/${facilityId}/workforce/reconciliation/${encodeURIComponent(itemId)}/resolve`, body),
     export: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
       downloadFile(`/api/v1/facilities/${facilityId}/workforce/export?${buildSimpleQuery(filters)}`),
+  },
+
+  risks: {
+    summary: (facilityId: string) =>
+      request<RiskWorkspaceSummary>(`/api/v1/facilities/${facilityId}/risks/summary`),
+    list: (facilityId: string, filters: Record<string, QueryParameterValue> = {}) =>
+      request<RiskPagedResult<RiskListItem>>(`/api/v1/facilities/${facilityId}/risks?${buildSimpleQuery(filters)}`),
+    get: (facilityId: string, riskId: string) =>
+      request<RiskDetail>(`/api/v1/facilities/${facilityId}/risks/${riskId}`),
+    categories: (facilityId: string) =>
+      request<RiskCategoryItem[]>(`/api/v1/facilities/${facilityId}/risks/categories`),
+    create: (facilityId: string, body: RiskCreateRequest) =>
+      postJson<{ id: string }>(`/api/v1/facilities/${facilityId}/risks`, body),
+    executeCommand: (facilityId: string, riskId: string, body: RiskCommandBody) =>
+      request<void>(`/api/v1/facilities/${facilityId}/risks/${riskId}/command`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    interventions: (facilityId: string, limit = 20) =>
+      request<RiskInterventionItem[]>(`/api/v1/facilities/${facilityId}/risks/interventions?limit=${limit}`),
+    dataQuality: (facilityId: string) =>
+      request<{ issues: RiskDataQualityIssue[]; generatedAtUtc: string }>(`/api/v1/facilities/${facilityId}/risks/data-quality`),
   },
 
   formCompliance: {

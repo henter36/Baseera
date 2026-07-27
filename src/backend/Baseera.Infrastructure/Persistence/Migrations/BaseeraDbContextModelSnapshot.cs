@@ -28,6 +28,8 @@ namespace Baseera.Infrastructure.Persistence.Migrations
 
             modelBuilder.HasSequence("OperationalNoteReferenceSequence");
 
+            modelBuilder.HasSequence("RiskRecordReferenceSequence");
+
             modelBuilder.Entity("Baseera.Domain.Attachments.Attachment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5438,6 +5440,1533 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.ImpactDimension", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskImpactDimensions", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.ImpactLevel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Criteria")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ImpactDimensionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("MatrixId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("NumericValue")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImpactDimensionId");
+
+                    b.HasIndex("MatrixId", "ImpactDimensionId", "Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskImpactLevels", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskImpactLevels_NumericValue", "[NumericValue] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.LikelihoodLevel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Criteria")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("MatrixId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("NumericValue")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatrixId", "Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskLikelihoodLevels", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskLikelihoodLevels_NumericValue", "[NumericValue] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ApprovedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset>("AssessedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AssessedBy")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("AssessmentType")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CalculatedScore")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<string>("ClosureChangeSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("LikelihoodLevelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MatrixId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("MatrixVersion")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("OverallImpactLevelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RatingBandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Rationale")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("ReviewedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ReviewedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid>("RiskRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SupersedesAssessmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LikelihoodLevelId");
+
+                    b.HasIndex("MatrixId");
+
+                    b.HasIndex("OverallImpactLevelId");
+
+                    b.HasIndex("RatingBandId");
+
+                    b.HasIndex("SupersedesAssessmentId");
+
+                    b.HasIndex("RiskRecordId", "AssessmentType")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RiskAssessments_RiskRecordId_AssessmentType_InProgress")
+                        .HasFilter("[IsDeleted] = 0 AND [Status] IN (0, 1, 2)");
+
+                    b.HasIndex("RiskRecordId", "AssessmentType", "Status", "ApprovedAtUtc");
+
+                    b.ToTable("RiskAssessments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskAssessments_MatrixVersion", "[MatrixVersion] > 0");
+
+                            t.HasCheckConstraint("CK_RiskAssessments_ScoreNonNegative", "[CalculatedScore] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessmentImpact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EvidenceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid>("ImpactDimensionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ImpactLevelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RationaleAr")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("RiskAssessmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImpactDimensionId");
+
+                    b.HasIndex("ImpactLevelId");
+
+                    b.HasIndex("RiskAssessmentId", "ImpactDimensionId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskAssessmentImpacts", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ApprovedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EffectiveFromUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("EffectiveToUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ImpactWeightingJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PreviousVersionMatrixId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ScoreFormula")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasFilter("[IsDefault] = 1 AND [IsDeleted] = 0 AND [Status] = 2");
+
+                    b.HasIndex("PreviousVersionMatrixId");
+
+                    b.HasIndex("OrganizationId", "Code", "Version")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskAssessmentMatrices", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskAssessmentMatrices_EffectiveRange", "[EffectiveToUtc] IS NULL OR [EffectiveToUtc] > [EffectiveFromUtc]");
+
+                            t.HasCheckConstraint("CK_RiskAssessmentMatrices_Version", "[Version] > 0");
+
+                            t.HasCheckConstraint("CK_RiskAssessmentMatrices_WeightedRequiresWeights", "([ScoreFormula] <> 1) OR ([ImpactWeightingJson] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NameAr")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ParentCategoryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentCategoryId");
+
+                    b.HasIndex("OrganizationId", "Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskCategories", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskControl", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ControlEffectiveness")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ControlStatus")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ControlType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("EvidenceRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("ImplementedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("LastTestedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("NextTestDueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("OwnerWorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("RiskRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerWorkforceMemberId");
+
+                    b.HasIndex("RiskRecordId", "ControlStatus", "NextTestDueAtUtc");
+
+                    b.ToTable("RiskControls", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AppliedRows")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DuplicateRows")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("ImportKind")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RejectedRows")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceReference")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("SourceSystem")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ValidRows")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("FacilityId", "ImportKind", "FileHash")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskImportBatches", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskImportBatches_AppliedRows", "[AppliedRows] >= 0 AND [AppliedRows] <= [ValidRows]");
+
+                            t.HasCheckConstraint("CK_RiskImportBatches_RowTotals", "[ValidRows] + [RejectedRows] + [DuplicateRows] = [TotalRows] AND [TotalRows] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskRatingBand", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ColorToken")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("EscalationRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LabelAr")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("MatrixId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("MaximumScore")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<decimal>("MinimumScore")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<int?>("ResponseTimeHours")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReviewFrequencyDays")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatrixId", "Code")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskRatingBands", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskRatingBands_ScoreRange", "[MinimumScore] <= [MaximumScore]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskReconciliationRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ItemKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset>("ResolvedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ResolvedBy")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("FacilityId", "ItemKey")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskReconciliationRecords", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("AcceptedUntilUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ClosedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ClosedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ClosureReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("ConfidentialityLevel")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("CurrentAssessmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentInherentAssessmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentRatingBandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentResidualAssessmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("CurrentScore")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<int>("CurrentTrend")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CurrentTrendReasonAr")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("DataFreshAsOfUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<Guid?>("FacilityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("FirstIdentifiedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("HeadquartersOrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastReopenReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("LastReopenedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("LastReviewedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("NextReviewDueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OwnerWorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RecurrenceKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid?>("RegionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ReopenedCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RiskCategoryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RiskCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("RiskType")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ScopeLevel")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceReference")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("SourceType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int?>("TreatmentStrategy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CurrentAssessmentId");
+
+                    b.HasIndex("CurrentInherentAssessmentId");
+
+                    b.HasIndex("CurrentRatingBandId");
+
+                    b.HasIndex("CurrentResidualAssessmentId");
+
+                    b.HasIndex("HeadquartersOrganizationId");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerWorkforceMemberId");
+
+                    b.HasIndex("RecurrenceKey");
+
+                    b.HasIndex("RegionId");
+
+                    b.HasIndex("RiskCategoryId");
+
+                    b.HasIndex("FacilityId", "FacilityUnitId");
+
+                    b.HasIndex("FacilityId", "NextReviewDueAtUtc");
+
+                    b.HasIndex("FacilityId", "OwnerWorkforceMemberId");
+
+                    b.HasIndex("OrganizationId", "RiskCode")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("FacilityId", "Status", "CurrentRatingBandId");
+
+                    b.ToTable("RiskRecords", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskRecords_AcceptedRequiresUntil", "([Status] <> 7) OR ([AcceptedUntilUtc] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_RiskRecords_ClosedRequiresClosure", "([Status] <> 9) OR ([ClosedAtUtc] IS NOT NULL AND [ClosedBy] IS NOT NULL AND [ClosureReason] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_RiskRecords_ReopenedCount", "[ReopenedCount] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedReviewerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Comments")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("Decision")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("RequestedAcceptedUntilUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("RequestedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int?>("RequestedReviewFrequencyDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReviewType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RiskRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SubjectReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SubjectReferenceType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedReviewerId");
+
+                    b.HasIndex("RiskRecordId", "ReviewType", "Status");
+
+                    b.ToTable("RiskReviews", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskReviews_CompletedRequiresDecision", "([Status] <> 2) OR ([Decision] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskSourceLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("AddedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AddedBy")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Rationale")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("RelationshipType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RemovalReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("RiskRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("SourceEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SourceEntityType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceEntityType", "SourceEntityId");
+
+                    b.HasIndex("RiskRecordId", "SourceEntityType", "SourceEntityId", "RelationshipType")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("RiskSourceLinks", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ChangedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ChangedBy")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("FromStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("RiskRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ToStatus")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RiskRecordId", "ChangedAtUtc");
+
+                    b.ToTable("RiskStatusHistories", (string)null);
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskTreatmentAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedToUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedToWorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BlockedReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("CompletionEvidenceRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("CompletionSummary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("DependencyActionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset>("DueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("StartAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("TreatmentPlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("VerifiedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("VerifiedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedToUserId");
+
+                    b.HasIndex("AssignedToWorkforceMemberId");
+
+                    b.HasIndex("DependencyActionId");
+
+                    b.HasIndex("TreatmentPlanId", "Status", "DueAtUtc");
+
+                    b.ToTable("RiskTreatmentActions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskTreatmentActions_NoSelfDependency", "[DependencyActionId] IS NULL OR [DependencyActionId] <> [Id]");
+                        });
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskTreatmentPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ApprovalStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ApprovedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ApprovedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("DueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Objective")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid?>("OwnerWorkforceMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("PlannedStartAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("RiskRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Strategy")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("TargetImpactLevelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TargetLikelihoodLevelId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("TargetScore")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerWorkforceMemberId");
+
+                    b.HasIndex("TargetImpactLevelId");
+
+                    b.HasIndex("TargetLikelihoodLevelId");
+
+                    b.HasIndex("RiskRecordId", "Status", "DueAtUtc");
+
+                    b.ToTable("RiskTreatmentPlans", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RiskTreatmentPlans_ApprovedRequiresApprover", "([ApprovalStatus] <> 2) OR ([ApprovedBy] IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Baseera.Domain.SensitiveCustody.AmmunitionLot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5833,9 +7362,6 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("PreviousTransactionId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("PreviousArmoryLocationId")
                         .HasColumnType("uniqueidentifier");
 
@@ -5843,6 +7369,9 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.Property<Guid?>("PreviousFacilityUnitId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PreviousTransactionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("PreviousWeaponStatus")
@@ -9644,6 +11173,420 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("ResourceAsset");
                 });
 
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.ImpactDimension", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.ImpactLevel", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.ImpactDimension", "ImpactDimension")
+                        .WithMany()
+                        .HasForeignKey("ImpactDimensionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", "Matrix")
+                        .WithMany("ImpactLevels")
+                        .HasForeignKey("MatrixId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ImpactDimension");
+
+                    b.Navigation("Matrix");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.LikelihoodLevel", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", "Matrix")
+                        .WithMany("LikelihoodLevels")
+                        .HasForeignKey("MatrixId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Matrix");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessment", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.LikelihoodLevel", "LikelihoodLevel")
+                        .WithMany()
+                        .HasForeignKey("LikelihoodLevelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", "Matrix")
+                        .WithMany()
+                        .HasForeignKey("MatrixId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.ImpactLevel", "OverallImpactLevel")
+                        .WithMany()
+                        .HasForeignKey("OverallImpactLevelId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRatingBand", "RatingBand")
+                        .WithMany()
+                        .HasForeignKey("RatingBandId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRecord", "RiskRecord")
+                        .WithMany("Assessments")
+                        .HasForeignKey("RiskRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessment", "SupersedesAssessment")
+                        .WithMany()
+                        .HasForeignKey("SupersedesAssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("LikelihoodLevel");
+
+                    b.Navigation("Matrix");
+
+                    b.Navigation("OverallImpactLevel");
+
+                    b.Navigation("RatingBand");
+
+                    b.Navigation("RiskRecord");
+
+                    b.Navigation("SupersedesAssessment");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessmentImpact", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.ImpactDimension", "ImpactDimension")
+                        .WithMany()
+                        .HasForeignKey("ImpactDimensionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.ImpactLevel", "ImpactLevel")
+                        .WithMany()
+                        .HasForeignKey("ImpactLevelId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessment", "RiskAssessment")
+                        .WithMany("ImpactBreakdown")
+                        .HasForeignKey("RiskAssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ImpactDimension");
+
+                    b.Navigation("ImpactLevel");
+
+                    b.Navigation("RiskAssessment");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", "PreviousVersionMatrix")
+                        .WithMany()
+                        .HasForeignKey("PreviousVersionMatrixId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("PreviousVersionMatrix");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskCategory", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskCategory", "ParentCategory")
+                        .WithMany("ChildCategories")
+                        .HasForeignKey("ParentCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("ParentCategory");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskControl", b =>
+                {
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "OwnerWorkforceMember")
+                        .WithMany()
+                        .HasForeignKey("OwnerWorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRecord", "RiskRecord")
+                        .WithMany("Controls")
+                        .HasForeignKey("RiskRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("OwnerWorkforceMember");
+
+                    b.Navigation("RiskRecord");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskImportBatch", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskRatingBand", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", "Matrix")
+                        .WithMany("RatingBands")
+                        .HasForeignKey("MatrixId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Matrix");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskReconciliationRecord", b =>
+                {
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskRecord", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessment", "CurrentAssessment")
+                        .WithMany()
+                        .HasForeignKey("CurrentAssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessment", "CurrentInherentAssessment")
+                        .WithMany()
+                        .HasForeignKey("CurrentInherentAssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRatingBand", "CurrentRatingBand")
+                        .WithMany()
+                        .HasForeignKey("CurrentRatingBandId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskAssessment", "CurrentResidualAssessment")
+                        .WithMany()
+                        .HasForeignKey("CurrentResidualAssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "HeadquartersOrganization")
+                        .WithMany()
+                        .HasForeignKey("HeadquartersOrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Identity.User", "OwnerUser")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "OwnerWorkforceMember")
+                        .WithMany()
+                        .HasForeignKey("OwnerWorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Organization.Region", "Region")
+                        .WithMany()
+                        .HasForeignKey("RegionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskCategory", "RiskCategory")
+                        .WithMany("RiskRecords")
+                        .HasForeignKey("RiskCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.Organization.FacilityUnit", "FacilityUnit")
+                        .WithMany()
+                        .HasForeignKey("FacilityId", "FacilityUnitId")
+                        .HasPrincipalKey("FacilityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CurrentAssessment");
+
+                    b.Navigation("CurrentInherentAssessment");
+
+                    b.Navigation("CurrentRatingBand");
+
+                    b.Navigation("CurrentResidualAssessment");
+
+                    b.Navigation("Facility");
+
+                    b.Navigation("FacilityUnit");
+
+                    b.Navigation("HeadquartersOrganization");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("OwnerUser");
+
+                    b.Navigation("OwnerWorkforceMember");
+
+                    b.Navigation("Region");
+
+                    b.Navigation("RiskCategory");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskReview", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "AssignedReviewer")
+                        .WithMany()
+                        .HasForeignKey("AssignedReviewerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRecord", "RiskRecord")
+                        .WithMany("Reviews")
+                        .HasForeignKey("RiskRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AssignedReviewer");
+
+                    b.Navigation("RiskRecord");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskSourceLink", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRecord", "RiskRecord")
+                        .WithMany("SourceLinks")
+                        .HasForeignKey("RiskRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RiskRecord");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskStatusHistory", b =>
+                {
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRecord", "RiskRecord")
+                        .WithMany()
+                        .HasForeignKey("RiskRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RiskRecord");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskTreatmentAction", b =>
+                {
+                    b.HasOne("Baseera.Domain.Identity.User", "AssignedToUser")
+                        .WithMany()
+                        .HasForeignKey("AssignedToUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "AssignedToWorkforceMember")
+                        .WithMany()
+                        .HasForeignKey("AssignedToWorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskTreatmentAction", "DependencyAction")
+                        .WithMany()
+                        .HasForeignKey("DependencyActionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskTreatmentPlan", "TreatmentPlan")
+                        .WithMany("Actions")
+                        .HasForeignKey("TreatmentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AssignedToUser");
+
+                    b.Navigation("AssignedToWorkforceMember");
+
+                    b.Navigation("DependencyAction");
+
+                    b.Navigation("TreatmentPlan");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskTreatmentPlan", b =>
+                {
+                    b.HasOne("Baseera.Domain.Workforce.WorkforceMember", "OwnerWorkforceMember")
+                        .WithMany()
+                        .HasForeignKey("OwnerWorkforceMemberId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.RiskRecord", "RiskRecord")
+                        .WithMany("TreatmentPlans")
+                        .HasForeignKey("RiskRecordId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Baseera.Domain.RiskManagement.ImpactLevel", "TargetImpactLevel")
+                        .WithMany()
+                        .HasForeignKey("TargetImpactLevelId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Baseera.Domain.RiskManagement.LikelihoodLevel", "TargetLikelihoodLevel")
+                        .WithMany()
+                        .HasForeignKey("TargetLikelihoodLevelId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("OwnerWorkforceMember");
+
+                    b.Navigation("RiskRecord");
+
+                    b.Navigation("TargetImpactLevel");
+
+                    b.Navigation("TargetLikelihoodLevel");
+                });
+
             modelBuilder.Entity("Baseera.Domain.SensitiveCustody.AmmunitionLot", b =>
                 {
                     b.HasOne("Baseera.Domain.SensitiveCustody.AmmunitionType", "AmmunitionType")
@@ -10527,6 +12470,45 @@ namespace Baseera.Infrastructure.Persistence.Migrations
                     b.Navigation("StatusEvents");
 
                     b.Navigation("VehicleProfile");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessment", b =>
+                {
+                    b.Navigation("ImpactBreakdown");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskAssessmentMatrix", b =>
+                {
+                    b.Navigation("ImpactLevels");
+
+                    b.Navigation("LikelihoodLevels");
+
+                    b.Navigation("RatingBands");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskCategory", b =>
+                {
+                    b.Navigation("ChildCategories");
+
+                    b.Navigation("RiskRecords");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskRecord", b =>
+                {
+                    b.Navigation("Assessments");
+
+                    b.Navigation("Controls");
+
+                    b.Navigation("Reviews");
+
+                    b.Navigation("SourceLinks");
+
+                    b.Navigation("TreatmentPlans");
+                });
+
+            modelBuilder.Entity("Baseera.Domain.RiskManagement.RiskTreatmentPlan", b =>
+                {
+                    b.Navigation("Actions");
                 });
 
             modelBuilder.Entity("Baseera.Domain.SensitiveCustody.AmmunitionLot", b =>

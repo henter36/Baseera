@@ -446,7 +446,9 @@ public sealed class WorkforceReadinessIntegrationTests(WorkforceIntegrationFixtu
         counter.Reset();
         var response = await client.GetAsync($"/api/v1/workspaces/facility-operations?level=1&facilityId={SeedIds.FacilityA1}");
         response.EnsureSuccessStatusCode();
-        Assert.InRange(counter.SelectCount, 1, 140);
+        // Bumped 140 -> 150 for Phase D.6's Risk widget (summary + top interventions); see
+        // docs/phase-d6-risk-performance.md.
+        Assert.InRange(counter.SelectCount, 1, 150);
     }
 
     [IntegrationConnectionFact]
