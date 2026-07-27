@@ -1979,6 +1979,71 @@ export type FacilityDataQualityPayload = {
   }>
 }
 
+export type SensitiveCustodyWorkspacePayload = {
+  summary: {
+    totalWeapons: number
+    serviceableWeapons: number
+    issuedWeapons: number
+    inArmoryWeapons: number
+    underMaintenanceWeapons: number
+    outOfServiceWeapons: number
+    missingOrUnaccountedWeapons: number
+    overdueReturns: number
+    inspectionsDue: number
+    openDiscrepancies: number
+    ammunitionAvailable: number
+    ammunitionMinimum: number
+    ammunitionGap: number
+    pendingApprovals: number
+    staleDataItems: number
+    lastInventoryAtUtc?: string | null
+    readinessRate?: number | null
+    verificationCoverage?: number | null
+    inspectionCompliance?: number | null
+    freshness: string
+    confidence: string
+    warnings: string[]
+  }
+  interventions: Array<{
+    code: string
+    severity: string
+    reasonAr: string
+    sourceEntityId?: string | null
+    sourceEntityType: string
+    facilityUnitId?: string | null
+    ownerRoleAr?: string | null
+    dueAtUtc?: string | null
+    primaryActionAr: string
+    drillDownTarget: WorkspaceDrillDownTarget
+  }>
+  dataQualityIssues: Array<{
+    code: string
+    count: number
+    severity: string
+    impactAr: string
+    sourceAr: string
+    ownerAr?: string | null
+    correctiveActionAr: string
+    drillDownTarget: WorkspaceDrillDownTarget
+  }>
+  timeline: Array<{
+    eventType: string
+    titleAr: string
+    descriptionAr: string
+    occurredAtUtc: string
+    actorAr?: string | null
+    entityReference: string
+    drillDownTarget: WorkspaceDrillDownTarget
+  }>
+  allowedActions: Array<{
+    key: string
+    labelAr: string
+    routeKey: string
+    requiresReason: boolean
+    requiresRowVersion: boolean
+  }>
+}
+
 export type WorkspaceWidgetPayload =
   | ReferenceOperationalSummaryPayload
   | ReferenceCorrectiveActionsPayload
@@ -1989,6 +2054,9 @@ export type WorkspaceWidgetPayload =
   | FacilityAlertsEscalationsPayload
   | FacilityFormCompliancePayload
   | OccupancyWorkspacePayload
+  | ResourceWorkspacePayload
+  | WorkforceWorkspacePayload
+  | SensitiveCustodyWorkspacePayload
   | FacilityPriorityQueuePayload
   | FacilityRecentActivityPayload
   | FacilityStructurePayload

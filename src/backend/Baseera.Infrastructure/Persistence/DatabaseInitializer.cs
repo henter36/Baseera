@@ -295,6 +295,43 @@ public static class DatabaseInitializer
             PermissionCodes.WorkforceExport,
             PermissionCodes.WorkforceReconcile
         ];
+        string[] sensitiveCustodySummary =
+        [
+            PermissionCodes.SensitiveCustodyViewSummary
+        ];
+        string[] sensitiveCustodyViewer =
+        [
+            PermissionCodes.SensitiveCustodyViewSummary,
+            PermissionCodes.SensitiveCustodyViewWeapons,
+            PermissionCodes.SensitiveCustodyViewAmmunition,
+            PermissionCodes.SensitiveCustodyViewCustodyTransactions,
+            PermissionCodes.SensitiveCustodyViewDiscrepancies
+        ];
+        string[] sensitiveCustodyManager =
+        [
+            PermissionCodes.SensitiveCustodyViewSummary,
+            PermissionCodes.SensitiveCustodyViewWeapons,
+            PermissionCodes.SensitiveCustodyViewSerialNumbers,
+            PermissionCodes.SensitiveCustodyViewArmoryLocations,
+            PermissionCodes.SensitiveCustodyViewAmmunition,
+            PermissionCodes.SensitiveCustodyViewCustodyTransactions,
+            PermissionCodes.SensitiveCustodyManageWeapons,
+            PermissionCodes.SensitiveCustodyIssueWeapons,
+            PermissionCodes.SensitiveCustodyReceiveWeapons,
+            PermissionCodes.SensitiveCustodyManageAmmunition,
+            PermissionCodes.SensitiveCustodyConductInventory,
+            PermissionCodes.SensitiveCustodyManageInspections,
+            PermissionCodes.SensitiveCustodyManageMaintenance,
+            PermissionCodes.SensitiveCustodyViewDiscrepancies,
+            PermissionCodes.SensitiveCustodyImport,
+            PermissionCodes.SensitiveCustodyReconcile
+        ];
+        string[] sensitiveCustodyApprover =
+        [
+            PermissionCodes.SensitiveCustodyApproveTransactions,
+            PermissionCodes.SensitiveCustodyApproveInventory,
+            PermissionCodes.SensitiveCustodyExport
+        ];
 
         var auditor = roles.First(r => r.Code == RoleCodes.Auditor);
         Grant(auditor,
@@ -333,7 +370,8 @@ public static class DatabaseInitializer
             workspaceHeadquarters,
             occupancySummary,
             resourceSummary,
-            workforceSummary);
+            workforceSummary,
+            sensitiveCustodySummary);
 
         var decisionDirector = roles.First(r => r.Code == RoleCodes.DecisionSupportDirector);
         Grant(decisionDirector,
@@ -356,7 +394,9 @@ public static class DatabaseInitializer
             occupancySensitive,
             resourceManager,
             PermissionCodes.ResourcesExport,
-            workforceManager);
+            workforceManager,
+            sensitiveCustodyViewer,
+            sensitiveCustodyApprover);
 
         var regional = roles.First(r => r.Code == RoleCodes.RegionalDirector);
         Grant(regional,
@@ -384,7 +424,8 @@ public static class DatabaseInitializer
             dashboardScoped,
             workspaceRegion,
             occupancyManager,
-            resourceManager);
+            resourceManager,
+            sensitiveCustodySummary);
 
         var regionalCoordinator = roles.First(r => r.Code == RoleCodes.RegionalCoordinator);
         Grant(regionalCoordinator,
@@ -430,7 +471,9 @@ public static class DatabaseInitializer
             workspaceFacility,
             occupancyManager,
             resourceManager,
-            workforceManager);
+            workforceManager,
+            sensitiveCustodyViewer,
+            sensitiveCustodyApprover);
 
         string[] formsDesigner =
         [
@@ -552,6 +595,13 @@ public static class DatabaseInitializer
             PermissionCodes.OrganizationView,
             workspaceFacility,
             resourceManager);
+
+        var armamentOfficer = roles.First(r => r.Code == RoleCodes.ArmamentOfficer);
+        Grant(armamentOfficer,
+            PermissionCodes.OrganizationView,
+            workspaceFacility,
+            sensitiveCustodyManager,
+            ownNotifications);
 
         var workforceOfficer = roles.First(r => r.Code == RoleCodes.WorkforceOfficer);
         Grant(workforceOfficer,
@@ -1540,6 +1590,7 @@ public static class DatabaseInitializer
     private const string IdentityModule = "Identity";
     private const string VehiclesModule = "Vehicles";
     private const string ArmamentModule = "Armament";
+    private const string SensitiveCustodyModule = "SensitiveCustody";
     private const string NotesModule = "Notes";
     private const string CorrectiveActionsModule = "CorrectiveActions";
     private const string EscalationsModule = "Escalations";
@@ -1711,7 +1762,26 @@ public static class DatabaseInitializer
             (PermissionCodes.WorkforceRecordAvailability, "تسجيل التوفر والغياب", WorkforceModule),
             (PermissionCodes.WorkforceImport, "استيراد القوى البشرية", WorkforceModule),
             (PermissionCodes.WorkforceExport, "تصدير القوى البشرية", WorkforceModule),
-            (PermissionCodes.WorkforceReconcile, "مصالحة بيانات القوى البشرية", WorkforceModule)
+            (PermissionCodes.WorkforceReconcile, "مصالحة بيانات القوى البشرية", WorkforceModule),
+            (PermissionCodes.SensitiveCustodyViewSummary, "عرض ملخص الأسلحة والعهد الحساسة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyViewWeapons, "عرض سجلات الأسلحة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyViewSerialNumbers, "عرض أرقام السجلات الحساسة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyViewArmoryLocations, "عرض مواقع الخزن الحساسة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyViewAmmunition, "عرض الذخيرة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyViewCustodyTransactions, "عرض سلسلة العهدة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyManageWeapons, "إدارة الأسلحة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyIssueWeapons, "إصدار عهد الأسلحة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyReceiveWeapons, "استلام عهد الأسلحة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyApproveTransactions, "اعتماد عمليات العهدة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyManageAmmunition, "إدارة الذخيرة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyConductInventory, "تنفيذ الجرد الحساس", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyApproveInventory, "اعتماد الجرد الحساس", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyManageInspections, "إدارة فحص الأسلحة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyManageMaintenance, "إدارة صيانة الأسلحة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyViewDiscrepancies, "عرض فروقات الجرد الحساس", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyExport, "تصدير بيانات العهد الحساسة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyImport, "استيراد بيانات العهد الحساسة", SensitiveCustodyModule),
+            (PermissionCodes.SensitiveCustodyReconcile, "مصالحة بيانات العهد الحساسة", SensitiveCustodyModule)
         ];
 
         return items.Select(i => new Permission

@@ -19,6 +19,7 @@
 | **Phase D.4** — إشغال السجن وحركة النزلاء | مكتملة ضمن Issue #124 وتستمر في Issue #11 — [`docs/phase-d4-occupancy-completion-report.md`](docs/phase-d4-occupancy-completion-report.md) |
 | **Phase D.5** — مركز جاهزية الموارد الأساسية | مكتملة محليًا كدفعة أولى من Issue #15 وتنتظر مراجعة PR؛ لا تغلق Issue #15 أو Issue #11 — [`docs/phase-d5-resource-completion-report.md`](docs/phase-d5-resource-completion-report.md) |
 | **Phase D.5.1** — جاهزية القوى البشرية وتغطية المناوبات | مكتملة ومحصنة على الفرع `phase-d5-1-workforce-hardening` لإغلاق Issue #133 بعد نجاح بوابات PR؛ جزئي من #15 واستمرار #11، بدون أسلحة/Region/HQ/رواتب — [`docs/phase-d5-1-workforce-completion-report.md`](docs/phase-d5-1-workforce-completion-report.md) |
+| **Phase D.5.2** — الأسلحة والذخائر والعهد الحساسة | قيد التنفيذ على الفرع `phase-d5-2-weapons-sensitive-custody` لإغلاق Issue #140 بعد نجاح بوابات PR؛ الدفعة الأخيرة محليًا من #15 واستمرار #11 — [`docs/phase-d5-2-sensitive-custody-completion-report.md`](docs/phase-d5-2-sensitive-custody-completion-report.md) |
 
 ## المتطلبات
 
@@ -39,9 +40,19 @@ cp src/backend/Baseera.Api/appsettings.example.json src/backend/Baseera.Api/apps
 ```bash
 export BASEERA_CONNECTION='Server=<host>,<port>;Database=Baseera;User Id=<user>;Password=<from-secret-store>;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=true'
 export ConnectionStrings__Baseera="$BASEERA_CONNECTION"
+# Development: isolated local key ring (absolute path required when set)
+export DataProtection__KeysPath="$PWD/.local/data-protection-keys"
 ```
 
 يمكن تمرير سر سلسلة الاتصال عبر متغير البيئة `ConnectionStrings__Baseera` أو عبر `dotnet user-secrets` للتطوير المحلي أو GitHub Actions secrets في CI أو secret store مخصص في الإنتاج. ملف `appsettings.example.json` يترك قيمة `ConnectionStrings:Baseera` فارغة عمدًا حتى لا يحتوي المستودع على credential-like placeholders.
+
+في Production/Staging يجب تعيين مسار مطلق دائم لمفاتيح Data Protection ومشاركته بين كل النسخ:
+
+```bash
+export DataProtection__KeysPath="/var/lib/baseera/data-protection-keys"
+```
+
+المجلد يجب أن يكون persistent وshared بين الـreplicas، خارج filesystem الحاوية المؤقت، ومحدود الصلاحيات لحساب تشغيل Baseera، ومضمنًا في خطة النسخ الاحتياطي. التفاصيل: [`docs/phase-d5-2-sensitive-data-security.md`](docs/phase-d5-2-sensitive-data-security.md).
 
 ```bash
 # API (Development يسمح بـ TestAuth + Demo Seed عبر appsettings.Development فقط)
@@ -94,4 +105,5 @@ npm run build             # إنتاج: Entra إلزامي
 - Phase D.4 يستبدل فجوة الإشغال ضمن مساحة السجن بنموذج حقيقي للطاقة الاستيعابية وSnapshots وحركة النزلاء، مع عدم عرض هوية النزيل في Workspace. تبقى Issue #11 مفتوحة لبقية مجالات السجن، وتقتصر صلة #15 على الطاقة الاستيعابية فقط.
 - Phase D.5 يستبدل فجوة الموارد الأساسية بنموذج ResourceAsset حقيقي للمركبات وأجهزة الاتصال والمعدات التشغيلية/الأمنية غير المصنفة كأسلحة والأصول الثابتة، مع status history وplacement وmaintenance وrequirements وresource gaps. لا ينفذ الأسلحة أو العهد الحساسة أو المخزون العام، وتبقى Issues #15 و#11 مفتوحة.
 - Phase D.5.1 يضيف مركز جاهزية القوى البشرية وتغطية المناوبات (`WorkforceMember` مستقل عن `User`، أدوار تشغيلية، مؤهلات، تكليفات، احتياج، ورديات، جداول مناوبة، توفر، مواقع حرجة، استيراد محدود، وقسم Workspace `القوى البشرية والتغطية`). يغلق Issue #133 عند نجاح PR، ولا ينفذ الأسلحة أو Region/HQ أو الرواتب، ولا يغلق Issue #15 أو Issue #11.
+- Phase D.5.2 يضيف مجالًا مستقلًا للأسلحة والذخائر والعهد الحساسة، مع serial protected/hash، سلسلة عهد append-only، ذخيرة ledger، جرد، فحص، صلاحيات `SensitiveCustody.*`، وقسم Workspace `الأسلحة والعهد الحساسة`. يغلق Issue #140 عند نجاح PR، ويتم تقييم #15 بعد القبول النهائي، وتبقى #11 مفتوحة لمساحات Region/HQ وبقية مركز القرار.
 - `reference`: مساحة مرجعية للتطوير من Phase D.0، مفعّلة حسب feature flag.

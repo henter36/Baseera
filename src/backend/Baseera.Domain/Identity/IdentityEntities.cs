@@ -230,6 +230,25 @@ public static class PermissionCodes
     public const string WorkforceImport = "Workforce.Import";
     public const string WorkforceExport = "Workforce.Export";
     public const string WorkforceReconcile = "Workforce.Reconcile";
+    public const string SensitiveCustodyViewSummary = "SensitiveCustody.ViewSummary";
+    public const string SensitiveCustodyViewWeapons = "SensitiveCustody.ViewWeapons";
+    public const string SensitiveCustodyViewSerialNumbers = "SensitiveCustody.ViewSerialNumbers";
+    public const string SensitiveCustodyViewArmoryLocations = "SensitiveCustody.ViewArmoryLocations";
+    public const string SensitiveCustodyViewAmmunition = "SensitiveCustody.ViewAmmunition";
+    public const string SensitiveCustodyViewCustodyTransactions = "SensitiveCustody.ViewCustodyTransactions";
+    public const string SensitiveCustodyManageWeapons = "SensitiveCustody.ManageWeapons";
+    public const string SensitiveCustodyIssueWeapons = "SensitiveCustody.IssueWeapons";
+    public const string SensitiveCustodyReceiveWeapons = "SensitiveCustody.ReceiveWeapons";
+    public const string SensitiveCustodyApproveTransactions = "SensitiveCustody.ApproveTransactions";
+    public const string SensitiveCustodyManageAmmunition = "SensitiveCustody.ManageAmmunition";
+    public const string SensitiveCustodyConductInventory = "SensitiveCustody.ConductInventory";
+    public const string SensitiveCustodyApproveInventory = "SensitiveCustody.ApproveInventory";
+    public const string SensitiveCustodyManageInspections = "SensitiveCustody.ManageInspections";
+    public const string SensitiveCustodyManageMaintenance = "SensitiveCustody.ManageMaintenance";
+    public const string SensitiveCustodyViewDiscrepancies = "SensitiveCustody.ViewDiscrepancies";
+    public const string SensitiveCustodyExport = "SensitiveCustody.Export";
+    public const string SensitiveCustodyImport = "SensitiveCustody.Import";
+    public const string SensitiveCustodyReconcile = "SensitiveCustody.Reconcile";
 }
 
 public static class RoleCodes

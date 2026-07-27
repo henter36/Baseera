@@ -322,6 +322,40 @@ internal sealed class FacilityWorkforceWorkspaceWidgetProvider(
     }
 }
 
+internal sealed class FacilitySensitiveCustodyWorkspaceWidgetProvider(
+    IFacilityWorkspaceReadService readService,
+    TimeProvider timeProvider) : IWorkspaceWidgetProvider
+{
+    public WidgetDefinition Definition { get; } = FacilityWorkspaceWidgetDefinitions.Create(new FacilityWorkspaceWidgetDefinitionSpec
+    {
+        Key = FacilityWorkspaceDefinitionProvider.SensitiveCustodyWidgetKey,
+        TitleAr = "الأسلحة والعهد الحساسة",
+        TitleEn = "Weapons and Sensitive Custody",
+        DescriptionAr = "جاهزية الأسلحة والذخيرة وسلسلة العهدة والجرد دون كشف السجلات أو المواقع الحساسة في الملخص.",
+        Category = WidgetCategory.Workload,
+        RequiredPermission = PermissionCodes.SensitiveCustodyViewSummary,
+        DataCapability = "SensitiveCustody.Readiness",
+        Size = WidgetSize.Wide,
+        Sensitive = true
+    });
+
+    public async Task<WidgetDataEnvelopeDto> LoadAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        var payload = await readService.GetSensitiveCustodyAsync(context, cancellationToken);
+        var generatedAt = timeProvider.GetUtcNow();
+        var confidence = FacilityWorkspaceConfidenceMapper.ToLevel(payload.Summary.ConfidenceLevel);
+
+        return Envelope(
+            context,
+            Definition.Key,
+            generatedAt,
+            payload,
+            confidence,
+            [new DrillDownTarget("facility.sensitive-custody", "فتح الأسلحة والعهد الحساسة", new Dictionary<string, string> { ["facilityId"] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() }, FacilityWorkspaceDrillDownFilters.Preserve(context), PermissionCodes.SensitiveCustodyViewSummary)],
+            payload.DataQuality.Select(issue => issue.ImpactAr).Take(3).ToList());
+    }
+}
+
 internal sealed class FacilityRecentActivityWorkspaceWidgetProvider(
     IFacilityWorkspaceReadService readService,
     TimeProvider timeProvider) : IWorkspaceWidgetProvider

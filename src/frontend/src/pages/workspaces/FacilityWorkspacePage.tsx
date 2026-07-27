@@ -17,6 +17,7 @@ import {
   type OccupancyWorkspacePayload,
   type DutyRosterPayload,
   type ResourceWorkspacePayload,
+  type SensitiveCustodyWorkspacePayload,
   type WorkforceCoverageRowPayload,
   type WorkforceCoverageStatus,
   type WorkforceUnitCoveragePayload,
@@ -87,6 +88,15 @@ const PANEL_TYPES = [
   'workforce-requirement',
   'workforce-qualification',
   'workforce-critical-position',
+  'custody-transaction',
+  'armory-location',
+  'ammunition-lot',
+  'ammunition-transaction',
+  'inventory-session',
+  'inventory-discrepancy',
+  'weapon-inspection',
+  'maintenance-work-order',
+  'requirement-gap',
 ] as const
 
 type PanelType = (typeof PANEL_TYPES)[number]
@@ -97,6 +107,7 @@ type SectionKey =
   | 'operations'
   | 'occupancy'
   | 'resources'
+  | 'sensitive-custody'
   | 'workforce'
   | 'risks'
   | 'projects'
@@ -129,6 +140,7 @@ type CommandData = Readonly<{
   forms?: FacilityFormCompliancePayload
   occupancy?: OccupancyWorkspacePayload
   resources?: ResourceWorkspacePayload
+  sensitiveCustody?: SensitiveCustodyWorkspacePayload
   workforce?: WorkforceWorkspacePayload
   priority?: FacilityPriorityQueuePayload
   activity?: FacilityRecentActivityPayload
@@ -142,6 +154,7 @@ const SECTION_NAV: ReadonlyArray<Readonly<{ key: SectionKey; label: string }>> =
   { key: 'operations', label: 'التشغيل والوقوعات' },
   { key: 'occupancy', label: 'الإشغال والنزلاء' },
   { key: 'resources', label: 'الموارد والجاهزية' },
+  { key: 'sensitive-custody', label: 'الأسلحة والعهد الحساسة' },
   { key: 'workforce', label: 'القوى البشرية والتغطية' },
   { key: 'risks', label: 'المخاطر والمعالجات' },
   { key: 'projects', label: 'المشاريع والمبادرات' },
@@ -392,6 +405,7 @@ function OperationalPulse({ data }: Readonly<{ data: CommandData }>) {
   const completion = data.forms?.completionRate == null ? null : Math.round(data.forms.completionRate * 100)
   const occupancy = domainFor(data, 'occupancy')
   const resources = domainFor(data, 'resources')
+  const sensitiveCustody = domainFor(data, 'sensitive-custody')
   const incidents = domainFor(data, 'incidents')
   const risks = domainFor(data, 'risks')
   const projects = domainFor(data, 'projects')
@@ -410,6 +424,12 @@ function OperationalPulse({ data }: Readonly<{ data: CommandData }>) {
         value={resources?.statusAr ?? 'غير متاح'}
         detail={resources?.impactAr ?? 'لا توجد بيانات موارد'}
         tone={domainTone(resources)}
+      />
+      <OperationalPulseItem
+        label="العهد الحساسة"
+        value={data.sensitiveCustody?.summary.readinessRate == null ? sensitiveCustody?.statusAr ?? 'غير متاح' : `${Math.round(data.sensitiveCustody.summary.readinessRate * 100)}%`}
+        detail={data.sensitiveCustody ? `${data.sensitiveCustody.summary.serviceableWeapons} جاهز · ${data.sensitiveCustody.summary.missingOrUnaccountedWeapons} مفقود/غير مطابق` : sensitiveCustody?.impactAr ?? 'لا توجد بيانات عهد حساسة'}
+        tone={sensitiveCustodyTone(data.sensitiveCustody)}
       />
       <OperationalPulseItem
         label="الوقوعات"
@@ -502,6 +522,14 @@ function SectionDeck({
     return (
       <CommandSection title="الموارد والجاهزية">
         <ResourcesReadinessSection data={data} openPanel={openPanel} />
+      </CommandSection>
+    )
+  }
+
+  if (activeSection === 'sensitive-custody') {
+    return (
+      <CommandSection title="الأسلحة والعهد الحساسة">
+        <SensitiveCustodySection data={data} openPanel={openPanel} />
       </CommandSection>
     )
   }
@@ -687,17 +715,15 @@ function PanelDetail({
   }
 
   if (panel.type === 'facility-unit') {
-    if (summary && 'unitNameAr' in summary) {
-      return <OccupancyUnitPanel summary={summary} />
-    }
-    if (summary && 'unitId' in summary) {
-      return <FacilityUnitPanel summary={summary} />
-    }
-    return <DomainGapPanel type={panel.type} summary={summary} />
+    return <FacilityUnitPanelDetail panel={panel} summary={summary} />
   }
 
   if (isWorkforcePanelType(panel.type)) {
     return <WorkforcePreviewPanel type={panel.type} summary={summary} entityId={panel.entityId} />
+  }
+
+  if (isSensitiveCustodyPanelType(panel.type)) {
+    return <SensitiveCustodyPreviewPanel type={panel.type} summary={summary} entityId={panel.entityId} />
   }
 
   if (panel.entityId.startsWith('domain-') && summary && 'statusCode' in summary) {
@@ -709,6 +735,44 @@ function PanelDetail({
   }
 
   return <ActivityPreviewPanel summary={summary} />
+}
+
+function FacilityUnitPanelDetail({
+  panel,
+  summary,
+}: Readonly<{
+  panel: PanelState
+  summary?: PanelSummary
+}>) {
+  if (summary && 'unitNameAr' in summary) {
+    return <OccupancyUnitPanel summary={summary} />
+  }
+
+  if (summary && 'unitId' in summary) {
+    return <FacilityUnitPanel summary={summary} />
+  }
+
+  return <DomainGapPanel type={panel.type} summary={summary} />
+}
+
+function SensitiveCustodyPreviewPanel({ type, summary, entityId }: Readonly<{ type: PanelType; summary?: PanelSummary; entityId: string }>) {
+  return (
+    <div className="context-stack">
+      <ContextSection title={panelLabel(type)}>
+        <StatusRail
+          tone={summary && 'priorityRank' in summary ? priorityTone(summary) : 'warn'}
+          rows={[
+            ['المرجع', summaryReference(summary) || entityId],
+            ['الحالة', summaryTitle(summary)],
+            ['السبب', summaryReason(summary)],
+            ['الموعد', summaryDue(summary)],
+            ['المصدر', 'العهد الحساسة'],
+          ]}
+        />
+      </ContextSection>
+      <div className="context-action-note">تعرض هذه اللوحة ملخصًا آمنًا فقط. لا تظهر الأرقام التسلسلية أو مواقع التخزين التفصيلية داخل مركز القرار العام.</div>
+    </div>
+  )
 }
 
 function NotePanel({ noteId, summary, onChanged }: Readonly<{ noteId: string; summary?: PanelSummary; onChanged: () => void }>) {
@@ -1348,6 +1412,89 @@ function ResourcesReadinessSection({ data, openPanel }: Readonly<{ data: Command
   )
 }
 
+function SensitiveCustodySection({ data, openPanel }: Readonly<{ data: CommandData; openPanel: (panel: PanelState) => void }>) {
+  const custody = data.sensitiveCustody
+  const custodyGap = domainFor(data, 'sensitive-custody')
+  if (!custody) {
+    return (
+      <div className="command-section-stack">
+        <DomainUnavailableSection domain={custodyGap} panelType="weapon" openPanel={openPanel} compact />
+      </div>
+    )
+  }
+
+  const summary = custody.summary
+  const readiness = summary.readinessRate == null ? '-' : `${Math.round(summary.readinessRate * 100)}%`
+  return (
+    <div className="command-section-stack">
+      <div className="occupancy-command-strip" data-status={sensitiveCustodyStatus(summary)}>
+        <div>
+          <span className="command-eyebrow">جاهزية العهد الحساسة</span>
+          <h3>{readiness === '-' ? 'لا يوجد baseline حساس' : `${readiness} جاهزية`}</h3>
+          <p>{summary.warnings.join(' ') || 'لا توجد تحذيرات عهد حساسة حالية.'}</p>
+        </div>
+        <strong>{summary.serviceableWeapons}/{summary.totalWeapons || '-'}</strong>
+      </div>
+
+      <div className="workforce-rail readiness-rail" aria-label="مؤشرات الأسلحة والعهد الحساسة">
+        <CommandMetric label="إجمالي الأسلحة" value={summary.totalWeapons} tone="info" />
+        <CommandMetric label="جاهز" value={summary.serviceableWeapons} tone="ok" />
+        <CommandMetric label="مصروف" value={summary.issuedWeapons} tone="info" />
+        <CommandMetric label="في المستودع" value={summary.inArmoryWeapons} tone="info" />
+        <CommandMetric label="صيانة" value={summary.underMaintenanceWeapons} tone={summary.underMaintenanceWeapons > 0 ? 'warn' : 'ok'} />
+        <CommandMetric label="مفقود أو غير مطابق" value={summary.missingOrUnaccountedWeapons} tone={summary.missingOrUnaccountedWeapons > 0 ? 'danger' : 'ok'} />
+      </div>
+
+      <div className="duty-status-band" data-status={sensitiveCustodyStatus(summary)}>
+        <span>إعادات متأخرة {summary.overdueReturns}</span>
+        <span>فحوص مستحقة {summary.inspectionsDue}</span>
+        <span>فروقات مفتوحة {summary.openDiscrepancies}</span>
+        <span>ذخيرة متاحة {summary.ammunitionAvailable}</span>
+        <span>عجز ذخيرة {summary.ammunitionGap}</span>
+        <span>اعتمادات معلقة {summary.pendingApprovals}</span>
+      </div>
+
+      {custody.interventions.length > 0 && (
+        <ul className="priority-row-list" aria-label="استثناءات العهد الحساسة">
+          {custody.interventions.map((item) => (
+            <li key={`${item.code}-${item.sourceEntityId ?? item.sourceEntityType}`}>
+              <button
+                type="button"
+                className="priority-row compact"
+                data-tone={sensitiveSeverityTone(item.severity)}
+                onClick={() => openPanel(sensitivePanelForTarget(item.drillDownTarget, item.sourceEntityId ?? item.code))}
+              >
+                <span className="priority-band" aria-hidden="true" />
+                <span><strong>{sensitiveInterventionLabel(item.code)}</strong><small>{item.reasonAr}</small></span>
+                <b>{item.primaryActionAr}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {custody.dataQualityIssues.length > 0 && (
+        <ul className="priority-row-list" aria-label="جودة بيانات العهد الحساسة">
+          {custody.dataQualityIssues.slice(0, 6).map((item) => (
+            <li key={item.code}>
+              <button
+                type="button"
+                className="priority-row compact"
+                data-tone={sensitiveSeverityTone(item.severity)}
+                onClick={() => openPanel({ type: 'requirement-gap', entityId: `dq-${item.code}` })}
+              >
+                <span className="priority-band" aria-hidden="true" />
+                <span><strong>{item.code}</strong><small>{item.impactAr}</small></span>
+                <b>{item.count}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function WorkforceCoverageSection({ data, openPanel }: Readonly<{ data: CommandData; openPanel: (panel: PanelState) => void }>) {
   const workforce = data.workforce
   const workforceGap = domainFor(data, 'workforce')
@@ -1807,6 +1954,7 @@ function extractCommandData(shell: WorkspaceShellDto): CommandData {
     forms: payloadFor<FacilityFormCompliancePayload>(shell.widgets, 'facility.form-compliance'),
     occupancy: payloadFor<OccupancyWorkspacePayload>(shell.widgets, 'facility.occupancy'),
     resources: payloadFor<ResourceWorkspacePayload>(shell.widgets, 'facility.resources'),
+    sensitiveCustody: payloadFor<SensitiveCustodyWorkspacePayload>(shell.widgets, 'facility.sensitive-custody'),
     workforce: payloadFor<WorkforceWorkspacePayload>(shell.widgets, 'facility.workforce'),
     priority: payloadFor<FacilityPriorityQueuePayload>(shell.widgets, 'facility.priority-queue'),
     activity: payloadFor<FacilityRecentActivityPayload>(shell.widgets, 'facility.recent-activity'),
@@ -1855,6 +2003,7 @@ function panelForPriorityItem(item: PriorityItem): PanelState {
   if (item.type === 'escalation') return { type: 'escalation', entityId: item.reference }
   if (item.type === 'occupancy') return { type: 'facility-unit', entityId: item.drillDownTarget.routeParameters.unitId ?? 'domain-occupancy' }
   if (item.type === 'resource') return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.reference }
+  if (item.type === 'sensitive-custody') return sensitivePanelForTarget(item.drillDownTarget, item.reference)
   if (item.type === 'workforce') return workforcePanelForReference(item.reference)
   return { type: 'activity', entityId: item.reference }
 }
@@ -1888,6 +2037,9 @@ function panelForActivityItem(item: ActivityItem, index: number): PanelState {
   if (item.drillDownTarget.routeKey === 'facility.resources') {
     return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.entityReference }
   }
+  if (item.drillDownTarget.routeKey === 'facility.sensitive-custody') {
+    return sensitivePanelForTarget(item.drillDownTarget, item.entityReference)
+  }
   if (item.drillDownTarget.routeKey === 'facility.workforce') {
     return { type: 'workforce-gap', entityId: item.drillDownTarget.routeParameters.memberId ?? item.entityReference }
   }
@@ -1903,6 +2055,7 @@ function panelForDomain(domain: DataQualityDomain): PanelState {
     forms: 'activity',
     occupancy: 'facility-unit',
     resources: 'equipment',
+    'sensitive-custody': 'weapon',
     workforce: 'workforce-gap',
     incidents: 'incident',
     risks: 'risk',
@@ -1961,6 +2114,9 @@ function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefine
     const base = `/facilities/${shell.context.facilityId ?? ''}/workforce`
     return section ? `${base}?section=${section}` : base
   }
+  if (isSensitiveCustodyPanelType(panel.type)) {
+    return null
+  }
   if (summary && 'drillDownTarget' in summary) return routeFromTarget(summary.drillDownTarget)
   return null
 }
@@ -1972,6 +2128,7 @@ function routeFromTarget(target: { routeKey: string; routeParameters: Record<str
   if (target.routeKey === 'escalations.occurrences') return '/settings/escalations/occurrences'
   if (target.routeKey === 'facility.occupancy') return `/facilities/${target.routeParameters.facilityId ?? ''}/occupancy`
   if (target.routeKey === 'facility.resources') return `/facilities/${target.routeParameters.facilityId ?? ''}/resources`
+  if (target.routeKey === 'facility.sensitive-custody') return null
   if (target.routeKey === 'facility.workforce') return `/facilities/${target.routeParameters.facilityId ?? ''}/workforce`
   return null
 }
@@ -1986,6 +2143,58 @@ function resourcePanelType(resourceTypeCode?: string): PanelType {
   if (resourceTypeCode === '0' || resourceTypeCode === 'Vehicle') return 'vehicle'
   if (resourceTypeCode === '1' || resourceTypeCode === 'CommunicationDevice') return 'communication-device'
   return 'equipment'
+}
+
+function sensitivePanelForTarget(target: { routeParameters: Record<string, string> }, fallback: string): PanelState {
+  if (target.routeParameters.weaponId) return { type: 'weapon', entityId: target.routeParameters.weaponId }
+  if (target.routeParameters.transactionId) return { type: 'custody-transaction', entityId: target.routeParameters.transactionId }
+  if (target.routeParameters.armoryLocationId) return { type: 'armory-location', entityId: target.routeParameters.armoryLocationId }
+  if (target.routeParameters.ammunitionLotId) return { type: 'ammunition-lot', entityId: target.routeParameters.ammunitionLotId }
+  if (target.routeParameters.inventoryId) return { type: 'inventory-session', entityId: target.routeParameters.inventoryId }
+  if (target.routeParameters.discrepancyId) return { type: 'inventory-discrepancy', entityId: target.routeParameters.discrepancyId }
+  if (target.routeParameters.inspectionId) return { type: 'weapon-inspection', entityId: target.routeParameters.inspectionId }
+  if (target.routeParameters.requirementId) return { type: 'requirement-gap', entityId: target.routeParameters.requirementId }
+  return { type: 'weapon', entityId: fallback }
+}
+
+function sensitiveCustodyStatus(summary: SensitiveCustodyWorkspacePayload['summary']) {
+  if (summary.missingOrUnaccountedWeapons > 0 || summary.ammunitionGap > 0) return 'partial'
+  if (summary.totalWeapons > 0 || summary.ammunitionAvailable > 0) return 'complete'
+  return 'missing'
+}
+
+function sensitiveCustodyTone(payload?: SensitiveCustodyWorkspacePayload): WorkspaceVisualTone {
+  if (!payload) return domainTone()
+  const status = sensitiveCustodyStatus(payload.summary)
+  if (status === 'partial') return 'danger'
+  if (status === 'complete') return 'ok'
+  return 'muted'
+}
+
+function sensitiveSeverityTone(severity: string): WorkspaceVisualTone {
+  if (severity === 'Critical') return 'danger'
+  if (severity === 'Major') return 'warn'
+  return 'info'
+}
+
+function sensitiveInterventionLabel(code: string) {
+  const labels: Record<string, string> = {
+    WeaponMissing: 'سلاح مفقود',
+    WeaponUnaccountedFor: 'سلاح غير مطابق',
+    CustodyReturnOverdue: 'عهدة متأخرة',
+    CustodyHandoverIncomplete: 'تسليم غير مكتمل',
+    WeaponInspectionExpired: 'فحص سلاح منتهي',
+    WeaponMaintenanceOverdue: 'صيانة متأخرة',
+    WeaponUnserviceable: 'سلاح غير صالح',
+    InventoryDiscrepancyCritical: 'فرق جرد حرج',
+    AmmunitionBelowMinimum: 'ذخيرة دون الحد الأدنى',
+    AmmunitionExpired: 'ذخيرة منتهية',
+    ArmoryInspectionExpired: 'فحص مستودع مستحق',
+    SensitiveDataStale: 'بيانات قديمة',
+    SourceConflict: 'تعارض مصادر',
+    UnverifiedWeapon: 'سلاح غير محقق',
+  }
+  return labels[code] ?? code
 }
 
 function workforceStripStatus(status: WorkforceCoverageStatus, gap: number) {
@@ -2145,6 +2354,18 @@ function isWorkforcePanelType(type: PanelType): boolean {
   return type.startsWith('workforce-')
 }
 
+function isSensitiveCustodyPanelType(type: PanelType): boolean {
+  return type === 'custody-transaction'
+    || type === 'armory-location'
+    || type === 'ammunition-lot'
+    || type === 'ammunition-transaction'
+    || type === 'inventory-session'
+    || type === 'inventory-discrepancy'
+    || type === 'weapon-inspection'
+    || type === 'maintenance-work-order'
+    || type === 'requirement-gap'
+}
+
 function workforceAdminSectionForPanel(type: PanelType): string | null {
   if (type === 'workforce-member') return 'members'
   if (type === 'workforce-shift' || type === 'workforce-roster') return 'shifts'
@@ -2178,6 +2399,15 @@ function panelLabel(type: PanelType) {
     'workforce-requirement': 'متطلب تسكين',
     'workforce-qualification': 'مؤهل تشغيلي',
     'workforce-critical-position': 'موقع حرج',
+    'custody-transaction': 'حركة عهدة',
+    'armory-location': 'موقع عهدة حساس',
+    'ammunition-lot': 'دفعة ذخيرة',
+    'ammunition-transaction': 'حركة ذخيرة',
+    'inventory-session': 'جلسة جرد',
+    'inventory-discrepancy': 'فرق جرد',
+    'weapon-inspection': 'فحص سلاح',
+    'maintenance-work-order': 'أمر صيانة',
+    'requirement-gap': 'فجوة احتياج',
     project: 'مشروع أو مبادرة',
     'emergency-plan': 'خطة تشغيلية أو طوارئ',
     decision: 'قرار أو توجيه',

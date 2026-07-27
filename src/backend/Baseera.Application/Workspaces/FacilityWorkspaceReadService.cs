@@ -5,6 +5,7 @@ using Baseera.Application.Dashboard;
 using Baseera.Application.Forms.Compliance;
 using Baseera.Application.Occupancy;
 using Baseera.Application.Resources;
+using Baseera.Application.SensitiveCustody;
 using Baseera.Application.Workforce;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Escalations;
@@ -25,6 +26,8 @@ internal interface IFacilityWorkspaceReadService
         throw new NotSupportedException("Resource workspace read is not implemented by this test double.");
     Task<WorkforceWorkspacePayload> GetWorkforceAsync(WorkspaceContext context, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Workforce workspace read is not implemented by this test double.");
+    Task<SensitiveCustodyWorkspacePayload> GetSensitiveCustodyAsync(WorkspaceContext context, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Sensitive custody workspace read is not implemented by this test double.");
     Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityRecentActivityPayload> GetRecentActivityAsync(WorkspaceContext context, CancellationToken cancellationToken);
     Task<FacilityStructurePayload> GetStructureAsync(WorkspaceContext context, CancellationToken cancellationToken);
@@ -38,11 +41,25 @@ internal interface IFacilityWorkspaceReadService
 internal sealed class FacilityWorkspaceFacilityDomainQueries(
     IOccupancyQueryService occupancy,
     IResourceReadinessQueryService resources,
-    IWorkforceReadinessQueryService workforce)
+    IWorkforceReadinessQueryService workforce,
+    ISensitiveCustodyReadinessService? sensitiveCustody = null)
 {
     public IOccupancyQueryService Occupancy { get; } = occupancy;
     public IResourceReadinessQueryService Resources { get; } = resources;
     public IWorkforceReadinessQueryService Workforce { get; } = workforce;
+    public ISensitiveCustodyReadinessService SensitiveCustody { get; } = sensitiveCustody ?? new UnavailableSensitiveCustodyReadinessService();
+}
+
+internal sealed class UnavailableSensitiveCustodyReadinessService : ISensitiveCustodyReadinessService
+{
+    public Task<SensitiveCustodyWorkspacePayload> GetWorkspacePayloadAsync(Guid facilityId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Sensitive custody workspace read is not implemented by this test double.");
+
+    public Task<SensitiveCustodySummaryDto> GetSummaryAsync(Guid facilityId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Sensitive custody summary read is not implemented by this test double.");
+
+    public Task<IReadOnlyList<SensitiveCustodyTimelineItemDto>> GetTimelineAsync(Guid facilityId, int limit, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Sensitive custody timeline read is not implemented by this test double.");
 }
 
 internal sealed class FacilityWorkspaceReadService(
@@ -101,7 +118,10 @@ internal sealed class FacilityWorkspaceReadService(
             var workforcePayload = currentUser.HasPermission(PermissionCodes.WorkforceViewSummary)
                 ? await GetWorkforceAsync(context, cancellationToken)
                 : null;
-            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload, workforcePayload);
+            var sensitiveCustodyPayload = currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewSummary)
+                ? await GetSensitiveCustodyAsync(context, cancellationToken)
+                : null;
+            return new FacilityWorkspaceMetrics(facility, notes, actions, alerts, forms, occupancyPayload, resourcePayload, workforcePayload, sensitiveCustodyPayload);
         });
     }
 
@@ -161,6 +181,14 @@ internal sealed class FacilityWorkspaceReadService(
                 cancellationToken));
     }
 
+    public async Task<SensitiveCustodyWorkspacePayload> GetSensitiveCustodyAsync(WorkspaceContext context, CancellationToken cancellationToken)
+    {
+        return await GetOrAddAsync($"sensitive-custody:{CacheKey(context)}", async () =>
+            await facilityDomain.SensitiveCustody.GetWorkspacePayloadAsync(
+                FacilityWorkspaceContextGuard.RequireFacilityId(context),
+                cancellationToken));
+    }
+
     public async Task<FacilityPriorityQueuePayload> GetPriorityQueueAsync(WorkspaceContext context, CancellationToken cancellationToken)
     {
         return await GetOrAddAsync($"priority:{CacheKey(context)}", async () =>
@@ -186,6 +214,10 @@ internal sealed class FacilityWorkspaceReadService(
             if (currentUser.HasPermission(PermissionCodes.WorkforceViewSummary))
             {
                 items.AddRange(await BuildWorkforcePriorityItemsAsync(context, cancellationToken));
+            }
+            if (currentUser.HasPermission(PermissionCodes.SensitiveCustodyViewSummary))
+            {
+                items.AddRange(await BuildSensitiveCustodyPriorityItemsAsync(context, cancellationToken));
             }
 
             return new FacilityPriorityQueuePayload(
@@ -320,6 +352,15 @@ internal sealed class FacilityWorkspaceReadService(
             else
             {
                 domains.Insert(7, MissingDomain(DomainKeyWorkforce, "القوى البشرية والتغطية", "لا يملك المستخدم صلاحية عرض القوى البشرية أو لم تُحمّل بيانات المجال.", "#133"));
+            }
+
+            if (metrics.SensitiveCustody is not null)
+            {
+                domains.Insert(8, SensitiveCustodyDomain(metrics.SensitiveCustody));
+            }
+            else
+            {
+                domains.Insert(8, MissingDomain("sensitive-custody", "الأسلحة والعهد الحساسة", "لا يملك المستخدم صلاحية عرض العهد الحساسة أو لم تُحمّل بيانات المجال.", "#140"));
             }
 
             return new FacilityDataQualityPayload(domains);
@@ -716,6 +757,51 @@ internal sealed class FacilityWorkspaceReadService(
             .Take(PriorityLimit)
             .ToList();
     }
+
+    private async Task<IReadOnlyList<FacilityPriorityItemPayload>> BuildSensitiveCustodyPriorityItemsAsync(
+        WorkspaceContext context,
+        CancellationToken cancellationToken)
+    {
+        var payload = await GetSensitiveCustodyAsync(context, cancellationToken);
+        return payload.Interventions
+            .Select(item => new FacilityPriorityItemPayload
+            {
+                Type = item.Code,
+                Reference = $"{item.Code}:{item.SourceEntityId?.ToString() ?? "facility"}",
+                TitleAr = SensitiveCustodyPriorityTitle(item.Code),
+                SeverityAr = item.Severity switch
+                {
+                    "Critical" => SeverityCriticalAr,
+                    "High" => SeverityHighAr,
+                    _ => SeverityMediumAr
+                },
+                PriorityRank = item.Severity switch
+                {
+                    "Critical" => 940,
+                    "High" => 880,
+                    _ => 760
+                },
+                ReasonAr = item.ReasonAr,
+                DueAtUtc = item.DueAtUtc,
+                OverdueDays = null,
+                OwnerAr = item.OwnerRole,
+                ActionLabelAr = item.PrimaryAction,
+                DrillDownTarget = SensitiveCustodyTarget(context)
+            })
+            .Take(PriorityLimit)
+            .ToList();
+    }
+
+    private static string SensitiveCustodyPriorityTitle(string code) =>
+        code switch
+        {
+            SensitiveCustodyOperationalCatalog.Interventions.WeaponMissing => "سلاح مفقود",
+            SensitiveCustodyOperationalCatalog.Interventions.InventoryDiscrepancyCritical => "فرق جرد حساس",
+            SensitiveCustodyOperationalCatalog.Interventions.AmmunitionExpired => "ذخيرة منتهية",
+            SensitiveCustodyOperationalCatalog.Interventions.WeaponInspectionExpired => "فحص سلاح مستحق",
+            SensitiveCustodyOperationalCatalog.Interventions.WeaponUnserviceable => "سلاح غير صالح",
+            _ => "تنبيه عهدة حساس"
+        };
 
     private static IEnumerable<FacilityPriorityItemPayload> BuildWorkforceSummaryPriorityItems(
         WorkspaceContext context,
@@ -1304,6 +1390,24 @@ internal sealed class FacilityWorkspaceReadService(
         };
     }
 
+    private static FacilityDataQualityDomainPayload SensitiveCustodyDomain(SensitiveCustodyWorkspacePayload payload)
+    {
+        var hasWeapons = payload.Summary.TotalWeapons > 0;
+        return new()
+        {
+            Key = "sensitive-custody",
+            LabelAr = "الأسلحة والعهد الحساسة",
+            StatusCode = hasWeapons ? DataQualityComplete : "missing",
+            StatusAr = hasWeapons ? "متاح" : "مفقود",
+            ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
+            LastUpdatedAtUtc = payload.Summary.GeneratedAtUtc,
+            ImpactAr = payload.DataQuality.Count > 0
+                ? string.Join(" ", payload.DataQuality.Select(issue => issue.ImpactAr).Take(3))
+                : "يدخل في العمل العاجل والجاهزية الأمنية دون كشف سجلات أو مواقع حساسة.",
+            FollowUpIssue = null
+        };
+    }
+
     private static (string StatusCode, string StatusAr) ResolveWorkforceDataQualityStatus(WorkforceSummaryDto summary)
     {
         if (summary.TotalMembers == 0)
@@ -1371,6 +1475,14 @@ internal sealed class FacilityWorkspaceReadService(
             new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
             FacilityWorkspaceDrillDownFilters.Preserve(context),
             requiredPermission);
+
+    private static DrillDownTarget SensitiveCustodyTarget(WorkspaceContext context) =>
+        new(
+            "facility.sensitive-custody",
+            "فتح الأسلحة والعهد الحساسة",
+            new Dictionary<string, string> { [FacilityWorkspaceDrillDownFilters.FacilityIdParameterName] = FacilityWorkspaceContextGuard.RequireFacilityId(context).ToString() },
+            FacilityWorkspaceDrillDownFilters.Preserve(context),
+            PermissionCodes.SensitiveCustodyViewSummary);
 
 }
 
