@@ -18,6 +18,7 @@ public sealed class RiskMatrixService(IBaseeraDbContext db, ICurrentUser current
     public async Task<IReadOnlyList<RiskMatrixDto>> ListAsync(Guid organizationId, CancellationToken cancellationToken = default)
     {
         Require(PermissionCodes.RisksView);
+        await EnsureOrganizationVisibleAsync(organizationId, cancellationToken);
         var matrices = await Db.RiskAssessmentMatrices.AsNoTracking()
             .Include(m => m.LikelihoodLevels)
             .Include(m => m.ImpactLevels).ThenInclude(l => l.ImpactDimension)
@@ -42,6 +43,7 @@ public sealed class RiskMatrixService(IBaseeraDbContext db, ICurrentUser current
     public async Task<Guid> CreateAsync(Guid organizationId, RiskMatrixCreateRequest request, CancellationToken cancellationToken = default)
     {
         Require(PermissionCodes.RisksManageMatrices);
+        await EnsureOrganizationVisibleAsync(organizationId, cancellationToken);
 
         var bands = request.RatingBands.Select(b => new RiskRatingBand
         {
@@ -137,7 +139,18 @@ public sealed class RiskMatrixService(IBaseeraDbContext db, ICurrentUser current
         }
 
         Db.Add(matrix);
-        await Db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await Db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            // Concurrent CreateAsync calls for the same (OrganizationId, Code) can both compute the same
+            // MAX(Version)+1 before either commits; the unique (OrganizationId, Code, Version) index catches
+            // the loser here. Surface it as a real conflict instead of an opaque 500.
+            throw new InvalidOperationException("تعارض في ترقيم إصدار المصفوفة بسبب طلب متزامن. أعد المحاولة.", ex);
+        }
+
         await AuditAsync(RiskAuditActions.RiskMatrixCreated, nameof(RiskAssessmentMatrix), matrix.Id, new { matrix.Code, matrix.Version }, cancellationToken);
         await Db.SaveChangesAsync(cancellationToken);
         return matrix.Id;
@@ -200,6 +213,7 @@ public sealed class RiskMatrixService(IBaseeraDbContext db, ICurrentUser current
 
     private async Task<RiskAssessmentMatrix> LoadOrgMatrixAsync(Guid organizationId, Guid matrixId, CancellationToken cancellationToken)
     {
+        await EnsureOrganizationVisibleAsync(organizationId, cancellationToken);
         return await Db.RiskAssessmentMatrices
             .Include(m => m.RatingBands)
             .FirstOrDefaultAsync(m => m.Id == matrixId && m.OrganizationId == organizationId, cancellationToken)

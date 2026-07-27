@@ -22,7 +22,8 @@ public sealed class RiskCommandService(IBaseeraDbContext db, ICurrentUser curren
             }
         }
 
-        var codeTaken = await Db.RiskCategories.AnyAsync(c => c.OrganizationId == organizationId && c.Code == request.Code, cancellationToken);
+        var code = request.Code.Trim();
+        var codeTaken = await Db.RiskCategories.AnyAsync(c => c.OrganizationId == organizationId && c.Code == code, cancellationToken);
         if (codeTaken)
         {
             throw new InvalidOperationException("رمز التصنيف مستخدم بالفعل.");
@@ -31,7 +32,7 @@ public sealed class RiskCommandService(IBaseeraDbContext db, ICurrentUser curren
         var category = new Domain.RiskManagement.RiskCategory
         {
             OrganizationId = organizationId,
-            Code = request.Code.Trim(),
+            Code = code,
             NameAr = request.NameAr.Trim(),
             NameEn = request.NameEn,
             ParentCategoryId = request.ParentCategoryId,
@@ -66,14 +67,7 @@ public sealed class RiskCommandService(IBaseeraDbContext db, ICurrentUser curren
             }
         }
 
-        if (request.OwnerWorkforceMemberId is Guid ownerId)
-        {
-            var ownerExists = await Db.WorkforceMembers.AnyAsync(w => w.Id == ownerId, cancellationToken);
-            if (!ownerExists)
-            {
-                throw new InvalidOperationException("عضو القوى البشرية المحدد كمالك غير موجود.");
-            }
-        }
+        await EnsureOwnerAssignableAsync(organizationId, request.OwnerWorkforceMemberId, null, cancellationToken);
 
         var sequence = await Db.NextRiskRecordSequenceValueAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
@@ -177,10 +171,7 @@ public sealed class RiskCommandService(IBaseeraDbContext db, ICurrentUser curren
             throw new InvalidOperationException("يجب تحديد مالك (عضو قوى بشرية أو مستخدم).");
         }
 
-        if (request.OwnerWorkforceMemberId is Guid ownerId && !await Db.WorkforceMembers.AnyAsync(w => w.Id == ownerId, cancellationToken))
-        {
-            throw new InvalidOperationException("عضو القوى البشرية المحدد كمالك غير موجود.");
-        }
+        await EnsureOwnerAssignableAsync(risk.OrganizationId, request.OwnerWorkforceMemberId, request.OwnerUserId, cancellationToken);
 
         risk.OwnerWorkforceMemberId = request.OwnerWorkforceMemberId;
         risk.OwnerUserId = request.OwnerUserId;
@@ -196,7 +187,6 @@ public sealed class RiskCommandService(IBaseeraDbContext db, ICurrentUser curren
     private async Task StartMonitoringAsync(RiskRecord risk, CancellationToken cancellationToken)
     {
         Require(PermissionCodes.RisksUpdate);
-        RiskLifecycleStateMachine.EnsureAllowed(risk.Status, RiskStatus.Monitoring);
         await TransitionAsync(risk, RiskStatus.Monitoring, "بدء المتابعة.", cancellationToken);
     }
 
@@ -264,6 +254,7 @@ public sealed class RiskCommandService(IBaseeraDbContext db, ICurrentUser curren
     private async Task TransitionAsync(RiskRecord risk, RiskStatus to, string reason, CancellationToken cancellationToken)
     {
         var from = risk.Status;
+        RiskLifecycleStateMachine.EnsureAllowed(from, to);
         risk.Status = to;
         risk.UpdatedBy = ActorReference();
         risk.UpdatedAtUtc = DateTimeOffset.UtcNow;

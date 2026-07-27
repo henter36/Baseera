@@ -52,6 +52,32 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
     }
 
     [IntegrationConnectionFact]
+    public async Task Archive_is_rejected_from_a_status_the_lifecycle_does_not_allow()
+    {
+        // Regression test for a real bug: TransitionAsync previously mutated status/history/audit before any
+        // lifecycle check, so ArchiveAsync could archive a risk from any status. A freshly created risk starts
+        // in Draft, and Archive is only ever allowed from Closed — this must now be rejected with a conflict,
+        // and the risk's status/RowVersion must be left completely untouched.
+        var reference = await SeedRiskReferenceAsync();
+        await factory.SeedUserAsync("risk-archive-1", "ضابط مخاطر", [RoleCodes.RiskOfficer], (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("risk-archive-1");
+        var riskId = await CreateRiskAsync(client, reference.CategoryId, "خطر أرشفة غير مسموحة");
+
+        var beforeRowVersion = await GetRowVersionAsync(riskId);
+
+        var archive = await client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/risks/{riskId}/command", new
+        {
+            command = RiskCommandTypes.Archive,
+            rowVersion = beforeRowVersion
+        });
+        Assert.Equal(HttpStatusCode.Conflict, archive.StatusCode);
+
+        var detail = await GetDetailAsync(client, riskId);
+        Assert.Equal(0, detail.Status); // still Draft
+        Assert.Equal(beforeRowVersion, await GetRowVersionAsync(riskId));
+    }
+
+    [IntegrationConnectionFact]
     public async Task Update_risk_detects_row_version_conflict()
     {
         var reference = await SeedRiskReferenceAsync();
@@ -135,6 +161,78 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
         var activated = await verifyDb.RiskAssessmentMatrices.AsNoTracking().SingleAsync(m => m.Id == created.Id);
         Assert.Equal(MatrixStatus.Active, activated.Status);
         Assert.True(activated.IsDefault);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Matrix_operations_reject_organization_ids_outside_the_callers_scope()
+    {
+        // Regression test for a real gap: RiskMatrixService previously trusted the organizationId query
+        // parameter with no scope check at all, so any caller with Risks.View could pass an arbitrary
+        // organizationId and read/write a different organization's matrices. Seed a second organization the
+        // facility-scoped user has no scope over, and confirm every matrix operation now returns 404 for it.
+        Guid otherOrganizationId;
+        using (var seedScope = factory.Services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var otherOrg = new Baseera.Domain.Organization.Organization { Code = $"ORG-{Guid.NewGuid():N}"[..12], NameAr = "منظمة أخرى", IsActive = true };
+            seedDb.Add(otherOrg);
+            await seedDb.SaveChangesAsync();
+            otherOrganizationId = otherOrg.Id;
+        }
+
+        await factory.SeedUserAsync("matrix-cross-org", "ضابط مخاطر نطاق محدود", [RoleCodes.RiskOfficer], (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("matrix-cross-org");
+
+        var list = await client.GetAsync($"/api/v1/risk-matrices?organizationId={otherOrganizationId}");
+        Assert.Equal(HttpStatusCode.NotFound, list.StatusCode);
+
+        var create = await client.PostAsJsonAsync($"/api/v1/risk-matrices?organizationId={otherOrganizationId}", new
+        {
+            code = "XORG",
+            name = "مصفوفة خارج النطاق",
+            scoreFormula = 0,
+            effectiveFromUtc = DateTimeOffset.UtcNow,
+            isDefault = false,
+            likelihoodLevels = new[] { new { code = "L1", name = "L1", numericValue = 1 } },
+            impactLevels = Array.Empty<object>(),
+            ratingBands = Array.Empty<object>()
+        });
+        Assert.Equal(HttpStatusCode.NotFound, create.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Matrix_operations_succeed_for_national_scope_user_regardless_of_organization()
+    {
+        // National (Global) scope must still work end-to-end for organization-wide resources like matrices —
+        // the scope fix must not accidentally lock out the one scope tier that legitimately spans every org.
+        Guid dimensionId;
+        using (var seedScope = factory.Services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            var dimension = new ImpactDimension { OrganizationId = SeedIds.Organization, Code = $"NAT-DIM-{Guid.NewGuid():N}"[..16], NameAr = "بعد", IsActive = true };
+            seedDb.Add(dimension);
+            await seedDb.SaveChangesAsync();
+            dimensionId = dimension.Id;
+        }
+
+        await factory.SeedUserAsync("matrix-national", "مدير نظام", [RoleCodes.SystemAdministrator], (ScopeType.Global, null, null));
+        var client = factory.CreateAuthenticatedClient("matrix-national");
+
+        var list = await client.GetAsync($"/api/v1/risk-matrices?organizationId={SeedIds.Organization}");
+        list.EnsureSuccessStatusCode();
+
+        var create = await client.PostAsJsonAsync($"/api/v1/risk-matrices?organizationId={SeedIds.Organization}", new
+        {
+            code = $"NAT-{Guid.NewGuid():N}"[..8],
+            name = "مصفوفة وطنية",
+            scoreFormula = 0,
+            effectiveFromUtc = DateTimeOffset.UtcNow,
+            isDefault = false,
+            likelihoodLevels = new[] { new { code = "L1", name = "L1", numericValue = 1 } },
+            impactLevels = new[] { new { impactDimensionId = dimensionId, code = "I1", name = "I1", numericValue = 1 } },
+            ratingBands = new[] { new { code = "ONLY", labelAr = "الوحيد", minimumScore = 1m, maximumScore = 1m, severity = 0, escalationRequired = false, colorToken = "info" } }
+        });
+        create.EnsureSuccessStatusCode();
     }
 
     [IntegrationConnectionFact]
@@ -630,14 +728,21 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
         };
         db.Add(category);
 
-        var dimension = new ImpactDimension
+        // Get-or-create: RiskManagementIntegrationCollection shares one fixture database, and
+        // ImpactDimensionConfiguration enforces a unique filtered index on (OrganizationId, Code) — this
+        // helper must not assume it is the only test seeding the "SEC" dimension for this organization.
+        var dimension = await db.ImpactDimensions.FirstOrDefaultAsync(d => d.OrganizationId == SeedIds.Organization && d.Code == "SEC")
+            ?? new ImpactDimension
+            {
+                OrganizationId = SeedIds.Organization,
+                Code = "SEC",
+                NameAr = "أمني",
+                IsActive = true
+            };
+        if (db.Entry(dimension).State == EntityState.Detached)
         {
-            OrganizationId = SeedIds.Organization,
-            Code = "SEC",
-            NameAr = "أمني",
-            IsActive = true
-        };
-        db.Add(dimension);
+            db.Add(dimension);
+        }
 
         var matrix = new RiskAssessmentMatrix
         {
@@ -670,9 +775,9 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
         var bands = new[]
         {
             new RiskRatingBand { Code = "LOW", LabelAr = "منخفضة", MinimumScore = 1, MaximumScore = 5, Severity = RiskRatingSeverity.Low, ColorToken = "info", ReviewFrequencyDays = 180 },
-            new RiskRatingBand { Code = "MED", LabelAr = "متوسطة", MinimumScore = 6, MaximumScore = 12, Severity = RiskRatingSeverity.Medium, ColorToken = "warn", ReviewFrequencyDays = 90 },
-            new RiskRatingBand { Code = "HIGH", LabelAr = "عالية", MinimumScore = 13, MaximumScore = 20, Severity = RiskRatingSeverity.High, ColorToken = "danger", ReviewFrequencyDays = 30 },
-            new RiskRatingBand { Code = "CRIT", LabelAr = "حرجة", MinimumScore = 21, MaximumScore = 25, Severity = RiskRatingSeverity.Critical, ColorToken = "critical", ReviewFrequencyDays = 7 }
+            new RiskRatingBand { Code = "MED", LabelAr = "متوسطة", MinimumScore = 5, MaximumScore = 12, Severity = RiskRatingSeverity.Medium, ColorToken = "warn", ReviewFrequencyDays = 90 },
+            new RiskRatingBand { Code = "HIGH", LabelAr = "عالية", MinimumScore = 12, MaximumScore = 20, Severity = RiskRatingSeverity.High, ColorToken = "danger", ReviewFrequencyDays = 30 },
+            new RiskRatingBand { Code = "CRIT", LabelAr = "حرجة", MinimumScore = 20, MaximumScore = 25, Severity = RiskRatingSeverity.Critical, ColorToken = "critical", ReviewFrequencyDays = 7 }
         };
         foreach (var band in bands)
         {

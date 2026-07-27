@@ -49,8 +49,11 @@ public sealed class RiskLifecycleStateMachineTests
     }
 
     [Fact]
-    public void EnsureAllowed_DoesNotThrowOnValidTransition() =>
-        RiskLifecycleStateMachine.EnsureAllowed(RiskStatus.Draft, RiskStatus.UnderAssessment);
+    public void EnsureAllowed_DoesNotThrowOnValidTransition()
+    {
+        var ex = Record.Exception(() => RiskLifecycleStateMachine.EnsureAllowed(RiskStatus.Draft, RiskStatus.UnderAssessment));
+        Assert.Null(ex);
+    }
 
     [Fact]
     public void IsDeletable_OnlyTrueForDraft()

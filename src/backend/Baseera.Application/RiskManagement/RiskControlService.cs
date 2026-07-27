@@ -39,10 +39,7 @@ public sealed class RiskControlService(IBaseeraDbContext db, ICurrentUser curren
             throw new InvalidOperationException("لا يمكن إضافة ضابط لخطر مغلق أو مؤرشف.");
         }
 
-        if (request.OwnerWorkforceMemberId is Guid ownerId && !await Db.WorkforceMembers.AnyAsync(w => w.Id == ownerId, cancellationToken))
-        {
-            throw new InvalidOperationException("عضو القوى البشرية المحدد كمالك للضابط غير موجود.");
-        }
+        await EnsureOwnerAssignableAsync(risk.OrganizationId, request.OwnerWorkforceMemberId, null, cancellationToken);
 
         var control = new RiskControl
         {
