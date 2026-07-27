@@ -79,6 +79,10 @@ public sealed class RiskRegisterQueryService(IBaseeraDbContext db, ICurrentUser 
             .GroupBy(r => r.RecurrenceKey)
             .CountAsync(g => g.Count() > 1, cancellationToken);
 
+        // Folding this into the GroupBy(1) aggregate above via SUM(ticks) was tried per review feedback, but
+        // EF Core's SQL Server provider cannot translate DateTimeOffset.UtcTicks inside an aggregate — it
+        // throws at query-execution time. This single-column projection (already the lightest form: one
+        // scalar column, not full RiskRecord rows) is the safe fallback.
         var openRiskAges = await openQuery.Select(r => r.FirstIdentifiedAtUtc).ToListAsync(cancellationToken);
         var averageAge = openRiskAges.Count == 0
             ? 0

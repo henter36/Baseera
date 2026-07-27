@@ -20,7 +20,7 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
     {
         Require(PermissionCodes.RisksImport);
         var facility = await EnsureFacilityVisibleAsync(facilityId, cancellationToken);
-        var (rowResults, _) = await ValidateRowsAsync(facility.Region.OrganizationId, facilityId, request, cancellationToken);
+        var (rowResults, _, _) = await ValidateRowsAsync(facility.Region.OrganizationId, facilityId, request, cancellationToken);
 
         var batch = await FindOrCreateBatchAsync(facility.Region.OrganizationId, facilityId, request, cancellationToken);
         batch.TotalRows = request.Rows.Count;
@@ -53,7 +53,7 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
             return new RiskImportResult(existing.Id, existing.TotalRows, existing.ValidRows, existing.RejectedRows, existing.DuplicateRows, existing.AppliedRows, []);
         }
 
-        var (rowResults, categoryLookup) = await ValidateRowsAsync(organizationId, facilityId, request, cancellationToken);
+        var (rowResults, categoryLookup, matrixLookup) = await ValidateRowsAsync(organizationId, facilityId, request, cancellationToken);
         var batch = existing ?? await FindOrCreateBatchAsync(organizationId, facilityId, request, cancellationToken);
 
         var appliedCount = 0;
@@ -65,7 +65,7 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
                 continue;
             }
 
-            await CreateRiskFromRowAsync(organizationId, facilityId, row, categoryLookup[row.CategoryCode], cancellationToken);
+            await CreateRiskFromRowAsync(organizationId, facilityId, row, categoryLookup[row.CategoryCode], matrixLookup[row.MatrixId], cancellationToken);
             appliedCount++;
         }
 
@@ -77,7 +77,21 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
         batch.Status = RiskImportStatuses.Confirmed;
         batch.ConfirmedAtUtc = DateTimeOffset.UtcNow;
         // batch is already tracked (see PreviewAsync) — no explicit Db.Update() needed or safe to call.
-        await Db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await Db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException) when (existing is null)
+        {
+            // A concurrent request confirmed the same (FacilityId, ImportKind, FileHash) batch first —
+            // the unique index rejected our insert. Replay idempotently instead of surfacing a spurious
+            // conflict or double-creating the risk records this request already added.
+            var winner = await Db.RiskImportBatches.AsNoTracking().FirstAsync(b =>
+                b.FacilityId == facilityId && b.ImportKind == RiskImportKind.RiskRecords && b.FileHash == request.FileHash,
+                cancellationToken);
+            return new RiskImportResult(winner.Id, winner.TotalRows, winner.ValidRows, winner.RejectedRows, winner.DuplicateRows, winner.AppliedRows, []);
+        }
+
         await AuditAsync(RiskAuditActions.RiskImportConfirmed, nameof(RiskImportBatch), batch.Id, new { batch.AppliedRows }, cancellationToken);
         await Db.SaveChangesAsync(cancellationToken);
 
@@ -110,7 +124,7 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
         return batch;
     }
 
-    private async Task<(List<RiskImportRowResult> Results, Dictionary<string, RiskCategory> CategoryLookup)> ValidateRowsAsync(
+    private async Task<(List<RiskImportRowResult> Results, Dictionary<string, RiskCategory> CategoryLookup, Dictionary<Guid, RiskAssessmentMatrix> MatrixLookup)> ValidateRowsAsync(
         Guid organizationId, Guid facilityId, RiskImportPreviewRequest request, CancellationToken cancellationToken)
     {
         var categories = await Db.RiskCategories.Where(c => c.OrganizationId == organizationId).ToDictionaryAsync(c => c.Code, cancellationToken);
@@ -118,6 +132,7 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
         var matrices = await Db.RiskAssessmentMatrices
             .Include(m => m.LikelihoodLevels)
             .Include(m => m.ImpactLevels).ThenInclude(l => l.ImpactDimension)
+            .Include(m => m.RatingBands)
             .Where(m => matrixIds.Contains(m.Id) && m.OrganizationId == organizationId)
             .ToDictionaryAsync(m => m.Id, cancellationToken);
 
@@ -171,7 +186,7 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
             }
 
             var isDuplicate = false;
-            if (category is not null)
+            if (category is not null && !string.IsNullOrWhiteSpace(row.Title))
             {
                 var titleKey = row.Title.Trim().ToUpperInvariant();
                 if (existingTitles.Contains((titleKey, category.Id)) || !seenInBatch.Add($"{category.Id}|{titleKey}"))
@@ -183,17 +198,11 @@ public sealed class RiskImportService(IBaseeraDbContext db, ICurrentUser current
             results.Add(new RiskImportRowResult(row.RowKey, errors.Count == 0, isDuplicate, errors));
         }
 
-        return (results, categories);
+        return (results, categories, matrices);
     }
 
-    private async Task CreateRiskFromRowAsync(Guid organizationId, Guid facilityId, RiskImportRow row, RiskCategory category, CancellationToken cancellationToken)
+    private async Task CreateRiskFromRowAsync(Guid organizationId, Guid facilityId, RiskImportRow row, RiskCategory category, RiskAssessmentMatrix matrix, CancellationToken cancellationToken)
     {
-        var matrix = await Db.RiskAssessmentMatrices
-            .Include(m => m.LikelihoodLevels)
-            .Include(m => m.ImpactLevels).ThenInclude(l => l.ImpactDimension)
-            .Include(m => m.RatingBands)
-            .FirstAsync(m => m.Id == row.MatrixId, cancellationToken);
-
         var likelihood = matrix.LikelihoodLevels.First(l => l.Code == row.LikelihoodCode);
         var impacts = row.ImpactCodesByDimensionCode
             .Select(kv => matrix.ImpactLevels.First(l => l.ImpactDimension.Code == kv.Key && l.Code == kv.Value))

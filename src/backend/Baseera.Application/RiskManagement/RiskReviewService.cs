@@ -144,7 +144,9 @@ public sealed class RiskReviewService(IBaseeraDbContext db, ICurrentUser current
                     RiskLifecycleStateMachine.EnsureAllowed(risk.Status, RiskStatus.Accepted);
                     TransitionRisk(risk, RiskStatus.Accepted, "اعتماد قبول الخطر.");
                     risk.AcceptedUntilUtc = review.RequestedAcceptedUntilUtc;
-                    risk.NextReviewDueAtUtc = review.RequestedAcceptedUntilUtc;
+                    risk.NextReviewDueAtUtc = review.RequestedReviewFrequencyDays is int days and > 0
+                        ? now.AddDays(days)
+                        : review.RequestedAcceptedUntilUtc;
                     await AuditAsync(RiskAuditActions.RiskAccepted, nameof(RiskRecord), risk.Id, null, cancellationToken);
                 }
                 else
