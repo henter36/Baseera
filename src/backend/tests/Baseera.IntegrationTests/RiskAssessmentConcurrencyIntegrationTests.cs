@@ -330,7 +330,11 @@ public sealed class RiskAssessmentConcurrencyIntegrationTests(RiskManagementInte
             var isNewAssessment = eventData.Context?.ChangeTracker.Entries<RiskAssessment>().Any(e => e.State == EntityState.Added) == true;
             if (isNewAssessment && Interlocked.Increment(ref _participants) <= 2)
             {
-                await Task.Run(() => _barrier.SignalAndWait(TimeSpan.FromSeconds(15)), cancellationToken);
+                var synchronized = await Task.Run(() => _barrier.SignalAndWait(TimeSpan.FromSeconds(15)), cancellationToken);
+                if (!synchronized)
+                {
+                    throw new TimeoutException("Timed out waiting for both concurrent assessment writes to reach the persistence barrier.");
+                }
             }
 
             return await base.SavingChangesAsync(eventData, result, cancellationToken);
