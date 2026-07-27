@@ -209,6 +209,10 @@ internal sealed class RiskAssessmentConfiguration : IEntityTypeConfiguration<Ris
         builder.Property(a => a.ClosureChangeSummary).HasMaxLength(2000);
         builder.Property(a => a.CalculatedScore).HasPrecision(9, 2);
         builder.HasIndex(a => new { a.RiskRecordId, a.AssessmentType, a.Status, a.ApprovedAtUtc });
+        builder.HasIndex(a => new { a.RiskRecordId, a.AssessmentType })
+            .IsUnique()
+            .HasDatabaseName("UX_RiskAssessments_RiskRecordId_AssessmentType_InProgress")
+            .HasFilter("[IsDeleted] = 0 AND [Status] IN (0, 1, 2)");
         builder.HasOne(a => a.Matrix).WithMany().HasForeignKey(a => a.MatrixId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(a => a.LikelihoodLevel).WithMany().HasForeignKey(a => a.LikelihoodLevelId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(a => a.OverallImpactLevel).WithMany().HasForeignKey(a => a.OverallImpactLevelId).OnDelete(DeleteBehavior.Restrict);

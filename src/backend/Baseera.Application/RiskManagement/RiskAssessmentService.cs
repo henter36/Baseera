@@ -17,6 +17,7 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
     : RiskServiceBase(db, currentUser, scope, audit), IRiskAssessmentService
 {
     private static readonly HashSet<AssessmentType> CurrentFamily = [AssessmentType.Current, AssessmentType.PostIncident, AssessmentType.PeriodicReview];
+    private const string InProgressAssessmentUniqueIndex = "UX_RiskAssessments_RiskRecordId_AssessmentType_InProgress";
 
     public async Task<IReadOnlyList<RiskAssessmentDto>> ListAsync(Guid facilityId, Guid riskId, CancellationToken cancellationToken = default)
     {
@@ -58,14 +59,41 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         var band = RiskScoringEngine.SelectRatingBand(matrix.RatingBands.ToList(), score);
         ValidateScoreDependentRequirements(band, request);
 
-        var assessment = BuildAssessment(risk, riskId, request, matrix, likelihood, impactLevels, score, band);
+        var assessment = BuildAssessment(new AssessmentBuildContext(risk, request, matrix, likelihood, impactLevels, score, band));
         Db.Add(assessment);
         TransitionRiskToUnderAssessmentIfNeeded(risk);
 
-        await Db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await Db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsInProgressAssessmentUniqueViolation(ex))
+        {
+            throw new InvalidOperationException("يوجد تقييم آخر من نفس النوع قيد المعالجة بالفعل لهذا الخطر.", ex);
+        }
+
         await AuditAsync(RiskAuditActions.RiskAssessmentCreated, nameof(RiskAssessment), assessment.Id, new { AssessmentType = assessment.AssessmentType.ToString(), assessment.CalculatedScore }, cancellationToken);
         await Db.SaveChangesAsync(cancellationToken);
         return assessment.Id;
+    }
+
+    private static bool IsInProgressAssessmentUniqueViolation(DbUpdateException exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            var number = current.GetType().GetProperty("Number")?.GetValue(current);
+            if (number is not (2601 or 2627))
+            {
+                continue;
+            }
+
+            if (current.Message.Contains(InProgressAssessmentUniqueIndex, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task EnsureRiskAcceptsNewAssessmentAsync(RiskRecord risk, Guid riskId, AssessmentType assessmentType, CancellationToken cancellationToken)
@@ -101,14 +129,14 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         }
     }
 
-    private static List<(RiskAssessmentImpactRequest Request, ImpactLevel Level)> ResolveImpactLevels(RiskAssessmentMatrix matrix, IReadOnlyList<RiskAssessmentImpactRequest> impacts)
+    private static IReadOnlyList<ResolvedAssessmentImpact> ResolveImpactLevels(RiskAssessmentMatrix matrix, IReadOnlyList<RiskAssessmentImpactRequest> impacts)
     {
-        var impactLevels = new List<(RiskAssessmentImpactRequest Request, ImpactLevel Level)>();
+        var impactLevels = new List<ResolvedAssessmentImpact>();
         foreach (var impact in impacts)
         {
             var level = matrix.ImpactLevels.FirstOrDefault(l => l.Id == impact.ImpactLevelId && l.ImpactDimensionId == impact.ImpactDimensionId)
                 ?? throw new InvalidOperationException("أحد مستويات الأثر غير موجود ضمن المصفوفة النشطة أو لا يطابق البُعد المحدد.");
-            impactLevels.Add((impact, level));
+            impactLevels.Add(new ResolvedAssessmentImpact(impact, level));
         }
 
         return impactLevels;
@@ -142,42 +170,51 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         }
     }
 
-    private RiskAssessment BuildAssessment(
-        RiskRecord risk, Guid riskId, RiskAssessmentCreateRequest request, RiskAssessmentMatrix matrix, LikelihoodLevel likelihood,
-        List<(RiskAssessmentImpactRequest Request, ImpactLevel Level)> impactLevels, decimal score, RiskRatingBand band)
+    private sealed record ResolvedAssessmentImpact(RiskAssessmentImpactRequest Request, ImpactLevel Level);
+
+    private sealed record AssessmentBuildContext(
+        RiskRecord Risk,
+        RiskAssessmentCreateRequest Request,
+        RiskAssessmentMatrix Matrix,
+        LikelihoodLevel Likelihood,
+        IReadOnlyList<ResolvedAssessmentImpact> ImpactLevels,
+        decimal Score,
+        RiskRatingBand Band);
+
+    private RiskAssessment BuildAssessment(AssessmentBuildContext context)
     {
-        Guid? overallImpactLevelId = matrix.ScoreFormula == ScoreFormulaType.LikelihoodTimesMaximumImpact
-            ? impactLevels.OrderByDescending(i => i.Level.NumericValue).First().Level.Id
+        Guid? overallImpactLevelId = context.Matrix.ScoreFormula == ScoreFormulaType.LikelihoodTimesMaximumImpact
+            ? context.ImpactLevels.OrderByDescending(i => i.Level.NumericValue).First().Level.Id
             : null;
 
         var now = DateTimeOffset.UtcNow;
         var assessment = new RiskAssessment
         {
-            RiskRecordId = riskId,
-            AssessmentType = request.AssessmentType,
-            MatrixId = matrix.Id,
-            MatrixVersion = matrix.Version,
-            LikelihoodLevelId = likelihood.Id,
+            RiskRecordId = context.Risk.Id,
+            AssessmentType = context.Request.AssessmentType,
+            MatrixId = context.Matrix.Id,
+            MatrixVersion = context.Matrix.Version,
+            LikelihoodLevelId = context.Likelihood.Id,
             OverallImpactLevelId = overallImpactLevelId,
-            CalculatedScore = score,
-            RatingBandId = band.Id,
-            Rationale = request.Rationale,
+            CalculatedScore = context.Score,
+            RatingBandId = context.Band.Id,
+            Rationale = context.Request.Rationale,
             AssessedAtUtc = now,
             AssessedBy = ActorReference(),
             Status = AssessmentStatus.Draft,
-            SupersedesAssessmentId = SupersedesPointerFor(risk, request.AssessmentType),
-            ClosureChangeSummary = request.ClosureChangeSummary,
+            SupersedesAssessmentId = SupersedesPointerFor(context.Risk, context.Request.AssessmentType),
+            ClosureChangeSummary = context.Request.ClosureChangeSummary,
             CreatedBy = ActorReference()
         };
 
-        foreach (var (impactRequest, level) in impactLevels)
+        foreach (var impact in context.ImpactLevels)
         {
             assessment.ImpactBreakdown.Add(new RiskAssessmentImpact
             {
-                ImpactDimensionId = level.ImpactDimensionId,
-                ImpactLevelId = level.Id,
-                RationaleAr = impactRequest.RationaleAr,
-                EvidenceReference = impactRequest.EvidenceReference,
+                ImpactDimensionId = impact.Level.ImpactDimensionId,
+                ImpactLevelId = impact.Level.Id,
+                RationaleAr = impact.Request.RationaleAr,
+                EvidenceReference = impact.Request.EvidenceReference,
                 CreatedBy = ActorReference()
             });
         }
@@ -355,7 +392,7 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         }
     }
 
-    private bool ShouldUpdateCurrentView(RiskRecord risk, RiskAssessment assessment) =>
+    private static bool ShouldUpdateCurrentView(RiskRecord risk, RiskAssessment assessment) =>
         (assessment.AssessmentType == AssessmentType.Inherent && risk.CurrentAssessmentId is null)
         || CurrentFamily.Contains(assessment.AssessmentType);
 
