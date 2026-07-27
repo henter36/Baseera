@@ -67,13 +67,23 @@ public static class RiskScoringEngine
 
     /// <summary>
     /// Rating bands must be contiguous and non-overlapping (validated at matrix activation time), so exactly
-    /// one band always matches. Scores are not assumed to be integers — the weighted-impact formula can
-    /// produce fractional values — so every band but the last treats its upper bound as exclusive; the last
-    /// band's upper bound stays inclusive so the top of the range is always covered.
+    /// one band matches for any score within the matrix's defined range. Scores are not assumed to be
+    /// integers — the weighted-impact formula can produce fractional values — so every band but the last
+    /// treats its upper bound as exclusive (min inclusive, max exclusive), while the last band treats its
+    /// upper bound as inclusive (min inclusive, max inclusive). A score above the final band's maximum is
+    /// explicitly out of the matrix's defined range and is rejected rather than silently absorbed into the
+    /// top band — a matrix must be configured to cover every score its own likelihood/impact levels can
+    /// produce; if it doesn't, that is a matrix configuration defect to surface, not paper over.
     /// </summary>
     public static RiskRatingBand SelectRatingBand(IReadOnlyList<RiskRatingBand> bands, decimal score)
     {
         var ordered = bands.OrderBy(b => b.MinimumScore).ToList();
+        var last = ordered[^1];
+        if (score > last.MaximumScore)
+        {
+            throw new InvalidOperationException("الدرجة المحسوبة تتجاوز الحد الأقصى لأعلى نطاق تصنيف معرَّف في المصفوفة. يجب مراجعة إعداد المصفوفة.");
+        }
+
         for (var i = 0; i < ordered.Count; i++)
         {
             var isLast = i == ordered.Count - 1;

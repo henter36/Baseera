@@ -68,33 +68,45 @@ public sealed class RiskScoringEngineTests
         Assert.Throws<InvalidOperationException>(() =>
             RiskScoringEngine.CalculateScore(ScoreFormulaType.LikelihoodTimesMaximumImpact, 3, []));
 
-    [Fact]
-    public void SelectRatingBand_PicksBandContainingScore()
-    {
-        var bands = new List<RiskRatingBand>
-        {
-            new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
-            new() { Code = "MED", MinimumScore = 5, MaximumScore = 12 },
-            new() { Code = "HIGH", MinimumScore = 12, MaximumScore = 20 },
-            new() { Code = "CRIT", MinimumScore = 20, MaximumScore = 25 }
-        };
+    // Overflow contract exercised throughout the tests below: every band but the last is
+    // [MinimumScore, MaximumScore) (min inclusive, max exclusive); the last band is
+    // [MinimumScore, MaximumScore] (min AND max inclusive); anything above the last band's
+    // MaximumScore is rejected outright as a matrix configuration defect, not silently
+    // absorbed into the top band.
+    private static readonly List<RiskRatingBand> FourBandMatrix =
+    [
+        new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
+        new() { Code = "MED", MinimumScore = 5, MaximumScore = 12 },
+        new() { Code = "HIGH", MinimumScore = 12, MaximumScore = 20 },
+        new() { Code = "CRIT", MinimumScore = 20, MaximumScore = 25 }
+    ];
 
-        Assert.Equal("MED", RiskScoringEngine.SelectRatingBand(bands, 10).Code);
-        Assert.Equal("CRIT", RiskScoringEngine.SelectRatingBand(bands, 25).Code);
-    }
+    [Fact]
+    public void SelectRatingBand_PicksBandContainingScore() =>
+        Assert.Equal("MED", RiskScoringEngine.SelectRatingBand(FourBandMatrix, 10).Code);
+
+    [Fact]
+    public void SelectRatingBand_ScoreBelowFirstMinimum_Throws() =>
+        Assert.Throws<InvalidOperationException>(() => RiskScoringEngine.SelectRatingBand(FourBandMatrix, 0.99m));
+
+    [Fact]
+    public void SelectRatingBand_ScoreExactlyFirstMinimum_ReturnsFirstBand() =>
+        Assert.Equal("LOW", RiskScoringEngine.SelectRatingBand(FourBandMatrix, 1m).Code);
 
     [Fact]
     public void SelectRatingBand_TreatsSharedBoundaryAsBelongingToTheHigherBand()
     {
-        var bands = new List<RiskRatingBand>
-        {
-            new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
-            new() { Code = "MED", MinimumScore = 5, MaximumScore = 12 }
-        };
-
-        Assert.Equal("LOW", RiskScoringEngine.SelectRatingBand(bands, 4.99m).Code);
-        Assert.Equal("MED", RiskScoringEngine.SelectRatingBand(bands, 5m).Code);
+        Assert.Equal("LOW", RiskScoringEngine.SelectRatingBand(FourBandMatrix, 4.99m).Code);
+        Assert.Equal("MED", RiskScoringEngine.SelectRatingBand(FourBandMatrix, 5m).Code);
     }
+
+    [Fact]
+    public void SelectRatingBand_ScoreExactlyFinalMaximum_ReturnsFinalBand() =>
+        Assert.Equal("CRIT", RiskScoringEngine.SelectRatingBand(FourBandMatrix, 25m).Code);
+
+    [Fact]
+    public void SelectRatingBand_ScoreAboveFinalMaximum_Throws() =>
+        Assert.Throws<InvalidOperationException>(() => RiskScoringEngine.SelectRatingBand(FourBandMatrix, 25.01m));
 
     [Fact]
     public void SelectRatingBand_ResolvesFractionalScoreFromWeightedFormula()
@@ -113,26 +125,12 @@ public sealed class RiskScoringEngineTests
     [Fact]
     public void SelectRatingBand_ThrowsWhenScoreIsBelowEveryBand()
     {
-        // The last band's upper bound is intentionally open-ended (it always covers "at or above its
-        // minimum"), so only a score below the lowest band's minimum can be unmatched.
         var bands = new List<RiskRatingBand>
         {
             new() { Code = "LOW", MinimumScore = 10, MaximumScore = 20 }
         };
 
         Assert.Throws<InvalidOperationException>(() => RiskScoringEngine.SelectRatingBand(bands, 1));
-    }
-
-    [Fact]
-    public void SelectRatingBand_LastBandCoversAnyScoreAtOrAboveItsMinimum()
-    {
-        var bands = new List<RiskRatingBand>
-        {
-            new() { Code = "LOW", MinimumScore = 1, MaximumScore = 5 },
-            new() { Code = "CRIT", MinimumScore = 5, MaximumScore = 25 }
-        };
-
-        Assert.Equal("CRIT", RiskScoringEngine.SelectRatingBand(bands, 999).Code);
     }
 
     [Fact]
