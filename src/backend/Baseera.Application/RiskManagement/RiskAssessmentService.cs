@@ -42,53 +42,13 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
     {
         Require(PermissionCodes.RisksAssess);
         var risk = await EnsureRiskVisibleAsync(facilityId, riskId, cancellationToken);
-
-        if (risk.Status is RiskStatus.Closed or RiskStatus.Archived)
-        {
-            throw new InvalidOperationException("لا يمكن إجراء تقييم على خطر مغلق أو مؤرشف.");
-        }
-
-        var inProgress = await Db.RiskAssessments.AnyAsync(a => a.RiskRecordId == riskId
-            && a.AssessmentType == request.AssessmentType
-            && (a.Status == AssessmentStatus.Draft || a.Status == AssessmentStatus.PendingReview || a.Status == AssessmentStatus.Reviewed), cancellationToken);
-        if (inProgress)
-        {
-            throw new InvalidOperationException("يوجد تقييم آخر من نفس النوع قيد المعالجة بالفعل لهذا الخطر.");
-        }
+        await EnsureRiskAcceptsNewAssessmentAsync(risk, riskId, request.AssessmentType, cancellationToken);
 
         var matrix = await ResolveMatrixAsync(risk.OrganizationId, request.MatrixId, cancellationToken);
-
-        var likelihood = matrix.LikelihoodLevels.FirstOrDefault(l => l.Id == request.LikelihoodLevelId)
-            ?? throw new InvalidOperationException("مستوى الاحتمالية غير موجود ضمن المصفوفة النشطة.");
-
-        if (request.Impacts.Count == 0)
-        {
-            throw new InvalidOperationException("يلزم تقييم بُعد أثر واحد على الأقل.");
-        }
-
-        if (request.Impacts.Select(i => i.ImpactDimensionId).Distinct().Count() != request.Impacts.Count)
-        {
-            throw new InvalidOperationException("لا يمكن تكرار نفس بُعد الأثر أكثر من مرة في التقييم نفسه.");
-        }
-
-        var impactLevels = new List<(RiskAssessmentImpactRequest Request, ImpactLevel Level)>();
-        foreach (var impact in request.Impacts)
-        {
-            var level = matrix.ImpactLevels.FirstOrDefault(l => l.Id == impact.ImpactLevelId && l.ImpactDimensionId == impact.ImpactDimensionId)
-                ?? throw new InvalidOperationException("أحد مستويات الأثر غير موجود ضمن المصفوفة النشطة أو لا يطابق البُعد المحدد.");
-            impactLevels.Add((impact, level));
-        }
-
-        Dictionary<Guid, decimal>? weights = null;
-        if (matrix.ScoreFormula == ScoreFormulaType.LikelihoodTimesWeightedImpact)
-        {
-            if (string.IsNullOrWhiteSpace(matrix.ImpactWeightingJson))
-            {
-                throw new InvalidOperationException("المصفوفة تستخدم صيغة الأثر الموزون لكن لا تحمل أوزان أبعاد محفوظة.");
-            }
-
-            weights = JsonSerializer.Deserialize<Dictionary<Guid, decimal>>(matrix.ImpactWeightingJson);
-        }
+        var likelihood = ResolveLikelihood(matrix, request.LikelihoodLevelId);
+        ValidateImpactRequest(request.Impacts);
+        var impactLevels = ResolveImpactLevels(matrix, request.Impacts);
+        var weights = ResolveWeights(matrix);
 
         var score = RiskScoringEngine.CalculateScore(
             matrix.ScoreFormula,
@@ -96,7 +56,81 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
             impactLevels.Select(i => new RiskImpactInput(i.Level.ImpactDimensionId, i.Level.NumericValue)).ToList(),
             weights);
         var band = RiskScoringEngine.SelectRatingBand(matrix.RatingBands.ToList(), score);
+        ValidateScoreDependentRequirements(band, request);
 
+        var assessment = BuildAssessment(risk, riskId, request, matrix, likelihood, impactLevels, score, band);
+        Db.Add(assessment);
+        TransitionRiskToUnderAssessmentIfNeeded(risk);
+
+        await Db.SaveChangesAsync(cancellationToken);
+        await AuditAsync(RiskAuditActions.RiskAssessmentCreated, nameof(RiskAssessment), assessment.Id, new { AssessmentType = assessment.AssessmentType.ToString(), assessment.CalculatedScore }, cancellationToken);
+        await Db.SaveChangesAsync(cancellationToken);
+        return assessment.Id;
+    }
+
+    private async Task EnsureRiskAcceptsNewAssessmentAsync(RiskRecord risk, Guid riskId, AssessmentType assessmentType, CancellationToken cancellationToken)
+    {
+        if (risk.Status is RiskStatus.Closed or RiskStatus.Archived)
+        {
+            throw new InvalidOperationException("لا يمكن إجراء تقييم على خطر مغلق أو مؤرشف.");
+        }
+
+        var inProgress = await Db.RiskAssessments.AnyAsync(a => a.RiskRecordId == riskId
+            && a.AssessmentType == assessmentType
+            && (a.Status == AssessmentStatus.Draft || a.Status == AssessmentStatus.PendingReview || a.Status == AssessmentStatus.Reviewed), cancellationToken);
+        if (inProgress)
+        {
+            throw new InvalidOperationException("يوجد تقييم آخر من نفس النوع قيد المعالجة بالفعل لهذا الخطر.");
+        }
+    }
+
+    private static LikelihoodLevel ResolveLikelihood(RiskAssessmentMatrix matrix, Guid likelihoodLevelId) =>
+        matrix.LikelihoodLevels.FirstOrDefault(l => l.Id == likelihoodLevelId)
+            ?? throw new InvalidOperationException("مستوى الاحتمالية غير موجود ضمن المصفوفة النشطة.");
+
+    private static void ValidateImpactRequest(IReadOnlyList<RiskAssessmentImpactRequest> impacts)
+    {
+        if (impacts.Count == 0)
+        {
+            throw new InvalidOperationException("يلزم تقييم بُعد أثر واحد على الأقل.");
+        }
+
+        if (impacts.Select(i => i.ImpactDimensionId).Distinct().Count() != impacts.Count)
+        {
+            throw new InvalidOperationException("لا يمكن تكرار نفس بُعد الأثر أكثر من مرة في التقييم نفسه.");
+        }
+    }
+
+    private static List<(RiskAssessmentImpactRequest Request, ImpactLevel Level)> ResolveImpactLevels(RiskAssessmentMatrix matrix, IReadOnlyList<RiskAssessmentImpactRequest> impacts)
+    {
+        var impactLevels = new List<(RiskAssessmentImpactRequest Request, ImpactLevel Level)>();
+        foreach (var impact in impacts)
+        {
+            var level = matrix.ImpactLevels.FirstOrDefault(l => l.Id == impact.ImpactLevelId && l.ImpactDimensionId == impact.ImpactDimensionId)
+                ?? throw new InvalidOperationException("أحد مستويات الأثر غير موجود ضمن المصفوفة النشطة أو لا يطابق البُعد المحدد.");
+            impactLevels.Add((impact, level));
+        }
+
+        return impactLevels;
+    }
+
+    private static Dictionary<Guid, decimal>? ResolveWeights(RiskAssessmentMatrix matrix)
+    {
+        if (matrix.ScoreFormula != ScoreFormulaType.LikelihoodTimesWeightedImpact)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(matrix.ImpactWeightingJson))
+        {
+            throw new InvalidOperationException("المصفوفة تستخدم صيغة الأثر الموزون لكن لا تحمل أوزان أبعاد محفوظة.");
+        }
+
+        return JsonSerializer.Deserialize<Dictionary<Guid, decimal>>(matrix.ImpactWeightingJson);
+    }
+
+    private static void ValidateScoreDependentRequirements(RiskRatingBand band, RiskAssessmentCreateRequest request)
+    {
         if (band.Severity is RiskRatingSeverity.High or RiskRatingSeverity.Critical && string.IsNullOrWhiteSpace(request.Rationale))
         {
             throw new InvalidOperationException("المبرر مطلوب للتقييمات ذات الدرجة العالية أو الحرجة.");
@@ -106,12 +140,15 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         {
             throw new InvalidOperationException("يجب توضيح ما تغيّر في تقييم الإغلاق.");
         }
+    }
 
+    private RiskAssessment BuildAssessment(
+        RiskRecord risk, Guid riskId, RiskAssessmentCreateRequest request, RiskAssessmentMatrix matrix, LikelihoodLevel likelihood,
+        List<(RiskAssessmentImpactRequest Request, ImpactLevel Level)> impactLevels, decimal score, RiskRatingBand band)
+    {
         Guid? overallImpactLevelId = matrix.ScoreFormula == ScoreFormulaType.LikelihoodTimesMaximumImpact
             ? impactLevels.OrderByDescending(i => i.Level.NumericValue).First().Level.Id
             : null;
-
-        var supersedes = SupersedesPointerFor(risk, request.AssessmentType);
 
         var now = DateTimeOffset.UtcNow;
         var assessment = new RiskAssessment
@@ -128,7 +165,7 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
             AssessedAtUtc = now,
             AssessedBy = ActorReference(),
             Status = AssessmentStatus.Draft,
-            SupersedesAssessmentId = supersedes,
+            SupersedesAssessmentId = SupersedesPointerFor(risk, request.AssessmentType),
             ClosureChangeSummary = request.ClosureChangeSummary,
             CreatedBy = ActorReference()
         };
@@ -145,20 +182,20 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
             });
         }
 
-        Db.Add(assessment);
+        return assessment;
+    }
 
-        if (risk.Status == RiskStatus.Draft)
+    private void TransitionRiskToUnderAssessmentIfNeeded(RiskRecord risk)
+    {
+        if (risk.Status != RiskStatus.Draft)
         {
-            RiskLifecycleStateMachine.EnsureAllowed(RiskStatus.Draft, RiskStatus.UnderAssessment);
-            risk.Status = RiskStatus.UnderAssessment;
-            Db.Add(new RiskStatusHistory { RiskRecordId = risk.Id, FromStatus = RiskStatus.Draft, ToStatus = RiskStatus.UnderAssessment, ChangedBy = ActorReference(), Reason = "بدء التقييم." });
-            Db.Update(risk);
+            return;
         }
 
-        await Db.SaveChangesAsync(cancellationToken);
-        await AuditAsync(RiskAuditActions.RiskAssessmentCreated, nameof(RiskAssessment), assessment.Id, new { AssessmentType = assessment.AssessmentType.ToString(), assessment.CalculatedScore }, cancellationToken);
-        await Db.SaveChangesAsync(cancellationToken);
-        return assessment.Id;
+        RiskLifecycleStateMachine.EnsureAllowed(RiskStatus.Draft, RiskStatus.UnderAssessment);
+        risk.Status = RiskStatus.UnderAssessment;
+        Db.Add(new RiskStatusHistory { RiskRecordId = risk.Id, FromStatus = RiskStatus.Draft, ToStatus = RiskStatus.UnderAssessment, ChangedBy = ActorReference(), Reason = "بدء التقييم." });
+        Db.Update(risk);
     }
 
     private static Guid? SupersedesPointerFor(RiskRecord risk, AssessmentType type) => type switch
@@ -292,6 +329,21 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         var now = DateTimeOffset.UtcNow;
         var band = await Db.RiskRatingBands.AsNoTracking().FirstAsync(b => b.Id == assessment.RatingBandId, cancellationToken);
 
+        UpdateCachedAssessmentPointers(risk, assessment);
+
+        if (ShouldUpdateCurrentView(risk, assessment))
+        {
+            await ApplyCurrentViewUpdateAsync(risk, assessment, band, cancellationToken);
+        }
+
+        RefreshReviewScheduleAndFreshness(risk, band, now);
+        TransitionRiskToActiveIfPendingReview(risk, assessment);
+
+        Db.Update(risk);
+    }
+
+    private static void UpdateCachedAssessmentPointers(RiskRecord risk, RiskAssessment assessment)
+    {
         if (assessment.AssessmentType == AssessmentType.Inherent)
         {
             risk.CurrentInherentAssessmentId = assessment.Id;
@@ -301,65 +353,84 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         {
             risk.CurrentResidualAssessmentId = assessment.Id;
         }
+    }
 
-        var updatesCurrentView = assessment.AssessmentType == AssessmentType.Inherent && risk.CurrentAssessmentId is null
-            || CurrentFamily.Contains(assessment.AssessmentType);
+    private bool ShouldUpdateCurrentView(RiskRecord risk, RiskAssessment assessment) =>
+        (assessment.AssessmentType == AssessmentType.Inherent && risk.CurrentAssessmentId is null)
+        || CurrentFamily.Contains(assessment.AssessmentType);
 
-        if (updatesCurrentView)
+    private async Task ApplyCurrentViewUpdateAsync(RiskRecord risk, RiskAssessment assessment, RiskRatingBand band, CancellationToken cancellationToken)
+    {
+        var previous = await LoadPreviousComparisonAsync(risk.CurrentAssessmentId, cancellationToken);
+        var current = await BuildCurrentComparisonAsync(assessment, band, cancellationToken);
+        var hasNewSources = risk.CurrentAssessmentId is not null && await Db.RiskSourceLinks
+            .AnyAsync(l => l.RiskRecordId == risk.Id && l.AddedAtUtc > (risk.DataFreshAsOfUtc ?? risk.FirstIdentifiedAtUtc), cancellationToken);
+
+        var (trend, reason) = RiskTrendCalculator.Calculate(previous, current, hasNewSources);
+
+        risk.CurrentAssessmentId = assessment.Id;
+        risk.CurrentScore = assessment.CalculatedScore;
+        risk.CurrentRatingBandId = assessment.RatingBandId;
+        risk.CurrentTrend = trend;
+        risk.CurrentTrendReasonAr = reason;
+    }
+
+    private async Task<RiskAssessmentComparisonInput?> LoadPreviousComparisonAsync(Guid? previousAssessmentId, CancellationToken cancellationToken)
+    {
+        if (previousAssessmentId is not Guid previousId)
         {
-            RiskAssessmentComparisonInput? previous = null;
-            if (risk.CurrentAssessmentId is Guid previousId)
-            {
-                var previousAssessment = await Db.RiskAssessments.AsNoTracking()
-                    .Include(a => a.LikelihoodLevel)
-                    .Include(a => a.ImpactBreakdown).ThenInclude(i => i.ImpactLevel)
-                    .Include(a => a.RatingBand)
-                    .FirstOrDefaultAsync(a => a.Id == previousId, cancellationToken);
-                if (previousAssessment is not null)
-                {
-                    previous = new RiskAssessmentComparisonInput(
-                        previousAssessment.CalculatedScore,
-                        previousAssessment.LikelihoodLevel.NumericValue,
-                        previousAssessment.ImpactBreakdown.Count == 0 ? 0 : previousAssessment.ImpactBreakdown.Max(i => i.ImpactLevel.NumericValue),
-                        previousAssessment.RatingBand.Code);
-                }
-            }
-
-            var likelihood = await Db.LikelihoodLevels.AsNoTracking().FirstAsync(l => l.Id == assessment.LikelihoodLevelId, cancellationToken);
-            var maxImpact = await Db.RiskAssessmentImpacts.AsNoTracking()
-                .Where(i => i.RiskAssessmentId == assessment.Id)
-                .Select(i => i.ImpactLevel.NumericValue)
-                .ToListAsync(cancellationToken);
-            var current = new RiskAssessmentComparisonInput(assessment.CalculatedScore, likelihood.NumericValue, maxImpact.Count == 0 ? 0 : maxImpact.Max(), band.Code);
-
-            var hasNewSources = risk.CurrentAssessmentId is not null && await Db.RiskSourceLinks
-                .AnyAsync(l => l.RiskRecordId == risk.Id && l.AddedAtUtc > (risk.DataFreshAsOfUtc ?? risk.FirstIdentifiedAtUtc), cancellationToken);
-
-            var (trend, reason) = RiskTrendCalculator.Calculate(previous, current, hasNewSources);
-
-            risk.CurrentAssessmentId = assessment.Id;
-            risk.CurrentScore = assessment.CalculatedScore;
-            risk.CurrentRatingBandId = assessment.RatingBandId;
-            risk.CurrentTrend = trend;
-            risk.CurrentTrendReasonAr = reason;
+            return null;
         }
 
+        var previousAssessment = await Db.RiskAssessments.AsNoTracking()
+            .Include(a => a.LikelihoodLevel)
+            .Include(a => a.ImpactBreakdown).ThenInclude(i => i.ImpactLevel)
+            .Include(a => a.RatingBand)
+            .FirstOrDefaultAsync(a => a.Id == previousId, cancellationToken);
+        if (previousAssessment is null)
+        {
+            return null;
+        }
+
+        return new RiskAssessmentComparisonInput(
+            previousAssessment.CalculatedScore,
+            previousAssessment.LikelihoodLevel.NumericValue,
+            previousAssessment.ImpactBreakdown.Count == 0 ? 0 : previousAssessment.ImpactBreakdown.Max(i => i.ImpactLevel.NumericValue),
+            previousAssessment.RatingBand.Code);
+    }
+
+    private async Task<RiskAssessmentComparisonInput> BuildCurrentComparisonAsync(RiskAssessment assessment, RiskRatingBand band, CancellationToken cancellationToken)
+    {
+        var likelihood = await Db.LikelihoodLevels.AsNoTracking().FirstAsync(l => l.Id == assessment.LikelihoodLevelId, cancellationToken);
+        var maxImpact = await Db.RiskAssessmentImpacts.AsNoTracking()
+            .Where(i => i.RiskAssessmentId == assessment.Id)
+            .Select(i => i.ImpactLevel.NumericValue)
+            .ToListAsync(cancellationToken);
+
+        return new RiskAssessmentComparisonInput(assessment.CalculatedScore, likelihood.NumericValue, maxImpact.Count == 0 ? 0 : maxImpact.Max(), band.Code);
+    }
+
+    private static void RefreshReviewScheduleAndFreshness(RiskRecord risk, RiskRatingBand band, DateTimeOffset now)
+    {
         risk.LastReviewedAtUtc = now;
         risk.DataFreshAsOfUtc = now;
         if (band.ReviewFrequencyDays is int days)
         {
             risk.NextReviewDueAtUtc = now.AddDays(days);
         }
+    }
 
-        if (risk.Status == RiskStatus.PendingReview && assessment.AssessmentType is AssessmentType.Inherent or AssessmentType.Current)
+    private void TransitionRiskToActiveIfPendingReview(RiskRecord risk, RiskAssessment assessment)
+    {
+        if (risk.Status != RiskStatus.PendingReview || assessment.AssessmentType is not (AssessmentType.Inherent or AssessmentType.Current))
         {
-            RiskLifecycleStateMachine.EnsureAllowed(RiskStatus.PendingReview, RiskStatus.Active);
-            var from = risk.Status;
-            risk.Status = RiskStatus.Active;
-            Db.Add(new RiskStatusHistory { RiskRecordId = risk.Id, FromStatus = from, ToStatus = RiskStatus.Active, ChangedBy = ActorReference(), Reason = "اعتماد التقييم." });
+            return;
         }
 
-        Db.Update(risk);
+        RiskLifecycleStateMachine.EnsureAllowed(RiskStatus.PendingReview, RiskStatus.Active);
+        var from = risk.Status;
+        risk.Status = RiskStatus.Active;
+        Db.Add(new RiskStatusHistory { RiskRecordId = risk.Id, FromStatus = from, ToStatus = RiskStatus.Active, ChangedBy = ActorReference(), Reason = "اعتماد التقييم." });
     }
 
     private async Task<RiskAssessment> LoadAssessmentAsync(Guid riskId, Guid assessmentId, CancellationToken cancellationToken) =>
