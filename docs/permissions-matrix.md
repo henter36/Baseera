@@ -236,7 +236,15 @@
 
 ## صلاحيات سجل المخاطر ومركز المعالجة (Phase D.6)
 
-تنطبق على سجل المخاطر، المصفوفات، التقييمات، الضوابط، خطط ومعالجة المخاطر، المراجعات، الروابط النمطية، والاستيراد/المصالحة. لا تمتد من `Workspaces.ViewFacility`. دور جديد `RiskOfficer` (ضابط مخاطر) يحمل حزمة إدارة على مستوى السجن (18 صلاحية) — **وليست** "الحزمة الكاملة": يستثني عمدًا 7 صلاحيات مقيَّدة: 6 صلاحيات اعتماد محكومة بفصل المهام (four-eyes) لا بصلاحية منفصلة قابلة لمنشئ العملية نفسه (`ReviewAssessment`, `ApproveAssessment`, `VerifyTreatmentActions`, `ApproveAcceptance`, `ApproveClosure`, `ApproveMatrices`)، بالإضافة إلى `Risks.Export` (ليست صلاحية اعتماد، بل مُسندة فقط للأدوار الإشرافية/الرقابية). `Auditor` غير مذكور في الجدول أدناه لأنه لا يحصل إلا على `Risks.ViewSummary` — نفس حزمة `RegionalDirector`/`HeadquartersExecutive` (انظر السطر الأخير من هذا القسم).
+تنطبق على سجل المخاطر، المصفوفات، التقييمات، الضوابط، خطط ومعالجة المخاطر، المراجعات، الروابط النمطية، والاستيراد/المصالحة. لا تمتد من `Workspaces.ViewFacility`. دور جديد `RiskOfficer` (ضابط مخاطر) يحمل حزمة `riskManager` (18 صلاحية من 25 — تحقَّق مطابقتها مع seed الفعلي في `DatabaseInitializer.cs` وليس افتراضًا) — **وليست** "الحزمة الكاملة": يستثني الدور 7 صلاحيات مقيَّدة: 6 صلاحيات اعتماد (`ReviewAssessment`, `ApproveAssessment`, `VerifyTreatmentActions`, `ApproveAcceptance`, `ApproveClosure`, `ApproveMatrices`) بالإضافة إلى صلاحية التصدير (`Risks.Export`).
+
+يجب التمييز بين ثلاث طبقات منفصلة هنا لتجنّب الخلط:
+
+1. **منح الصلاحية للدور** (`Grant(role, permission)` في `DatabaseInitializer`): مجرد كون صلاحية ما ضمن حزمة دور لا يعني وحده أي شيء عن فصل المهام — إنه فقط تفويض بتنفيذ عملية معيّنة.
+2. **فرض فصل المهام (`EnforceFourEyes`) على العملية نفسها**: الصلاحية وحدها **لا تكفي** لمنع منشئ العملية من اعتمادها بنفسه؛ التطبيق يفرض ذلك صراحة (خادم-جانب) عبر فحص `RiskServiceBase.EnforceFourEyes(submittedBy)` عند نقاط الاعتماد الخمس (مراجعة/اعتماد التقييم، اعتماد خطة المعالجة، التحقق من الإجراء، القبول، الإغلاق) وعند اعتماد المصفوفة. الاستثناءات الست أعلاه (عدا `Export`) هي الصلاحيات المرتبطة بنقاط `EnforceFourEyes` هذه تحديدًا.
+3. **`Risks.Export` لا علاقة لها بفصل المهام إطلاقًا** — إنها صلاحية تصدير/تقارير منفصلة تمامًا، مُسندة فقط للأدوار الإشرافية/الرقابية (`FacilityDirector`, `DecisionSupportDirector`) ضمن حزمة `riskApprover`، ولا يوجد أي فحص `EnforceFourEyes` مرتبط بها.
+
+`Auditor` غير مذكور في الجدول أدناه لأنه لا يحصل إلا على `Risks.ViewSummary` — نفس حزمة `RegionalDirector`/`HeadquartersExecutive` (انظر السطر الأخير من هذا القسم).
 
 | الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Facility Director | Risk Officer |
 |----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:-----------------:|:------------:|
