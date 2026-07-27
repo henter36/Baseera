@@ -1,10 +1,21 @@
 namespace Baseera.Domain.RiskManagement;
 
+/// <summary>
+/// Shared *display-only* label constants reused across otherwise-unrelated enum mappings in
+/// <see cref="RiskManagementDisplay"/>. This shares only the rendered Arabic string, not any Domain
+/// semantics — RiskStatus.Draft, AssessmentStatus.Draft, TreatmentPlanStatus.Draft, and
+/// RiskTreatmentActionStatus.Draft remain four independent states that happen to render identically.
+/// </summary>
+internal static class RiskDisplayLabels
+{
+    public const string DraftAr = "مسودة";
+}
+
 public static class RiskManagementDisplay
 {
     public static string StatusAr(RiskStatus status) => status switch
     {
-        RiskStatus.Draft => "مسودة",
+        RiskStatus.Draft => RiskDisplayLabels.DraftAr,
         RiskStatus.UnderAssessment => "قيد التقييم",
         RiskStatus.PendingReview => "بانتظار المراجعة",
         RiskStatus.Active => "نشط",
@@ -72,7 +83,7 @@ public static class RiskManagementDisplay
 
     public static string AssessmentStatusAr(AssessmentStatus status) => status switch
     {
-        AssessmentStatus.Draft => "مسودة",
+        AssessmentStatus.Draft => RiskDisplayLabels.DraftAr,
         AssessmentStatus.PendingReview => "بانتظار المراجعة",
         AssessmentStatus.Reviewed => "تمت مراجعته",
         AssessmentStatus.Approved => "معتمد",
@@ -104,7 +115,7 @@ public static class RiskManagementDisplay
 
     public static string TreatmentPlanStatusAr(TreatmentPlanStatus status) => status switch
     {
-        TreatmentPlanStatus.Draft => "مسودة",
+        TreatmentPlanStatus.Draft => RiskDisplayLabels.DraftAr,
         TreatmentPlanStatus.PendingApproval => "بانتظار الاعتماد",
         TreatmentPlanStatus.Approved => "معتمدة",
         TreatmentPlanStatus.InProgress => "قيد التنفيذ",
@@ -118,7 +129,7 @@ public static class RiskManagementDisplay
 
     public static string TreatmentActionStatusAr(RiskTreatmentActionStatus status) => status switch
     {
-        RiskTreatmentActionStatus.Draft => "مسودة",
+        RiskTreatmentActionStatus.Draft => RiskDisplayLabels.DraftAr,
         RiskTreatmentActionStatus.Assigned => "مسندة",
         RiskTreatmentActionStatus.InProgress => "قيد التنفيذ",
         RiskTreatmentActionStatus.Blocked => "معطّلة",
