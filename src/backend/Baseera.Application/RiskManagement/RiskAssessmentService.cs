@@ -82,7 +82,12 @@ public sealed class RiskAssessmentService(IBaseeraDbContext db, ICurrentUser cur
         Dictionary<Guid, decimal>? weights = null;
         if (matrix.ScoreFormula == ScoreFormulaType.LikelihoodTimesWeightedImpact)
         {
-            weights = JsonSerializer.Deserialize<Dictionary<Guid, decimal>>(matrix.ImpactWeightingJson!);
+            if (string.IsNullOrWhiteSpace(matrix.ImpactWeightingJson))
+            {
+                throw new InvalidOperationException("المصفوفة تستخدم صيغة الأثر الموزون لكن لا تحمل أوزان أبعاد محفوظة.");
+            }
+
+            weights = JsonSerializer.Deserialize<Dictionary<Guid, decimal>>(matrix.ImpactWeightingJson);
         }
 
         var score = RiskScoringEngine.CalculateScore(

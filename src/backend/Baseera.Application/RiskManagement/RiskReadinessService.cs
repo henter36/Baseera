@@ -18,6 +18,10 @@ public sealed class RiskReadinessService(
     RiskRegisterQueryService registerQueryService)
     : RiskServiceBase(db, currentUser, scope, audit), IRiskReadinessService
 {
+    private const string SeverityLowAr = "منخفضة";
+    private const string SeverityMediumAr = "متوسطة";
+    private const string SeverityHighAr = "عالية";
+
     public Task<RiskWorkspaceSummaryDto> GetWorkspaceSummaryAsync(Guid facilityId, CancellationToken cancellationToken = default) =>
         registerQueryService.GetSummaryAsync(facilityId, cancellationToken);
 
@@ -72,56 +76,36 @@ public sealed class RiskReadinessService(
             })
             .ToListAsync(cancellationToken);
 
-        foreach (var r in risks.Where(r => r.Severity == RiskRatingSeverity.Critical))
-        {
-            items.Add(Build(RiskInterventionTypes.CriticalRiskActive, "حرج", 100, r.Id, r.RiskCode, r.Title, "خطر بدرجة حرجة قيد النشاط.", null, "مراجعة فورية"));
-        }
+        items.AddRange(risks.Where(r => r.Severity == RiskRatingSeverity.Critical)
+            .Select(r => Build(RiskInterventionTypes.CriticalRiskActive, "حرج", 100, (r.Id, r.RiskCode, r.Title), "خطر بدرجة حرجة قيد النشاط.", null, "مراجعة فورية")));
 
-        foreach (var r in risks.Where(r => r.Severity == RiskRatingSeverity.High && r.CurrentTrend == RiskTrend.Increasing))
-        {
-            items.Add(Build(RiskInterventionTypes.HighRiskIncreasing, "عالية", 90, r.Id, r.RiskCode, r.Title, "خطر عالٍ في اتجاه تصاعدي.", null, "مراجعة الاتجاه"));
-        }
+        items.AddRange(risks.Where(r => r.Severity == RiskRatingSeverity.High && r.CurrentTrend == RiskTrend.Increasing)
+            .Select(r => Build(RiskInterventionTypes.HighRiskIncreasing, SeverityHighAr, 90, (r.Id, r.RiskCode, r.Title), "خطر عالٍ في اتجاه تصاعدي.", null, "مراجعة الاتجاه")));
 
-        foreach (var r in risks.Where(r => r.OwnerWorkforceMemberId is null && r.OwnerUserId is null))
-        {
-            items.Add(Build(RiskInterventionTypes.RiskWithoutOwner, "متوسطة", 60, r.Id, r.RiskCode, r.Title, "الخطر بلا مالك محدد.", null, "تعيين مالك"));
-        }
+        items.AddRange(risks.Where(r => r.OwnerWorkforceMemberId is null && r.OwnerUserId is null)
+            .Select(r => Build(RiskInterventionTypes.RiskWithoutOwner, SeverityMediumAr, 60, (r.Id, r.RiskCode, r.Title), "الخطر بلا مالك محدد.", null, "تعيين مالك")));
 
-        foreach (var r in risks.Where(r => r.Status != RiskStatus.Draft && r.CurrentAssessmentId is null))
-        {
-            items.Add(Build(RiskInterventionTypes.RiskWithoutCurrentAssessment, "عالية", 80, r.Id, r.RiskCode, r.Title, "لا يوجد تقييم حالي معتمد.", null, "إجراء تقييم"));
-        }
+        items.AddRange(risks.Where(r => r.Status != RiskStatus.Draft && r.CurrentAssessmentId is null)
+            .Select(r => Build(RiskInterventionTypes.RiskWithoutCurrentAssessment, SeverityHighAr, 80, (r.Id, r.RiskCode, r.Title), "لا يوجد تقييم حالي معتمد.", null, "إجراء تقييم")));
 
-        foreach (var r in risks.Where(r => r.NextReviewDueAtUtc is not null && r.NextReviewDueAtUtc < now))
-        {
-            items.Add(Build(RiskInterventionTypes.RiskReviewOverdue, "متوسطة", 65, r.Id, r.RiskCode, r.Title, "موعد المراجعة الدورية تجاوز الاستحقاق.", r.NextReviewDueAtUtc, "مراجعة الخطر"));
-        }
+        items.AddRange(risks.Where(r => r.NextReviewDueAtUtc is not null && r.NextReviewDueAtUtc < now)
+            .Select(r => Build(RiskInterventionTypes.RiskReviewOverdue, SeverityMediumAr, 65, (r.Id, r.RiskCode, r.Title), "موعد المراجعة الدورية تجاوز الاستحقاق.", r.NextReviewDueAtUtc, "مراجعة الخطر")));
 
-        foreach (var r in risks.Where(r => (r.Status == RiskStatus.Active || r.Status == RiskStatus.UnderTreatment) && !r.HasTreatmentPlan))
-        {
-            items.Add(Build(RiskInterventionTypes.RiskWithoutTreatment, "عالية", 75, r.Id, r.RiskCode, r.Title, "خطر نشط بلا خطة معالجة.", null, "إنشاء خطة معالجة"));
-        }
+        items.AddRange(risks.Where(r => (r.Status == RiskStatus.Active || r.Status == RiskStatus.UnderTreatment) && !r.HasTreatmentPlan)
+            .Select(r => Build(RiskInterventionTypes.RiskWithoutTreatment, SeverityHighAr, 75, (r.Id, r.RiskCode, r.Title), "خطر نشط بلا خطة معالجة.", null, "إنشاء خطة معالجة")));
 
-        foreach (var r in risks.Where(r => r.Status == RiskStatus.Accepted && r.AcceptedUntilUtc is not null && r.AcceptedUntilUtc < now.AddDays(14) && r.AcceptedUntilUtc >= now))
-        {
-            items.Add(Build(RiskInterventionTypes.AcceptedRiskReviewDue, "متوسطة", 55, r.Id, r.RiskCode, r.Title, "اقترب موعد مراجعة القبول.", r.AcceptedUntilUtc, "مراجعة القبول"));
-        }
+        items.AddRange(risks.Where(r => r.Status == RiskStatus.Accepted && r.AcceptedUntilUtc is not null && r.AcceptedUntilUtc < now.AddDays(14) && r.AcceptedUntilUtc >= now)
+            .Select(r => Build(RiskInterventionTypes.AcceptedRiskReviewDue, SeverityMediumAr, 55, (r.Id, r.RiskCode, r.Title), "اقترب موعد مراجعة القبول.", r.AcceptedUntilUtc, "مراجعة القبول")));
 
-        foreach (var r in risks.Where(r => r.Status == RiskStatus.Accepted && r.AcceptedUntilUtc is not null && r.AcceptedUntilUtc < now))
-        {
-            items.Add(Build(RiskInterventionTypes.AcceptedRiskExpired, "عالية", 85, r.Id, r.RiskCode, r.Title, "انتهت مدة قبول الخطر دون مراجعة.", r.AcceptedUntilUtc, "إعادة تقييم القبول"));
-        }
+        items.AddRange(risks.Where(r => r.Status == RiskStatus.Accepted && r.AcceptedUntilUtc is not null && r.AcceptedUntilUtc < now)
+            .Select(r => Build(RiskInterventionTypes.AcceptedRiskExpired, SeverityHighAr, 85, (r.Id, r.RiskCode, r.Title), "انتهت مدة قبول الخطر دون مراجعة.", r.AcceptedUntilUtc, "إعادة تقييم القبول")));
 
-        foreach (var r in risks.Where(r => r.DataFreshAsOfUtc is null || r.DataFreshAsOfUtc < now.AddDays(-90)))
-        {
-            items.Add(Build(RiskInterventionTypes.RiskDataStale, "منخفضة", 30, r.Id, r.RiskCode, r.Title, "لم يتم تحديث بيانات الخطر منذ فترة طويلة.", null, "تحديث البيانات"));
-        }
+        items.AddRange(risks.Where(r => r.DataFreshAsOfUtc is null || r.DataFreshAsOfUtc < now.AddDays(-90))
+            .Select(r => Build(RiskInterventionTypes.RiskDataStale, SeverityLowAr, 30, (r.Id, r.RiskCode, r.Title), "لم يتم تحديث بيانات الخطر منذ فترة طويلة.", null, "تحديث البيانات")));
 
         var recurringKeys = risks.GroupBy(r => r.RecurrenceKey).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
-        foreach (var r in risks.Where(r => recurringKeys.Contains(r.RecurrenceKey)))
-        {
-            items.Add(Build(RiskInterventionTypes.PotentialDuplicateRisk, "متوسطة", 50, r.Id, r.RiskCode, r.Title, "قد يتشابه هذا الخطر مع خطر آخر مسجل لنفس التصنيف والسجن.", null, "مراجعة التكرار"));
-        }
+        items.AddRange(risks.Where(r => recurringKeys.Contains(r.RecurrenceKey))
+            .Select(r => Build(RiskInterventionTypes.PotentialDuplicateRisk, SeverityMediumAr, 50, (r.Id, r.RiskCode, r.Title), "قد يتشابه هذا الخطر مع خطر آخر مسجل لنفس التصنيف والسجن.", null, "مراجعة التكرار")));
 
         var riskIds = risks.Select(r => r.Id).ToList();
         var riskLookup = risks.ToDictionary(r => r.Id, r => (r.RiskCode, r.Title));
@@ -134,7 +118,7 @@ public sealed class RiskReadinessService(
         foreach (var p in overduePlans)
         {
             var (code, title) = riskLookup[p.RiskRecordId];
-            items.Add(Build(RiskInterventionTypes.TreatmentPlanOverdue, "عالية", 78, p.RiskRecordId, code, title, "خطة المعالجة تجاوزت موعدها.", p.DueAtUtc, "متابعة الخطة"));
+            items.Add(Build(RiskInterventionTypes.TreatmentPlanOverdue, SeverityHighAr, 78, (p.RiskRecordId, code, title), "خطة المعالجة تجاوزت موعدها.", p.DueAtUtc, "متابعة الخطة"));
         }
 
         // Overdue + blocked actions are pulled in a single round trip and split in memory to keep the
@@ -148,12 +132,12 @@ public sealed class RiskReadinessService(
         foreach (var a in actionsOfInterest.Where(a => a.Status == RiskTreatmentActionStatus.Blocked))
         {
             var (code, title) = riskLookup[a.RiskRecordId];
-            items.Add(Build(RiskInterventionTypes.TreatmentActionBlocked, "متوسطة", 58, a.RiskRecordId, code, title, "إجراء معالجة معطّل.", null, "إزالة العائق"));
+            items.Add(Build(RiskInterventionTypes.TreatmentActionBlocked, SeverityMediumAr, 58, (a.RiskRecordId, code, title), "إجراء معالجة معطّل.", null, "إزالة العائق"));
         }
         foreach (var a in actionsOfInterest.Where(a => a.Status != RiskTreatmentActionStatus.Blocked))
         {
             var (code, title) = riskLookup[a.RiskRecordId];
-            items.Add(Build(RiskInterventionTypes.TreatmentActionOverdue, "عالية", 72, a.RiskRecordId, code, title, "إجراء معالجة تجاوز موعده.", a.DueAtUtc, "متابعة الإجراء"));
+            items.Add(Build(RiskInterventionTypes.TreatmentActionOverdue, SeverityHighAr, 72, (a.RiskRecordId, code, title), "إجراء معالجة تجاوز موعده.", a.DueAtUtc, "متابعة الإجراء"));
         }
 
         var controlsOfInterest = await Db.RiskControls.AsNoTracking()
@@ -165,13 +149,13 @@ public sealed class RiskReadinessService(
         foreach (var riskRecordId in controlsOfInterest.Where(c => c.ControlEffectiveness == ControlEffectiveness.NotTested).Select(c => c.RiskRecordId).Distinct())
         {
             var (code, title) = riskLookup[riskRecordId];
-            items.Add(Build(RiskInterventionTypes.ControlNotTested, "منخفضة", 35, riskRecordId, code, title, "ضابط مطبق لم يُختبر بعد.", null, "اختبار الضابط"));
+            items.Add(Build(RiskInterventionTypes.ControlNotTested, SeverityLowAr, 35, (riskRecordId, code, title), "ضابط مطبق لم يُختبر بعد.", null, "اختبار الضابط"));
         }
 
         foreach (var riskRecordId in controlsOfInterest.Where(c => c.ControlEffectiveness == ControlEffectiveness.Ineffective).Select(c => c.RiskRecordId).Distinct())
         {
             var (code, title) = riskLookup[riskRecordId];
-            items.Add(Build(RiskInterventionTypes.ControlIneffective, "عالية", 70, riskRecordId, code, title, "ضابط قائم غير فعّال.", null, "معالجة الضابط"));
+            items.Add(Build(RiskInterventionTypes.ControlIneffective, SeverityHighAr, 70, (riskRecordId, code, title), "ضابط قائم غير فعّال.", null, "معالجة الضابط"));
         }
 
         var pendingReviews = await Db.RiskReviews.AsNoTracking()
@@ -183,11 +167,11 @@ public sealed class RiskReadinessService(
             var (code, title) = riskLookup[v.RiskRecordId];
             if (v.ReviewType == RiskReviewType.ClosureApproval)
             {
-                items.Add(Build(RiskInterventionTypes.ClosureAwaitingApproval, "متوسطة", 62, v.RiskRecordId, code, title, "طلب إغلاق بانتظار الاعتماد.", null, "اعتماد الإغلاق"));
+                items.Add(Build(RiskInterventionTypes.ClosureAwaitingApproval, SeverityMediumAr, 62, (v.RiskRecordId, code, title), "طلب إغلاق بانتظار الاعتماد.", null, "اعتماد الإغلاق"));
             }
             else if (v.ReviewType == RiskReviewType.RiskAcceptance)
             {
-                items.Add(Build(RiskInterventionTypes.AcceptanceAwaitingApproval, "متوسطة", 62, v.RiskRecordId, code, title, "طلب قبول بانتظار الاعتماد.", null, "اعتماد القبول"));
+                items.Add(Build(RiskInterventionTypes.AcceptanceAwaitingApproval, SeverityMediumAr, 62, (v.RiskRecordId, code, title), "طلب قبول بانتظار الاعتماد.", null, "اعتماد القبول"));
             }
         }
 
@@ -203,6 +187,6 @@ public sealed class RiskReadinessService(
         return (boundedItems, overdueTreatmentActionsCount);
     }
 
-    private static RiskInterventionItemDto Build(string type, string severityAr, int rank, Guid riskId, string code, string title, string reason, DateTimeOffset? dueAtUtc, string actionAr) =>
-        new(type, severityAr, rank, riskId, code, title, reason, dueAtUtc, null, actionAr);
+    private static RiskInterventionItemDto Build(string type, string severityAr, int rank, (Guid Id, string Code, string Title) risk, string reason, DateTimeOffset? dueAtUtc, string actionAr) =>
+        new(type, severityAr, rank, risk.Id, risk.Code, risk.Title, reason, dueAtUtc, null, actionAr);
 }

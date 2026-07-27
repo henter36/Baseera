@@ -20,6 +20,8 @@ using System.Data;
 
 public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options) : DbContext(options), Application.Abstractions.IBaseeraDbContext
 {
+    private const string InMemoryProviderName = "Microsoft.EntityFrameworkCore.InMemory";
+
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<Region> Regions => Set<Region>();
     public DbSet<Facility> Facilities => Set<Facility>();
@@ -267,7 +269,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         CancellationToken cancellationToken = default,
         IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
     {
-        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        if (Database.ProviderName == InMemoryProviderName)
         {
             return await operation(cancellationToken);
         }
@@ -304,7 +306,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
 
     public async Task<long> NextMaintenanceWorkOrderSequenceValueAsync(CancellationToken cancellationToken = default)
     {
-        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        if (Database.ProviderName == InMemoryProviderName)
         {
             var numbers = await MaintenanceWorkOrders
                 .IgnoreQueryFilters()
@@ -332,7 +334,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
 
     public async Task<long> NextRiskRecordSequenceValueAsync(CancellationToken cancellationToken = default)
     {
-        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        if (Database.ProviderName == InMemoryProviderName)
         {
             var codes = await RiskRecords.IgnoreQueryFilters().Select(r => r.RiskCode).ToListAsync(cancellationToken);
             long max = 0;
@@ -362,7 +364,7 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
             throw new ArgumentException("معرّف النموذج مطلوب.", nameof(formDefinitionId));
         }
 
-        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        if (Database.ProviderName == InMemoryProviderName)
         {
             var max = await FormVersions
                 .Where(v => v.FormDefinitionId == formDefinitionId)
