@@ -390,6 +390,22 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        RegisterSequences(modelBuilder);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(BaseeraDbContext).Assembly);
+
+        ConfigureIdentityAndAccessQueryFilters(modelBuilder);
+        ConfigureNotesAndActionsQueryFilters(modelBuilder);
+        ConfigureFormsQueryFilters(modelBuilder);
+        ConfigureOccupancyAndResourcesQueryFilters(modelBuilder);
+        ConfigureWorkforceQueryFilters(modelBuilder);
+        ConfigureSensitiveCustodyQueryFilters(modelBuilder);
+        ConfigureRiskManagementQueryFilters(modelBuilder);
+
+        ConfigureUserScopeCheckConstraints(modelBuilder);
+    }
+
+    private static void RegisterSequences(ModelBuilder modelBuilder)
+    {
         modelBuilder.HasSequence<long>("OperationalNoteReferenceSequence")
             .StartsAt(1)
             .IncrementsBy(1);
@@ -402,9 +418,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.HasSequence<long>("RiskRecordReferenceSequence")
             .StartsAt(1)
             .IncrementsBy(1);
+    }
 
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(BaseeraDbContext).Assembly);
-
+    private static void ConfigureIdentityAndAccessQueryFilters(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<Organization>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Region>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Facility>().HasQueryFilter(e => !e.IsDeleted);
@@ -419,6 +436,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<RolePermission>().HasQueryFilter(rp => !rp.Role.IsDeleted);
         modelBuilder.Entity<UserScope>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Attachment>().HasQueryFilter(e => !e.IsDeleted);
+    }
+
+    private static void ConfigureNotesAndActionsQueryFilters(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<RoleNoteTypeGrant>().HasQueryFilter(g => !g.Role.IsDeleted);
         modelBuilder.Entity<UserNoteTypeOverride>().HasQueryFilter(o => !o.User.IsDeleted);
         modelBuilder.Entity<UserNoteIntakeProfile>().HasQueryFilter(p => !p.User.IsDeleted);
@@ -433,6 +454,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<CorrectiveActionAssignment>().HasQueryFilter(a => !a.CorrectiveAction.IsDeleted && !a.AssignedByUser.IsDeleted);
         modelBuilder.Entity<CorrectiveActionStatusHistory>().HasQueryFilter(h => !h.CorrectiveAction.IsDeleted && !h.ChangedByUser.IsDeleted);
         modelBuilder.Entity<EscalationRule>().HasQueryFilter(r => !r.IsDeleted && !r.EscalationPolicy.IsDeleted);
+    }
+
+    private static void ConfigureFormsQueryFilters(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<FormDefinition>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<FormAccessGrant>().HasQueryFilter(g => !g.IsDeleted);
         modelBuilder.Entity<FormTemplate>().HasQueryFilter(t => !t.IsDeleted);
@@ -441,6 +466,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<FormReviewDecision>().HasQueryFilter(d => !d.FormDefinition.IsDeleted);
         modelBuilder.Entity<Notification>().HasQueryFilter(n => !n.RecipientUser.IsDeleted);
         modelBuilder.Entity<NotificationDeliveryAttempt>().HasQueryFilter(a => !a.Notification.RecipientUser.IsDeleted);
+    }
+
+    private static void ConfigureOccupancyAndResourcesQueryFilters(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<FacilityCapacityBaseline>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<InmateCensusSnapshot>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<InmateMovementEvent>().HasQueryFilter(e => !e.IsDeleted);
@@ -453,6 +482,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<ResourcePlacement>().HasQueryFilter(e => !e.ResourceAsset.IsDeleted);
         modelBuilder.Entity<MaintenanceWorkOrder>().HasQueryFilter(e => !e.IsDeleted && !e.ResourceAsset.IsDeleted);
         modelBuilder.Entity<ResourceRequirement>().HasQueryFilter(e => !e.IsDeleted);
+    }
+
+    private static void ConfigureWorkforceQueryFilters(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<WorkforceMember>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<WorkforceRoleDefinition>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<WorkforceQualification>().HasQueryFilter(e => !e.IsDeleted && !e.WorkforceMember.IsDeleted);
@@ -463,6 +496,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<DutyRosterAssignment>().HasQueryFilter(e => !e.IsDeleted && !e.DutyRoster.IsDeleted);
         modelBuilder.Entity<WorkforceAvailabilityEvent>().HasQueryFilter(e => !e.IsDeleted && !e.WorkforceMember.IsDeleted);
         modelBuilder.Entity<CriticalPositionRequirement>().HasQueryFilter(e => !e.IsDeleted);
+    }
+
+    private static void ConfigureSensitiveCustodyQueryFilters(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<WeaponTypeDefinition>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<ArmoryLocation>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<WeaponAsset>().HasQueryFilter(e => !e.IsDeleted);
@@ -476,6 +513,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<WeaponInspection>().HasQueryFilter(e => !e.IsDeleted && !e.WeaponAsset.IsDeleted);
         modelBuilder.Entity<SensitiveCustodyImportBatch>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<SensitiveCustodyReconciliationResolution>().HasQueryFilter(e => !e.IsDeleted);
+    }
+
+    private static void ConfigureRiskManagementQueryFilters(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<RiskCategory>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<RiskRecord>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<RiskStatusHistory>().HasQueryFilter(h => !h.RiskRecord.IsDeleted);
@@ -493,7 +534,10 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         modelBuilder.Entity<RiskReview>().HasQueryFilter(e => !e.IsDeleted && !e.RiskRecord.IsDeleted);
         modelBuilder.Entity<RiskImportBatch>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<RiskReconciliationRecord>().HasQueryFilter(e => !e.IsDeleted);
+    }
 
+    private static void ConfigureUserScopeCheckConstraints(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<UserScope>().ToTable(t =>
         {
             t.HasCheckConstraint(
