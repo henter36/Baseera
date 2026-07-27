@@ -94,6 +94,7 @@ internal sealed class FacilityWorkspaceReadService(
     private const string DomainKeyWorkforce = "workforce";
     private const string DataQualityComplete = "complete";
     private const string DataQualityPartial = "partial";
+    private const string DataQualityMissing = "missing";
     private const string SeverityCriticalAr = "حرجة";
     private const string SeverityHighAr = "عالية";
     private const string SeverityMediumAr = "متوسطة";
@@ -840,11 +841,13 @@ internal sealed class FacilityWorkspaceReadService(
         return payload.Interventions
             .Select(item => new FacilityPriorityItemPayload
             {
-                Type = item.InterventionType,
-                Reference = $"{item.InterventionType}:{item.RiskCode}",
+                // "risk" (not the raw InterventionType) so the frontend's shared Priority Queue can route
+                // to RiskPanel; the intervention code travels in Reference (before the risk id) for display.
+                Type = "risk",
+                Reference = $"{item.InterventionType}:{item.RiskRecordId}",
                 TitleAr = item.TitleAr,
                 SeverityAr = item.SeverityAr,
-                PriorityRank = Math.Clamp(item.PriorityRank * 9, 0, 999),
+                PriorityRank = item.PriorityRank,
                 ReasonAr = item.ReasonAr,
                 DueAtUtc = item.DueAtUtc,
                 OverdueDays = null,
@@ -1425,7 +1428,7 @@ internal sealed class FacilityWorkspaceReadService(
     {
         if (summary.TotalRegistered == 0)
         {
-            return ("missing", "مفقود");
+            return (DataQualityMissing, "مفقود");
         }
 
         if (summary.IsPartial)
@@ -1461,7 +1464,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             Key = "sensitive-custody",
             LabelAr = "الأسلحة والعهد الحساسة",
-            StatusCode = hasWeapons ? DataQualityComplete : "missing",
+            StatusCode = hasWeapons ? DataQualityComplete : DataQualityMissing,
             StatusAr = hasWeapons ? "متاح" : "مفقود",
             ConfidenceAr = FacilityWorkspaceConfidenceMapper.ToArabic(payload.Summary.ConfidenceLevel),
             LastUpdatedAtUtc = payload.Summary.GeneratedAtUtc,
@@ -1479,7 +1482,7 @@ internal sealed class FacilityWorkspaceReadService(
         {
             Key = "risks",
             LabelAr = "المخاطر والمعالجات",
-            StatusCode = hasRisks ? DataQualityComplete : "missing",
+            StatusCode = hasRisks ? DataQualityComplete : DataQualityMissing,
             StatusAr = hasRisks ? "متاح" : "لا توجد مخاطر مسجلة",
             ConfidenceAr = payload.Summary.LastUpdatedAtUtc is null ? "غير معروفة" : "عالية",
             LastUpdatedAtUtc = payload.Summary.LastUpdatedAtUtc,
@@ -1494,7 +1497,7 @@ internal sealed class FacilityWorkspaceReadService(
     {
         if (summary.TotalMembers == 0)
         {
-            return ("missing", "مفقود");
+            return (DataQualityMissing, "مفقود");
         }
 
         if (summary.IsPartial)

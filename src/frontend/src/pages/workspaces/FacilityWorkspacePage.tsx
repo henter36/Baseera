@@ -920,8 +920,8 @@ function RiskPanel({
   onChanged,
 }: Readonly<{ facilityId: string; riskId: string; onChanged: () => void }>) {
   const queryClient = useQueryClient()
-  const [reasonDraft, setReasonDraft] = useState('')
-  const [pendingCommand, setPendingCommand] = useState<string | null>(null)
+  const [reasonDrafts, setReasonDrafts] = useState<Record<string, string>>({})
+  const draftFor = (command: string) => reasonDrafts[command] ?? ''
   const detailQuery = useQuery({
     queryKey: ['workspace-panel', 'risk', facilityId, riskId],
     queryFn: () => api.risks.get(facilityId, riskId),
@@ -930,8 +930,7 @@ function RiskPanel({
   const commandMutation = useMutation({
     mutationFn: (body: RiskCommandBody) => api.risks.executeCommand(facilityId, riskId, body),
     onSuccess: () => {
-      setReasonDraft('')
-      setPendingCommand(null)
+      setReasonDrafts({})
       void queryClient.invalidateQueries({ queryKey: ['workspace-panel', 'risk', facilityId, riskId] })
       void queryClient.invalidateQueries({ queryKey: ['risk-register'] })
       onChanged()
@@ -946,7 +945,6 @@ function RiskPanel({
   const conflict = commandMutation.error instanceof ApiError && commandMutation.error.status === 409
 
   const runCommand = (command: string, reason?: string) => {
-    setPendingCommand(command)
     commandMutation.mutate({ command, reason, rowVersion: risk.rowVersion })
   }
 
@@ -1010,18 +1008,15 @@ function RiskPanel({
         <ContextSection title="تصعيد الخطر">
           <textarea
             aria-label="سبب التصعيد"
-            value={pendingCommand === 'Escalate' ? reasonDraft : ''}
-            onChange={(event) => {
-              setPendingCommand('Escalate')
-              setReasonDraft(event.target.value)
-            }}
+            value={draftFor('Escalate')}
+            onChange={(event) => setReasonDrafts((prev) => ({ ...prev, Escalate: event.target.value }))}
             placeholder="سبب التصعيد"
           />
           <button
             type="button"
             className="command-button"
-            disabled={commandMutation.isPending || !reasonDraft.trim()}
-            onClick={() => runCommand('Escalate', reasonDraft.trim())}
+            disabled={commandMutation.isPending || !draftFor('Escalate').trim()}
+            onClick={() => runCommand('Escalate', draftFor('Escalate').trim())}
           >
             تصعيد
           </button>
@@ -1032,18 +1027,15 @@ function RiskPanel({
         <ContextSection title="إعادة فتح الخطر">
           <textarea
             aria-label="سبب إعادة الفتح"
-            value={pendingCommand === 'Reopen' ? reasonDraft : ''}
-            onChange={(event) => {
-              setPendingCommand('Reopen')
-              setReasonDraft(event.target.value)
-            }}
+            value={draftFor('Reopen')}
+            onChange={(event) => setReasonDrafts((prev) => ({ ...prev, Reopen: event.target.value }))}
             placeholder="الدليل أو سبب إعادة الفتح"
           />
           <button
             type="button"
             className="command-button"
-            disabled={commandMutation.isPending || !reasonDraft.trim()}
-            onClick={() => runCommand('Reopen', reasonDraft.trim())}
+            disabled={commandMutation.isPending || !draftFor('Reopen').trim()}
+            onClick={() => runCommand('Reopen', draftFor('Reopen').trim())}
           >
             إعادة فتح
           </button>
@@ -1052,11 +1044,7 @@ function RiskPanel({
 
       {commandMutation.isError && (
         <div className="context-action-note" data-tone="danger">
-          {conflict
-            ? 'حدث تعارض في RowVersion أو انتقال غير صالح. أعد تحميل البيانات والمحاولة مجددًا.'
-            : commandMutation.error instanceof ApiError
-              ? commandMutation.error.message
-              : 'تعذر تنفيذ الإجراء.'}
+          {riskCommandErrorMessage(conflict, commandMutation.error)}
           {conflict && (
             <button type="button" className="command-button ghost" onClick={() => detailQuery.refetch()}>
               إعادة تحميل
@@ -1072,6 +1060,12 @@ function RiskPanel({
       )}
     </div>
   )
+}
+
+function riskCommandErrorMessage(conflict: boolean, error: unknown): string {
+  if (conflict) return 'حدث تعارض في RowVersion أو انتقال غير صالح. أعد تحميل البيانات والمحاولة مجددًا.'
+  if (error instanceof ApiError) return error.message
+  return 'تعذر تنفيذ الإجراء.'
 }
 
 function scoreSummary(assessment: RiskDetail['inherentAssessment']): string {
@@ -2315,6 +2309,7 @@ function panelForPriorityItem(item: PriorityItem): PanelState {
   if (item.type === 'resource') return { type: 'equipment', entityId: item.drillDownTarget.routeParameters.assetId ?? item.reference }
   if (item.type === 'sensitive-custody') return sensitivePanelForTarget(item.drillDownTarget, item.reference)
   if (item.type === 'workforce') return workforcePanelForReference(item.reference)
+  if (item.type === 'risk') return { type: 'risk', entityId: item.reference.split(':')[1] ?? item.reference }
   return { type: 'activity', entityId: item.reference }
 }
 
