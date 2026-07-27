@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -20,6 +21,14 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
     private readonly bool _applyMigrationsOnStartup;
     private readonly bool _seedDemoOrganization;
     private readonly IInterceptor? _interceptor;
+    private readonly string _attachmentsPath;
+    private readonly string _dataProtectionKeysPath;
+    private readonly bool _ownsTemporaryDirectories;
+    private int _disposed;
+
+    public string AttachmentsPath => _attachmentsPath;
+
+    public string DataProtectionKeysPath => _dataProtectionKeysPath;
 
     public BaseeraApiFactory()
         : this(CreateIsolatedConnectionString(), applyMigrationsOnStartup: true, seedDemoOrganization: true, interceptor: null)
@@ -34,17 +43,47 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
     {
     }
 
+    public BaseeraApiFactory(
+        string connectionString,
+        bool applyMigrationsOnStartup,
+        bool seedDemoOrganization,
+        string? dataProtectionKeysPath,
+        bool ownsTemporaryDirectories = true)
+        : this(
+            connectionString,
+            applyMigrationsOnStartup,
+            seedDemoOrganization,
+            interceptor: null,
+            dataProtectionKeysPath,
+            ownsTemporaryDirectories)
+    {
+    }
+
     private BaseeraApiFactory(
         string connectionString,
         bool applyMigrationsOnStartup,
         bool seedDemoOrganization,
-        IInterceptor? interceptor)
+        IInterceptor? interceptor,
+        string? dataProtectionKeysPath = null,
+        bool ownsTemporaryDirectories = true)
     {
         _connectionString = connectionString;
         _databaseName = DatabaseNameFrom(connectionString);
         _applyMigrationsOnStartup = applyMigrationsOnStartup;
         _seedDemoOrganization = seedDemoOrganization;
         _interceptor = interceptor;
+        _attachmentsPath = Path.Combine(
+            Path.GetTempPath(),
+            "baseera-test-attachments",
+            _databaseName);
+        _dataProtectionKeysPath = dataProtectionKeysPath
+            ?? Path.Combine(
+                Path.GetTempPath(),
+                "baseera-test-dp-keys",
+                _databaseName);
+        // Unique attachment roots are always owned by this factory. A shared key ring is
+        // deleted only when this factory owns the temporary directories.
+        _ownsTemporaryDirectories = dataProtectionKeysPath is null || ownsTemporaryDirectories;
     }
 
     private static string CreateIsolatedConnectionString()
@@ -78,8 +117,8 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Auth:UseTestAuth", "true");
         builder.UseSetting("Seed:DemoOrganization", _seedDemoOrganization.ToString());
         builder.UseSetting("Database:ApplyMigrationsOnStartup", _applyMigrationsOnStartup.ToString());
-        builder.UseSetting("Attachments:RootPath", Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName));
-        builder.UseSetting("DataProtection:KeysPath", Path.Combine(Path.GetTempPath(), "baseera-test-dp-keys", _databaseName));
+        builder.UseSetting("Attachments:RootPath", _attachmentsPath);
+        builder.UseSetting("DataProtection:KeysPath", _dataProtectionKeysPath);
         ConfigureTestLogging(builder);
 
         builder.ConfigureAppConfiguration((_, config) =>
@@ -90,8 +129,8 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
                 ["Auth:UseTestAuth"] = "true",
                 ["Seed:DemoOrganization"] = _seedDemoOrganization.ToString(),
                 ["Database:ApplyMigrationsOnStartup"] = _applyMigrationsOnStartup.ToString(),
-                ["Attachments:RootPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-attachments", _databaseName),
-                ["DataProtection:KeysPath"] = Path.Combine(Path.GetTempPath(), "baseera-test-dp-keys", _databaseName)
+                ["Attachments:RootPath"] = _attachmentsPath,
+                ["DataProtection:KeysPath"] = _dataProtectionKeysPath
             });
         });
 
@@ -121,6 +160,17 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
             applyMigrationsOnStartup: true,
             seedDemoOrganization: true,
             interceptor);
+
+    public static BaseeraApiFactory CreateIsolated(
+        string? dataProtectionKeysPath = null,
+        bool ownsTemporaryDirectories = true) =>
+        new(
+            CreateIsolatedConnectionString(),
+            applyMigrationsOnStartup: true,
+            seedDemoOrganization: true,
+            interceptor: null,
+            dataProtectionKeysPath,
+            ownsTemporaryDirectories);
 
     public async Task SeedUserAsync(
         string subject,
@@ -277,21 +327,83 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        if (!disposing)
         {
-            try
-            {
-                using var scope = Services.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
-                db.Database.EnsureDeleted();
-            }
-            catch
-            {
-                // best-effort cleanup
-            }
+            base.Dispose(false);
+            return;
         }
 
-        base.Dispose(disposing);
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            DeleteDatabaseBestEffort();
+        }
+        finally
+        {
+            base.Dispose(true);
+            // Attachments are always unique per factory/database and safe to remove.
+            DeleteDirectoryBestEffort(_attachmentsPath);
+            if (_ownsTemporaryDirectories)
+            {
+                DeleteDirectoryBestEffort(_dataProtectionKeysPath);
+            }
+        }
+    }
+
+    private void DeleteDatabaseBestEffort()
+    {
+        try
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+            SqlConnection.ClearAllPools();
+            db.Database.EnsureDeleted();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Host already torn down.
+        }
+        catch (InvalidOperationException)
+        {
+            // Services unavailable after partial disposal.
+        }
+        catch (SqlException)
+        {
+            // Best-effort SQL cleanup.
+        }
+    }
+
+    private static void DeleteDirectoryBestEffort(
+        string path,
+        ILogger? logger = null)
+    {
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(path, recursive: true);
+        }
+        catch (IOException ex)
+        {
+            logger?.LogWarning(
+                ex,
+                "Failed to delete integration test directory {Path}.",
+                path);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            logger?.LogWarning(
+                ex,
+                "Failed to delete integration test directory {Path}.",
+                path);
+        }
     }
 }
 
