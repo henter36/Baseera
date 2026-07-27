@@ -73,6 +73,36 @@ public sealed class DataProtectionKeyRingIntegrationTests
     }
 
     [IntegrationConnectionFact]
+    public async Task Explicit_shared_keys_path_is_not_deleted_when_ownership_flag_omitted()
+    {
+        var sharedKeys = Path.Combine(
+            Path.GetTempPath(),
+            "baseera-shared-dp-keys",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sharedKeys);
+
+        try
+        {
+            await using (var factory = BaseeraApiFactory.CreateIsolated(
+                             dataProtectionKeysPath: sharedKeys))
+            {
+                _ = factory.Services;
+                Assert.NotEmpty(Directory.GetFiles(sharedKeys, "key-*.xml"));
+            }
+
+            Assert.True(Directory.Exists(sharedKeys));
+            Assert.NotEmpty(Directory.GetFiles(sharedKeys, "key-*.xml"));
+        }
+        finally
+        {
+            if (Directory.Exists(sharedKeys))
+            {
+                Directory.Delete(sharedKeys, recursive: true);
+            }
+        }
+    }
+
+    [IntegrationConnectionFact]
     public async Task Host_restart_with_same_key_ring_can_unprotect_prior_value()
     {
         var sharedKeys = Path.Combine(
@@ -85,8 +115,7 @@ public sealed class DataProtectionKeyRingIntegrationTests
         {
             string protectedValue;
             await using (var first = BaseeraApiFactory.CreateIsolated(
-                             dataProtectionKeysPath: sharedKeys,
-                             ownsTemporaryDirectories: false))
+                             dataProtectionKeysPath: sharedKeys))
             {
                 using var scope = first.Services.CreateScope();
                 var protector = scope.ServiceProvider.GetRequiredService<ISensitiveValueProtector>();
@@ -94,8 +123,7 @@ public sealed class DataProtectionKeyRingIntegrationTests
             }
 
             await using var second = BaseeraApiFactory.CreateIsolated(
-                dataProtectionKeysPath: sharedKeys,
-                ownsTemporaryDirectories: false);
+                dataProtectionKeysPath: sharedKeys);
             using (var scope = second.Services.CreateScope())
             {
                 var protector = scope.ServiceProvider.GetRequiredService<ISensitiveValueProtector>();
@@ -123,11 +151,9 @@ public sealed class DataProtectionKeyRingIntegrationTests
         try
         {
             await using var hostA = BaseeraApiFactory.CreateIsolated(
-                dataProtectionKeysPath: sharedKeys,
-                ownsTemporaryDirectories: false);
+                dataProtectionKeysPath: sharedKeys);
             await using var hostB = BaseeraApiFactory.CreateIsolated(
-                dataProtectionKeysPath: sharedKeys,
-                ownsTemporaryDirectories: false);
+                dataProtectionKeysPath: sharedKeys);
 
             using var scopeA = hostA.Services.CreateScope();
             using var scopeB = hostB.Services.CreateScope();

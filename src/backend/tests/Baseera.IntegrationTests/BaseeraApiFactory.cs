@@ -48,7 +48,7 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         bool applyMigrationsOnStartup,
         bool seedDemoOrganization,
         string? dataProtectionKeysPath,
-        bool ownsTemporaryDirectories = true)
+        bool? ownsTemporaryDirectories = null)
         : this(
             connectionString,
             applyMigrationsOnStartup,
@@ -65,7 +65,7 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
         bool seedDemoOrganization,
         IInterceptor? interceptor,
         string? dataProtectionKeysPath = null,
-        bool ownsTemporaryDirectories = true)
+        bool? ownsTemporaryDirectories = null)
     {
         _connectionString = connectionString;
         _databaseName = DatabaseNameFrom(connectionString);
@@ -81,9 +81,10 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
                 Path.GetTempPath(),
                 "baseera-test-dp-keys",
                 _databaseName);
-        // Unique attachment roots are always owned by this factory. A shared key ring is
-        // deleted only when this factory owns the temporary directories.
-        _ownsTemporaryDirectories = dataProtectionKeysPath is null || ownsTemporaryDirectories;
+        // Unique attachment roots are always owned by this factory. A caller-supplied key
+        // ring path is treated as not owned unless ownership is explicitly requested, so
+        // omitting the flag can never delete a shared key ring.
+        _ownsTemporaryDirectories = ownsTemporaryDirectories ?? dataProtectionKeysPath is null;
     }
 
     private static string CreateIsolatedConnectionString()
@@ -163,7 +164,7 @@ public sealed class BaseeraApiFactory : WebApplicationFactory<Program>
 
     public static BaseeraApiFactory CreateIsolated(
         string? dataProtectionKeysPath = null,
-        bool ownsTemporaryDirectories = true) =>
+        bool? ownsTemporaryDirectories = null) =>
         new(
             CreateIsolatedConnectionString(),
             applyMigrationsOnStartup: true,
