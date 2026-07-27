@@ -485,6 +485,24 @@ public sealed class RiskManagementIntegrationTests(RiskManagementIntegrationFixt
     }
 
     [IntegrationConnectionFact]
+    public async Task Source_link_rejects_undefined_enum_values()
+    {
+        var reference = await SeedRiskReferenceAsync();
+        await factory.SeedUserAsync("source-enum-officer", "ضابط مخاطر", [RoleCodes.RiskOfficer], (ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1));
+        var client = factory.CreateAuthenticatedClient("source-enum-officer");
+        var riskId = await CreateRiskAsync(client, reference.CategoryId, "خطر تحقق enum");
+
+        var response = await client.PostAsJsonAsync($"/api/v1/facilities/{SeedIds.FacilityA1}/risks/{riskId}/sources", new
+        {
+            sourceEntityType = 999,
+            sourceEntityId = Guid.NewGuid(),
+            relationshipType = 7
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Import_confirm_is_idempotent_on_same_file_hash()
     {
         var reference = await SeedRiskReferenceAsync();

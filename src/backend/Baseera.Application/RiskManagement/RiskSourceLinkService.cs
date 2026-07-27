@@ -45,6 +45,11 @@ public sealed class RiskSourceLinkService(IBaseeraDbContext db, ICurrentUser cur
             throw new InvalidOperationException("معرّف الكيان المصدر مطلوب.");
         }
 
+        if (!Enum.IsDefined(request.SourceEntityType) || !Enum.IsDefined(request.RelationshipType))
+        {
+            throw new InvalidOperationException("نوع الكيان المصدر أو نوع العلاقة غير صالح.");
+        }
+
         await EnsureSourceInScopeAsync(request.SourceEntityType, request.SourceEntityId, facilityId, cancellationToken);
 
         var duplicate = await Db.RiskSourceLinks.AnyAsync(l => l.RiskRecordId == riskId
@@ -69,7 +74,18 @@ public sealed class RiskSourceLinkService(IBaseeraDbContext db, ICurrentUser cur
         };
 
         Db.Add(link);
-        await Db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await Db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // The AnyAsync check above is a TOCTOU race under concurrent identical requests; the filtered
+            // unique index on (RiskRecordId, SourceEntityType, SourceEntityId, RelationshipType) is the real
+            // guarantee. Surface the same domain conflict instead of an unhandled database error.
+            throw new InvalidOperationException("هذا الرابط موجود بالفعل بنفس نوع العلاقة.");
+        }
+
         await AuditAsync(RiskAuditActions.RiskSourceLinked, nameof(RiskSourceLink), link.Id, new { link.SourceEntityType, link.RelationshipType }, cancellationToken);
         await Db.SaveChangesAsync(cancellationToken);
         return link.Id;
