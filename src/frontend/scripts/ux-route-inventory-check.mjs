@@ -68,12 +68,36 @@ for (const route of inventoryRoutes) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Known dead routes must still be tracked in the migration/transition plan doc,
-//    not silently forgotten if someone edits the inventory later.
+// 2. The "confirmed dead routes" section must actually list route rows (not just
+//    have a heading — an emptied-out section must fail, not silently pass), and
+//    every listed route must (a) still exist as a declared route and (b) carry a
+//    "Remove/redirect" disposition in the main table.
 // ---------------------------------------------------------------------------
-const deadRoutesSection = inventoryMd.match(/## Route ميتة مؤكَّدة[\s\S]*?\n\n/)
-if (!deadRoutesSection) {
+const deadRoutesHeadingIndex = inventoryMd.indexOf('## Route ميتة مؤكَّدة')
+if (deadRoutesHeadingIndex === -1) {
   fail('screen-and-route-inventory.md is missing its "Route ميتة مؤكَّدة" (confirmed dead routes) section.')
+} else {
+  const nextHeadingIndex = inventoryMd.indexOf('\n## ', deadRoutesHeadingIndex + 1)
+  const deadRoutesSection = inventoryMd.slice(
+    deadRoutesHeadingIndex,
+    nextHeadingIndex === -1 ? undefined : nextHeadingIndex,
+  )
+  const deadRouteRows = [...deadRoutesSection.matchAll(/^\|\s*`(\/[^`]*)`\s*\|/gm)].map((m) => m[1])
+
+  if (deadRouteRows.length === 0) {
+    fail('The "Route ميتة مؤكَّدة" section has no route rows — it must list at least the routes it claims to track.')
+  }
+
+  for (const deadRoute of deadRouteRows) {
+    if (!codeRoutes.has(deadRoute)) {
+      fail(`Dead route "${deadRoute}" no longer exists in App.tsx — remove it from the dead-routes section or update the source.`)
+      continue
+    }
+    const mainRow = mainTable.split('\n').find((line) => line.startsWith(`| \`${deadRoute}\` |`))
+    if (!mainRow || !mainRow.includes('Remove/redirect')) {
+      fail(`Dead route "${deadRoute}" is not marked "Remove/redirect" in the main table — disposition is out of sync.`)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -93,34 +117,21 @@ for (const navPath of navLinkMatches) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Context Panel entity types opened from FacilityWorkspacePage.tsx must be in the
-//    known allowlist below. Extend the allowlist (and the Context Panel table in the
-//    inventory doc) deliberately when a new panel type is introduced — this check exists
-//    to catch silent drift, not to freeze the panel type list forever.
+// 4. Context Panel entity types: derive the authoritative list directly from
+//    FacilityWorkspacePage.tsx's own `const PANEL_TYPES = [...] as const` declaration
+//    (the type union every panel literal in the file is actually checked against),
+//    rather than hand-maintaining a second copy here that can silently drift out of
+//    sync with it. Then verify every literal type used at a call site (openPanel(...),
+//    panel.type === '...', etc.) is actually a member of that declared union — this
+//    catches a typo'd/invalid panel type slipping past a hand-copied allowlist.
 // ---------------------------------------------------------------------------
-const KNOWN_PANEL_TYPES = new Set([
-  'note',
-  'corrective-action',
-  'risk',
-  'form-assignment',
-  'escalation',
-  'facility-unit',
-  'workforce-member',
-  'workforce-requirement',
-  'workforce-qualification',
-  'workforce-gap',
-  'workforce-critical-position',
-  'workforce-roster',
-  'workforce-unit',
-  'workforce-role',
-  'workforce-shift',
-  'requirement-gap',
-  'equipment',
-  'activity',
-  'sensitive-custody',
-  'vehicle',
-  'communication-device',
-])
+const panelTypesDeclMatch = facilityWorkspaceTsx.match(/const PANEL_TYPES = \[([\s\S]*?)\] as const/)
+if (!panelTypesDeclMatch) {
+  fail('Could not find "const PANEL_TYPES = [...] as const" in FacilityWorkspacePage.tsx — extraction needs updating after a refactor.')
+}
+const declaredPanelTypes = new Set(
+  panelTypesDeclMatch ? [...panelTypesDeclMatch[1].matchAll(/'([a-zA-Z0-9-]+)'/g)].map((m) => m[1]) : [],
+)
 
 const panelTypeMatches = [
   ...facilityWorkspaceTsx.matchAll(/panel\.type === '([a-zA-Z0-9-]+)'/g),
@@ -129,11 +140,11 @@ const panelTypeMatches = [
 ].map((m) => m[1])
 const panelTypesInCode = new Set(panelTypeMatches)
 
-const undocumentedPanelTypes = [...panelTypesInCode].filter((t) => !KNOWN_PANEL_TYPES.has(t))
-if (undocumentedPanelTypes.length > 0) {
+const undeclaredPanelTypes = [...panelTypesInCode].filter((t) => !declaredPanelTypes.has(t))
+if (undeclaredPanelTypes.length > 0) {
   fail(
-    `FacilityWorkspacePage.tsx opens Context Panel type(s) not in the known allowlist: ${undocumentedPanelTypes.join(', ')}. ` +
-      'Add them to KNOWN_PANEL_TYPES in this script and to the "Context Panel" table in docs/ux-rescue/screen-and-route-inventory.md.',
+    `FacilityWorkspacePage.tsx uses Context Panel type(s) not present in its own PANEL_TYPES declaration: ${undeclaredPanelTypes.join(', ')}. ` +
+      'This indicates a typo or a stale PANEL_TYPES union.',
   )
 }
 
@@ -147,7 +158,8 @@ if (panelTypesInCode.size === 0) {
 console.log(`Routes in App.tsx: ${codeRoutes.size}`)
 console.log(`Routes documented in inventory: ${inventoryRoutes.size}`)
 console.log(`Sidebar NavLinks checked: ${navLinkMatches.length}`)
-console.log(`Context Panel types found in FacilityWorkspacePage.tsx: ${panelTypesInCode.size}`)
+console.log(`Context Panel types declared in PANEL_TYPES: ${declaredPanelTypes.size}`)
+console.log(`Context Panel types actually used at call sites: ${panelTypesInCode.size}`)
 
 if (failed) {
   console.error('\nux-route-inventory-check FAILED — see FAIL lines above.')

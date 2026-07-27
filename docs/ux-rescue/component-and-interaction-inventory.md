@@ -2,7 +2,7 @@
 
 ## الحقيقة البنيوية الأهم أولًا
 
-`src/frontend/src/shared/` — وهو المكان الطبيعي لأي مكتبة مكونات مشتركة — يحتوي ملفًا واحدًا فقط: `listPageUtils.ts` (33 سطرًا)، وهو 3 دوال تنسيق نصية بحتة (`formatListDate`, `listSortIndicator`, `nextListSortState`, `listQueryErrorMessage`). **لا توجد مكتبة Table أو Card أو Modal أو FilterBar أو Toast مشتركة في التطبيق بأكمله.** الاستثناء الوحيد الحقيقي لمكوّن مشترك عبر أكثر من صفحة واحدة هو `src/frontend/src/workspaces/WorkspaceShell.tsx` (301 سطرًا)، لكنه بدوره **مستخدَم فعليًا في مكوّن واحد فقط** (`ReferenceWorkspacePage`، وهو مرجعي/تطويري)؛ أما `FacilityWorkspacePage` (المساحة التشغيلية الحقيقية الوحيدة) فيستورد منه فقط القطع الصغيرة (`WorkspaceEmpty/Error/Loading/Unauthorized/FilterBar`) ويبني ترويسته وتخطيطه الخاص من الصفر.
+`src/frontend/src/shared/` — وهو المكان الطبيعي لأي مكتبة مكونات مشتركة — يحتوي ملفًا واحدًا فقط: `listPageUtils.ts` (33 سطرًا)، وهو 4 دوال تنسيق نصية بحتة (`formatListDate`, `listSortIndicator`, `nextListSortState`, `listQueryErrorMessage`). **لا توجد مكتبة Table أو Card أو Modal أو FilterBar أو Toast مشتركة في التطبيق بأكمله.** الاستثناء الوحيد الحقيقي لمكوّن مشترك عبر أكثر من صفحة واحدة هو `src/frontend/src/workspaces/WorkspaceShell.tsx` (301 سطرًا)، لكنه بدوره **مستخدَم فعليًا في مكوّن واحد فقط** (`ReferenceWorkspacePage`، وهو مرجعي/تطويري)؛ أما `FacilityWorkspacePage` (المساحة التشغيلية الحقيقية الوحيدة) فيستورد منه فقط القطع الصغيرة (`WorkspaceEmpty/Error/Loading/Unauthorized/FilterBar`) ويبني ترويسته وتخطيطه الخاص من الصفر.
 
 هذا يعني: كل صفحة في الـ49 ملف Page تقريبًا تُعيد تنفيذ الجدول، شريط الفلاتر، البطاقة، وحالات الفراغ/التحميل/الخطأ **بشكل مستقل**، بأسلوب متشابه ظاهريًا (بفضل CSS مشترك في `index.css`) لكن بمنطق React منفصل تمامًا في كل ملف.
 

@@ -12,7 +12,7 @@
 | 6. Domain workspace | `ObservationWorkspacePage` (الوحيدة الحقيقية اليوم) | يُضاف: Form Operations Workspace (#145)، مع بقاء Observation Workspace كنموذج مرجعي بعد إعادة بنائه (#143) |
 | 7. Entity context | متفاوت — أحيانًا Route كامل (`/notes/:id`)، أحيانًا Panel (`?panel=&entityId=`) | موحَّد: Context Panel كافتراضي، Route كامل فقط لدخول مباشر خارجي (روابط دائمة/إشعارات) |
 
-## الفرق بين الأنواع الخمسة
+## الفرق بين الأنواع السبعة
 
 | النوع | التعريف المستهدف | أمثلة حالية مطابقة | أمثلة حالية مخالفة |
 | --- | --- | --- | --- |
@@ -52,8 +52,9 @@
 
 /notes/workspace                           → Observation Workspace (بعد إزالة تكرار /notes وإدماج كل شاشات دورة الحياة، #143)
   ?noteId=&panel=&tab=                     → لا Routes منفصلة لإنشاء/تعديل/تفاصيل الملاحظة أو الإجراء التصحيحي
+/notes                                     → [توافق] Route resolver يُحل مباشرة إلى /notes/workspace (`<Navigate>` من جهة العميل، وليس HTTP 301/302 حقيقيًا) — راجع `migration-and-route-transition-plan.md`
 /corrective-actions                        → يبقى كـAdvanced fallback (قائمة شاملة عابرة للملاحظات)
-/corrective-actions/:id                    → يبقى كرابط دائم قابل للمشاركة، يفتح نفس تجربة الـPanel وليس صفحة منفصلة الشكل
+/corrective-actions/:id                    → يبقى كرابط دائم قابل للمشاركة، يفتح نفس تجربة الـPanel وليس صفحة منفصلة الشكل (Route resolver يُحل مباشرة لتجربة الـPanel، لا مجرد إخفاء رابط تنقّل قديم)
 
 /forms                                     → استوديو موحَّد (#144): إنشاء + تصميم + قوالب + إصدارات + مراجعة، مدخل واحد
 /form-templates                            → يُدمَج كخطوة بداية داخل /forms، لا Route مستقل بمنطق منفصل
@@ -63,7 +64,8 @@
 /form-operations                           → [مستهدف #145] Form Operations Workspace موحَّدة تستوعب:
   محتوى /form-campaigns, /form-campaigns/:id/{cycles,preview}, /my-form-responses,
   /form-assignments/:id/respond, /form-response-reviews, /form-responses/:id/review
-/form-compliance(/regions/:id|/facilities/:id|/cycles/:id) → يبقى كما هو (نمط مرجعي ناجح)، يُدمَج كقسم ضمن Form Operations Workspace
+/form-campaigns/:campaignId/edit           → [توافق] بعد إصلاح F-01 (استعادة الوظيفة)، يُحل مباشرة إلى قسم التعديل ضمن Form Operations Workspace بنفس معرّف الحملة — ليس صفحة معالج منفصلة كما هو الحال (المعطَّل) اليوم
+/form-compliance(/regions/:id|/facilities/:id|/cycles/:id) → **يبقى قابلاً للتوجيه بشكل مستقل (Standalone-routable)** كرابط دائم/تقرير مستقل، **وأيضًا** يُدمَج كقسم مضمَّن ضمن Form Operations Workspace — الاثنان معًا، لا أحدهما بدل الآخر: نفس البيانات والمكوّن يُستهلَكان من موضعين (Route قائم بذاته، وقسم داخل Workspace) دون ازدواج تنفيذ
 
 /settings/*                                → يبقى كما هو (Admin/Settings)، مع إضافة تحقق صلاحية داخلي لصفحات التصعيد
 /users, /audit, /notifications, /attachments → تبقى كما هي (Keep)
@@ -74,5 +76,7 @@
 
 ## ملخص الأثر على الأعداد
 
-- Routes مباشرة تُحذَف/تُدمَج (بعد التنفيذ الكامل لـ#143/#144/#145، خارج نطاق هذا الـPR): `NotesListPage` (يتيمة)، `/forms/:formId/versions/new` (ميت)، `/form-campaigns/:campaignId/targeting|schedule` (ميتان)، وحوالي 12 Route ستُدمَج ضمن Workspace موحَّدة بدل صفحات كاملة منفصلة (`/notes/new`, `/notes/:id`, `/notes/:id/edit`, `/notes/:noteId/corrective-actions/new` جزئيًا، `/corrective-actions/:id` كتجربة شكل، `/corrective-actions/:id/edit`, وروابط تشغيل النماذج التسعة).
+- Routes مباشرة تُحذَف/تُدمَج (بعد التنفيذ الكامل لـ#143/#144/#145، خارج نطاق هذا الـPR): `NotesListPage` (يتيمة)، `/forms/:formId/versions/new` (ميت)، `/form-campaigns/:campaignId/targeting|schedule` (ميتان)، و**16 Route فريدًا** ستفقد تجربتها كصفحة كاملة مستقلة لصالح الاندماج ضمن Workspace موحَّدة. العدد يُحسَب بوحدة "مسار فريد" (Route path)، لا "شاشة" (بعض المسارات تُعيد استخدام نفس مكوّن الشاشة لعدة مسارات، والعكس صحيح أحيانًا)؛ وبعضها يبقى قابلاً للفتح كرابط دائم يعرض نفس تجربة الـPanel الجديدة بدل صفحة منفصلة، كما هو موضَّح في `migration-and-route-transition-plan.md`:
+  - 6 من مجال الملاحظات/الإجراءات التصحيحية: `/notes/new`, `/notes/:id`, `/notes/:id/edit`, `/notes/:noteId/corrective-actions/new`, `/corrective-actions/:id`, `/corrective-actions/:id/edit`.
+  - 10 من مجال تشغيل النماذج: `/form-campaigns/new`, `/form-campaigns/:campaignId`, `/form-campaigns/:campaignId/edit`, `/form-campaigns/:campaignId/preview`, `/form-campaigns/:campaignId/cycles`, `/form-campaigns/:campaignId/cycles/:cycleId`, `/my-form-responses`, `/form-assignments/:assignmentId/respond`, `/form-response-reviews`, `/form-responses/:responseId/review`.
 - Routes جديدة مطلوبة: `/workspaces/regions/:regionId` (#12)، `/workspaces/headquarters` (#13)، صفحة 403 موحَّدة، صفحة 404 موحَّدة، ومسار Form Operations Workspace الموحَّد (#145).

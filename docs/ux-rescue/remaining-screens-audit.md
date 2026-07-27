@@ -53,7 +53,7 @@
 
 | الشاشة | القرار | السبب |
 | --- | --- | --- |
-| `RegionsPage` | **Restructure** | جدول مسطّح بلا أي وظيفة أبعد من العرض — يتطلب #12 لإصلاحه فعليًا، لكن كحد أدنى فوري (ضمن هذه المرحلة أو Hardening قريب) يستحق حتى مجرد رابط لكل صف (حتى لو لصفحة `/facilities?regionId=`) بدل جدول ميت تمامًا |
+| `RegionsPage` | **Restructure** | جدول مسطّح بلا أي وظيفة أبعد من العرض — يتطلب #12 لإصلاحه فعليًا. **تصحيح مهم**: لا يمكن الاكتفاء بإضافة رابط بسيط إلى `/facilities?regionId=` كحل أدنى فوري، لأن `FacilitiesPage` تستدعي `api.facilities(undefined, search)` اليوم — لا تقرأ أي معامل نطاق من الرابط، فسيُسقَط الفلتر المنطقي بصمت وتُعرَض قائمة السجون الكاملة عوضًا عن سجون المنطقة المحدَّدة. أي رابط Drill-down من `RegionsPage` يحتاج أولًا تعديل `FacilitiesPage` نفسها لقراءة/تطبيق معامل `regionId` فعليًا — وهذا تغيير وظيفي صغير خارج نطاق هذه المرحلة (توثيق فقط)، لا حل تجميلي بحت. |
 | `FacilitiesPage` | Keep (مع Polish) | تعمل، لكنها نقطة الدخول الوحيدة لمركز قرار السجن — يستحق إضافة رابط شريط جانبي مباشر أيضًا بدل الاعتماد الحصري عليها |
 
 ## المستخدمون والأدوار والصلاحيات
@@ -72,14 +72,19 @@
 
 ## ملخص الأعداد لهذا الملف
 
-| القرار | العدد |
-| --- | --- |
-| Keep | 3 (UsersPage, AuditPage, FacilitiesPage) |
-| Polish | 1 (رسالة "قيد التخطيط" للمشاريع/الخطط/القرارات؛ RegionsPage كحد أدنى فوري) |
-| Restructure | 7 (Facility Workspace ككل, Occupancy, Resources, Workforce, Dashboard, RegionsPage, Attachments) |
-| Merge into Workspace | 3 (Occupancy, Resources تحديدًا كنتيجة نهائية بعد Restructure) |
-| Advanced fallback | 3 (Escalation settings×2 نوع, EscalationOccurrences) |
-| يحتاج Issue تنفيذية مستقلة (خارج #143-#146) | 2 (Sensitive Custody screens, Risk Management screens) |
+العدد أدناه يُحسَب بوحدة "الشاشة/المجال المُقيَّم" (Screen/domain topic) كما ورد في أقسام هذا الملف أعلاه، وليس بعدد الـRoutes الفريدة (التي تُحسَب بدقة في `screen-and-route-inventory.md`) — بعض المجالات هنا (مثل `FormCompliancePage`) تمثل شاشة واحدة بأربعة Routes، وبعضها (صفحات التصعيد) تمثل 4 شاشات بـ5 Routes. الجدول يغطي **كل** الشاشات/المجالات التي ناقشها هذا الملف صراحة، بما فيها ما وردت في قسم "المجالات التي لا تحتاج إعادة بناء":
+
+| القرار | العدد | التفصيل |
+| --- | --- | --- |
+| Keep | 6 | `UsersPage`, `AuditPage`, `FacilitiesPage`, `NotificationsPage`, `FormCompliancePage` (بمساراتها الأربعة كشاشة واحدة متماسكة) |
+| Polish | 2 | رسالة "قيد التخطيط" للمشاريع/الخطط/القرارات؛ `RegionsPage` كحد أدنى فوري (إضافة روابط) |
+| Restructure | 7 | Facility Workspace ككل, Occupancy, Resources, Workforce, Dashboard, RegionsPage (إعادة هيكلة كاملة لاحقًا عبر #12), Attachments |
+| Merge into Workspace | 2 | Occupancy، Resources — كنتيجة نهائية بعد Restructure |
+| Advanced fallback | 5 | `EscalationsSettingsPage`, `EscalationPolicyFormPage` (إنشاء/تعديل، مكوّن واحد بمسارين), `EscalationPolicyDetailPage`, `EscalationOccurrencesPage` |
+| يحتاج Issue تنفيذية مستقلة (خارج #143-#146) | 2 | Sensitive Custody screens، Risk Management screens |
+| **الإجمالي** | **24** | مجموع الشاشات/المجالات المذكورة صراحة في هذا الملف |
+
+ملاحظة: `Workforce` مصنَّفة "Restructure ثم Merge" في الجدول التفصيلي أعلاه (تحتاج تحليلاً فرعيًا أولًا) — تُحسَب هنا مرة واحدة ضمن Restructure لتفادي ازدواج العدّ، وقرارها النهائي (Merge) يتأكَّد لاحقًا بعد ذلك التحليل الفرعي.
 
 ## Issues إضافية يُوصى بإنشائها (بعد اعتماد هذا التدقيق، وليس ضمن هذا الـPR)
 

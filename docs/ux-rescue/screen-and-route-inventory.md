@@ -93,20 +93,23 @@
 
 ## أنواع Context Panel المكتشفة (لا تملك Route مستقل، تُفتح كلوحة سياقية فقط)
 
-هذه اللوحات تُفتح داخل `FacilityWorkspacePage` عبر `?panel=<type>&entityId=<id>` (محفوظ في الـURL، يدعم back/forward):
+هذه اللوحات تُفتح داخل `FacilityWorkspacePage` عبر `?panel=<type>&entityId=<id>` (محفوظ في الـURL، يدعم back/forward). المصدر الرسمي الوحيد لهذه القائمة هو إعلان `const PANEL_TYPES = [...] as const` في `FacilityWorkspacePage.tsx` نفسها (33 نوعًا)، وليس استنتاجًا يدويًا — راجع `scripts/ux-route-inventory-check.mjs` الذي يتحقق آليًا أن كل نوع مُستخدَم فعليًا في الملف هو عضو في هذا الاتحاد. الجدول التالي يُصنِّف الأنواع الـ33 حسب المجال وسلوكها الفعلي (وليس رصدًا لكل نوع على حدة، تفاديًا لتكرار 33 صفًا متطابق البنية):
 
-| نوع اللوحة (`panel.type`) | المصدر | إجراءات مضمَّنة فعليًا | رابط "فتح الصفحة الكاملة"؟ |
+| مجموعة الأنواع | الأنواع (`panel.type`) | إجراءات مضمَّنة فعليًا | رابط "فتح الصفحة الكاملة"؟ |
 | --- | --- | --- | --- |
-| `note` | `NotePanel` | إجراءات `INLINE_ACTIONS` فقط (Submit/StartWork/RequestVerification/RejectVerification/Reopen/Cancel) | نعم → `/notes/workspace?noteId=` |
-| `corrective-action` | `CorrectiveActionPanel` | لا شيء — قراءة فقط | نعم → الصفحة الكاملة (الإجراءات المركّبة) |
-| `risk` | `RiskPanel` | نعم: StartMonitoring/Escalate/Reopen عبر `executeCommand`، مع معالجة تعارض 409 | **لا** — لا يوجد Route كامل أصلاً |
-| `sensitive-custody` (preview) | `SensitiveCustodyPreviewPanel` | لا شيء — معاينة آمنة مقصودة، لا أرقام تسلسلية ولا مواقع تفصيلية | **لا** — مُعطَّل عمدًا في الكود (`return null`) لأسباب أمنية |
-| `occupancy-unit` / `facility-unit` | لوحات معاينة للقراءة | لا شيء | نعم → `/facilities/:id/occupancy` |
-| موارد (مركبة/معدة/جهاز اتصال) | `DomainGapPanel` (معاينة) | لا شيء | نعم → `/facilities/:id/resources` |
-| عمّال/جدول مناوبة | معاينة القوى البشرية | إجراء واحد فقط عبر Action Center: نشر أول جدول مسودة | نعم → `/facilities/:id/workforce` |
-| `form-assignment` | `FormPreviewPanel` | لا شيء (معاينة متعمدة فقط) | نعم → `/form-compliance/facilities/:facilityId` (وليس مباشرة لصفحة الاستجابة) |
-| مشاريع/خطط/قرارات | `DomainGapPanel` (stub) | لا شيء — **لا يوجد عقد Backend لهذه المجالات إطلاقًا** | لا يوجد صفحة لتفتح إليها |
-| جودة البيانات / النشاط الزمني | لوحات تفصيل للقراءة | لا شيء | حسب العنصر المصدر |
+| الملاحظات | `note` | إجراءات `INLINE_ACTIONS` فقط (Submit/StartWork/RequestVerification/RejectVerification/Reopen/Cancel) | نعم → `/notes/workspace?noteId=` |
+| الإجراءات التصحيحية | `corrective-action` | لا شيء — قراءة فقط | نعم → الصفحة الكاملة (الإجراءات المركّبة) |
+| المخاطر | `risk` | نعم: StartMonitoring/Escalate/Reopen عبر `executeCommand`، مع معالجة تعارض 409 | **لا** — لا يوجد Route كامل أصلاً |
+| العهد الحساسة (تجميعي) | `weapon` | لا شيء — معاينة آمنة مقصودة، لا أرقام تسلسلية ولا مواقع تفصيلية | **لا** — مُعطَّل عمدًا في الكود (`isSensitiveCustodyPanelType` تُعيد `null` صراحة لكل هذه المجموعة) لأسباب أمنية |
+| العهد الحساسة (فرعية، مُكتشَفة عبر `PANEL_TYPES` وليست في الجولة الأولى من التدقيق) | `custody-transaction`, `armory-location`, `ammunition-lot`, `ammunition-transaction`, `inventory-session`, `inventory-discrepancy`, `weapon-inspection`, `maintenance-work-order` | لا شيء — نفس قاعدة المعاينة الآمنة أعلاه، مؤكَّدة عبر `isSensitiveCustodyPanelType()` التي تضم هذه الأنواع الثمانية صراحة | **لا** لكل هذه المجموعة، لنفس السبب الأمني |
+| الإشغال/الوحدات | `facility-unit` | لا شيء | نعم → `/facilities/:id/occupancy` |
+| الموارد | `vehicle`, `equipment`, `communication-device` | لا شيء | نعم → `/facilities/:id/resources` |
+| القوى البشرية | `workforce-member`, `workforce-shift`, `workforce-role`, `workforce-gap`, `workforce-unit`, `workforce-roster`, `workforce-requirement`, `workforce-qualification`, `workforce-critical-position` | إجراء واحد فقط عبر Action Center (نشر أول جدول مسودة)؛ الباقي معاينة | نعم → `/facilities/:id/workforce` |
+| النماذج | `form-assignment` | لا شيء (معاينة متعمدة فقط) | نعم → `/form-compliance/facilities/:facilityId` (وليس مباشرة لصفحة الاستجابة) |
+| مشاريع/خطط/قرارات/حوادث | `project`, `emergency-plan`, `decision`, `incident` | لا شيء — **لا يوجد عقد Backend لهذه المجالات إطلاقًا اليوم**، تُعرَض كـ`DomainGapPanel` (Placeholder) | لا يوجد صفحة لتفتح إليها |
+| جودة البيانات / النشاط الزمني | `requirement-gap`, `activity` | لا شيء | حسب العنصر المصدر |
+
+**ملاحظة تصحيحية**: الجولة الأولى من هذا التدقيق (عبر 5 عمليات بحث موازية + قراءة مباشرة) رصدت 15 نوعًا فقط عبر أنماط استخدام مباشرة (`panel.type === '...'`, `openPanel({ type: '...' })`)، وفاتها 8 أنواع فرعية للعهد الحساسة (تُستخدَم عبر تحويل `routeParameters` غير المطابق لتلك الأنماط النصية) بالإضافة إلى 4 أنواع لمجالات بلا عقد Backend (مشاريع/خطط/قرارات/حوادث). صُحِّح هذا لاحقًا عبر اشتقاق القائمة آليًا من `PANEL_TYPES` نفسها بدل الاعتماد على حصر يدوي — وهذا بالضبط سبب وجود `scripts/ux-route-inventory-check.mjs`: منع هذا النوع من الانحراف الصامت مستقبلاً.
 
 ## ملخص الأعداد حسب القرار
 
@@ -121,4 +124,4 @@
 | Remove/redirect | 3 |
 | **الإجمالي** | **62 Route مُعرَّف** (زائد مكوّن يتيم واحد غير موجَّه له Route، `NotesListPage.tsx`) |
 
-هذا العدد مُتحقَّق آليًا (لا يدويًا) عبر `bash src/frontend/scripts/ux-route-inventory-check.mjs`، الذي يفشل صراحة عند أي Route في `App.tsx` بلا صف موثَّق هنا، أو صف موثَّق بلا Route فعلي مطابق.
+هذا العدد مُتحقَّق آليًا (لا يدويًا) عبر `node src/frontend/scripts/ux-route-inventory-check.mjs` (أو `npm run check:ux-routes` من داخل `src/frontend/`)، الذي يفشل صراحة عند أي Route في `App.tsx` بلا صف موثَّق هنا، أو صف موثَّق بلا Route فعلي مطابق.
