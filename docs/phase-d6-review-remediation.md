@@ -4,7 +4,7 @@
 
 التصنيفات المستخدمة: `StillValid` (تم إصلاحه)، `AlreadyFixed`، `Outdated`، `FalsePositive candidate` (تصنيف موثَّق بالمراجعة اليدوية للكود، **لم تُغيَّر حالته فعليًا داخل واجهة SonarCloud** — هذه الجلسة لا تملك اعتماد/صلاحية كتابة على SonarCloud API لتغيير حالة finding معيّن إلى False Positive رسميًا؛ راجع `docs/sonar-backlog-remediation.md` للاطلاع على سابقة مطابقة تمامًا على `main` لنفس نمط EF navigation `null!`)، `NotReproducible`.
 
-> **ملاحظة منهجية**: أي رقم "Total Minor" أو "Total Critical" الوارد في هذا الملف يجب أن يُقرأ حصريًا كلقطة (snapshot) وقت السحب الفعلي من SonarCloud API الموثَّق في كل جولة أدناه — وليس رقمًا نهائيًا ثابتًا. الجولة الرابعة (أدناه) هي المرجع الأحدث والدقيق حسابيًا.
+> **ملاحظة منهجية**: أي رقم "Total Minor" أو "Total Critical" الوارد في هذا الملف يجب أن يُقرأ حصريًا كلقطة (snapshot) وقت السحب الفعلي من SonarCloud API الموثَّق في كل جولة أدناه — وليس رقمًا نهائيًا ثابتًا. الجولة الخامسة (أدناه) هي المرجع الأحدث والدقيق حسابيًا.
 
 ## الجولة الرابعة — تدقيق كامل من SonarCloud API الفعلي + إصلاح شامل (بعد طلب المستخدم عدم تأجيل التعقيد الإدراكي)
 
@@ -38,6 +38,31 @@
 | وصف صلاحيات `RiskOfficer` في `permissions-matrix.md` | Fixed | صيغت الفقرة لتفصل بوضوح بين: (1) منح الصلاحية للدور، (2) فرض `EnforceFourEyes` الفعلي على العملية، (3) `Risks.Export` كصلاحية منفصلة تمامًا لا علاقة لها بفصل المهام. أُضيف اختبار تكامل آلي جديد `RiskOfficer_permission_bundle_matches_documented_exclusions` يقارن فعليًا: إجمالي صلاحيات `Risks.*` المعرَّفة (25، عبر Reflection على `PermissionCodes`) مقابل ما هو ممنوح فعليًا لـ`RiskOfficer` في القاعدة (18) والاستثناءات السبعة بالضبط. |
 | توثيق "5 من 18" نوع مصدر محقَّق (كان قد أُصلح الكود سابقًا لـ4 لكن التوثيق لم يُحدَّث) | Outdated — أُصلح | `docs/phase-d6-risk-completion-report.md` كان لا يزال يذكر "5 من 18" رغم أن الكود الفعلي (`RiskSourceLinkService.ScopeCheckedTypes`) يحتوي 4 أنواع فقط منذ الجولة الثالثة. صُحِّح للرقم الفعلي. |
 | عقد تجاوز النطاق الأعلى (rating-band overflow) | Fixed (تصحيح لتصحيح سابق) | الجولة السابقة وثّقت أن النطاق الأخير "بلا حد أعلى فعلي" (unbounded)، لكن هذا لم يعد الخيار المفضَّل هذه الجولة. **العقد الجديد**: كل نطاق قبل الأخير `[Min, Max)` (نصف مفتوح)؛ النطاق الأخير `[Min, Max]` (مغلق بالكامل)؛ أي درجة تتجاوز `Max` للنطاق الأخير **تُرفض صراحة** برسالة عربية واضحة بدل قبولها ضمن النطاق الأعلى. `RiskScoringEngine.SelectRatingBand` عُدِّلت لترمي عند `score > last.MaximumScore` قبل أي محاولة مطابقة. اختبارات وحدة جديدة تغطي: درجة أقل من أول حد أدنى (رفض)، درجة تساوي أول حد أدنى (النطاق الأول)، حد التماس (النطاق الأعلى)، درجة تساوي الحد الأقصى النهائي (النطاق الأخير)، درجة تتجاوز الحد الأقصى النهائي (رفض)، ودرجة كسرية 6.99 من الصيغة الموزونة. وثائق `phase-d6-risk-matrix-versioning.md`/`phase-d6-risk-scoring.md` حُدِّثت لتطابق هذا العقد بالضبط. |
+
+## الجولة الخامسة — منع التقييمات المتزامنة المكررة + تنظيف Sonar الجديد بعد دفع الجولة الرابعة
+
+بعد دفع كوميتات الجولة الرابعة، أعادت SonarCloud تحليل الـSHA الجديد. سُحبت النتائج الفعلية عبر نفس الـAPI في بداية هذه الجولة (قبل أي تعديل): **28 مشكلة مفتوحة إجمالًا** (0 Blocker + 0 Critical + 1 Major + 27 Minor). كل الـBlocker/Critical من الجولة الرابعة أُغلقت فعليًا وأكّدها Sonar (لم تعد تظهر) — يؤكد أن إصلاحات الجولة الرابعة صحيحة فعليًا وليست ادّعاءً غير محقَّق.
+
+### الجرد الكامل لهذه الجولة (Rule | File | Symbol | Count | Status)
+
+| Rule | File | Symbol | Count | Status |
+| --- | --- | --- | --- | --- |
+| Major: csharpsquid:S107 — Method has 8 parameters | `RiskAssessmentService.cs:145` | `BuildAssessment` | 1 | **Fixed** — استُبدلت قائمة المعاملات الثمانية بسجلين: `ResolvedAssessmentImpact(Request, Level)` و`AssessmentBuildContext(Risk, Request, Matrix, Likelihood, ImpactLevels, Score, Band)`؛ الدالة الآن تأخذ معاملًا واحدًا فقط (`AssessmentBuildContext`). `ResolveImpactLevels` عُدِّلت لتُعيد `IReadOnlyList<ResolvedAssessmentImpact>` بدل tuple طويلة. لا منطق عمل انتقل إلى السجلّين — بناء بيانات فقط. |
+| Minor: csharpsquid:S2325 — Make method static | `RiskAssessmentService.cs:358` | `ShouldUpdateCurrentView` | 1 | **Fixed** — الدالة لا تستخدم أي حالة خاصة بالـinstance (`CurrentFamily` حقل static أصلًا)؛ أُضيفت `static` إلى التوقيع. |
+| Minor: csharpsquid:S8970 — Remove null-forgiving operator | نفس 9 ملفات كيانات الجولة الرابعة (`RiskAssessmentEntities`×7, `RiskCategoryEntity`×1, `RiskControlEntity`×1, `RiskImportEntities`×4, `RiskMatrixEntities`×6, `RiskRecordEntity`×3, `RiskReviewEntity`×1, `RiskSourceLinkEntity`×1, `RiskTreatmentEntities`×2) | خصائص EF navigation مطلوبة | 26 | **FalsePositive candidate — بلا تغيير عن الجولة الرابعة.** أُعيدت مراجعة كل حالة من الـ26 يدويًا هذه الجولة: كل `null!` مقترن بخاصية FK غير Nullable (`Guid`, وليس `Guid?`) مباشرة قبله، وكل navigation اختيارية في نفس الملفات (مثل `OverallImpactLevel`, `SupersedesAssessment`, `ParentCategory`, `PreviousVersionMatrix`, إلخ) مُعرَّفة فعلًا كـ`T?` بلا `null!` — لا يوجد تصنيف خاطئ (لا optional يُعامَل كـrequired، ولا العكس). لم يُعدَّل الكود. |
+
+**التحقق الحسابي**: 1 (S107) + 1 (S2325) + 26 (S8970) = **28** — يطابق تمامًا إجمالي SonarCloud API المسحوب فعليًا في بداية هذه الجولة.
+
+**الحالة بعد هذه الجولة**: 2 من 2 finding قابل للإصلاح الفعلي (S107 + S2325) **أُصلحا بالكود**، بانتظار إعادة تحليل SonarCloud على الـSHA الجديد للتأكيد الرسمي. الـ26 المتبقية بلا تغيير — FalsePositive candidates موثقة، غير مُصنَّفة فعليًا في واجهة Sonar.
+
+### بنود إضافية طُلبت هذه الجولة (خارج جرد Sonar المباشر)
+
+| Finding | Status | Fix | Test |
+| --- | --- | --- | --- |
+| BuildAssessment has 8 parameters | Fixed | `AssessmentBuildContext` + `ResolvedAssessmentImpact` (سجلّان خاصّان بالخدمة) بدل قائمة معاملات مسطّحة | Unit (`RiskScoringEngineTests` غير متأثرة) + build نظيف |
+| ShouldUpdateCurrentView static | Fixed | إضافة `static` إلى التوقيع؛ لا تغيير سلوكي | Build + مسار اختبارات التقييم الحالية (Integration) |
+| Concurrent assessment invariant | Fixed | فهرس فريد مفلتر `UX_RiskAssessments_RiskRecordId_AssessmentType_InProgress` على `(RiskRecordId, AssessmentType)` عند `IsDeleted=0 AND Status IN (0,1,2)` (migration `EnforceSingleInProgressRiskAssessment`) + ترجمة `DbUpdateException` (SQL 2601/2627 + مطابقة اسم الفهرس) إلى رسالة تعارض المجال الموجودة أصلًا في `EnsureRiskAcceptsNewAssessmentAsync` | اختبار تكامل حي حاسم (deterministic) على SQL Server فعلي: `RiskAssessmentConcurrencyIntegrationTests.Concurrent_assessment_creation_for_same_type_yields_one_success_and_one_conflict` يستخدم `SaveChangesInterceptor` (`Barrier(2)`) يوقف كلا الطلبين المتزامنين عند نقطة الحفظ بالضبط ثم يُطلقهما معًا — يثبت أن الفهرس هو الفاصل الفعلي وليس ترتيب الطلبات. بالإضافة إلى 8 اختبارات مصفوفة الحالة (`Draft`/`PendingReview`/`Reviewed` تمنع، `Approved`/`Superseded`/`Rejected` تسمح، نوع تقييم مختلف يُسمح، خطر مختلف يُسمح، تقييم محذوف منطقيًا (Soft-deleted) لا يمنع) |
+| Draft status contradiction | Fixed | توثيق `phase-d6-review-remediation.md` كان يحتوي سطرين متناقضين لنفس finding "مسودة" (سطر يقول Fixed عبر `RiskDisplayLabels.DraftAr`، وسطر أقدم يقول رُفض عمدًا ولم يُعدَّل الكود). رُوجعت الحالة الفعلية للكود (الثابت موجود ومستخدَم في التعيينات الأربعة)، وصُحِّح السطر الأقدم ليطابق الواقع، وحُدِّثت الإجماليات المتأثرة في نفس القسم | مراجعة توثيقية (لا كود) |
 
 ## P0 — Critical (CodeRabbit inline comments)
 
@@ -80,18 +105,20 @@
 | --- | --- | --- |
 | `RiskLifecycleStateMachineTests.cs:52` | `EnsureAllowed_DoesNotThrowOnValidTransition` بلا أي assertion. | أُضيف `Assert.Null(Record.Exception(...))` — assertion حقيقية وليست شكلية. |
 
-### Critical — Cognitive Complexity (8) — **مؤجَّلة صراحة**
+### Critical — Cognitive Complexity (8) — **مؤجَّلة صراحة عند كتابة هذا القسم؛ أُصلحت جميعها لاحقًا في "الجولة الرابعة" أعلاه**
 
-| File:Line | Complexity | القرار |
+> هذا الجدول سجل تاريخي لقرار التأجيل الأصلي وقت هذه الجولة. الحالة الحالية: كل الـ8 أُصلحت فعليًا (انظر جدول الجرد الكامل في "الجولة الرابعة" أعلى هذا الملف)، وأكّد SonarCloud إغلاقها في السحب الفعلي لبداية "الجولة الخامسة" (لم تعد تظهر ضمن الـ28 مشكلة المفتوحة).
+
+| File:Line | Complexity | القرار وقت هذه الجولة |
 | --- | --- | --- |
-| `RiskAssessmentService.cs:41` | 17 → 15 | مؤجَّل |
-| `RiskAssessmentService.cs:285` | 23 → 15 | مؤجَّل |
-| `RiskImportService.cs:113` | 26 → 15 | مؤجَّل |
-| `RiskReadinessService.cs:45` (`BuildInterventionsAsync`) | 42 → 15 | مؤجَّل |
-| `RiskRegisterQueryService.cs:103` | 25 → 15 | مؤجَّل |
-| `RiskRegisterQueryService.cs:353` | 29 → 15 | مؤجَّل |
-| `RiskReviewService.cs:36` | 16 → 15 | مؤجَّل |
-| `BaseeraDbContext.cs:389` | 25 → 15 | مؤجَّل |
+| `RiskAssessmentService.cs:41` | 17 → 15 | مؤجَّل حينها |
+| `RiskAssessmentService.cs:285` | 23 → 15 | مؤجَّل حينها |
+| `RiskImportService.cs:113` | 26 → 15 | مؤجَّل حينها |
+| `RiskReadinessService.cs:45` (`BuildInterventionsAsync`) | 42 → 15 | مؤجَّل حينها |
+| `RiskRegisterQueryService.cs:103` | 25 → 15 | مؤجَّل حينها |
+| `RiskRegisterQueryService.cs:353` | 29 → 15 | مؤجَّل حينها |
+| `RiskReviewService.cs:36` | 16 → 15 | مؤجَّل حينها |
+| `BaseeraDbContext.cs:389` | 25 → 15 | مؤجَّل حينها |
 
 **سبب التأجيل الصريح**: إعادة هيكلة 8 methods بهذا الحجم (بعضها يتجاوز 40 نقطة تعقيد) لخفضها إلى ≤15 كل واحدة تتطلب تقسيمًا دقيقًا إلى methods فرعية واضحة المسؤولية مع الحفاظ الكامل على: صحة الدرجة المحسوبة على الخادم، فصل المهام (four-eyes)، دورة الحياة، سجل التدقيق، وميزانية عدد الاستعلامات — وإعادة اختبار كل مسار بعد كل تقسيم. حجم هذا العمل (8 methods منفصلة، كل منها بحاجة اختبارات تكامل حية للتحقق من عدم كسر أي مسار) يتجاوز ما يمكن إنجازه بثقة كافية ضمن هذه الجولة دون تعريض الإصلاحات الأمنية/الوظيفية الحرجة أعلاه (P0/P1) لخطر الانحدار. تم إصلاح كل ما هو أمني/وظيفي حقيقي أولًا؛ هذا البند تنظيف كود بحت (لا يؤثر على السلوك) ومُوثَّق هنا كفجوة صريحة بدل التظاهر بإغلاقه.
 
@@ -110,7 +137,7 @@
 | Null-forgiving operator على navigation properties مطلوبة (EF) في 9 ملفات كيانات (`RiskAssessmentEntities` ×7, `RiskCategoryEntity` ×1, `RiskControlEntity` ×1, `RiskImportEntities` ×4, `RiskMatrixEntities` ×6, `RiskRecordEntity` ×3, `RiskReviewEntity` ×1, `RiskSourceLinkEntity` ×1, `RiskTreatmentEntities` ×2) | 26 | **FalsePositive** — كل حالة هي `public T Nav { get; set; } = null!;` لـnavigation property مطلوبة (`RiskRecord`, `Organization`, إلخ) مع Nullable enabled وEF Core يملؤها فعليًا عند التحميل، بينما البناء الصحيح للتطبيق يستخدم حقل الـFK فقط دون تزويد الـnavigation. إزالة `null!` تُنتج `CS8618`؛ تحويلها لـ`required` يكسر كل بناء بالـFK فقط في كل الخدمات. لم تُستخدم `NOSONAR`/pragma بناءً على التعليمات الصريحة — التصنيف موثَّق هنا فقط. |
 | Null-forgiving operator فعلي (redundant) | 1 | **StillValid — أُصلح**: `RiskAssessmentService.cs:85` (`matrix.ImpactWeightingJson!`) كان يخفي احتمال null حقيقيًا (بيانات تالفة/مصفوفة لم تُصادَق بشكل صحيح تُنتج `ArgumentNullException` غامضة من `JsonSerializer.Deserialize`). استُبدل بحارس صريح يرمي `InvalidOperationException` برسالة عربية واضحة. |
 | Define a constant بدل تكرار literal | 7 (`RiskDataQualityService.cs` ×3، `RiskReadinessService.cs` ×2، `FacilityWorkspaceReadService.cs` ×1، `BaseeraDbContext.cs` ×1) | **StillValid — أُصلحت جميعها**: `SeverityLowAr`/`SeverityMediumAr`/`SeverityHighAr`/`RiskOfficerRoleAr` في `RiskDataQualityService`؛ نفس الأنماط في `RiskReadinessService`؛ `DataQualityMissing` في `FacilityWorkspaceReadService` (بجانب `DataQualityComplete`/`DataQualityPartial` الموجودتين)؛ `InMemoryProviderName` في `BaseeraDbContext`. |
-| Define a constant لـ"مسودة" (4 تكرارات) | 1 | **رُفض عمدًا (ليس FalsePositive تقني، بل قرار تصميم)**: التكرارات الأربعة في `RiskManagementDisplay.cs` تمثل حالة "مسودة" لأربعة enums مختلفة تمامًا (`RiskStatus`, `AssessmentStatus`, `TreatmentPlanStatus`, `RiskTreatmentActionStatus`) — تطابق النص العربي مصادفة لا يعني أنها نفس المفهوم الدلالي. دمجها في ثابت واحد مشترك يخلق اقترانًا زائفًا بين أربع حالات دومين مستقلة تمامًا، وقد يُغيَّر أحدها مستقبلًا (نص أو قيمة) دون الآخرين. لم يُعدَّل الكود. |
+| Define a constant لـ"مسودة" (4 تكرارات) | 1 | **StillValid — أُصلح** (تصحيح: جولة سابقة من هذا التقرير وثّقت هذا البند خطأً كمرفوض عمدًا؛ الكود الفعلي في `RiskManagementDisplay.cs` يحتوي `internal static class RiskDisplayLabels { public const string DraftAr = "مسودة"; }` مستخدَمًا في التعيينات الأربعة كافة — انظر قسم "الجولة الرابعة" أعلاه للتفاصيل. الثابت **عرض فقط**: لا يربط دلالات الدومين المستقلة لـ`RiskStatus`/`AssessmentStatus`/`TreatmentPlanStatus`/`RiskTreatmentActionStatus` ببعضها، فقط النص العربي المعروض المتطابق مصادفة). |
 | Loop simplification (`Select`) | 1 | **StillValid — أُصلح**: حُوِّلت 9 حلقات `foreach` بنمط "إضافة عنصر واحد فقط" في `RiskReadinessService.BuildInterventionsAsync` إلى `items.AddRange(...Select(...))`، مطابقًا للنمط المقترح. |
 
 ## ملخص الحالة
@@ -119,8 +146,8 @@
 - **P1 (Major CodeRabbit)**: 27/27 جرى فتحها والتحقق منها؛ 26 مُصلَحة أو مُوثَّقة كتوضيح، 1 مصنَّفة FalsePositive بأدلة ملموسة (قيد DB + استحالة بنيوية).
 - **Sonar Blocker**: 1/1 مُصلَح.
 - **Sonar Major**: 3/3 مُصلَحة.
-- **Sonar Minor** (36 إجمالًا): 9 أُصلحت فعليًا (7 ثوابت + تبسيط حلقة واحد + null-forgiving فعلي واحد)، 26 مصنَّفة FalsePositive بأدلة (null-forgiving على EF navigation مطلوبة)، 1 مرفوضة بقرار تصميم موثَّق (دمج "مسودة" عبر 4 enums مختلفة).
-- **Sonar Critical (Cognitive Complexity)**: 0/8 — **مؤجَّلة صراحة** بسبب حجم/مخاطر إعادة الهيكلة مقابل الوقت المتاح؛ لا تمثل عيوبًا وظيفية أو أمنية، بل قابلية صيانة الكود. موثقة كفجوة صريحة وليست خللاً مخفيًا.
+- **Sonar Minor** (36 إجمالًا): 10 أُصلحت فعليًا (7 ثوابت + ثابت "مسودة" المشترك + تبسيط حلقة واحد + null-forgiving فعلي واحد)، 26 مصنَّفة FalsePositive بأدلة (null-forgiving على EF navigation مطلوبة). لا يوجد بند مرفوض بقرار تصميم — التصحيح أعلاه في جدول الـMinor يوثّق أن ثابت "مسودة" نُفِّذ فعليًا في الكود، خلافًا لما ورد سابقًا في هذا القسم.
+- **Sonar Critical (Cognitive Complexity)**: 0/8 عند كتابة هذا القسم (جولة سابقة) — كانت **مؤجَّلة صراحة** حينها بسبب حجم/مخاطر إعادة الهيكلة مقابل الوقت المتاح. **محدَّثة لاحقًا**: جميع الـ8 أُصلحت فعليًا في "الجولة الرابعة" أعلاه (انظر جدول الجرد الكامل) — هذا السطر مُبقًى كسجل تاريخي لقرار التأجيل الأصلي، وليس الحالة الحالية.
 
 ## جولة ثانية — مراجعة CodeRabbit على الكوميتات السبعة أعلاه (3 تعليقات جديدة)
 
