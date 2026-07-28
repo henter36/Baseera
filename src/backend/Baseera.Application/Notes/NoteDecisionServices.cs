@@ -59,7 +59,8 @@ public sealed class NoteTriageService(
         }, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
+        var detail = await queries.GetDetailAsync(note.Id, cancellationToken);
+        return detail ?? throw new InvalidOperationException("تعذر تحميل تفاصيل الملاحظة بعد الحفظ.");
     }
 
     public async Task<NoteDecisionApprovalDto> ProposeInvalidAsync(Guid noteId, ProposeInvalidRequest request, CancellationToken cancellationToken = default)

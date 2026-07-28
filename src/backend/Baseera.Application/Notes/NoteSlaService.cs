@@ -185,10 +185,15 @@ public sealed class NoteSlaService(
         var externalWait = TimeSpan.Zero;
         foreach (var pause in approvedPauses)
         {
-            var pauseEnd = pause.EndedAtUtc ?? boundEnd;
-            if (pauseEnd > pause.StartedAtUtc!.Value)
+            if (pause.StartedAtUtc is not { } startedAt)
             {
-                externalWait += pauseEnd - pause.StartedAtUtc.Value;
+                continue;
+            }
+
+            var pauseEnd = pause.EndedAtUtc ?? boundEnd;
+            if (pauseEnd > startedAt)
+            {
+                externalWait += pauseEnd - startedAt;
             }
         }
 

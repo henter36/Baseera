@@ -88,7 +88,7 @@ public sealed class NoteDecisionApprovalService(
         }, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
+        return await LoadDetailOrThrowAsync(note.Id, cancellationToken);
     }
 
     public async Task<NoteDetailDto> ReturnAsync(Guid noteId, Guid approvalId, ReturnNoteDecisionRequest request, CancellationToken cancellationToken = default)
@@ -132,7 +132,13 @@ public sealed class NoteDecisionApprovalService(
         }, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
-        return (await queries.GetDetailAsync(note.Id, cancellationToken))!;
+        return await LoadDetailOrThrowAsync(note.Id, cancellationToken);
+    }
+
+    private async Task<NoteDetailDto> LoadDetailOrThrowAsync(Guid noteId, CancellationToken cancellationToken)
+    {
+        var detail = await queries.GetDetailAsync(noteId, cancellationToken);
+        return detail ?? throw new InvalidOperationException("تعذر تحميل تفاصيل الملاحظة بعد الحفظ.");
     }
 
     private static void ApplyClosureForApprovedDecision(OperationalNote note, NoteDecisionApproval approval, DateTimeOffset now)
