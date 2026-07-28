@@ -15,6 +15,7 @@ import {
 import { usePermission } from '../../auth/AuthProvider'
 import {
   NoteDecisionApprovalStatus,
+  NotePartsRequirementStatus,
   NoteSeverityLabelsAr,
   NoteStatusLabelsAr,
   NoteTreatmentExecutionType,
@@ -1053,11 +1054,23 @@ function AddPartForm({ data, onDone }: Readonly<{ data: NoteWorkspaceDetail; onD
   )
 }
 
+function resolvePartStatusTone(status: number): 'ok' | 'danger' | 'muted' {
+  if (status === NotePartsRequirementStatus.Installed) {
+    return 'ok'
+  }
+
+  if (status === NotePartsRequirementStatus.Cancelled) {
+    return 'danger'
+  }
+
+  return 'muted'
+}
+
 function PartRow({ item, noteId, canManage }: Readonly<{ item: NotePartsRequirement; noteId: string; canManage: boolean }>) {
   const queryClient = useQueryClient()
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
-  const locked = item.status === 4 || item.status === 5 // Installed | Cancelled
+  const locked = item.status === NotePartsRequirementStatus.Installed || item.status === NotePartsRequirementStatus.Cancelled
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ['notes-workspace-detail', noteId] })
@@ -1083,7 +1096,7 @@ function PartRow({ item, noteId, canManage }: Readonly<{ item: NotePartsRequirem
         <p className="muted">{item.itemCode ? `${item.itemCode} — ` : ''}{item.quantity} {item.unit}{item.requestNumber ? ` — طلب ${item.requestNumber}` : ''}</p>
         {item.cancelReason && <p className="muted">سبب الإلغاء: {item.cancelReason}</p>}
       </div>
-      <span className="badge" data-tone={item.status === 4 ? 'ok' : item.status === 5 ? 'danger' : 'muted'}>{item.statusAr}</span>
+      <span className="badge" data-tone={resolvePartStatusTone(item.status)}>{item.statusAr}</span>
       {canManage && !locked && (
         <select
           aria-label={`حالة ${item.itemName}`}
