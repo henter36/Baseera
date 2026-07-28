@@ -1,16 +1,27 @@
 # Phase 1A — العمارة الفعلية
 
+## Phase 1A.1 corrective update
+
+Phase 1A.1 صححت نمط عرض تفاصيل الملاحظة بعد PR #149: لم تعد ملاحظة Facility Workspace اليومية تُفتح داخل `CommandContextPanel`/`dialog`. أي عنصر ملاحظة من مساحة السجن أو رابط legacy بشكل `panel=note&entityId=...` ينتقل الآن إلى `/notes/workspace?facilityId=...&noteId=...&source=facility:...`، حيث تُعرض التفاصيل داخل `ObservationMasterDetailLayout` كجزء من الصفحة.
+
+المكونات المستخرجة في هذه الدفعة:
+
+- `src/frontend/src/pages/notes/workspace/ObservationWorkspaceHeader.tsx`
+- `src/frontend/src/pages/notes/workspace/ObservationMasterDetailLayout.tsx`
+
+هذا تصحيح تخطيط وربط فقط؛ لا يزيل Feature Flag ولا يبدأ Phase 1B.
+
 ## نظرة عامة
 
-لا يوجد `WorkspaceShell` عام جديد أُنشئ لهذه الدفعة. Observation Workspace بقي مكوّنًا واحدًا مُهيكَلاً (`ObservationWorkspacePage.tsx`)، مع استخراج البدايات المشتركة فقط إلى `src/frontend/src/shared/workspaces/` كما يطلب Section 4 من التكليف ("لا تبنِ مكتبة عامة ضخمة — فقط ما يُحتاج فعليًا لهذه الدفعة"). الأساس المعماري الأكبر (`WorkspaceShell` الحقيقي المستخدَم في `FacilityWorkspacePage`) لم يُعاد استخدامه هنا لأن Observation Workspace له عقد بيانات مختلف تمامًا (قائمة+تفاصيل ملاحظة، لا Widgets متعددة النطاقات) — إعادة استخدامه كانت ستفرض تجريدًا غير ملائم.
+لا يوجد `WorkspaceShell` عام جديد أُنشئ لهذه الدفعة. Observation Workspace بقي قائمًا على عقد قائمة+تفاصيل ملاحظة، لا Widgets متعددة النطاقات. بعد Phase 1A.1 استُخرجت ترويسة وتخطيط master-detail محليان تحت `pages/notes/workspace/` بدل إبقاء كامل التخطيط في ملف الصفحة.
 
 ## المكوّنات المشتركة الجديدة
 
 - `src/frontend/src/shared/workspaces/WorkspaceStateView.tsx`: `WorkspaceSkeletonRows`, `WorkspaceEmptyState`, `WorkspaceErrorState`. تُستخدَم حاليًا داخل `ObservationWorkspacePage` (قائمة+تفاصيل)، وهي المرشح الأول لإعادة الاستخدام في #144/#145/Region/HQ لاحقًا دون أي تعديل عليها الآن.
 
-## لماذا لم تُبنَ مكوّنات أخرى مطلوبة بالاسم في التكليف
+## حدود الاستخراج
 
-التكليف اقترح أسماء إرشادية (`MasterDetailWorkspaceLayout`, `WorkspaceListPane`, `WorkspaceDetailPane`, `WorkspaceCommandHeader`, `WorkspaceFilterBar`, `WorkspaceActionBar`) مع توضيح صريح: "الأسماء قابلة للتعديل حسب اصطلاحات المشروع؛ لا تبنِ مكتبة ضخمة". القرار الفعلي: هذه العناصر بُنيت كدوال داخلية ضمن `ObservationWorkspacePage.tsx` نفسها (`ObservationCard`, `WorkspaceDetail`, `ActionBar`, أقسام `SummaryTab/ProcessingTab/AssignmentTab/EvidenceTab/HistoryTab`) بدل استخراجها كملفات مشتركة منفصلة، لأن الاستخدام الحالي وحيد (صفحة واحدة فقط) ولا يوجد مستهلك ثانٍ فعلي اليوم يبرر التجريد المبكر. عند بدء #144/#145 فعليًا، إن ظهر تكرار حقيقي بين صفحتين، يُستخرَج حينها — هذا قرار "لا تجريد قبل الحاجة" صريح، لا سهو.
+التكليف اقترح أسماء إرشادية (`MasterDetailWorkspaceLayout`, `WorkspaceListPane`, `WorkspaceDetailPane`, `WorkspaceCommandHeader`, `WorkspaceFilterBar`, `WorkspaceActionBar`) مع توضيح صريح: "الأسماء قابلة للتعديل حسب اصطلاحات المشروع؛ لا تبنِ مكتبة ضخمة". القرار بعد Phase 1A.1: استخراج الترويسة وتخطيط master-detail فقط لأنهما موضع المشكلة. بقيت `ActionBar` والأقسام داخل `ObservationWorkspacePage.tsx` لأنها ما زالت مرتبطة بعقد الملاحظة الحالي ولا يوجد مستهلك ثانٍ.
 
 `WorkspaceFilterBar` الموجود فعليًا في `src/frontend/src/workspaces/WorkspaceShell.tsx` (يُستخدَم في Facility Workspace) لم يُعاد استخدامه في Observation Workspace لأن شكل فلاتره (`fromUtc/toUtc` زمنية) لا يطابق فلاتر الملاحظات (حالة/خطورة/سجن/وحدة/نوع/بحث) — إعادة استخدامه كانت ستفرض واجهة غير ملائمة على البيانات.
 
