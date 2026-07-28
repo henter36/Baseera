@@ -217,6 +217,33 @@ public sealed class NoteQueryServiceTests : IDisposable
         Assert.Null(detail);
     }
 
+    [Fact]
+    public async Task Detail_resolves_triage_decider_and_duplicate_reference_display_names()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var decider = NoteTestFixtures.AddUser(_db, "decider");
+        var original = NoteTestFixtures.NewNote(ScopeType.Global, reporter.Id, reference: "OBS-00000101");
+        _db.OperationalNotes.Add(original);
+        _db.SaveChanges();
+
+        var note = NoteTestFixtures.NewNote(ScopeType.Global, reporter.Id, status: NoteStatus.Closed, reference: "OBS-00000102");
+        note.TriageOutcome = NoteTriageOutcome.Duplicate;
+        note.TriageDecidedAtUtc = DateTimeOffset.UtcNow;
+        note.TriageDecidedByUserId = decider.Id;
+        note.DuplicateOfNoteId = original.Id;
+        _db.OperationalNotes.Add(note);
+        _db.SaveChanges();
+
+        var queries = BuildService(reporter.Id, PermissionCodes.NotesView);
+        var detail = await queries.GetDetailAsync(note.Id);
+
+        Assert.NotNull(detail);
+        Assert.Equal(NoteTriageOutcome.Duplicate, detail!.TriageOutcome);
+        Assert.Equal(decider.DisplayNameAr, detail.TriageDecidedByDisplayName);
+        Assert.Equal(original.Id, detail.DuplicateOfNoteId);
+        Assert.Equal("OBS-00000101", detail.DuplicateOfNoteReferenceNumber);
+    }
+
     private static ICurrentUser FakeUser(Guid userId, params string[] permissions) =>
         new FakeCurrentUser(true, userId, userId.ToString(), "actor", permissions, [new UserScopeSnapshot(ScopeType.Global, null, null, null)]);
 }
