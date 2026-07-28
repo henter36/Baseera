@@ -14,6 +14,8 @@ import { usePermission } from '../../auth/AuthProvider'
 import { NoteSeverityLabelsAr, NoteStatusLabelsAr, enumOptions, severityTone, statusTone } from '../../notes/noteEnums'
 import { listQueryErrorMessage } from '../../shared/listPageUtils'
 import { WorkspaceEmptyState, WorkspaceErrorState, WorkspaceSkeletonRows } from '../../shared/workspaces/WorkspaceStateView'
+import { ObservationMasterDetailLayout, ObservationDetailPane, ObservationListPane } from './workspace/ObservationMasterDetailLayout'
+import { ObservationWorkspaceHeader } from './workspace/ObservationWorkspaceHeader'
 
 const PAGE_SIZE = 20
 const DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
@@ -96,6 +98,7 @@ export function ObservationWorkspacePage() {
   )
   const source = searchParams.get('source') ?? ''
   const listScrollRef = useRef<HTMLDivElement | null>(null)
+  const selectedCardRef = useRef<HTMLButtonElement | null>(null)
   const searchDebounceMountedRef = useRef(false)
   const pushNextUrlUpdateRef = useRef(false)
 
@@ -236,31 +239,17 @@ export function ObservationWorkspacePage() {
   function closeSelection() {
     pushNextUrlUpdateRef.current = true
     setSelectedId('')
+    window.setTimeout(() => selectedCardRef.current?.focus(), 0)
   }
 
   return (
     <div className="observation-workspace">
-      <header className="workspace-topbar">
-        <div>
-          <h1 className="page-title">مساحة عمل الملاحظات</h1>
-          <p className="muted">قائمة، تفاصيل، إجراءات، تكليفات، أدلة وسجل زمني من صفحة واحدة.</p>
-          {source.startsWith('facility:') && (
-            <Link className="muted" to={`/workspaces/facilities/${source.slice('facility:'.length)}`}>
-              ← العودة إلى مساحة عمل السجن
-            </Link>
-          )}
-        </div>
-        <div className="workspace-topbar-actions">
-          <button type="button" className="secondary" onClick={() => setListCollapsed((v) => !v)}>
-            {listCollapsed ? 'إظهار القائمة' : 'طي القائمة'}
-          </button>
-          {canCreate && (
-            <Link to="/notes/new">
-              <button type="button">ملاحظة جديدة</button>
-            </Link>
-          )}
-        </div>
-      </header>
+      <ObservationWorkspaceHeader
+        source={source}
+        listCollapsed={listCollapsed}
+        canCreate={canCreate}
+        onToggleList={() => setListCollapsed((v) => !v)}
+      />
 
       <section className="workspace-filters" role="search" aria-label="بحث وفلاتر الملاحظات">
         <input aria-label="بحث الملاحظات" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="بحث بالرقم أو العنوان" />
@@ -299,8 +288,11 @@ export function ObservationWorkspacePage() {
 
       {listQuery.isError && <WorkspaceErrorState message={errorMessage ?? 'تعذر تحميل مساحة عمل الملاحظات.'} onRetry={() => listQuery.refetch()} />}
 
-      <div className={`workspace-grid ${listCollapsed ? 'is-collapsed' : ''} ${selectedId ? 'has-selection' : ''}`}>
-        <aside className="workspace-list-pane" aria-label="قائمة الملاحظات">
+      <ObservationMasterDetailLayout
+        listCollapsed={listCollapsed}
+        hasSelection={Boolean(selectedId)}
+        list={(
+          <ObservationListPane>
           <div className="workspace-list-header">
             <strong>الملاحظات</strong>
             <span className="muted">{totalCount} نتيجة</span>
@@ -314,7 +306,15 @@ export function ObservationWorkspacePage() {
               />
             )}
             {notes.map((note) => (
-              <ObservationCard key={note.id} note={note} selected={selectedId === note.id} onSelect={() => selectNote(note.id)} />
+              <ObservationCard
+                key={note.id}
+                note={note}
+                selected={selectedId === note.id}
+                refCallback={(element) => {
+                  if (selectedId === note.id) selectedCardRef.current = element
+                }}
+                onSelect={() => selectNote(note.id)}
+              />
             ))}
           </div>
           <div className="pagination compact-pagination">
@@ -322,9 +322,10 @@ export function ObservationWorkspacePage() {
             <span className="muted">صفحة {page} من {totalPages}</span>
             <button type="button" className="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>التالي</button>
           </div>
-        </aside>
-
-        <main className="workspace-detail-pane" aria-live="polite">
+          </ObservationListPane>
+        )}
+        detail={(
+          <ObservationDetailPane>
           {!selectedId && <NoSelection />}
           {selectedId && detailQuery.isLoading && <div className="detail-skeleton" aria-hidden="true" />}
           {selectedId && detailQuery.isError && (
@@ -333,7 +334,7 @@ export function ObservationWorkspacePage() {
               onRetry={() => detailQuery.refetch()}
             />
           )}
-          {detailQuery.data && (
+          {selectedId && detailQuery.data && (
             <WorkspaceDetail
               key={detailQuery.data.note.id}
               data={detailQuery.data}
@@ -346,20 +347,33 @@ export function ObservationWorkspacePage() {
               onNavigate={selectNote}
             />
           )}
-        </main>
-      </div>
+          </ObservationDetailPane>
+        )}
+      />
     </div>
   )
 }
 
-function ObservationCard({ note, selected, onSelect }: Readonly<{ note: NoteListItem; selected: boolean; onSelect: () => void }>) {
+function ObservationCard({
+  note,
+  selected,
+  refCallback,
+  onSelect,
+}: Readonly<{
+  note: NoteListItem
+  selected: boolean
+  refCallback: (element: HTMLButtonElement | null) => void
+  onSelect: () => void
+}>) {
   const locationLabel = noteLocationLabel(note)
   return (
     <button
+      ref={refCallback}
       type="button"
       className={`observation-card ${selected ? 'selected' : ''} ${note.isOverdue ? 'overdue' : ''}`}
       onClick={onSelect}
       aria-pressed={selected}
+      aria-current={selected ? 'true' : undefined}
     >
       <div className="observation-card-row">
         <span className="mono ref">{note.referenceNumber}</span>
@@ -397,8 +411,14 @@ function WorkspaceDetail({
   position?: { index: number; total: number }
   onNavigate: (id: string) => void
 }>) {
+  const titleRef = useRef<HTMLHeadingElement | null>(null)
+
+  useEffect(() => {
+    titleRef.current?.focus()
+  }, [data.note.id])
+
   return (
-    <article className="workspace-detail">
+    <article className="workspace-detail" data-testid="observation-detail-document-flow">
       <button type="button" className="secondary mobile-back" onClick={onBack}>رجوع إلى القائمة</button>
       <header className="workspace-detail-header">
         <div>
@@ -408,7 +428,7 @@ function WorkspaceDetail({
             <span className="badge" data-tone={severityTone(data.note.severity)}>{data.note.severityAr}</span>
             {data.summary.currentBlockerAr && <span className="badge" data-tone="warn">{data.summary.currentBlockerAr}</span>}
           </div>
-          <h2>{data.note.title}</h2>
+          <h2 ref={titleRef} tabIndex={-1}>{data.note.title}</h2>
           <div className="workspace-header-meta">
             <span>{data.note.noteTypeNameAr}</span>
             <span>{data.note.reportedByDisplayName || 'مبلّغ غير محدد'}</span>

@@ -240,66 +240,31 @@ describe('FacilityWorkspacePage', () => {
     expect(getWorkspace).not.toHaveBeenCalled()
   })
 
-  it('opens note details in the context panel and syncs URL state', async () => {
+  it('opens note details in the Observation Workspace instead of a context dialog', async () => {
     renderPage('/workspaces/facilities/facility-a')
 
     fireEvent.click(await screen.findByRole('button', { name: /ملاحظة حرجة/ }))
 
     await waitFor(() => {
-      expect(screen.getByTestId('router-location')).toHaveTextContent('panel=note')
-      expect(screen.getByTestId('router-location')).toHaveTextContent('entityId=note-1')
+      expect(screen.getByTestId('router-location')).toHaveTextContent('/notes/workspace')
+      expect(screen.getByTestId('router-location')).toHaveTextContent('facilityId=facility-a')
+      expect(screen.getByTestId('router-location')).toHaveTextContent('noteId=note-1')
+      expect(screen.getByTestId('router-location')).toHaveTextContent(encodeURIComponent('facility:facility-a'))
     })
-    expect(await screen.findByRole('heading', { name: 'ملاحظة حرجة' })).toBeInTheDocument()
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.tagName).toBe('DIALOG')
-    expect(dialog).toHaveAttribute('open')
-    expect(dialog).toHaveAttribute('aria-labelledby', 'context-panel-title')
-    expect(screen.getByText('وصف تفصيلي للملاحظة الحرجة')).toBeInTheDocument()
-    expect(screen.getByText('مفتوحة').closest('dl')).toHaveAttribute('data-tone', 'danger')
-    expect(screen.getByRole('link', { name: 'فتح الصفحة الكاملة' })).toHaveAttribute('href', '/notes/workspace?noteId=note-1')
-    expect(getNoteWorkspaceDetail).toHaveBeenCalledWith('note-1')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(getNoteWorkspaceDetail).not.toHaveBeenCalled()
   })
 
-  it('uses priority tone for a non-overdue note priority and info when no priority summary exists', async () => {
-    getNoteWorkspaceDetail.mockResolvedValue({
-      ...noteWorkspaceDetail,
-      note: { ...noteWorkspaceDetail.note, isOverdue: false },
-    })
-
-    const priorityRender = renderPage('/workspaces/facilities/facility-a')
-
-    fireEvent.click(await screen.findByRole('button', { name: /ملاحظة حرجة/ }))
-
-    expect(await screen.findByText('مفتوحة')).toBeInTheDocument()
-    expect(screen.getByText('مفتوحة').closest('dl')).toHaveAttribute('data-tone', 'danger')
-    priorityRender.unmount()
-
-    getNoteWorkspaceDetail.mockResolvedValue({
-      ...noteWorkspaceDetail,
-      note: { ...noteWorkspaceDetail.note, id: 'note-missing-summary', isOverdue: false },
-    })
-
+  it('redirects legacy facility note panel links to the Observation Workspace', async () => {
     renderPage('/workspaces/facilities/facility-a?panel=note&entityId=note-missing-summary')
 
-    expect(await screen.findByText('مفتوحة')).toBeInTheDocument()
-    expect(screen.getByText('مفتوحة').closest('dl')).toHaveAttribute('data-tone', 'info')
-  })
-
-  it('keeps unsupported note actions disabled inside the context panel', async () => {
-    getNoteWorkspaceDetail.mockResolvedValueOnce({
-      ...noteWorkspaceDetail,
-      allowedActions: ['START_WORK', 'ASSIGN'],
+    await waitFor(() => {
+      expect(screen.getByTestId('router-location')).toHaveTextContent('/notes/workspace')
+      expect(screen.getByTestId('router-location')).toHaveTextContent('facilityId=facility-a')
+      expect(screen.getByTestId('router-location')).toHaveTextContent('noteId=note-missing-summary')
     })
-
-    renderPage('/workspaces/facilities/facility-a')
-
-    fireEvent.click(await screen.findByRole('button', { name: /ملاحظة حرجة/ }))
-
-    const assign = await screen.findByRole('button', { name: 'إسناد' }, { timeout: 15000 })
-    expect(assign).toBeDisabled()
-    expect(assign).toHaveAttribute('title', 'يتطلب هذا الإجراء نموذجًا متقدمًا في الصفحة الكاملة.')
-    expect(screen.getByRole('button', { name: 'بدء المعالجة' })).toBeEnabled()
-  }, 20000)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
 
   it('opens corrective action details in the context panel without page navigation', async () => {
     renderPage('/workspaces/facilities/facility-a')
@@ -435,16 +400,16 @@ describe('FacilityWorkspacePage', () => {
     expect(within(screen.getByRole('dialog')).getAllByText('لا يوجد Risk/RiskTreatment engine في النطاق الحالي.').length).toBeGreaterThan(0)
   })
 
-  it('supports direct panel links and browser back to the operational scene', async () => {
-    renderPage('/workspaces/facilities/facility-a?panel=note&entityId=note-1')
+  it('keeps non-note direct panel links closable inside the operational scene', async () => {
+    renderPage('/workspaces/facilities/facility-a?panel=corrective-action&entityId=action-1')
 
-    expect(await screen.findByRole('heading', { name: 'ملاحظة حرجة' })).toBeInTheDocument()
+    expect(await screen.findByText('وصف تفصيلي للإجراء التصحيحي')).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('إغلاق لوحة التفاصيل'))
 
     await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: 'ملاحظة حرجة' })).not.toBeInTheDocument()
-      expect(screen.getByTestId('router-location')).not.toHaveTextContent('panel=note')
+      expect(screen.queryByText('وصف تفصيلي للإجراء التصحيحي')).not.toBeInTheDocument()
+      expect(screen.getByTestId('router-location')).not.toHaveTextContent('panel=corrective-action')
     })
   })
 
@@ -464,8 +429,8 @@ describe('FacilityWorkspacePage', () => {
   it('closes the context panel without losing filters', async () => {
     renderPage('/workspaces/facilities/facility-a?fromUtc=2026-07-09T21%3A00%3A00.000Z')
 
-    fireEvent.click(await screen.findByRole('button', { name: /ملاحظة حرجة/ }))
-    await screen.findByRole('heading', { name: 'ملاحظة حرجة' })
+    fireEvent.click(await screen.findByRole('button', { name: /إجراء متأخر/ }))
+    await screen.findByText('وصف تفصيلي للإجراء التصحيحي')
 
     expect(screen.getByRole('dialog')).toHaveFocus()
     fireEvent.click(screen.getByLabelText('إغلاق لوحة التفاصيل'))
@@ -473,16 +438,16 @@ describe('FacilityWorkspacePage', () => {
     await waitFor(() => {
       const location = screen.getByTestId('router-location')
       expect(location).toHaveTextContent('fromUtc=2026-07-09T21%3A00%3A00.000Z')
-      expect(location).not.toHaveTextContent('panel=note')
-      expect(location).not.toHaveTextContent('entityId=note-1')
+      expect(location).not.toHaveTextContent('panel=corrective-action')
+      expect(location).not.toHaveTextContent('entityId=action-1')
     })
-    expect(await screen.findByRole('button', { name: /ملاحظة حرجة/ })).toHaveFocus()
+    expect(await screen.findByRole('button', { name: /إجراء متأخر/ })).toHaveFocus()
   })
 
-  it('keeps Escape closing the native dialog and returning focus to the selected row', async () => {
+  it('keeps Escape closing non-note context panels and returning focus to the selected row', async () => {
     renderPage('/workspaces/facilities/facility-a')
 
-    const row = await screen.findByRole('button', { name: /ملاحظة حرجة/ })
+    const row = await screen.findByRole('button', { name: /إجراء متأخر/ })
     fireEvent.click(row)
     expect(await screen.findByRole('dialog')).toHaveFocus()
 
@@ -490,7 +455,7 @@ describe('FacilityWorkspacePage', () => {
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      expect(screen.getByTestId('router-location')).not.toHaveTextContent('panel=note')
+      expect(screen.getByTestId('router-location')).not.toHaveTextContent('panel=corrective-action')
     })
     expect(row).toHaveFocus()
   })
@@ -621,6 +586,7 @@ function renderPage(initialEntry: string) {
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/workspaces/facilities/:facilityId" element={<><FacilityWorkspacePage /><LocationProbe /></>} />
+          <Route path="/notes/workspace" element={<><div>OBSERVATION_WORKSPACE</div><LocationProbe /></>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
