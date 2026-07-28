@@ -172,9 +172,13 @@ public sealed class NoteTriageService(
 
     private static void EnsureAtTriageGate(OperationalNote note)
     {
-        if (note.Status is NoteStatus.Closed or NoteStatus.Cancelled)
+        // Restricted to the statuses that can actually reach the approved decision-closure
+        // transition (Open/Assigned/InProgress -> Closed, NoteStateMachine): Draft (not submitted
+        // yet), PendingVerification, and Reopened have no such transition, so triaging them would
+        // create a Pending approval that ApplyClosureForApprovedDecision could never legally close.
+        if (note.Status is not (NoteStatus.Open or NoteStatus.Assigned or NoteStatus.InProgress))
         {
-            throw new InvalidOperationException("لا يمكن فرز ملاحظة مغلقة أو ملغاة.");
+            throw new InvalidOperationException("لا يمكن فرز الملاحظة في حالتها الحالية.");
         }
 
         if (note.TriageOutcome is not null)

@@ -57,6 +57,7 @@ public sealed class NoteDecisionApprovalService(
         }
 
         var now = DateTimeOffset.UtcNow;
+        var fromStatus = note.Status;
         approval.Status = NoteDecisionApprovalStatus.Approved;
         approval.ReviewedByUserId = actorId;
         approval.ReviewedAtUtc = now;
@@ -69,7 +70,7 @@ public sealed class NoteDecisionApprovalService(
         db.Add(new NoteStatusHistory
         {
             OperationalNoteId = note.Id,
-            FromStatus = null,
+            FromStatus = fromStatus,
             ToStatus = NoteStatus.Closed,
             ChangedByUserId = actorId,
             ChangedAtUtc = now,
@@ -141,13 +142,14 @@ public sealed class NoteDecisionApprovalService(
         return detail ?? throw new InvalidOperationException("تعذر تحميل تفاصيل الملاحظة بعد الحفظ.");
     }
 
-    private static void ApplyClosureForApprovedDecision(OperationalNote note, NoteDecisionApproval approval, DateTimeOffset now)
+    private void ApplyClosureForApprovedDecision(OperationalNote note, NoteDecisionApproval approval, DateTimeOffset now)
     {
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Closed);
         note.Status = NoteStatus.Closed;
         note.ClosedAtUtc = now;
         note.ClosedByUserId = approval.ReviewedByUserId;
         note.UpdatedAtUtc = now;
+        note.UpdatedBy = currentUser.ExternalSubject;
 
         switch (approval.DecisionType)
         {

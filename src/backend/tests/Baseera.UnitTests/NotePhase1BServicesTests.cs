@@ -99,6 +99,47 @@ public sealed class NotePhase1BServicesTests : IDisposable
         Assert.Equal(NoteStatus.Open, result.Status);
     }
 
+    [Theory]
+    [InlineData(NoteStatus.Draft)]
+    [InlineData(NoteStatus.PendingVerification)]
+    [InlineData(NoteStatus.Reopened)]
+    public async Task Triage_gate_rejects_statuses_that_cannot_reach_a_decision_closure(NoteStatus status)
+    {
+        // EnsureAtTriageGate must only accept Open/Assigned/InProgress: those are the only statuses
+        // NoteStateMachine allows to transition -> Closed via an approved decision. Triaging a note in
+        // any other status would create a Pending approval that could never legally close it.
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var actor = NoteTestFixtures.AddUser(_db, "actor");
+        var note = SeedNote(status, reporter.Id);
+        var triage = BuildTriage(actor.Id, PermissionCodes.NotesUpdate, PermissionCodes.NotesProposeInvalid, PermissionCodes.NotesView);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            triage.DecideValidAsync(note.Id, new TriageValidRequest(RowVersionOf(note))));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            triage.ProposeInvalidAsync(note.Id, new ProposeInvalidRequest("مبرر", RowVersionOf(note))));
+    }
+
+    [Fact]
+    public async Task Approved_invalid_decision_records_from_status_and_updated_by_on_the_note()
+    {
+        var reporter = NoteTestFixtures.AddUser(_db, "reporter");
+        var proposer = NoteTestFixtures.AddUser(_db, "proposer");
+        var reviewer = NoteTestFixtures.AddUser(_db, "reviewer");
+        var note = SeedNote(NoteStatus.InProgress, reporter.Id);
+        var triage = BuildTriage(proposer.Id, PermissionCodes.NotesProposeInvalid, PermissionCodes.NotesView);
+        var approval = await triage.ProposeInvalidAsync(note.Id, new ProposeInvalidRequest("مبرر واضح", RowVersionOf(note)));
+
+        var approvals = BuildApprovals(reviewer.Id, PermissionCodes.NotesApproveInvalid, PermissionCodes.NotesView);
+        var result = await approvals.ApproveAsync(note.Id, approval.Id, new ApproveNoteDecisionRequest(null, approval.RowVersion));
+
+        Assert.Equal(NoteStatus.Closed, result.Status);
+        var history = _db.NoteStatusHistories.Single(h => h.OperationalNoteId == note.Id && h.ToStatus == NoteStatus.Closed);
+        Assert.Equal(NoteStatus.InProgress, history.FromStatus);
+
+        var stored = _db.OperationalNotes.Single(n => n.Id == note.Id);
+        Assert.Equal(reviewer.Id.ToString(), stored.UpdatedBy);
+    }
+
     [Fact]
     public async Task Duplicate_cannot_link_to_self()
     {
