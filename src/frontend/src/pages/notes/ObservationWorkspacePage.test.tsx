@@ -149,7 +149,7 @@ const neutralActionCenter = {
   secondaryActions: [] as string[],
   pendingDecision: null,
   decisionApprovalRequired: false,
-  canSelfApprove: false,
+  canApprovePendingDecision: false,
   blocker: null,
   nextAction: null,
   closureReasonToken: 'Open',
@@ -570,7 +570,7 @@ describe('ObservationWorkspacePage', () => {
     expect(badgeFor('مطلوبة')).toHaveAttribute('data-tone', 'muted')
   })
 
-  it('does not offer self-approval on a pending decision (canSelfApprove=false)', async () => {
+  it('does not offer self-approval on a pending decision (canApprovePendingDecision=false)', async () => {
     workspaceDetail.mockResolvedValue({
       ...detail,
       decisionApprovals: [{
@@ -592,7 +592,7 @@ describe('ObservationWorkspacePage', () => {
         reviewReason: null,
         rowVersion: 'rv-approval',
       }],
-      actionCenter: { ...neutralActionCenter, pendingDecision: 'اعتماد غير صحيحة', decisionApprovalRequired: true, canSelfApprove: false },
+      actionCenter: { ...neutralActionCenter, pendingDecision: 'اعتماد غير صحيحة', decisionApprovalRequired: true, canApprovePendingDecision: false },
     })
 
     renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111&section=approvals')

@@ -819,7 +819,7 @@ function PendingDecisionBanner({ approval, data }: Readonly<{ approval: NoteDeci
   const queryClient = useQueryClient()
   const [reviewReason, setReviewReason] = useState('')
   const [showReturn, setShowReturn] = useState(false)
-  const canApprove = data.actionCenter.canSelfApprove
+  const canApprove = data.actionCenter.canApprovePendingDecision
 
   const invalidateAll = async () => {
     await queryClient.invalidateQueries({ queryKey: ['notes-workspace'] })

@@ -581,7 +581,7 @@ public sealed record NoteActionCenterDto(
     IReadOnlyList<string> SecondaryActions,
     string? PendingDecision,
     bool DecisionApprovalRequired,
-    bool CanSelfApprove,
+    bool CanApprovePendingDecision,
     string? Blocker,
     string? NextAction,
     string ClosureReasonToken,

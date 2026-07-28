@@ -242,7 +242,10 @@ public sealed class NoteWorkspaceQueryService(
         var primary = ordered.FirstOrDefault();
         var secondary = ordered.Skip(1).Take(3).ToList();
 
-        var canSelfApprove = pendingDecision is not null
+        // True when the *current* user may approve the pending decision (not the proposer, and
+        // holds the matching Notes.Approve* permission) — i.e. "can this viewer approve it", not
+        // "is self-approval allowed" (which is never true; see NoteDecisionApprovalService).
+        var canApprovePendingDecision = pendingDecision is not null
             && currentUser.UserId != pendingDecision.ProposedByUserId
             && currentUser.HasPermission(pendingDecision.DecisionType switch
             {
@@ -271,7 +274,7 @@ public sealed class NoteWorkspaceQueryService(
             secondary,
             pendingDecision?.DecisionTypeAr,
             pendingDecision is not null,
-            canSelfApprove,
+            canApprovePendingDecision,
             blocker,
             nextAction,
             note.ClosureReason?.ToString() ?? "Open",

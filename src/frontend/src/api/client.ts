@@ -299,7 +299,7 @@ export type NoteActionCenter = {
   secondaryActions: NoteWorkspaceAllowedAction[]
   pendingDecision?: string | null
   decisionApprovalRequired: boolean
-  canSelfApprove: boolean
+  canApprovePendingDecision: boolean
   blocker?: string | null
   nextAction?: string | null
   closureReasonToken: string
