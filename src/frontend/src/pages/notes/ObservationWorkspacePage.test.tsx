@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ObservationWorkspacePage } from './ObservationWorkspacePage'
 
-const { workspace, workspaceDetail, listRegions, listFacilities, listFacilityUnits, listNoteTypes, eligibleAssignees, assign, verifyClosure } = vi.hoisted(() => ({
+const { workspace, workspaceDetail, listRegions, listFacilities, listFacilityUnits, listNoteTypes, eligibleAssignees, assign, verifyClosure, uploadAttachment } = vi.hoisted(() => ({
   workspace: vi.fn(),
   workspaceDetail: vi.fn(),
   listRegions: vi.fn(async () => ({ items: [], page: 1, pageSize: 20, totalCount: 0 })),
@@ -15,6 +15,7 @@ const { workspace, workspaceDetail, listRegions, listFacilities, listFacilityUni
   eligibleAssignees: vi.fn(async () => []),
   assign: vi.fn(),
   verifyClosure: vi.fn(),
+  uploadAttachment: vi.fn(),
 }))
 
 vi.mock('../../auth/AuthProvider', () => ({
@@ -39,6 +40,7 @@ vi.mock('../../api/client', async () => {
         assign,
         verifyClosure,
       },
+      uploadAttachment,
     },
   }
 })
@@ -135,8 +137,7 @@ const secondDetail = {
   },
 }
 
-function renderPage(initialEntry = '/') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderPage(initialEntry = '/', queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
@@ -144,6 +145,21 @@ function renderPage(initialEntry = '/') {
       </MemoryRouter>
     </QueryClientProvider>,
   )
+}
+
+function renderPageWithRouter(initialEntry = '/notes/workspace') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const router = createMemoryRouter([
+    { path: '/notes/workspace', element: <ObservationWorkspacePage /> },
+  ], { initialEntries: [initialEntry] })
+
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  )
+
+  return { ...view, router, queryClient }
 }
 
 describe('ObservationWorkspacePage', () => {
@@ -157,8 +173,10 @@ describe('ObservationWorkspacePage', () => {
     eligibleAssignees.mockReset()
     assign.mockReset()
     verifyClosure.mockReset()
+    uploadAttachment.mockReset()
     workspace.mockResolvedValue({ notes: { items: [note], page: 1, pageSize: 20, totalCount: 1 } })
     workspaceDetail.mockResolvedValue(detail)
+    uploadAttachment.mockResolvedValue({ id: 'attachment-1' })
   })
 
   it('keeps operators in one master-detail workspace and renders server allowed actions', async () => {
@@ -203,6 +221,25 @@ describe('ObservationWorkspacePage', () => {
     expect(workspace.mock.calls.at(-1)?.[0]).toMatchObject({ page: 3 })
   })
 
+  it.each([
+    ['summary', 'الوصف'],
+    ['evidence', 'لا توجد مرفقات'],
+    ['bogus', 'الوصف'],
+    [null, 'الوصف'],
+  ])('resolves section=%s to a valid workspace panel', async (section, expectedText) => {
+    const query = new URLSearchParams({
+      noteId: '11111111-1111-1111-1111-111111111111',
+    })
+    if (section) {
+      query.set('section', section)
+    }
+
+    renderPage(`/notes/workspace?${query.toString()}`)
+
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+    expect(screen.getByText(expectedText)).toBeInTheDocument()
+  })
+
   it('clears inline action state when switching selected notes', async () => {
     workspace.mockResolvedValue({ notes: { items: [note, secondNote], page: 1, pageSize: 20, totalCount: 2 } })
     workspaceDetail.mockImplementation(async (id: string) => {
@@ -240,6 +277,61 @@ describe('ObservationWorkspacePage', () => {
     await userEvent.click(screen.getByRole('button', { name: /التالية/ }))
 
     expect(await screen.findByRole('heading', { name: 'تسرب مياه في غرفة الخدمات' })).toBeInTheDocument()
+  })
+
+  it('restores note selection and closed detail state through browser Back and Forward navigation', async () => {
+    workspace.mockResolvedValue({ notes: { items: [note, secondNote], page: 1, pageSize: 20, totalCount: 2 } })
+    workspaceDetail.mockImplementation(async (id: string) =>
+      id === secondNote.id ? secondDetail : detail)
+    const user = userEvent.setup()
+    const { router } = renderPageWithRouter()
+
+    await user.click(await screen.findByRole('button', { name: /OBS-00000024/ }))
+    expect(await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /OBS-00000025/ }))
+    expect(await screen.findByRole('heading', { name: 'تسرب مياه في غرفة الخدمات' })).toBeInTheDocument()
+
+    await router.navigate(-1)
+    expect(await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })).toBeInTheDocument()
+
+    await router.navigate(-1)
+    expect(await screen.findByText('اختر ملاحظة')).toBeInTheDocument()
+
+    await router.navigate(1)
+    expect(await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })).toBeInTheDocument()
+
+    await router.navigate(1)
+    expect(await screen.findByRole('heading', { name: 'تسرب مياه في غرفة الخدمات' })).toBeInTheDocument()
+  })
+
+  it('clears the file input and invalidates detail data after an attachment upload succeeds', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+    const user = userEvent.setup()
+
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111&section=evidence', queryClient)
+
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+    const input = screen.getByLabelText('إضافة مرفق') as HTMLInputElement
+    const button = screen.getByRole('button', { name: 'رفع المرفق' })
+
+    expect(button).toBeDisabled()
+    const file = new File(['evidence'], 'evidence.txt', { type: 'text/plain' })
+    await user.upload(input, file)
+
+    expect(input.files).toHaveLength(1)
+    expect(button).toBeEnabled()
+
+    await user.click(button)
+
+    await waitFor(() => {
+      expect(uploadAttachment).toHaveBeenCalledWith(file, 'OperationalNote', note.id, 'مرفق داعم للملاحظة')
+      expect(input.value).toBe('')
+      expect(input.files).toHaveLength(0)
+      expect(button).toBeDisabled()
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['notes-workspace-detail', note.id] })
+    })
   })
 
   it('shows a dedicated closure-summary form for VERIFY_CLOSURE and a return link to the originating facility workspace', async () => {

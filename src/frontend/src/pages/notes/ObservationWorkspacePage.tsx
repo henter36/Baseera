@@ -58,6 +58,18 @@ const SECTIONS = [
 
 type SectionKey = (typeof SECTIONS)[number][0]
 
+const SECTION_KEYS = new Set<SectionKey>(
+  SECTIONS.map(([key]) => key),
+)
+
+function resolveSectionKey(value: string | null): SectionKey {
+  if (value && SECTION_KEYS.has(value as SectionKey)) {
+    return value as SectionKey
+  }
+
+  return 'summary'
+}
+
 export function ObservationWorkspacePage() {
   const canView = usePermission('Notes.View')
   const canCreate = usePermission('Notes.Create')
@@ -79,10 +91,13 @@ export function ObservationWorkspacePage() {
   const [sortDesc] = useState(searchParams.get('sortDesc') !== 'false')
   const [selectedId, setSelectedId] = useState(searchParams.get('noteId') ?? '')
   const [listCollapsed, setListCollapsed] = useState(searchParams.get('view') === 'detail')
-  const [activeSection, setActiveSection] = useState<SectionKey>((searchParams.get('section') as SectionKey) || 'summary')
+  const [activeSection, setActiveSection] = useState<SectionKey>(() =>
+    resolveSectionKey(searchParams.get('section')),
+  )
   const source = searchParams.get('source') ?? ''
   const listScrollRef = useRef<HTMLDivElement | null>(null)
   const searchDebounceMountedRef = useRef(false)
+  const pushNextUrlUpdateRef = useRef(false)
 
   useEffect(() => {
     if (!searchDebounceMountedRef.current) {
@@ -136,9 +151,25 @@ export function ObservationWorkspacePage() {
     if (selectedId) next.set('noteId', selectedId)
     if (selectedId) next.set('section', activeSection)
     if (source) next.set('source', source)
-    setSearchParams(next, { replace: true })
+    const replace = !pushNextUrlUpdateRef.current
+    pushNextUrlUpdateRef.current = false
+    setSearchParams(next, { replace })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, due, selectedId, activeSection, source, setSearchParams, page, sortBy, sortDesc])
+
+  useEffect(() => {
+    const section = resolveSectionKey(searchParams.get('section'))
+
+    setActiveSection((current) =>
+      current === section ? current : section,
+    )
+  }, [searchParams])
+
+  useEffect(() => {
+    const noteId = searchParams.get('noteId') ?? ''
+    setSelectedId((current) => current === noteId ? current : noteId)
+    setListCollapsed(searchParams.get('view') === 'detail')
+  }, [searchParams])
 
   const regionsQuery = useQuery({ queryKey: ['workspace-regions'], queryFn: () => api.regions(), enabled: canView })
   const facilitiesQuery = useQuery({
@@ -197,8 +228,14 @@ export function ObservationWorkspacePage() {
   const errorMessage = listQueryErrorMessage(listQuery.error, 'ليست لديك صلاحية عرض الملاحظات.', 'تعذر تحميل مساحة عمل الملاحظات.')
 
   function selectNote(id: string) {
+    pushNextUrlUpdateRef.current = true
     setSelectedId(id)
     setActiveSection('summary')
+  }
+
+  function closeSelection() {
+    pushNextUrlUpdateRef.current = true
+    setSelectedId('')
   }
 
   return (
@@ -302,7 +339,7 @@ export function ObservationWorkspacePage() {
               data={detailQuery.data}
               activeSection={activeSection}
               onSectionChange={setActiveSection}
-              onBack={() => setSelectedId('')}
+              onBack={closeSelection}
               previousNote={previousNote}
               nextNote={nextNote}
               position={currentIndex >= 0 ? { index: currentIndex, total: notes.length } : undefined}
@@ -466,10 +503,12 @@ function ActionBar({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   }
 
   function renderButton(action: NoteWorkspaceAllowedAction, variant: 'primary' | 'secondary') {
+    const className = actionButtonClassName(activeAction, action, variant)
+
     if (action === 'ADD_ACTION') {
       return (
         <Link key={action} to={`/notes/${data.note.id}/corrective-actions/new`}>
-          <button type="button" className={variant === 'primary' ? undefined : 'secondary'}>{ACTION_LABELS[action]}</button>
+          <button type="button" className={className}>{ACTION_LABELS[action]}</button>
         </Link>
       )
     }
@@ -477,7 +516,7 @@ function ActionBar({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
       <button
         key={action}
         type="button"
-        className={activeAction === action ? undefined : variant === 'primary' ? undefined : 'secondary'}
+        className={className}
         onClick={() => openAction(action)}
       >
         {ACTION_LABELS[action]}
@@ -535,6 +574,22 @@ function ActionBar({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
       )}
     </div>
   )
+}
+
+function actionButtonClassName(
+  activeAction: NoteWorkspaceAllowedAction | '',
+  action: NoteWorkspaceAllowedAction,
+  variant: 'primary' | 'secondary',
+) {
+  if (activeAction === action) {
+    return undefined
+  }
+
+  if (variant === 'primary') {
+    return undefined
+  }
+
+  return 'secondary'
 }
 
 function SummaryTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
@@ -598,6 +653,7 @@ function AssignmentTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
 function EvidenceTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   const queryClient = useQueryClient()
   const [file, setFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const canUpload = usePermission('Attachments.Upload')
   const upload = useMutation({
     mutationFn: async () => {
@@ -606,6 +662,10 @@ function EvidenceTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
     },
     onSuccess: async () => {
       setFile(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+
       await queryClient.invalidateQueries({ queryKey: ['notes-workspace-detail', data.note.id] })
     },
   })
@@ -618,6 +678,7 @@ function EvidenceTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
           onSubmit={(event) => { event.preventDefault(); upload.mutate() }}
         >
           <input
+            ref={fileInputRef}
             aria-label="إضافة مرفق"
             type="file"
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
