@@ -196,6 +196,21 @@ describe('ObservationWorkspacePage', () => {
     expect(screen.getByText('الإنارة متوقفة في الممر الرئيسي وتحتاج معالجة عاجلة.')).toBeInTheDocument()
   })
 
+  it('renders observation detail as in-page master-detail content, not as modal or overlay', async () => {
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111')
+
+    expect(await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })).toBeInTheDocument()
+    expect(screen.getByTestId('observation-master-detail-layout')).toBeInTheDocument()
+    expect(screen.getByTestId('observation-list-pane')).toBeInTheDocument()
+    expect(screen.getByTestId('observation-detail-pane')).toContainElement(screen.getByTestId('observation-detail-document-flow'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/إغلاق لوحة التفاصيل/)).not.toBeInTheDocument()
+    expect(document.querySelector('[aria-modal="true"]')).not.toBeInTheDocument()
+    expect(document.querySelector('.workspace-detail-backdrop, .modal-backdrop, .drawer-backdrop, .overlay')).not.toBeInTheDocument()
+    expect(document.body.style.overflow).not.toBe('hidden')
+  })
+
   it('sends workspace filters to the server-side query', async () => {
     renderPage()
     await screen.findByText('تعطل إنارة الممر الرئيسي')
@@ -303,6 +318,19 @@ describe('ObservationWorkspacePage', () => {
 
     await router.navigate(1)
     expect(await screen.findByRole('heading', { name: 'تسرب مياه في غرفة الخدمات' })).toBeInTheDocument()
+  })
+
+  it('keeps filter context when the in-page mobile back control returns to the list', async () => {
+    const { router } = renderPageWithRouter('/notes/workspace?facilityId=facility-1&noteId=11111111-1111-1111-1111-111111111111&source=facility%3Afacility-1')
+
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+    await userEvent.click(screen.getByRole('button', { name: 'رجوع إلى القائمة' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('اختر ملاحظة')).toBeInTheDocument()
+      expect(router.state.location.search).toContain('facilityId=facility-1')
+      expect(router.state.location.search).not.toContain('noteId=')
+    })
   })
 
   it('clears the file input and invalidates detail data after an attachment upload succeeds', async () => {

@@ -202,7 +202,8 @@ export function FacilityWorkspacePage() {
     }
   }, [facilityId, searchParams])
 
-  const panel = panelFromSearch(searchParams)
+  const rawPanel = panelFromSearch(searchParams)
+  const panel = rawPanel?.type === 'note' ? null : rawPanel
   const query = useQuery({
     queryKey: ['workspace', WORKSPACE_KEY, facilityId, filters],
     queryFn: () => api.workspaces.get(WORKSPACE_KEY, filters),
@@ -219,6 +220,11 @@ export function FacilityWorkspacePage() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [panel, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (!facilityId || rawPanel?.type !== 'note') return
+    navigate(observationWorkspaceUrl(facilityId, rawPanel.entityId), { replace: true })
+  }, [facilityId, rawPanel?.entityId, rawPanel?.type, navigate])
 
   if (!facilityId) {
     return <WorkspaceEmpty message="معرّف السجن مطلوب." />
@@ -262,6 +268,11 @@ export function FacilityWorkspacePage() {
     setSearchParams(params, { replace: false })
   }
   const openPanel = (next: PanelState) => {
+    if (next.type === 'note') {
+      navigate(observationWorkspaceUrl(facilityId, next.entityId))
+      return
+    }
+
     const params = new URLSearchParams(searchParams)
     params.set('panel', next.type)
     params.set('entityId', next.entityId)
@@ -2475,6 +2486,14 @@ function buildUrl(path: string, params: URLSearchParams): string {
   return queryString ? `${path}?${queryString}` : path
 }
 
+function observationWorkspaceUrl(facilityId: string, noteId: string): string {
+  return buildUrl('/notes/workspace', new URLSearchParams({
+    facilityId,
+    noteId,
+    source: `facility:${facilityId}`,
+  }))
+}
+
 function closePanel(
   searchParams: URLSearchParams,
   setSearchParams: ReturnType<typeof useSearchParams>[1],
@@ -2593,7 +2612,10 @@ function findPanelSummary(
 }
 
 function legacyRouteForPanel(panel: PanelState, summary: PanelSummary | undefined, shell: WorkspaceShellDto): string | null {
-  if (panel.type === 'note') return `/notes/workspace?noteId=${encodeURIComponent(panel.entityId)}`
+  if (panel.type === 'note') {
+    const facilityId = shell.context.facilityId
+    return facilityId ? observationWorkspaceUrl(facilityId, panel.entityId) : `/notes/workspace?noteId=${encodeURIComponent(panel.entityId)}`
+  }
   if (panel.type === 'corrective-action') return `/corrective-actions?id=${encodeURIComponent(panel.entityId)}`
   if (panel.type === 'form-assignment') return `/form-compliance/facilities/${shell.context.facilityId ?? ''}`
   if (panel.type === 'escalation') return '/settings/escalations/occurrences'

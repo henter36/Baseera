@@ -125,17 +125,27 @@ button.secondary {
   color: var(--ink);
 }
 
+.button-link.primary,
 .button-link.secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 0.55rem;
   padding: 0.55rem 1rem;
-  background: var(--bg-accent);
-  color: var(--ink);
   text-decoration: none;
 }
 
+.button-link.primary {
+  background: var(--brand);
+  color: #fff;
+}
+
+.button-link.secondary {
+  background: var(--bg-accent);
+  color: var(--ink);
+}
+
+.button-link.primary:focus-visible,
 .button-link.secondary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent);
   outline-offset: 2px;
@@ -345,6 +355,21 @@ th, td {
   min-width: 0;
 }
 
+.workspace-list-pane {
+  height: min(980px, calc(100vh - 220px));
+  min-height: 520px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-detail-pane {
+  max-height: min(980px, calc(100vh - 220px));
+  min-height: 520px;
+  overflow: auto;
+  scroll-behavior: smooth;
+}
+
 .workspace-list-header {
   display: flex;
   justify-content: space-between;
@@ -357,7 +382,8 @@ th, td {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  max-height: calc(100vh - 280px);
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   scroll-behavior: smooth;
 }
@@ -652,6 +678,28 @@ th, td {
   }
 }
 
+@media (min-width: 721px) and (max-width: 920px) {
+  .workspace-grid {
+    grid-template-columns: minmax(220px, 32%) minmax(0, 68%);
+  }
+
+  .workspace-list-pane {
+    min-height: 480px;
+  }
+
+  .workspace-grid.is-collapsed {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .observation-card {
+    min-height: 84px;
+  }
+
+  .observation-card-meta {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
   .app-shell {
     display: block;
@@ -684,6 +732,14 @@ th, td {
 
   .workspace-grid {
     display: block;
+  }
+
+  .workspace-list-pane,
+  .workspace-detail-pane {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
   }
 
   .workspace-grid.has-selection .workspace-list-pane {
