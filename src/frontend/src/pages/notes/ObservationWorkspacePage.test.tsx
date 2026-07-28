@@ -541,6 +541,35 @@ describe('ObservationWorkspacePage', () => {
     expect(screen.getByRole('button', { name: 'القطع والمواد' })).toBeInTheDocument()
   })
 
+  it('resolves each part status to its own badge tone (installed/cancelled/other)', async () => {
+    workspaceDetail.mockResolvedValue({
+      ...detail,
+      note: {
+        ...detail.note,
+        triageOutcome: 0,
+        treatmentResultType: 0,
+        treatmentExecutionType: 1,
+        noteTypeSupportsPartsWorkflow: true,
+      },
+      partsRequirements: [
+        { id: 'part-installed', operationalNoteId: note.id, itemName: 'مضخة', itemCode: null, quantity: 1, unit: 'قطعة', requestNumber: null, status: 4, statusAr: 'تم التركيب', requestedAtUtc: '2026-07-23T09:00:00Z', availableAtUtc: null, receivedAtUtc: null, installedAtUtc: '2026-07-24T09:00:00Z', supplierOrSource: null, notes: null, cancelReason: null, rowVersion: 'rv-1' },
+        { id: 'part-cancelled', operationalNoteId: note.id, itemName: 'خرطوم', itemCode: null, quantity: 1, unit: 'قطعة', requestNumber: null, status: 5, statusAr: 'ملغاة', requestedAtUtc: '2026-07-23T09:00:00Z', availableAtUtc: null, receivedAtUtc: null, installedAtUtc: null, supplierOrSource: null, notes: null, cancelReason: 'توفر بديل', rowVersion: 'rv-2' },
+        { id: 'part-pending', operationalNoteId: note.id, itemName: 'صمام', itemCode: null, quantity: 1, unit: 'قطعة', requestNumber: null, status: 0, statusAr: 'مطلوبة', requestedAtUtc: '2026-07-23T09:00:00Z', availableAtUtc: null, receivedAtUtc: null, installedAtUtc: null, supplierOrSource: null, notes: null, cancelReason: null, rowVersion: 'rv-3' },
+      ],
+      actionCenter: { ...neutralActionCenter },
+    })
+
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111&section=parts')
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+
+    const badgeFor = (text: string) =>
+      screen.getAllByText(text).find((el) => el.tagName === 'SPAN' && el.classList.contains('badge'))
+
+    expect(badgeFor('تم التركيب')).toHaveAttribute('data-tone', 'ok')
+    expect(badgeFor('ملغاة')).toHaveAttribute('data-tone', 'danger')
+    expect(badgeFor('مطلوبة')).toHaveAttribute('data-tone', 'muted')
+  })
+
   it('does not offer self-approval on a pending decision (canSelfApprove=false)', async () => {
     workspaceDetail.mockResolvedValue({
       ...detail,
