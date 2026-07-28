@@ -2638,10 +2638,17 @@ function resourcePanelType(resourceTypeCode?: string): PanelType {
   return 'equipment'
 }
 
-const SENSITIVE_PANEL_TARGETS: ReadonlyArray<{
-  parameter: string
-  type: PanelType
-}> = [
+type SensitivePanelParameter =
+  | 'weaponId'
+  | 'transactionId'
+  | 'armoryLocationId'
+  | 'ammunitionLotId'
+  | 'inventoryId'
+  | 'discrepancyId'
+  | 'inspectionId'
+  | 'requirementId'
+
+const SENSITIVE_PANEL_TARGETS = [
   { parameter: 'weaponId', type: 'weapon' },
   { parameter: 'transactionId', type: 'custody-transaction' },
   { parameter: 'armoryLocationId', type: 'armory-location' },
@@ -2650,7 +2657,10 @@ const SENSITIVE_PANEL_TARGETS: ReadonlyArray<{
   { parameter: 'discrepancyId', type: 'inventory-discrepancy' },
   { parameter: 'inspectionId', type: 'weapon-inspection' },
   { parameter: 'requirementId', type: 'requirement-gap' },
-]
+] as const satisfies ReadonlyArray<{
+  parameter: SensitivePanelParameter
+  type: PanelType
+}>
 
 function sensitivePanelForTarget(
   target: { routeParameters: Record<string, string> },
