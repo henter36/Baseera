@@ -1,8 +1,11 @@
 # Phase 1B — تقرير الإنجاز (Observation Note Triage/Treatment/Parts/SLA Rebuild)
 
 **الفرع**: `ux-rescue-phase1b-observation-full-workflow`
-**يبني على**: Phase 1A (`ux-rescue-phase1a-observation-workspace-foundation`, PR #149، مدموج)
+**PR**: https://github.com/henter36/Baseera/pull/152
+**Commit SHA**: `bee215be5700dfc2aa29894c7b2b32db32b3cb3d`
+**يبني على**: Phase 1A/1A.1 (مدموجتان في `main` عبر PR #149، #150، و#151 — هذا الفرع أُعيد دمجه مع `main` بعد أن اندمج جزء سابق منه عبر PR #151 أثناء هذه الجلسة، ثم كُمِّل بكامل عمل Phase 1B فوقه).
 **التكليف**: إعادة بناء منطق فرز الملاحظة ومعالجتها — فصل بوابة الفرز عن نتيجة المعالجة، Four-eyes موحَّد، تعدد قطع حقيقي، SLA ثلاثي.
+**لم يُدمَج بعد**: هذا PR بانتظار مراجعة CI/SonarCloud/CodeRabbit ثم دمج بشري — لم يُدمَج تلقائيًا ولم يُفعَّل Auto-merge.
 
 ## ملخص تنفيذي
 
@@ -59,7 +62,7 @@
 | Backend Unit | 960 | **979** | Failed=0, Skipped=0 |
 | Backend Integration (Notes*) | 34 | **65** | Failed=0, Skipped=0 |
 | Backend Integration (حزمة Operations كاملة) | — | **112** | Failed=0, Skipped=0 |
-| Frontend | 301 | **306** | Failed=0, Skipped=0 |
+| Frontend | 301 | **307** (بعد دمج `main` الذي أضاف تحسينًا في الوصولية بين الجلسة وهذه الدفعة) | Failed=0, Skipped=0 |
 
 تفصيل كامل بالسيناريوهات: `phase1b-observation-test-matrix.md`.
 
