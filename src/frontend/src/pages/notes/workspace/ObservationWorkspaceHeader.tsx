@@ -27,8 +27,8 @@ export function ObservationWorkspaceHeader({
           {listCollapsed ? 'إظهار القائمة' : 'طي القائمة'}
         </button>
         {canCreate && (
-          <Link to="/notes/new">
-            <button type="button">ملاحظة جديدة</button>
+          <Link to="/notes/new" className="button-link primary">
+            ملاحظة جديدة
           </Link>
         )}
       </div>

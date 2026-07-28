@@ -237,9 +237,10 @@ export function ObservationWorkspacePage() {
   }
 
   function closeSelection() {
+    const selectedCard = selectedCardRef.current
     pushNextUrlUpdateRef.current = true
     setSelectedId('')
-    window.setTimeout(() => selectedCardRef.current?.focus(), 0)
+    window.setTimeout(() => selectedCard?.focus(), 0)
   }
 
   return (
