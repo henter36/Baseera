@@ -22,6 +22,10 @@ public sealed class NoteWorkspaceQueryService(
     ICorrectiveActionQueryService correctiveActions,
     IAttachmentAppService attachments) : INoteWorkspaceQueryService
 {
+    // Bounds the combined status-history/corrective-action timeline returned per note to a fixed
+    // preview window (docs/ux-rescue/phase1a-observation-performance.md) — never "full audit" history.
+    private const int TimelinePreviewLimit = 30;
+
     public async Task<NoteWorkspaceListDto> ListAsync(NoteListQuery query, CancellationToken cancellationToken = default)
     {
         query.PageSize = Math.Clamp(query.PageSize, 1, 50);
@@ -37,13 +41,13 @@ public sealed class NoteWorkspaceQueryService(
         }
 
         var assignments = await notes.GetAssignmentsAsync(id, cancellationToken);
-        var history = await notes.GetHistoryAsync(id, cancellationToken);
+        var history = await LoadRecentHistoryAsync(id, cancellationToken);
         var actionPage = await correctiveActions.ListForNoteAsync(
             id,
             new CorrectiveActionListQuery
             {
                 Page = 1,
-                PageSize = 10,
+                PageSize = TimelinePreviewLimit,
                 SortBy = "createdAtUtc",
                 SortDesc = true
             },
@@ -73,10 +77,33 @@ public sealed class NoteWorkspaceQueryService(
             assignments,
             actionPage,
             attachmentRows,
-            Array.Empty<NoteWorkspaceResourceDto>(),
-            Array.Empty<NoteWorkspaceDecisionDto>(),
-            Array.Empty<NoteWorkspaceLinkDto>(),
             timeline);
+    }
+
+    private async Task<IReadOnlyList<NoteStatusHistoryDto>> LoadRecentHistoryAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.NoteStatusHistories
+            .Where(history => history.OperationalNoteId == id)
+            .OrderByDescending(history => history.ChangedAtUtc)
+            .Take(TimelinePreviewLimit)
+            .ToListAsync(cancellationToken);
+        var userIds = rows.Select(row => row.ChangedByUserId).ToHashSet();
+        var users = await db.Users
+            .Where(user => userIds.Contains(user.Id))
+            .ToDictionaryAsync(user => user.Id, user => user.DisplayNameAr, cancellationToken);
+
+        return rows.Select(history => new NoteStatusHistoryDto(
+            history.Id,
+            history.FromStatus,
+            history.ToStatus,
+            NoteDisplay.StatusAr(history.ToStatus),
+            history.ChangedByUserId,
+            users.GetValueOrDefault(history.ChangedByUserId),
+            history.ChangedAtUtc,
+            history.Reason,
+            history.AssignmentId)).ToList();
     }
 
     private static IReadOnlyList<NoteWorkspaceTimelineEntryDto> BuildTimeline(
@@ -113,10 +140,18 @@ public sealed class NoteWorkspaceQueryService(
 
         return entries
             .OrderByDescending(entry => entry.OccurredAtUtc)
+            .Take(TimelinePreviewLimit)
             .ToList();
     }
 
-    private IReadOnlyList<string> BuildAllowedActions(NoteDetailDto note)
+    private IReadOnlyList<string> BuildAllowedActions(NoteDetailDto note) => ComputeAllowedActions(note, currentUser);
+
+    /// <summary>
+    /// Pure allowed-actions computation (permission + lifecycle status only, no I/O) — extracted as a
+    /// public static method so it is directly unit-testable against a fake <see cref="ICurrentUser"/>
+    /// without constructing the full service graph. Behavior must stay identical to the instance caller.
+    /// </summary>
+    public static IReadOnlyList<string> ComputeAllowedActions(NoteDetailDto note, ICurrentUser currentUser)
     {
         var allowed = new List<string>();
         AddIf(allowed, "SUBMIT", currentUser.HasPermission(PermissionCodes.NotesUpdate) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Open));
@@ -126,6 +161,7 @@ public sealed class NoteWorkspaceQueryService(
         AddIf(allowed, "ADD_ACTION", currentUser.HasPermission(PermissionCodes.CorrectiveActionsCreate) && !NoteStateMachine.IsTerminalLocked(note.Status));
         AddIf(allowed, "REQUEST_VERIFICATION", currentUser.HasPermission(PermissionCodes.NotesSubmitForVerification) && NoteStateMachine.CanTransition(note.Status, NoteStatus.PendingVerification));
         AddIf(allowed, "REJECT_VERIFICATION", currentUser.HasPermission(PermissionCodes.NotesReturnForRework) && NoteStateMachine.CanTransition(note.Status, NoteStatus.InProgress));
+        AddIf(allowed, "VERIFY_CLOSURE", currentUser.HasPermission(PermissionCodes.NotesVerifyClosure) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Closed));
         AddIf(allowed, "REOPEN", currentUser.HasPermission(PermissionCodes.NotesReopen) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Reopened));
         AddIf(allowed, "CANCEL", currentUser.HasPermission(PermissionCodes.NotesCancel) && !NoteStateMachine.IsTerminalLocked(note.Status));
         return allowed;
@@ -154,7 +190,7 @@ public sealed class NoteWorkspaceQueryService(
         }
     }
 
-    private static int ResolveProgress(NoteStatus status, int openActions) => status switch
+    public static int ResolveProgress(NoteStatus status, int openActions) => status switch
     {
         NoteStatus.Draft => 5,
         NoteStatus.Open => 15,
@@ -167,7 +203,7 @@ public sealed class NoteWorkspaceQueryService(
         _ => 0
     };
 
-    private static string? ResolveBlocker(NoteDetailDto note, int openActions)
+    public static string? ResolveBlocker(NoteDetailDto note, int openActions)
     {
         if (note.IsOverdue)
         {

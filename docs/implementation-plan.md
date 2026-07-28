@@ -190,6 +190,24 @@
 - لا ينفذ Region/HQ Workspaces، ولا AI/Predictive Risk Engine، ولا تصدير المخاطر، ولا Timeline موحّد مخصص، ولا دمج ActionCenter العام — راجع `docs/phase-d6-risk-compliance-ledger.md` للفجوات الكاملة.
 - لا يغلق Issue #16 (يبقى مفتوحًا لتجميع Region/HQ مستقبلًا)؛ لا يغلق Issue #11؛ لا يغلق Issue #15.
 
+## المرحلة H — UX Rescue (إعادة إنقاذ التجربة)
+
+### Phase 1A — Observation Workspace Foundation and Core Operational Flow (Issue #143 جزئيًا، استمرار #11، صلة #18 و#19)
+
+- يعيد بناء الأساس التشغيلي لمساحة عمل الملاحظات (`/notes/workspace`) بحيث تصبح نقطة الدخول اليومية الرئيسية: تصفّح، فتح، فهم، تنفيذ، تالي، عودة — دون مغادرة الصفحة أو فقد السياق. هذا Vertical Slice أولى، وليس ترحيل كل عمليات الملاحظات دفعة واحدة.
+- الخادم كان أنضج مما أوحى به تدقيق Phase 0: `GET /notes/workspace` و`GET /notes/{id}/workspace` كانا موجودين فعليًا (`NoteWorkspaceQueryService`)، فوق `NoteQueryService` القوي أصلًا (Pagination/Filter/Sort على الخادم، تصفية نطاق، حجب حساس). العمل هنا كان إصلاحات مستهدَفة، لا بناء خادم من الصفر.
+- إصلاح فعلي مكتشَف: `VERIFY_CLOSURE` كان له Endpoint وعميل واجهة جاهزَين لكنه لم يظهر إطلاقًا ضمن `AllowedActions` — أُضيف لمنطق الحساب في `NoteWorkspaceQueryService.ComputeAllowedActions` (مستخرَج الآن كدالة Static نقية قابلة للاختبار مباشرة).
+- تفعيل وراثة الوحدة الداخلية (`FacilityUnit`) عند إنشاء ملاحظة، كانت البنية التحتية (`OrganizationalScopeShape`, `OrganizationalScopeEntityGuard`) موجودة ومستخدَمة في مسارات أخرى لكنها لم تكن مفعَّلة في `NoteCommandService.CreateDraftAsync` (كان `FacilityUnitId` يُثبَّت دائمًا على `null`).
+- إصلاح N+1 ذاتي داخل الطلب الواحد: `NoteTypeAccessService.GetEffectiveAccessAsync` كان يُعاد استعلامه بالكامل (4 استعلامات) عدة مرات ضمن نفس طلب `GET /notes/{id}/workspace` — أُضيفت ذاكرة تخزين مؤقت بمستوى الطلب (الخدمة Scoped أصلًا).
+- إزالة حقول `Resources`/`Decisions`/`Links` من عقد التفاصيل نهائيًا (كانت دائمًا مصفوفات فارغة بلا Domain حقيقي خلفها)، وحدّ Timeline بـ30 عنصرًا كحد أقصى (`docs/ux-rescue/phase1a-observation-performance.md`).
+- إعادة بناء تفاصيل الملاحظة حول 5 أقسام حسب المهمة بدل الجداول: الملخص، المعالجة، التكليف، الأدلة، السجل الزمني — إزالة 3 تبويبات دائمة الفراغ (الموارد/الروابط/القرارات) دون استبدالها بحالة "قريبًا".
+- تفعيل Assign/Reassign وVerifyClosure كعمليات Inline حقيقية داخل الـWorkspace (نماذج مخصصة، بما فيها مُنتقي المكلَّف عبر Endpoint موجود مسبقًا `eligible-assignees` لم يكن له عميل واجهة أمامية)، إضافة رفع مرفق Inline، وتنقّل سابق/تالي من نافذة القائمة المحمَّلة فعليًا (بدون تحميل كل المعرّفات).
+- توافق Routes قديمة على مستوى حلّ الـRoute نفسه عبر علم ميزة `VITE_OBSERVATION_WORKSPACE_V2` (مفعَّل افتراضيًا): عند التعطيل تُستخدَم `NotesListPage`/`NoteDetailPage` القديمتان فعليًا، لا مجرد إخفاء رابط الشريط الجانبي. `NotesListPage.tsx` لم يعد مكوّنًا يتيمًا؛ أصبح Legacy fallback مستخدَمًا فعليًا خلف العلم.
+- إضافة "فتح ملاحظة" داخل `workspaces/facilities/:facilityId` عبر نمط الـContext Panel الموجود مسبقًا (`openPanel`/`PANEL_TYPES`)؛ السجن/الوحدة يُورَّثان من الـRoute، لا يُعاد اختيارهما، والخادم يعيد اشتقاق/التحقق من `FacilityId` بغضّ النظر عمّا يرسله العميل (`NoteScopeService.ResolveIntakeAsync` الموجود مسبقًا).
+- لا صلاحيات جديدة (`docs/permissions-matrix.md`)، لا Migration جديدة، لا تغيير في `NoteStateMachine`.
+- لا ينفذ إعادة بناء الإجراءات التصحيحية الكاملة، ولا نقل كل عمليات التصعيد، ولا إدارة قطع الغيار، ولا تعليقات جماعية جديدة، ولا Region/Headquarters Workspace، ولا إعادة تصميم Facility Workspace بالكامل — راجع `docs/ux-rescue/phase1a-observation-compliance-ledger.md` للفجوات الكاملة والمرحلة التالية (1B/1C).
+- لا يغلق Issue #143 (يبقى مفتوحًا لبقية العمليات وRegion/HQ لاحقًا)؛ لا يغلق Issue #11؛ لا يغلق Issue #18 أو #19 (تُستمَر عبرهما مساحات Timeline/Alerts الموحّدة لاحقًا).
+
 ## المرحلة E — المشاريع والاستراتيجية
 
 مشاريع متعددة المواقع، مبادرات، أهداف، مؤشرات، مستهدفات، لوحة أداء.

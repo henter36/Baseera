@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router'
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import { useAuth } from './auth/AuthProvider'
+import { isObservationWorkspaceV2Enabled } from './pages/notes/observationWorkspaceFlag'
 import { AttachmentsPage } from './pages/AttachmentsPage'
 import { AuditPage } from './pages/AuditPage'
 import { FacilitiesPage } from './pages/FacilitiesPage'
@@ -12,8 +13,8 @@ import { CorrectiveActionDetailPage } from './pages/corrective-actions/Correctiv
 import { CorrectiveActionEditPage } from './pages/corrective-actions/CorrectiveActionEditPage'
 import { CorrectiveActionsListPage } from './pages/corrective-actions/CorrectiveActionsListPage'
 import { NoteCreatePage } from './pages/notes/NoteCreatePage'
-import { NoteDetailPage } from './pages/notes/NoteDetailPage'
 import { NoteEditPage } from './pages/notes/NoteEditPage'
+import { NotesIndexRoute, NoteDetailRoute } from './pages/notes/NotesRouteResolvers'
 import { ObservationWorkspacePage } from './pages/notes/ObservationWorkspacePage'
 import { NoteRoutingEffectivenessPage } from './pages/notes/NoteRoutingEffectivenessPage'
 import { NoteRoutingSettingsPage } from './pages/notes/NoteRoutingSettingsPage'
@@ -89,7 +90,14 @@ function Shell({ children }: AppChildrenProps) {
         <nav className="nav" aria-label="القائمة الرئيسية">
           {hasPermission('Organization.View') && <NavLink to="/regions" className={({ isActive }) => isActive ? 'active' : undefined}>المناطق</NavLink>}
           {hasPermission('Organization.View') && <NavLink to="/facilities" className={({ isActive }) => isActive ? 'active' : undefined}>السجون</NavLink>}
-          {hasPermission('Notes.View') && <NavLink to="/notes/workspace" className={({ isActive }) => isActive ? 'active' : undefined}>الملاحظات</NavLink>}
+          {hasPermission('Notes.View') && (
+            <NavLink
+              to={isObservationWorkspaceV2Enabled() ? '/notes/workspace' : '/notes'}
+              className={({ isActive }) => isActive ? 'active' : undefined}
+            >
+              الملاحظات
+            </NavLink>
+          )}
           {hasPermission('Forms.View') && <NavLink to="/forms" className={({ isActive }) => isActive ? 'active' : undefined}>النماذج</NavLink>}
           {hasPermission('Forms.View') && <NavLink to="/form-templates" className={({ isActive }) => isActive ? 'active' : undefined}>قوالب النماذج</NavLink>}
           {(hasPermission('Forms.Publish') || hasPermission('Forms.ManageCampaigns') || hasPermission('Forms.View')) && (
@@ -138,7 +146,7 @@ export default function App() {
       <Route path="/" element={<Protected><Navigate to="/regions" replace /></Protected>} />
       <Route path="/regions" element={<Protected><RegionsPage /></Protected>} />
       <Route path="/facilities" element={<Protected><FacilitiesPage /></Protected>} />
-      <Route path="/notes" element={<Protected><ObservationWorkspacePage /></Protected>} />
+      <Route path="/notes" element={<Protected><NotesIndexRoute /></Protected>} />
       <Route path="/notes/workspace" element={<Protected><ObservationWorkspacePage /></Protected>} />
       <Route path="/dashboard" element={<Protected><OperationalDashboardPage /></Protected>} />
       <Route path="/workspaces/reference" element={<Protected><ReferenceWorkspacePage /></Protected>} />
@@ -147,7 +155,7 @@ export default function App() {
       <Route path="/facilities/:facilityId/resources" element={<Protected><FacilityResourcesPage /></Protected>} />
       <Route path="/facilities/:facilityId/workforce" element={<Protected><FacilityWorkforcePage /></Protected>} />
       <Route path="/notes/new" element={<Protected><NoteCreatePage /></Protected>} />
-      <Route path="/notes/:id" element={<Protected><NoteDetailPage /></Protected>} />
+      <Route path="/notes/:id" element={<Protected><NoteDetailRoute /></Protected>} />
       <Route path="/notes/:id/edit" element={<Protected><NoteEditPage /></Protected>} />
       <Route path="/forms" element={<Protected><FormsListPage /></Protected>} />
       <Route path="/forms/new" element={<Protected><FormCreatePage /></Protected>} />
