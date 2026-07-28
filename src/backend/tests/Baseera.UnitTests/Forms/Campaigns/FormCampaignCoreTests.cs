@@ -579,6 +579,9 @@ public sealed class BusinessCalendarTests
         public IQueryable<Domain.Notes.OperationalNote> OperationalNotesIncludingDeleted => OperationalNotes;
         public IQueryable<Domain.Notes.NoteAssignment> NoteAssignments => Empty<Domain.Notes.NoteAssignment>();
         public IQueryable<Domain.Notes.NoteStatusHistory> NoteStatusHistories => Empty<Domain.Notes.NoteStatusHistory>();
+        public IQueryable<Domain.Notes.NoteDecisionApproval> NoteDecisionApprovals => Empty<Domain.Notes.NoteDecisionApproval>();
+        public IQueryable<Domain.Notes.NotePartsRequirement> NotePartsRequirements => Empty<Domain.Notes.NotePartsRequirement>();
+        public IQueryable<Domain.Notes.NoteSlaPausePeriod> NoteSlaPausePeriods => Empty<Domain.Notes.NoteSlaPausePeriod>();
         public IQueryable<Domain.CorrectiveActions.CorrectiveAction> CorrectiveActions => Empty<Domain.CorrectiveActions.CorrectiveAction>();
         public IQueryable<Domain.CorrectiveActions.CorrectiveAction> CorrectiveActionsIncludingDeleted => CorrectiveActions;
         public IQueryable<Domain.CorrectiveActions.CorrectiveActionAssignment> CorrectiveActionAssignments => Empty<Domain.CorrectiveActions.CorrectiveActionAssignment>();

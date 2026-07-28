@@ -240,7 +240,7 @@ public sealed class CorrectiveActionNoteGuardTests : IDisposable
         var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, org);
         var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
-        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
+        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries, NoteTestFixtures.FakeAttachments);
     }
 }
 

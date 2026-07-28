@@ -35,7 +35,7 @@ public sealed class NoteWorkflowServiceTests : IDisposable
         var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
         var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
-        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
+        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries, NoteTestFixtures.FakeAttachments);
     }
 
     private static string RowVersionOf(OperationalNote note) => Convert.ToBase64String(note.RowVersion);
@@ -385,7 +385,7 @@ public sealed class NoteWorkflowServiceTests : IDisposable
         var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
         var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
-        var workflow = new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
+        var workflow = new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries, NoteTestFixtures.FakeAttachments);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             workflow.StartWorkAsync(note.Id, new TransitionNoteRequest("بدء", Convert.ToBase64String(note.RowVersion))));

@@ -5,7 +5,13 @@ import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ObservationWorkspacePage } from './ObservationWorkspacePage'
 
-const { workspace, workspaceDetail, listRegions, listFacilities, listFacilityUnits, listNoteTypes, eligibleAssignees, assign, verifyClosure, uploadAttachment } = vi.hoisted(() => ({
+const {
+  workspace, workspaceDetail, listRegions, listFacilities, listFacilityUnits, listNoteTypes,
+  eligibleAssignees, assign, verifyClosure, uploadAttachment,
+  triageValid, triageProposeInvalid, triageProposeDuplicate,
+  recordTreatment, proposeNoAction, approveDecision, returnDecision,
+  addPart, updatePartStatus, cancelPart, requestSlaPause, approveSlaPause,
+} = vi.hoisted(() => ({
   workspace: vi.fn(),
   workspaceDetail: vi.fn(),
   listRegions: vi.fn(async () => ({ items: [], page: 1, pageSize: 20, totalCount: 0 })),
@@ -16,10 +22,27 @@ const { workspace, workspaceDetail, listRegions, listFacilities, listFacilityUni
   assign: vi.fn(),
   verifyClosure: vi.fn(),
   uploadAttachment: vi.fn(),
+  triageValid: vi.fn(),
+  triageProposeInvalid: vi.fn(),
+  triageProposeDuplicate: vi.fn(),
+  recordTreatment: vi.fn(),
+  proposeNoAction: vi.fn(),
+  approveDecision: vi.fn(),
+  returnDecision: vi.fn(),
+  addPart: vi.fn(),
+  updatePartStatus: vi.fn(),
+  cancelPart: vi.fn(),
+  requestSlaPause: vi.fn(),
+  approveSlaPause: vi.fn(),
 }))
 
 vi.mock('../../auth/AuthProvider', () => ({
-  usePermission: (code: string) => code === 'Notes.View' || code === 'Notes.Create' || code === 'Attachments.Upload',
+  usePermission: (code: string) =>
+    [
+      'Notes.View', 'Notes.Create', 'Attachments.Upload',
+      'Notes.Update', 'Notes.ProposeInvalid', 'Notes.ProposeDuplicate',
+      'Notes.StartWork', 'Notes.ProposeNoAction', 'Notes.ApproveSlaPause',
+    ].includes(code),
 }))
 
 vi.mock('../../api/client', async () => {
@@ -39,6 +62,18 @@ vi.mock('../../api/client', async () => {
         eligibleAssignees,
         assign,
         verifyClosure,
+        triageValid,
+        triageProposeInvalid,
+        triageProposeDuplicate,
+        recordTreatment,
+        proposeNoAction,
+        approveDecision,
+        returnDecision,
+        addPart,
+        updatePartStatus,
+        cancelPart,
+        requestSlaPause,
+        approveSlaPause,
       },
       uploadAttachment,
     },
@@ -71,28 +106,73 @@ const note = {
   isSensitiveRedacted: false,
 }
 
+const noteDetailFields = {
+  noteTypeDescriptionAr: null,
+  noteTypeEntryInstructionsAr: null,
+  sourceType: 0,
+  sourceAr: 'يدوي',
+  sourceReference: null,
+  ownerDepartmentId: null,
+  reportedByUserId: 'user-1',
+  reportedByDisplayName: 'مشرف الموقع',
+  reportedAtUtc: '2026-07-23T09:00:00Z',
+  submittedAtUtc: '2026-07-23T09:10:00Z',
+  workStartedAtUtc: '2026-07-23T10:00:00Z',
+  submittedForVerificationAtUtc: null,
+  closedAtUtc: null,
+  closedByUserId: null,
+  closureSummary: null,
+  reopenedAtUtc: null,
+  reopenReason: null,
+  currentAssignment: null,
+  // Phase 1B — defaults: untriaged, no treatment recorded, direct-only note type.
+  triageOutcome: null,
+  triageOutcomeAr: null,
+  triageDecidedAtUtc: null,
+  triageDecidedByDisplayName: null,
+  duplicateOfNoteId: null,
+  duplicateOfNoteReferenceNumber: null,
+  treatmentResultType: null,
+  treatmentResultTypeAr: null,
+  treatmentExecutionType: null,
+  treatmentExecutionTypeAr: null,
+  treatmentResultText: null,
+  noActionJustificationAr: null,
+  closureReason: null,
+  closureReasonAr: null,
+  noteTypeSupportsPartsWorkflow: false,
+}
+
+const neutralActionCenter = {
+  allowedActions: [] as string[],
+  primaryAction: null,
+  secondaryActions: [] as string[],
+  pendingDecision: null,
+  decisionApprovalRequired: false,
+  canSelfApprove: false,
+  blocker: null,
+  nextAction: null,
+  closureReasonToken: 'Open',
+  partsProgress: null,
+  closureReadiness: false,
+}
+
+const neutralSla = {
+  overallAgeSeconds: 3600,
+  processingSlaSeconds: 1800,
+  externalWaitDurationSeconds: 0,
+  isProcessingSlaPaused: false,
+  activePauseId: null,
+  activePauseStartedAtUtc: null,
+  activePauseReason: null,
+  activePauseReviewDueAtUtc: null,
+}
+
 const detail = {
   note: {
     ...note,
+    ...noteDetailFields,
     description: 'الإنارة متوقفة في الممر الرئيسي وتحتاج معالجة عاجلة.',
-    noteTypeDescriptionAr: null,
-    noteTypeEntryInstructionsAr: null,
-    sourceType: 0,
-    sourceAr: 'يدوي',
-    sourceReference: null,
-    ownerDepartmentId: null,
-    reportedByUserId: 'user-1',
-    reportedByDisplayName: 'مشرف الموقع',
-    reportedAtUtc: '2026-07-23T09:00:00Z',
-    submittedAtUtc: '2026-07-23T09:10:00Z',
-    workStartedAtUtc: '2026-07-23T10:00:00Z',
-    submittedForVerificationAtUtc: null,
-    closedAtUtc: null,
-    closedByUserId: null,
-    closureSummary: null,
-    reopenedAtUtc: null,
-    reopenReason: null,
-    currentAssignment: null,
   },
   allowedActions: ['ADD_ACTION', 'REQUEST_VERIFICATION'],
   summary: {
@@ -118,6 +198,10 @@ const detail = {
     occurredAtUtc: '2026-07-23T10:00:00Z',
     tone: 'muted',
   }],
+  decisionApprovals: [] as unknown[],
+  partsRequirements: [] as unknown[],
+  sla: neutralSla,
+  actionCenter: { ...neutralActionCenter },
 }
 
 const secondNote = {
@@ -174,6 +258,18 @@ describe('ObservationWorkspacePage', () => {
     assign.mockReset()
     verifyClosure.mockReset()
     uploadAttachment.mockReset()
+    triageValid.mockReset()
+    triageProposeInvalid.mockReset()
+    triageProposeDuplicate.mockReset()
+    recordTreatment.mockReset()
+    proposeNoAction.mockReset()
+    approveDecision.mockReset()
+    returnDecision.mockReset()
+    addPart.mockReset()
+    updatePartStatus.mockReset()
+    cancelPart.mockReset()
+    requestSlaPause.mockReset()
+    approveSlaPause.mockReset()
     workspace.mockResolvedValue({ notes: { items: [note], page: 1, pageSize: 20, totalCount: 1 } })
     workspaceDetail.mockResolvedValue(detail)
     uploadAttachment.mockResolvedValue({ id: 'attachment-1' })
@@ -244,10 +340,10 @@ describe('ObservationWorkspacePage', () => {
     workspace.mockResolvedValue({ notes: { items: [note, secondNote], page: 1, pageSize: 20, totalCount: 2 } })
     workspaceDetail.mockImplementation(async (id: string) => {
       if (id === secondNote.id) {
-        return { ...secondDetail, allowedActions: ['CANCEL'] }
+        return { ...secondDetail, allowedActions: ['CANCEL'], actionCenter: { ...neutralActionCenter } }
       }
 
-      return { ...detail, allowedActions: ['CANCEL'] }
+      return { ...detail, allowedActions: ['CANCEL'], actionCenter: { ...neutralActionCenter } }
     })
 
     renderPage()
@@ -335,7 +431,7 @@ describe('ObservationWorkspacePage', () => {
   })
 
   it('shows a dedicated closure-summary form for VERIFY_CLOSURE and a return link to the originating facility workspace', async () => {
-    workspaceDetail.mockResolvedValue({ ...detail, allowedActions: ['VERIFY_CLOSURE'] })
+    workspaceDetail.mockResolvedValue({ ...detail, allowedActions: ['VERIFY_CLOSURE'], actionCenter: { ...neutralActionCenter } })
     verifyClosure.mockResolvedValue({ ...detail.note, status: 6 })
 
     renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111&source=facility%3Afacility-1')
@@ -346,18 +442,130 @@ describe('ObservationWorkspacePage', () => {
     expect(screen.getByLabelText('ملخص الإغلاق')).toBeInTheDocument()
   })
 
-  it('renders the Summary/Processing/Assignment/Evidence/History sections with no permanent placeholder tabs', async () => {
+  it('renders the Summary/Triage/Assignment/Evidence/Approvals/Escalations/History sections for an untriaged note, with no legacy Resources/Links/Decisions tabs', async () => {
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: /OBS-00000024/ }))
     await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
 
     expect(screen.getByRole('button', { name: 'الملخص' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'المعالجة' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'قرار الفرز' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'التكليف' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'الأدلة' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'الاعتمادات' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'التصعيدات' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'السجل الزمني' })).toBeInTheDocument()
+    // "نتيجة المعالجة" and "القطع والمواد" don't appear before triage is decided Valid.
+    expect(screen.queryByRole('button', { name: 'نتيجة المعالجة' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'القطع والمواد' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'الموارد' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'الروابط' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'القرارات' })).not.toBeInTheDocument()
+  })
+
+  it('shows the triage gate with only صحيحة/غير صحيحة/مكررة before a decision is made', async () => {
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111&section=triage')
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+
+    expect(screen.getByRole('button', { name: 'غير صحيحة' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'مكررة' })).toBeInTheDocument()
+    expect(screen.queryByText('غير صحيحة ومكررة')).not.toBeInTheDocument()
+  })
+
+  it('shows the treatment-result section only after triage is approved Valid, and it excludes invalid/duplicate/assign/escalate', async () => {
+    workspaceDetail.mockResolvedValue({
+      ...detail,
+      note: { ...detail.note, triageOutcome: 0, triageOutcomeAr: 'صحيحة' },
+      actionCenter: { ...neutralActionCenter },
+    })
+
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111&section=treatment')
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+
+    expect(screen.getByRole('button', { name: 'نتيجة المعالجة' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'معالجة' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'لا تتطلب إجراء' })).toBeInTheDocument()
+
+    // The treatment-result panel content itself must not contain triage/assignment/escalation
+    // actions — those live in their own sections/Action Center, per spec.
+    const panel = document.querySelector('.workspace-tab-panel') as HTMLElement
+    expect(within(panel).queryByRole('button', { name: 'غير صحيحة' })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: 'مكررة' })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: 'إسناد' })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: /تصعيد/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the parts & materials section only when execution type is RequiresParts (server-authored)', async () => {
+    workspaceDetail.mockResolvedValue({
+      ...detail,
+      note: {
+        ...detail.note,
+        triageOutcome: 0,
+        treatmentResultType: 0,
+        treatmentExecutionType: 1,
+        noteTypeSupportsPartsWorkflow: true,
+      },
+      actionCenter: { ...neutralActionCenter },
+    })
+
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111')
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+
+    expect(screen.getByRole('button', { name: 'القطع والمواد' })).toBeInTheDocument()
+  })
+
+  it('does not offer self-approval on a pending decision (canSelfApprove=false)', async () => {
+    workspaceDetail.mockResolvedValue({
+      ...detail,
+      decisionApprovals: [{
+        id: 'approval-1',
+        operationalNoteId: note.id,
+        decisionType: 0,
+        decisionTypeAr: 'اعتماد غير صحيحة',
+        status: 0,
+        statusAr: 'بانتظار الاعتماد',
+        justificationAr: 'لا يوجد ما يثبت الواقعة.',
+        originalNoteId: null,
+        originalNoteReferenceNumber: null,
+        proposedByUserId: 'user-2',
+        proposedByDisplayName: 'المعالج',
+        proposedAtUtc: '2026-07-23T09:00:00Z',
+        reviewedByUserId: null,
+        reviewedByDisplayName: null,
+        reviewedAtUtc: null,
+        reviewReason: null,
+        rowVersion: 'rv-approval',
+      }],
+      actionCenter: { ...neutralActionCenter, pendingDecision: 'اعتماد غير صحيحة', decisionApprovalRequired: true, canSelfApprove: false },
+    })
+
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111&section=approvals')
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+
+    expect(screen.getByText('بانتظار الاعتماد: اعتماد غير صحيحة')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'اعتماد' })).not.toBeInTheDocument()
+    expect(screen.getByText('يتطلب مراجعًا مستقلًا عن مقترح القرار.')).toBeInTheDocument()
+  })
+
+  it('renders the three SLA indicators (overall age, processing SLA, external wait)', async () => {
+    workspaceDetail.mockResolvedValue({
+      ...detail,
+      sla: {
+        overallAgeSeconds: 950400, // ~11 days
+        processingSlaSeconds: 0,
+        externalWaitDurationSeconds: 518400, // ~6 days
+        isProcessingSlaPaused: true,
+        activePauseId: 'pause-1',
+        activePauseStartedAtUtc: '2026-07-20T09:00:00Z',
+        activePauseReason: 'بانتظار توريد قطعة',
+        activePauseReviewDueAtUtc: null,
+      },
+    })
+
+    renderPage('/notes/workspace?noteId=11111111-1111-1111-1111-111111111111')
+    await screen.findByRole('heading', { name: 'تعطل إنارة الممر الرئيسي' })
+
+    expect(screen.getByText(/العمر الكلي/)).toBeInTheDocument()
+    expect(screen.getByText(/SLA المعالجة متوقف مؤقتًا/)).toBeInTheDocument()
+    expect(screen.getByText(/مدة انتظار القطع/)).toBeInTheDocument()
   })
 })

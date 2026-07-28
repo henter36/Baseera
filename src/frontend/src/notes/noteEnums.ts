@@ -113,3 +113,70 @@ export function statusTone(status: number): 'danger' | 'warn' | 'ok' | 'muted' {
 
 export const enumOptions = (labels: Record<number, string>) =>
   Object.entries(labels).map(([value, labelAr]) => ({ value: Number(value), labelAr }))
+
+// ===== Phase 1B: triage gate / treatment result / decision approval / parts / SLA =====
+
+export const NoteTriageOutcome = { Valid: 0, Invalid: 1, Duplicate: 2 } as const
+
+export const NoteTriageOutcomeLabelsAr: Record<number, string> = {
+  [NoteTriageOutcome.Valid]: 'صحيحة',
+  [NoteTriageOutcome.Invalid]: 'غير صحيحة',
+  [NoteTriageOutcome.Duplicate]: 'مكررة',
+}
+
+export const NoteTreatmentResultType = { Treated: 0, NoActionRequired: 1 } as const
+
+export const NoteTreatmentResultTypeLabelsAr: Record<number, string> = {
+  [NoteTreatmentResultType.Treated]: 'معالجة',
+  [NoteTreatmentResultType.NoActionRequired]: 'لا تتطلب إجراء',
+}
+
+export const NoteTreatmentExecutionType = { Direct: 0, RequiresParts: 1 } as const
+
+export const NoteTreatmentExecutionTypeLabelsAr: Record<number, string> = {
+  [NoteTreatmentExecutionType.Direct]: 'معالجة مباشرة',
+  [NoteTreatmentExecutionType.RequiresParts]: 'تتطلب قطع أو مواد',
+}
+
+export const NoteClosureReason = { Treated: 0, Invalid: 1, Duplicate: 2, NoActionRequired: 3 } as const
+
+export const NoteClosureReasonLabelsAr: Record<number, string> = {
+  [NoteClosureReason.Treated]: 'مغلقة — تمت المعالجة',
+  [NoteClosureReason.Invalid]: 'مغلقة — غير صحيحة',
+  [NoteClosureReason.Duplicate]: 'مغلقة — مكررة',
+  [NoteClosureReason.NoActionRequired]: 'مغلقة — لا تتطلب إجراء',
+}
+
+export const NoteDecisionApprovalType = { Invalid: 0, Duplicate: 1, NoAction: 2 } as const
+
+export const NoteDecisionApprovalTypeLabelsAr: Record<number, string> = {
+  [NoteDecisionApprovalType.Invalid]: 'اعتماد غير صحيحة',
+  [NoteDecisionApprovalType.Duplicate]: 'اعتماد التكرار',
+  [NoteDecisionApprovalType.NoAction]: 'اعتماد لا تتطلب إجراء',
+}
+
+export const NoteDecisionApprovalStatus = { Pending: 0, Approved: 1, Returned: 2 } as const
+
+export const NoteDecisionApprovalStatusLabelsAr: Record<number, string> = {
+  [NoteDecisionApprovalStatus.Pending]: 'بانتظار الاعتماد',
+  [NoteDecisionApprovalStatus.Approved]: 'معتمد',
+  [NoteDecisionApprovalStatus.Returned]: 'معاد',
+}
+
+export const NotePartsRequirementStatus = {
+  Requested: 0,
+  Sourcing: 1,
+  Available: 2,
+  Received: 3,
+  Installed: 4,
+  Cancelled: 5,
+} as const
+
+export const NotePartsRequirementStatusLabelsAr: Record<number, string> = {
+  [NotePartsRequirementStatus.Requested]: 'مطلوبة',
+  [NotePartsRequirementStatus.Sourcing]: 'قيد التوريد',
+  [NotePartsRequirementStatus.Available]: 'متوفرة',
+  [NotePartsRequirementStatus.Received]: 'تم الاستلام',
+  [NotePartsRequirementStatus.Installed]: 'تم التركيب',
+  [NotePartsRequirementStatus.Cancelled]: 'ملغاة',
+}

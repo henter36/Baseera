@@ -106,6 +106,68 @@ public enum NoteTypeAccessChangeType
     OverrideRemoved = 6
 }
 
+/// <summary>قرار فرز الملاحظة — بوابة مستقلة عن نتيجة المعالجة (Phase 1B).</summary>
+public enum NoteTriageOutcome
+{
+    Valid = 0,
+    Invalid = 1,
+    Duplicate = 2
+}
+
+/// <summary>نتيجة المعالجة — لا تظهر إلا بعد اعتماد "صحيحة".</summary>
+public enum NoteTreatmentResultType
+{
+    Treated = 0,
+    NoActionRequired = 1
+}
+
+/// <summary>نوع التنفيذ ضمن نتيجة "معالجة" — ظهور "تتطلب قطع" مشروط بـ NoteType.SupportsPartsWorkflow.</summary>
+public enum NoteTreatmentExecutionType
+{
+    Direct = 0,
+    RequiresParts = 1
+}
+
+/// <summary>
+/// نوع طلب الاعتماد الموحّد (Four-eyes) — نموذج واحد لكل مسارات القرار التي تُغلق الملاحظة مباشرة
+/// دون المرور بـPendingVerification. اعتماد نتيجة "معالجة" (TreatmentResultApproval) يُنجَز عبر خط
+/// الأنابيب القائم SubmitForVerification→VerifyClosure نفسه (SoD موسَّع في NoteWorkflowService)، وليس
+/// عبر هذا النوع — تجنّبًا لبناء منطق اعتماد مواز فوق الـState Machine القائمة
+/// (راجع docs/ux-rescue/phase1b-observation-architecture.md).
+/// </summary>
+public enum NoteDecisionApprovalType
+{
+    Invalid = 0,
+    Duplicate = 1,
+    NoAction = 2
+}
+
+public enum NoteDecisionApprovalStatus
+{
+    Pending = 0,
+    Approved = 1,
+    Returned = 2
+}
+
+/// <summary>سبب الإغلاق النهائي — لا يوسّع NoteStatus؛ يُعرض كـClosureReason منفصل فوق Status=Closed.</summary>
+public enum NoteClosureReason
+{
+    Treated = 0,
+    Invalid = 1,
+    Duplicate = 2,
+    NoActionRequired = 3
+}
+
+public enum NotePartsRequirementStatus
+{
+    Requested = 0,
+    Sourcing = 1,
+    Available = 2,
+    Received = 3,
+    Installed = 4,
+    Cancelled = 5
+}
+
 public static class NoteDisplay
 {
     public static string StatusAr(NoteStatus status) => status switch
@@ -150,6 +212,64 @@ public static class NoteDisplay
         NoteSourceType.Form => "نموذج",
         _ => source.ToString()
     };
+
+    public static string TriageOutcomeAr(NoteTriageOutcome outcome) => outcome switch
+    {
+        NoteTriageOutcome.Valid => "صحيحة",
+        NoteTriageOutcome.Invalid => "غير صحيحة",
+        NoteTriageOutcome.Duplicate => "مكررة",
+        _ => outcome.ToString()
+    };
+
+    public static string TreatmentResultTypeAr(NoteTreatmentResultType type) => type switch
+    {
+        NoteTreatmentResultType.Treated => "معالجة",
+        NoteTreatmentResultType.NoActionRequired => "لا تتطلب إجراء",
+        _ => type.ToString()
+    };
+
+    public static string TreatmentExecutionTypeAr(NoteTreatmentExecutionType type) => type switch
+    {
+        NoteTreatmentExecutionType.Direct => "معالجة مباشرة",
+        NoteTreatmentExecutionType.RequiresParts => "تتطلب قطع أو مواد",
+        _ => type.ToString()
+    };
+
+    public static string DecisionApprovalTypeAr(NoteDecisionApprovalType type) => type switch
+    {
+        NoteDecisionApprovalType.Invalid => "اعتماد غير صحيحة",
+        NoteDecisionApprovalType.Duplicate => "اعتماد التكرار",
+        NoteDecisionApprovalType.NoAction => "اعتماد لا تتطلب إجراء",
+        _ => type.ToString()
+    };
+
+    public static string DecisionApprovalStatusAr(NoteDecisionApprovalStatus status) => status switch
+    {
+        NoteDecisionApprovalStatus.Pending => "بانتظار الاعتماد",
+        NoteDecisionApprovalStatus.Approved => "معتمد",
+        NoteDecisionApprovalStatus.Returned => "معاد",
+        _ => status.ToString()
+    };
+
+    public static string ClosureReasonAr(NoteClosureReason reason) => reason switch
+    {
+        NoteClosureReason.Treated => "مغلقة — تمت المعالجة",
+        NoteClosureReason.Invalid => "مغلقة — غير صحيحة",
+        NoteClosureReason.Duplicate => "مغلقة — مكررة",
+        NoteClosureReason.NoActionRequired => "مغلقة — لا تتطلب إجراء",
+        _ => reason.ToString()
+    };
+
+    public static string PartsRequirementStatusAr(NotePartsRequirementStatus status) => status switch
+    {
+        NotePartsRequirementStatus.Requested => "مطلوبة",
+        NotePartsRequirementStatus.Sourcing => "قيد التوريد",
+        NotePartsRequirementStatus.Available => "متوفرة",
+        NotePartsRequirementStatus.Received => "تم الاستلام",
+        NotePartsRequirementStatus.Installed => "تم التركيب",
+        NotePartsRequirementStatus.Cancelled => "ملغاة",
+        _ => status.ToString()
+    };
 }
 
 public sealed class NoteType : EntityBase
@@ -162,6 +282,8 @@ public sealed class NoteType : EntityBase
     public bool IsActive { get; set; } = true;
     public NoteSeverity DefaultSeverity { get; set; } = NoteSeverity.Medium;
     public int? DefaultDueDays { get; set; }
+    /// <summary>Server-authored gate for the "تتطلب قطع أو مواد" execution-type branch — never inferred from Code/NameAr on the client.</summary>
+    public bool SupportsPartsWorkflow { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public User? CreatedByUser { get; set; }
     public Guid? UpdatedByUserId { get; set; }
@@ -380,10 +502,106 @@ public class OperationalNote : SoftDeletableEntity, IScopedEntity
     public User? ReopenedByUser { get; set; }
     public string? ReopenReason { get; set; }
 
+    // --- Phase 1B: triage gate (Layer 1, independent of treatment result) ---
+    public NoteTriageOutcome? TriageOutcome { get; set; }
+    public DateTimeOffset? TriageDecidedAtUtc { get; set; }
+    public Guid? TriageDecidedByUserId { get; set; }
+    public User? TriageDecidedByUser { get; set; }
+
+    /// <summary>Set only when TriageOutcome=Duplicate and the duplicate decision has been approved.</summary>
+    public Guid? DuplicateOfNoteId { get; set; }
+    public OperationalNote? DuplicateOfNote { get; set; }
+
+    // --- Phase 1B: treatment result (Layer 2, only meaningful once TriageOutcome=Valid) ---
+    public NoteTreatmentResultType? TreatmentResultType { get; set; }
+    public NoteTreatmentExecutionType? TreatmentExecutionType { get; set; }
+    public string? TreatmentResultText { get; set; }
+    public string? NoActionJustificationAr { get; set; }
+
+    /// <summary>Final closure reason — orthogonal to Status; Status stays Closed for all four outcomes.</summary>
+    public NoteClosureReason? ClosureReason { get; set; }
+
     public ICollection<NoteAssignment> Assignments { get; set; } = new List<NoteAssignment>();
     public ICollection<NoteStatusHistory> StatusHistory { get; set; } = new List<NoteStatusHistory>();
     public ICollection<CorrectiveAction> CorrectiveActions { get; set; } = new List<CorrectiveAction>();
     public ICollection<NoteRoutingDecision> RoutingDecisions { get; set; } = new List<NoteRoutingDecision>();
+    public ICollection<NoteDecisionApproval> DecisionApprovals { get; set; } = new List<NoteDecisionApproval>();
+    public ICollection<NotePartsRequirement> PartsRequirements { get; set; } = new List<NotePartsRequirement>();
+    public ICollection<NoteSlaPausePeriod> SlaPausePeriods { get; set; } = new List<NoteSlaPausePeriod>();
+}
+
+/// <summary>
+/// Unified four-eyes approval request — one entity type for all decision kinds (Invalid/Duplicate/NoAction/Treatment).
+/// Proposer and reviewer must always differ; enforced in NoteDecisionApprovalService, not here.
+/// </summary>
+public sealed class NoteDecisionApproval : EntityBase
+{
+    public Guid OperationalNoteId { get; set; }
+    public OperationalNote OperationalNote { get; set; } = null!;
+    public NoteDecisionApprovalType DecisionType { get; set; }
+    public NoteDecisionApprovalStatus Status { get; set; } = NoteDecisionApprovalStatus.Pending;
+
+    /// <summary>مبرر اعتبارها غير صحيحة / مكررة / لا تتطلب إجراء (حسب DecisionType).</summary>
+    public string? JustificationAr { get; set; }
+
+    /// <summary>الملاحظة الأصلية المقترحة عند DecisionType=Duplicate فقط.</summary>
+    public Guid? OriginalNoteId { get; set; }
+    public OperationalNote? OriginalNote { get; set; }
+
+    public Guid ProposedByUserId { get; set; }
+    public User ProposedByUser { get; set; } = null!;
+    public DateTimeOffset ProposedAtUtc { get; set; }
+
+    public Guid? ReviewedByUserId { get; set; }
+    public User? ReviewedByUser { get; set; }
+    public DateTimeOffset? ReviewedAtUtc { get; set; }
+
+    /// <summary>سبب إلزامي عند الإعادة؛ اختياري عند الاعتماد.</summary>
+    public string? ReviewReason { get; set; }
+}
+
+/// <summary>عنصر واحد ضمن PartsRequirement[] — تعدد قطع حقيقي، لا حقل قطعة واحدة.</summary>
+public sealed class NotePartsRequirement : EntityBase
+{
+    public Guid OperationalNoteId { get; set; }
+    public OperationalNote OperationalNote { get; set; } = null!;
+    public string ItemName { get; set; } = string.Empty;
+    public string? ItemCode { get; set; }
+    public decimal Quantity { get; set; }
+    public string Unit { get; set; } = string.Empty;
+    public string? RequestNumber { get; set; }
+    public NotePartsRequirementStatus Status { get; set; } = NotePartsRequirementStatus.Requested;
+    public DateTimeOffset RequestedAtUtc { get; set; }
+    public DateTimeOffset? AvailableAtUtc { get; set; }
+    public DateTimeOffset? ReceivedAtUtc { get; set; }
+    public DateTimeOffset? InstalledAtUtc { get; set; }
+    public string? SupplierOrSource { get; set; }
+    public string? Notes { get; set; }
+    public Guid? CancelledByUserId { get; set; }
+    public DateTimeOffset? CancelledAtUtc { get; set; }
+    public string? CancelReason { get; set; }
+    public Guid CreatedByUserId { get; set; }
+}
+
+/// <summary>
+/// One recorded pause window for ProcessingSla while waiting on an approved external parts/supply wait.
+/// Historical periods are append-only once EndedAtUtc is set (never re-dated on recompute).
+/// </summary>
+public sealed class NoteSlaPausePeriod : EntityBase
+{
+    public Guid OperationalNoteId { get; set; }
+    public OperationalNote OperationalNote { get; set; } = null!;
+    public DateTimeOffset? StartedAtUtc { get; set; }
+    public DateTimeOffset? EndedAtUtc { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public Guid RequestedByUserId { get; set; }
+    public DateTimeOffset RequestedAtUtc { get; set; }
+    public Guid? ApprovedByUserId { get; set; }
+    public DateTimeOffset? ApprovedAtUtc { get; set; }
+    public DateTimeOffset? ReviewDueAtUtc { get; set; }
+    public string? EndReason { get; set; }
+    /// <summary>Comma-separated NotePartsRequirement ids this pause is justified by (pragmatic join for a bounded, small set).</summary>
+    public string? RelatedPartsRequirementIdsCsv { get; set; }
 }
 
 public class NoteAssignment : EntityBase

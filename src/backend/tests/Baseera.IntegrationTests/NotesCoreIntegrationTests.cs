@@ -83,12 +83,15 @@ public sealed class NotesCoreIntegrationTests : IntegrationTestBase<OperationsIn
         var creator = _factory.CreateAuthenticatedClient("notes-creator");
         var note = await CreateNoteAsync(creator, ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null, "ملاحظة حرجة", NoteSeverity.Critical);
         note = await PostTransitionAsync(creator, $"/api/v1/notes/{note.Id}/submit", note.RowVersion, "تقديم");
+        note = await DecideTriageValidAsync(creator, note.Id, note.RowVersion);
 
         var assigner = _factory.CreateAuthenticatedClient("notes-verifier");
         note = await AssignAsync(assigner, note.Id, workerId, note.RowVersion);
 
         var worker = _factory.CreateAuthenticatedClient("notes-worker");
         note = await PostWorkflowAsync(worker, $"/api/v1/notes/{note.Id}/start-work", note.RowVersion);
+        note = await RecordDirectTreatmentAsync(worker, note.Id, note.RowVersion);
+        await UploadEvidenceAsync(creator, note.Id);
         note = await PostWorkflowAsync(worker, $"/api/v1/notes/{note.Id}/submit-for-verification", note.RowVersion);
 
         var sodDenied = await worker.PostAsJsonAsync($"/api/v1/notes/{note.Id}/verify-closure", new
@@ -148,10 +151,13 @@ public sealed class NotesCoreIntegrationTests : IntegrationTestBase<OperationsIn
         var admin = _factory.CreateAuthenticatedClient("sod-admin");
         var note = await CreateNoteAsync(admin, ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null, "حرجة متعددة المعالجين", NoteSeverity.Critical);
         note = await PostTransitionAsync(admin, $"/api/v1/notes/{note.Id}/submit", note.RowVersion, "تقديم");
+        note = await DecideTriageValidAsync(admin, note.Id, note.RowVersion);
         note = await AssignAsync(admin, note.Id, workerAId, note.RowVersion);
 
         var procA = _factory.CreateAuthenticatedClient("sod-proc-a");
         note = await PostWorkflowAsync(procA, $"/api/v1/notes/{note.Id}/start-work", note.RowVersion);
+        note = await RecordDirectTreatmentAsync(procA, note.Id, note.RowVersion);
+        await UploadEvidenceAsync(admin, note.Id);
 
         // B submits for verification (processing participant) without needing to be the current assignee.
         var procB = _factory.CreateAuthenticatedClient("sod-proc-b");
@@ -217,9 +223,12 @@ public sealed class NotesCoreIntegrationTests : IntegrationTestBase<OperationsIn
         var admin = _factory.CreateAuthenticatedClient("sod-out-admin");
         var note = await CreateNoteAsync(admin, ScopeType.Facility, SeedIds.RegionA, SeedIds.FacilityA1, null, "حرجة نطاق", NoteSeverity.Critical);
         note = await PostTransitionAsync(admin, $"/api/v1/notes/{note.Id}/submit", note.RowVersion, "تقديم");
+        note = await DecideTriageValidAsync(admin, note.Id, note.RowVersion);
         note = await AssignAsync(admin, note.Id, workerId, note.RowVersion);
         var worker = _factory.CreateAuthenticatedClient("sod-out-worker");
         note = await PostWorkflowAsync(worker, $"/api/v1/notes/{note.Id}/start-work", note.RowVersion);
+        note = await RecordDirectTreatmentAsync(worker, note.Id, note.RowVersion);
+        await UploadEvidenceAsync(admin, note.Id);
         note = await PostWorkflowAsync(worker, $"/api/v1/notes/{note.Id}/submit-for-verification", note.RowVersion);
 
         var outsider = _factory.CreateAuthenticatedClient("sod-out-verifier");
@@ -451,6 +460,46 @@ public sealed class NotesCoreIntegrationTests : IntegrationTestBase<OperationsIn
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, body);
         return JsonSerializer.Deserialize<NoteDetail>(body, JsonOptions)!;
+    }
+
+    /// <summary>Phase 1B: triage gate must clear (صحيحة) before treatment/verification — see
+    /// docs/ux-rescue/phase1b-observation-state-mapping.md. Used by pre-existing happy-path tests so
+    /// the new mandatory gate doesn't strand them; these calls represent the same golden path a real
+    /// user now must follow, not test-only scaffolding.</summary>
+    private static async Task<NoteDetail> DecideTriageValidAsync(HttpClient client, Guid noteId, string rowVersion)
+    {
+        var response = await client.PostAsJsonAsync($"/api/v1/notes/{noteId}/triage/valid", new { rowVersion });
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<NoteDetail>(body, JsonOptions)!;
+    }
+
+    private static async Task<NoteDetail> RecordDirectTreatmentAsync(HttpClient client, Guid noteId, string rowVersion, string resultText = "تمت المعالجة المباشرة.")
+    {
+        var response = await client.PostAsJsonAsync($"/api/v1/notes/{noteId}/treatment/result", new
+        {
+            treatmentResultText = resultText,
+            executionType = NoteTreatmentExecutionType.Direct,
+            rowVersion
+        });
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<NoteDetail>(body, JsonOptions)!;
+    }
+
+    /// <summary>Phase 1B evidence policy (NoteEvidencePolicy.IsEvidenceRequiredForDecision) requires at
+    /// least one attachment before submit-for-verification on High/Critical notes.</summary>
+    private static async Task UploadEvidenceAsync(HttpClient client, Guid noteId)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent("OperationalNote"), "entityType");
+        content.Add(new StringContent(noteId.ToString()), "entityId");
+        content.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("evidence"))
+        {
+            Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain") }
+        }, "file", "evidence.txt");
+        var response = await client.PostAsync("/api/v1/attachments", content);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
     private static async Task<NoteDetail> AssignAsync(HttpClient client, Guid noteId, Guid userId, string rowVersion)

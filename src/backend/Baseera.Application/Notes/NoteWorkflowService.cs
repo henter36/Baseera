@@ -1,6 +1,7 @@
 namespace Baseera.Application.Notes;
 
 using Baseera.Application.Abstractions;
+using Baseera.Application.Attachments;
 using Baseera.Domain.CorrectiveActions;
 using Baseera.Domain.Identity;
 using Baseera.Domain.Notes;
@@ -22,7 +23,8 @@ public sealed class NoteWorkflowService(
     INoteScopeService noteScope,
     INoteTypeAccessService typeAccess,
     IAuditService audit,
-    INoteQueryService queries) : INoteWorkflowService
+    INoteQueryService queries,
+    IAttachmentAppService attachments) : INoteWorkflowService
 {
     public Task<NoteDetailDto> StartWorkAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default) =>
         TransitionAsync(
@@ -45,7 +47,8 @@ public sealed class NoteWorkflowService(
                 NoteStatus.PendingVerification,
                 "NoteSubmittedForVerification",
                 request.Reason,
-                ApplySubmitForVerification),
+                ApplySubmitForVerification,
+                EnsureTreatmentReadyForVerificationAsync),
             cancellationToken);
 
     public Task<NoteDetailDto> ReturnForReworkAsync(Guid id, TransitionNoteRequest request, CancellationToken cancellationToken = default) =>
@@ -82,6 +85,9 @@ public sealed class NoteWorkflowService(
         note.ClosedAtUtc = now;
         note.ClosedByUserId = actorId;
         note.ClosureSummary = request.ClosureSummary.Trim();
+        // This is always the "معالجة" outcome — Invalid/Duplicate/NoAction close via
+        // NoteDecisionApprovalService instead (never through VerifyClosure/PendingVerification).
+        note.ClosureReason = NoteClosureReason.Treated;
         note.UpdatedAtUtc = now;
         note.UpdatedBy = currentUser.ExternalSubject;
         db.Update(note);
@@ -193,7 +199,8 @@ public sealed class NoteWorkflowService(
         NoteStatus ToStatus,
         string AuditAction,
         string Reason,
-        Action<OperationalNote, Guid, DateTimeOffset>? Apply);
+        Action<OperationalNote, Guid, DateTimeOffset>? Apply,
+        Func<OperationalNote, CancellationToken, Task>? ValidateAsync = null);
 
     private async Task<NoteDetailDto> TransitionAsync(TransitionOptions options, CancellationToken cancellationToken)
     {
@@ -201,6 +208,11 @@ public sealed class NoteWorkflowService(
         var note = await NoteAccessHelper.LoadInScopeOrNotFoundAsync(db, noteScope, options.Id, cancellationToken: cancellationToken);
         await typeAccess.EnsureCanAsync(note.NoteTypeId, CapabilityForPermission(options.Permission), cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, options.RowVersion);
+
+        if (options.ValidateAsync is not null)
+        {
+            await options.ValidateAsync(note, cancellationToken);
+        }
 
         if (options.ToStatus == NoteStatus.InProgress && note.Status == NoteStatus.Reopened)
         {
@@ -255,17 +267,22 @@ public sealed class NoteWorkflowService(
     }
 
     /// <summary>
-    /// Critical SoD: any user who performed actual processing on this note cannot verify final closure.
+    /// SoD on final closure: any user who performed actual processing on this note cannot verify it.
     /// Processing is derived from append-only history (not LastProcessedByUserId alone):
     /// Assigned→InProgress, Reopened→InProgress (start-work), InProgress→PendingVerification (submit).
     /// PendingVerification→InProgress (return-for-rework) is NOT processing — typically a reviewer.
+    /// Runs for NoteSeverity.Critical (original scope, unchanged) OR whenever this note went through the
+    /// Phase 1B treatment-result flow (TreatmentResultType=Treated) — the spec's general four-eyes
+    /// requirement on "نتيجة المعالجة" closure, widened here rather than built as a second parallel
+    /// check, and provably inert for every pre-Phase-1B note/test (TreatmentResultType stays null
+    /// unless RecordTreatmentResultAsync was called).
     /// </summary>
     private async Task EnforceCriticalSoDAsync(
         OperationalNote note,
         Guid closerId,
         CancellationToken cancellationToken)
     {
-        if (note.Severity != NoteSeverity.Critical)
+        if (note.Severity != NoteSeverity.Critical && note.TreatmentResultType != NoteTreatmentResultType.Treated)
         {
             return;
         }
@@ -285,6 +302,44 @@ public sealed class NoteWorkflowService(
         {
             throw new InvalidOperationException(
                 "فصل الواجبات: لا يمكن لأي مستخدم شارك في معالجة الملاحظة الحرجة اعتماد إغلاقها النهائي.");
+        }
+    }
+
+    /// <summary>
+    /// Gate for REQUEST_VERIFICATION (spec §معالجة تتطلب قطعًا أو مواد/نتيجة المعالجة): blocks
+    /// submit-for-verification until a "معالجة" result is recorded, its text is filled in, all active
+    /// parts are installed/exempted (when execution type requires parts), and — for High/Critical —
+    /// supporting evidence exists. A no-op for every pre-Phase-1B note (TreatmentResultType stays null).
+    /// </summary>
+    private async Task EnsureTreatmentReadyForVerificationAsync(OperationalNote note, CancellationToken cancellationToken)
+    {
+        if (note.TreatmentResultType != NoteTreatmentResultType.Treated)
+        {
+            throw new InvalidOperationException("يجب تسجيل نتيجة معالجة (معالجة) قبل إرسال الملاحظة للتحقق.");
+        }
+
+        if (string.IsNullOrWhiteSpace(note.TreatmentResultText))
+        {
+            throw new InvalidOperationException("نتيجة المعالجة النصية مطلوبة قبل إرسال الملاحظة للتحقق.");
+        }
+
+        if (note.TreatmentExecutionType == NoteTreatmentExecutionType.RequiresParts)
+        {
+            var parts = await db.NotePartsRequirements.Where(p => p.OperationalNoteId == note.Id).ToListAsync(cancellationToken);
+            var progress = NotePartsRequirementService.ComputeProgress(parts);
+            if (!progress.AllResolved)
+            {
+                throw new InvalidOperationException("لا يمكن إرسال المعالجة للتحقق قبل اكتمال جميع القطع الفعالة (تم التركيب) أو إعفائها.");
+            }
+        }
+
+        if (NoteEvidencePolicy.IsEvidenceRequiredForDecision(note.Severity))
+        {
+            var existing = await attachments.ListForEntityAsync(nameof(OperationalNote), note.Id, cancellationToken);
+            if (existing.Count == 0)
+            {
+                throw new InvalidOperationException("يتطلب تصنيف/خطورة هذه الملاحظة إرفاق دليل مؤيد قبل إرسال المعالجة للتحقق.");
+            }
         }
     }
 

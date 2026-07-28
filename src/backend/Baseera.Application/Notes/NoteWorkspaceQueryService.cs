@@ -20,7 +20,10 @@ public sealed class NoteWorkspaceQueryService(
     ICurrentUser currentUser,
     INoteQueryService notes,
     ICorrectiveActionQueryService correctiveActions,
-    IAttachmentAppService attachments) : INoteWorkspaceQueryService
+    IAttachmentAppService attachments,
+    INoteDecisionApprovalService decisionApprovals,
+    INotePartsRequirementService parts,
+    INoteSlaService sla) : INoteWorkspaceQueryService
 {
     // Bounds the combined status-history/corrective-action timeline returned per note to a fixed
     // preview window (docs/ux-rescue/phase1a-observation-performance.md) — never "full audit" history.
@@ -61,15 +64,28 @@ public sealed class NoteWorkspaceQueryService(
                 action.Status != CorrectiveActionStatus.Cancelled,
             cancellationToken);
 
+        var decisions = await decisionApprovals.ListAsync(id, cancellationToken);
+        var pendingDecision = decisions.FirstOrDefault(d => d.Status == NoteDecisionApprovalStatus.Pending);
+        var partsItems = note.TreatmentExecutionType == NoteTreatmentExecutionType.RequiresParts
+            ? await parts.ListAsync(id, cancellationToken)
+            : Array.Empty<NotePartsRequirementDto>();
+        NotePartsProgressDto? partsProgress = note.TreatmentExecutionType == NoteTreatmentExecutionType.RequiresParts
+            ? await parts.GetProgressAsync(id, cancellationToken)
+            : null;
+        var slaState = await sla.ComputeAsync(id, cancellationToken);
+
+        var allowedActions = BuildAllowedActions(note);
+        var actionCenter = BuildActionCenter(note, allowedActions, pendingDecision, partsProgress, slaState, openActions, currentUser);
+
         return new NoteWorkspaceDetailDto(
             note,
-            BuildAllowedActions(note),
+            allowedActions,
             new NoteWorkspaceSummaryDto(
                 openActions,
                 attachmentRows.Count,
                 note.Status == NoteStatus.InProgress && openActions > 0,
                 note.Status == NoteStatus.PendingVerification,
-                false,
+                pendingDecision is not null,
                 false,
                 ResolveProgress(note.Status, openActions),
                 ResolveBlocker(note, openActions),
@@ -77,7 +93,11 @@ public sealed class NoteWorkspaceQueryService(
             assignments,
             actionPage,
             attachmentRows,
-            timeline);
+            timeline,
+            decisions,
+            partsItems,
+            slaState,
+            actionCenter);
     }
 
     private async Task<IReadOnlyList<NoteStatusHistoryDto>> LoadRecentHistoryAsync(
@@ -161,10 +181,147 @@ public sealed class NoteWorkspaceQueryService(
         AddIf(allowed, "ADD_ACTION", currentUser.HasPermission(PermissionCodes.CorrectiveActionsCreate) && !NoteStateMachine.IsTerminalLocked(note.Status));
         AddIf(allowed, "REQUEST_VERIFICATION", currentUser.HasPermission(PermissionCodes.NotesSubmitForVerification) && NoteStateMachine.CanTransition(note.Status, NoteStatus.PendingVerification));
         AddIf(allowed, "REJECT_VERIFICATION", currentUser.HasPermission(PermissionCodes.NotesReturnForRework) && NoteStateMachine.CanTransition(note.Status, NoteStatus.InProgress));
-        AddIf(allowed, "VERIFY_CLOSURE", currentUser.HasPermission(PermissionCodes.NotesVerifyClosure) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Closed));
+        // Deliberately Status==PendingVerification rather than CanTransition(status, Closed): the latter
+        // is now also true for the Phase 1B decision-approval closures (Invalid/Duplicate/NoAction),
+        // which close via NoteDecisionApprovalService/Notes.Approve* — never via VERIFY_CLOSURE.
+        AddIf(allowed, "VERIFY_CLOSURE", currentUser.HasPermission(PermissionCodes.NotesVerifyClosure) && note.Status == NoteStatus.PendingVerification);
         AddIf(allowed, "REOPEN", currentUser.HasPermission(PermissionCodes.NotesReopen) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Reopened));
         AddIf(allowed, "CANCEL", currentUser.HasPermission(PermissionCodes.NotesCancel) && !NoteStateMachine.IsTerminalLocked(note.Status));
+
+        // --- Phase 1B: triage gate / treatment result / parts / SLA — purely additive tokens,
+        // computed from NoteDetailDto fields only (no I/O), never gating the pre-existing tokens
+        // above so pre-Phase-1B notes/tests keep their exact original AllowedActions behavior.
+        var atTriageGate = note.Status == NoteStatus.Open && note.TriageOutcome is null;
+        AddIf(allowed, "TRIAGE_VALID", currentUser.HasPermission(PermissionCodes.NotesUpdate) && atTriageGate);
+        AddIf(allowed, "TRIAGE_PROPOSE_INVALID", currentUser.HasPermission(PermissionCodes.NotesProposeInvalid) && atTriageGate);
+        AddIf(allowed, "TRIAGE_PROPOSE_DUPLICATE", currentUser.HasPermission(PermissionCodes.NotesProposeDuplicate) && atTriageGate);
+
+        var validAndOpenForTreatment = note.TriageOutcome == NoteTriageOutcome.Valid && !NoteStateMachine.IsTerminalLocked(note.Status);
+        AddIf(allowed, "RECORD_TREATMENT", currentUser.HasPermission(PermissionCodes.NotesStartWork) && validAndOpenForTreatment);
+        AddIf(allowed, "PROPOSE_NO_ACTION", currentUser.HasPermission(PermissionCodes.NotesProposeNoAction) && validAndOpenForTreatment);
+
+        var requiresParts = note.TreatmentExecutionType == NoteTreatmentExecutionType.RequiresParts && !NoteStateMachine.IsTerminalLocked(note.Status);
+        AddIf(allowed, "MANAGE_PARTS", currentUser.HasPermission(PermissionCodes.NotesStartWork) && requiresParts);
+        AddIf(allowed, "REQUEST_SLA_PAUSE", currentUser.HasPermission(PermissionCodes.NotesStartWork) && requiresParts);
+        AddIf(allowed, "APPROVE_SLA_PAUSE", currentUser.HasPermission(PermissionCodes.NotesApproveSlaPause) && requiresParts);
         return allowed;
+    }
+
+    private static readonly string[] ActionPriority =
+    [
+        "TRIAGE_VALID", "TRIAGE_PROPOSE_INVALID", "TRIAGE_PROPOSE_DUPLICATE",
+        "ASSIGN", "REASSIGN", "START_WORK", "RECORD_TREATMENT", "MANAGE_PARTS",
+        "REQUEST_VERIFICATION", "APPROVE_SLA_PAUSE", "REQUEST_SLA_PAUSE",
+        "VERIFY_CLOSURE", "REJECT_VERIFICATION", "PROPOSE_NO_ACTION",
+        "REOPEN", "CANCEL", "ADD_ACTION", "SUBMIT"
+    ];
+
+    /// <summary>
+    /// Server-authored مركز الإجراءات contract (spec §مركز الإجراءات): exactly one primary action,
+    /// up to three secondary actions, plus the state hints the UI needs to explain why an action is
+    /// blocked without re-deriving policy client-side.
+    /// </summary>
+    private static NoteActionCenterDto BuildActionCenter(
+        NoteDetailDto note,
+        IReadOnlyList<string> allowedActions,
+        NoteDecisionApprovalDto? pendingDecision,
+        NotePartsProgressDto? partsProgress,
+        NoteSlaStateDto slaState,
+        int openActions,
+        ICurrentUser currentUser)
+    {
+        var ordered = ActionPriority.Where(allowedActions.Contains).ToList();
+        var primary = ordered.FirstOrDefault();
+        var secondary = ordered.Skip(1).Take(3).ToList();
+
+        var canSelfApprove = pendingDecision is not null
+            && currentUser.UserId != pendingDecision.ProposedByUserId
+            && currentUser.HasPermission(pendingDecision.DecisionType switch
+            {
+                NoteDecisionApprovalType.Invalid => PermissionCodes.NotesApproveInvalid,
+                NoteDecisionApprovalType.Duplicate => PermissionCodes.NotesApproveDuplicate,
+                NoteDecisionApprovalType.NoAction => PermissionCodes.NotesApproveNoAction,
+                _ => string.Empty
+            });
+
+        var blocker = ResolveBlocker(note, openActions);
+        if (pendingDecision is not null)
+        {
+            blocker = $"بانتظار اعتماد: {pendingDecision.DecisionTypeAr}";
+        }
+        else if (partsProgress is not null && !partsProgress.AllResolved)
+        {
+            blocker = $"بانتظار قطع ({partsProgress.Installed} من {partsProgress.Total} تم تركيبها)";
+        }
+
+        var nextAction = ResolveNextAction(note, pendingDecision, partsProgress);
+        var closureReadiness = note.Status == NoteStatus.PendingVerification || pendingDecision is not null;
+
+        return new NoteActionCenterDto(
+            allowedActions,
+            primary,
+            secondary,
+            pendingDecision?.DecisionTypeAr,
+            pendingDecision is not null,
+            canSelfApprove,
+            blocker,
+            nextAction,
+            note.ClosureReason?.ToString() ?? "Open",
+            partsProgress,
+            closureReadiness);
+    }
+
+    private static string? ResolveNextAction(
+        NoteDetailDto note,
+        NoteDecisionApprovalDto? pendingDecision,
+        NotePartsProgressDto? partsProgress)
+    {
+        if (NoteStateMachine.IsTerminalLocked(note.Status))
+        {
+            return null;
+        }
+
+        if (pendingDecision is not null)
+        {
+            return $"اعتماد {pendingDecision.DecisionTypeAr}";
+        }
+
+        if (note.Status == NoteStatus.Open && note.TriageOutcome is null)
+        {
+            return "فرز الملاحظة";
+        }
+
+        if (note.TriageOutcome == NoteTriageOutcome.Valid && note.CurrentAssignment is null)
+        {
+            return "تكليف الملاحظة";
+        }
+
+        if (note.Status == NoteStatus.Assigned)
+        {
+            return "بدء المعالجة";
+        }
+
+        if (note.Status == NoteStatus.InProgress && note.TreatmentResultType is null)
+        {
+            return "تسجيل نتيجة المعالجة";
+        }
+
+        if (partsProgress is not null && !partsProgress.AllResolved)
+        {
+            return "إكمال متطلبات القطع";
+        }
+
+        if (note.Status == NoteStatus.InProgress && note.TreatmentResultType == NoteTreatmentResultType.Treated)
+        {
+            return "إرسال المعالجة للتحقق";
+        }
+
+        if (note.Status == NoteStatus.PendingVerification)
+        {
+            return "اعتماد نتيجة المعالجة";
+        }
+
+        return null;
     }
 
     private static string TimelineToneForStatus(NoteStatus status)

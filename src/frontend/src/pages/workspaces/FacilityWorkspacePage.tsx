@@ -2814,6 +2814,14 @@ function noteActionLabel(action: NoteWorkspaceAllowedAction) {
     VERIFY_CLOSURE: 'اعتماد الإغلاق',
     REOPEN: 'إعادة فتح',
     CANCEL: 'إلغاء',
+    TRIAGE_VALID: 'اعتماد صحيحة',
+    TRIAGE_PROPOSE_INVALID: 'اقتراح غير صحيحة',
+    TRIAGE_PROPOSE_DUPLICATE: 'اقتراح مكررة',
+    RECORD_TREATMENT: 'تسجيل نتيجة المعالجة',
+    PROPOSE_NO_ACTION: 'اقتراح لا تتطلب إجراء',
+    MANAGE_PARTS: 'إدارة القطع والمواد',
+    REQUEST_SLA_PAUSE: 'طلب تجميد SLA',
+    APPROVE_SLA_PAUSE: 'اعتماد تجميد SLA',
   }
   return labels[action] ?? action
 }

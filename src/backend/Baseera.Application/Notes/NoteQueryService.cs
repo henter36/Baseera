@@ -152,6 +152,12 @@ public sealed class NoteQueryService(
         var current = MapAssignment(currentAssignment);
         var reporter = (await db.Users.FirstOrDefaultAsync(u => u.Id == note.ReportedByUserId, cancellationToken))?.DisplayNameAr;
         var now = DateTimeOffset.UtcNow;
+        var triageDeciderName = note.TriageDecidedByUserId.HasValue
+            ? (await db.Users.FirstOrDefaultAsync(u => u.Id == note.TriageDecidedByUserId.Value, cancellationToken))?.DisplayNameAr
+            : null;
+        var duplicateOfReference = note.DuplicateOfNoteId.HasValue
+            ? (await db.OperationalNotesIncludingDeleted.FirstOrDefaultAsync(n => n.Id == note.DuplicateOfNoteId.Value, cancellationToken))?.ReferenceNumber
+            : null;
 
         return new NoteDetailDto(
             note.Id,
@@ -193,7 +199,22 @@ public sealed class NoteQueryService(
             current,
             note.CreatedAtUtc,
             Convert.ToBase64String(note.RowVersion),
-            redact);
+            redact,
+            note.TriageOutcome,
+            note.TriageOutcome.HasValue ? NoteDisplay.TriageOutcomeAr(note.TriageOutcome.Value) : null,
+            note.TriageDecidedAtUtc,
+            triageDeciderName,
+            note.DuplicateOfNoteId,
+            duplicateOfReference,
+            note.TreatmentResultType,
+            note.TreatmentResultType.HasValue ? NoteDisplay.TreatmentResultTypeAr(note.TreatmentResultType.Value) : null,
+            note.TreatmentExecutionType,
+            note.TreatmentExecutionType.HasValue ? NoteDisplay.TreatmentExecutionTypeAr(note.TreatmentExecutionType.Value) : null,
+            note.TreatmentResultText,
+            note.NoActionJustificationAr,
+            note.ClosureReason,
+            note.ClosureReason.HasValue ? NoteDisplay.ClosureReasonAr(note.ClosureReason.Value) : null,
+            note.NoteType.SupportsPartsWorkflow);
     }
 
     public async Task<IReadOnlyList<NoteStatusHistoryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken = default)

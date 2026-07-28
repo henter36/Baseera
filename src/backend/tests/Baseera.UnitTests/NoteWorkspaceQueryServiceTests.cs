@@ -182,5 +182,6 @@ public sealed class NoteWorkspaceQueryServiceTests
         currentAssignment,
         DateTimeOffset.UtcNow.AddDays(-1),
         Convert.ToBase64String([1, 2, 3, 4]),
-        false);
+        false,
+        null, null, null, null, null, null, null, null, null, null, null, null, null, null, false);
 }

@@ -46,6 +46,11 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<INoteCommandService, NoteCommandService>();
         services.AddScoped<INoteAssignmentService, NoteAssignmentService>();
         services.AddScoped<INoteWorkflowService, NoteWorkflowService>();
+        services.AddScoped<INoteTriageService, NoteTriageService>();
+        services.AddScoped<INoteDecisionApprovalService, NoteDecisionApprovalService>();
+        services.AddScoped<INoteTreatmentService, NoteTreatmentService>();
+        services.AddScoped<INoteSlaService, NoteSlaService>();
+        services.AddScoped<INotePartsRequirementService, NotePartsRequirementService>();
         services.AddScoped<IFormScopeService, FormScopeService>();
         services.AddScoped<IFormEffectiveAccessService, FormEffectiveAccessService>();
         services.AddScoped<IFormSeparationOfDutiesService, FormSeparationOfDutiesService>();

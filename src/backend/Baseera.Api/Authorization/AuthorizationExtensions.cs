@@ -38,6 +38,17 @@ public static class AuthPolicies
     public const string NotesActivateRoutingRules = PermissionPrefix + PermissionCodes.NotesActivateRoutingRules;
     public const string NotesRunRouting = PermissionPrefix + PermissionCodes.NotesRunRouting;
     public const string NotesViewRoutingDiagnostics = PermissionPrefix + PermissionCodes.NotesViewRoutingDiagnostics;
+    /// <summary>Coarse endpoint-level gate for the generic approve/return-decision routes — the specific
+    /// Notes.Approve{Invalid,Duplicate,NoAction} permission for the request's DecisionType is the real,
+    /// fine-grained check enforced inside NoteDecisionApprovalService.</summary>
+    public const string NotesApproveAnyDecision = PermissionPrefix + "Notes.ApproveAnyDecision";
+    public const string NotesProposeInvalid = PermissionPrefix + PermissionCodes.NotesProposeInvalid;
+    public const string NotesApproveInvalid = PermissionPrefix + PermissionCodes.NotesApproveInvalid;
+    public const string NotesProposeDuplicate = PermissionPrefix + PermissionCodes.NotesProposeDuplicate;
+    public const string NotesApproveDuplicate = PermissionPrefix + PermissionCodes.NotesApproveDuplicate;
+    public const string NotesProposeNoAction = PermissionPrefix + PermissionCodes.NotesProposeNoAction;
+    public const string NotesApproveNoAction = PermissionPrefix + PermissionCodes.NotesApproveNoAction;
+    public const string NotesApproveSlaPause = PermissionPrefix + PermissionCodes.NotesApproveSlaPause;
     public const string CorrectiveActionsView = PermissionPrefix + PermissionCodes.CorrectiveActionsView;
     public const string CorrectiveActionsViewSensitive = PermissionPrefix + PermissionCodes.CorrectiveActionsViewSensitive;
     public const string CorrectiveActionsCreate = PermissionPrefix + PermissionCodes.CorrectiveActionsCreate;
@@ -276,6 +287,17 @@ public static class AuthorizationExtensions
             AddPerm(AuthPolicies.NotesActivateRoutingRules, PermissionCodes.NotesActivateRoutingRules);
             AddPerm(AuthPolicies.NotesRunRouting, PermissionCodes.NotesRunRouting);
             AddPerm(AuthPolicies.NotesViewRoutingDiagnostics, PermissionCodes.NotesViewRoutingDiagnostics);
+            options.AddPolicy(AuthPolicies.NotesApproveAnyDecision, p => p.Requirements.Add(new AnyPermissionRequirement(
+                PermissionCodes.NotesApproveInvalid,
+                PermissionCodes.NotesApproveDuplicate,
+                PermissionCodes.NotesApproveNoAction)));
+            AddPerm(AuthPolicies.NotesProposeInvalid, PermissionCodes.NotesProposeInvalid);
+            AddPerm(AuthPolicies.NotesApproveInvalid, PermissionCodes.NotesApproveInvalid);
+            AddPerm(AuthPolicies.NotesProposeDuplicate, PermissionCodes.NotesProposeDuplicate);
+            AddPerm(AuthPolicies.NotesApproveDuplicate, PermissionCodes.NotesApproveDuplicate);
+            AddPerm(AuthPolicies.NotesProposeNoAction, PermissionCodes.NotesProposeNoAction);
+            AddPerm(AuthPolicies.NotesApproveNoAction, PermissionCodes.NotesApproveNoAction);
+            AddPerm(AuthPolicies.NotesApproveSlaPause, PermissionCodes.NotesApproveSlaPause);
             AddPerm(AuthPolicies.CorrectiveActionsView, PermissionCodes.CorrectiveActionsView);
             AddPerm(AuthPolicies.CorrectiveActionsViewSensitive, PermissionCodes.CorrectiveActionsViewSensitive);
             AddPerm(AuthPolicies.CorrectiveActionsCreate, PermissionCodes.CorrectiveActionsCreate);

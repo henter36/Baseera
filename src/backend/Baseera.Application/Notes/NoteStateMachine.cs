@@ -22,6 +22,13 @@ public static class NoteStateMachine
             (NoteStatus.Closed, NoteStatus.Reopened) => true,
             (NoteStatus.Reopened, NoteStatus.Assigned) => true,
             (NoteStatus.Reopened, NoteStatus.InProgress) => true,
+            // Phase 1B decision-approval closures (Invalid/Duplicate/NoAction) close a note without ever
+            // routing through PendingVerification/VerifyClosure — they carry their own four-eyes approval
+            // (NoteDecisionApprovalService) and are tagged with a distinct ClosureReason. Still one single
+            // state machine: these are additional rows in the same authoritative table, not a parallel one.
+            (NoteStatus.Open, NoteStatus.Closed) => true,
+            (NoteStatus.Assigned, NoteStatus.Closed) => true,
+            (NoteStatus.InProgress, NoteStatus.Closed) => true,
             _ => false
         };
 
