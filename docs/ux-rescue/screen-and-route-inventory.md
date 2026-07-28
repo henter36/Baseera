@@ -1,0 +1,127 @@
+# جرد الشاشات والـRoutes الفعلية — UX Rescue Phase 0
+
+مصدر هذا الجرد: قراءة مباشرة لـ `src/frontend/src/App.tsx` (جدول التوجيه الكامل)، وكل ملف Page/Component المرتبط، بالإضافة إلى العقود الخلفية المؤثرة في الصلاحيات وقرارات الواجهة. لا يعتمد هذا الجرد على تخمين أسماء الملفات — كل صف تحقّق من الكود الفعلي.
+
+**إجمالي Routes المعرَّفة في `App.tsx`: 62** (بعضها يُعيد استخدام نفس المكوّن لعدة مسارات، موضّح أدناه). هذا الرقم مُتحقَّق آليًا عبر `scripts/ux-route-inventory-check.mjs` الذي يقارن كل `<Route path>` فعلي بصف موثَّق في هذا الجدول.
+
+## جدول القرار الأولي لكل Route
+
+| Route | الشاشة | المجال | المستخدم المستهدف | المهمة الأساسية | نقطة الدخول | الوجهات المرتبطة | الصلاحيات | Mobile | القرار الأولي |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `/login` | LoginPage | المصادقة | جميع المستخدمين | تسجيل الدخول (Entra أو Test Auth) | مباشر (غير مصادَق) | → `/regions` بعد النجاح | عام | غير مدروس (خارج نطاق التدقيق) | Keep |
+| `/` | إعادة توجيه إلى `/regions` | — | مستخدم مصادَق | نقطة دخول افتراضية | مباشر | `/regions` | مصادَق فقط | — | Keep |
+| `/regions` | RegionsPage | التنظيم/الدليل | مدير منطقة، مستخدم HQ | استعراض المناطق | رابط الشريط الجانبي "المناطق" | **لا يوجد** — لا رابط ولا onClick على أي صف | `Organization.View` | تخطيط CSS فقط | Restructure — جدول مسطّح بلا drill-down إطلاقًا؛ هذا هو السبب المباشر لعدم وجود Region Workspace اليوم |
+| `/facilities` | FacilitiesPage | التنظيم/الدليل | جميع الأدوار التي تحتاج دليل السجون | استعراض السجون والانتقال لمركز القرار | رابط الشريط الجانبي "السجون" | `/workspaces/facilities/:facilityId` (عمود "مركز القرار" فقط) | `Organization.View` (+`Workspaces.View`+`Workspaces.ViewFacility` لعمود الرابط) | تخطيط CSS فقط | Keep — لكنه **نقطة الدخول الوحيدة** فعليًا لمساحة عمل السجن؛ لا يوجد رابط شريط جانبي مباشر لها |
+| `/notes` | ObservationWorkspacePage | الملاحظات | جميع أدوار الملاحظات | إدارة الملاحظات (نفس مكوّن `/notes/workspace`) | مسار قديم/بديل | نفس وجهات `/notes/workspace` | `Notes.View` | تخطيط CSS، لا split-view مخصص للموبايل | Merge — مسار مكرر لنفس المكوّن، يجب إبقاء واحد فقط |
+| `/notes/workspace` | ObservationWorkspacePage | الملاحظات | مسؤول ملاحظات، مسؤول متابعة، مدير سجن | فهم حالة الملاحظات وتنفيذ الإجراء التالي | رابط الشريط الجانبي "الملاحظات" | يفتح `/notes/new` (كامل)، ينتقل قسريًا لـ`/notes/:id` عند ASSIGN/REASSIGN وأي إجراء خارج `INLINE_ACTIONS`، `/notes/:id/corrective-actions/new` | `Notes.View` (+`Notes.Create` لزر الإنشاء) | لا split pane مخصص، يعتمد إعادة تدفق CSS | Restructure — هذا هو نطاق #143 مباشرة |
+| `/dashboard` | OperationalDashboardPage | مؤشرات عابرة للمجالات | مسؤول عمليات/متابعة، مدير | نظرة عامة تجميعية (منظمة أو مصفّاة بمنطقة/سجن) | رابط الشريط الجانبي "لوحة المتابعة" | `/notes/:id`، `/corrective-actions/:id`، قائمة ملاحظات مصفّاة بالسجن — **لا يربط أبدًا** بـ`/workspaces/facilities/:facilityId` | `Dashboard.ViewOperational/ViewRisk/ViewRouting/ViewCorrectiveActions` | تخطيط CSS | Restructure — تكرار بيانات مع Facility Workspace (ملاحظات/إجراءات/تصعيد) بلا أي تقاطع تنقّل بينهما |
+| `/workspaces/reference` | ReferenceWorkspacePage | مرجعي/تطويري | مطورون فقط (خلف `import.meta.env.DEV` أو env flag) | عرض مرجعي لإطار Workspace العام | رابط شريط جانبي (dev فقط) | لا شيء | `Workspaces.View` | يستخدم `WorkspaceShell` الحقيقي كاملًا | Advanced fallback — مرجع معماري مفيد للاحتفاظ به، غير مخصص لمستخدم الإنتاج |
+| `/workspaces/facilities/:facilityId` | FacilityWorkspacePage | مركز قرار السجن | مدير سجن، مسؤول عمليات، إلخ | فهم الوضع العام واتخاذ القرار | رابط "مركز القرار" من `/facilities` فقط (لا رابط شريط جانبي) | يفتح لوحات سياقية (Notes/CA/Risk/…)، وينتقل خارجيًا إلى `/facilities/:id/occupancy\|resources\|workforce`، `/notes/workspace?noteId=`, `/form-compliance/facilities/:id` | `Workspaces.View`+`Workspaces.ViewFacility` (بوابة واحدة شاملة، بلا تحقق صلاحية لكل قسم داخليًا) | إعادة تدفق CSS على `1100px`/`720px`، لا تنقّل موبايل مخصص | Restructure — الملف المركزي (2758 سطرًا)؛ يحتاج تبني `WorkspaceShell` الحقيقي وترقية دخول الشريط الجانبي |
+| `/facilities/:facilityId/occupancy` | FacilityOccupancyPage | الإشغال | مسؤول إشغال | إدارة السعة والحركة | رابط من قسم الإشغال في Facility Workspace | رابط عودة يدوي إلى `?section=occupancy` (لا يحافظ على فلاتر الفترة) | `Occupancy.View*/ManageCapacity` | إعادة استخدام صنف CSS بصري فقط | Merge into Workspace |
+| `/facilities/:facilityId/resources` | FacilityResourcesPage | الموارد | مسؤول موارد | إدارة الأصول والفئات | رابط من قسم الموارد | رابط عودة يدوي `?section=resources` | `Resources.View*/ManageAssets/Import` | نفس النمط | Merge into Workspace |
+| `/facilities/:facilityId/workforce` | FacilityWorkforcePage | القوى البشرية | مسؤول قوى بشرية | إدارة الأعضاء والمناوبات (1090 سطرًا) | رابط من قسم القوى البشرية | رابط عودة يدوي `?section=workforce` | `Workforce.View*/ManageMembers` | نفس النمط | Merge into Workspace |
+| `/notes/new` | NoteCreatePage | الملاحظات | مُبلِّغ عن ملاحظة | إنشاء ملاحظة جديدة | زر "ملاحظة جديدة" في Workspace | → `/notes/:id` بعد الإنشاء | `Notes.Create` | صفحة كاملة | Merge into Workspace — يجب أن يصبح نموذجًا مضمَّنًا |
+| `/notes/:id` | NoteDetailPage | الملاحظات | جميع أدوار الملاحظات | تفاصيل كاملة وإجراءات لا تعمل ضمن Workspace (ASSIGN، verifyClosure) | تنقّل قسري من ActionBar في Workspace | `/notes/:id/edit`، `/notes/:noteId/corrective-actions/new` | `Notes.View`(+`Update`/`Archive` لأزرار محدَّدة) | صفحة كاملة | Merge into Workspace — هدف #143 دمج كل ما هنا |
+| `/notes/:id/edit` | NoteEditPage | الملاحظات | مالك/محرِّر الملاحظة | تعديل الحقول | رابط من التفاصيل | → `/notes/:id` | `Notes.Update` | صفحة كاملة | Merge into Workspace |
+| `/forms` | FormsListPage | النماذج | منشئ/مدير النموذج | استعراض النماذج | رابط الشريط الجانبي "النماذج" | `/forms/new`، `/forms/:id` | `Forms.View` | صفحة كاملة | Restructure — ضمن نطاق #144 |
+| `/forms/new` | FormCreatePage | النماذج | منشئ النموذج | إنشاء بيانات نموذج (وصفية فقط، بلا إصدار) | رابط من القائمة | → `/forms/:id` | `Forms.Create` | صفحة كاملة | Merge into Studio (#144) |
+| `/forms/:id` | FormDetailPage | النماذج | منشئ/مدير النموذج | بيانات النموذج وحالته | رابط من القائمة/الإنشاء | `/forms/:formId/versions`، `/edit`، `/review`، `/access` | `Forms.View` | صفحة كاملة | Restructure |
+| `/forms/:id/edit` | FormEditPage | النماذج | منشئ النموذج | تعديل بيانات النموذج | رابط من التفاصيل | → `/forms/:id` | `Forms.Update` | صفحة كاملة | Merge into Studio |
+| `/forms/:id/review` | FormReviewPage | النماذج | مراجع/معتمد | مراجعة حالة **Form** (منفصلة تمامًا عن مراجعة الإصدار!) | رابط من التفاصيل | → `/forms/:id` | صلاحيات مراجعة النموذج | صفحة كاملة | Restructure — نظام مراجعة مواز مربك لمراجعة الإصدار |
+| `/forms/:id/access` | FormAccessPage | النماذج | حوكمة/إدارة | منح صلاحيات وصول | رابط من التفاصيل | → `/forms/:id` | `Forms.ManageAccess` | صفحة كاملة | Advanced fallback |
+| `/forms/:formId/versions` | FormVersionsPage | النماذج | منشئ النموذج | قائمة الإصدارات | رابط من التفاصيل | `/versions/new` (نفس المكوّن)، `/versions/:versionId`, `/edit` | `Forms.View` | صفحة كاملة | Merge into Studio |
+| `/forms/:formId/versions/new` | FormVersionsPage (نفس مكوّن القائمة) | النماذج | — | **Route ميت** — لا رابط في التطبيق يشير إليه؛ زر "إصدار جديد" في القائمة نفسها ينشئ الإصدار وينتقل مباشرة إلى `/edit` دون المرور بهذا المسار | لا يوجد | — | `Forms.View` | — | Remove/redirect — مسار غير قابل للوصول فعليًا |
+| `/forms/:formId/versions/:versionId` | FormVersionDetailPage | النماذج | منشئ/مراجع | حالة الإصدار | رابط من قائمة الإصدارات | `/edit`، `/review`، `/snapshot` | `Forms.View` | صفحة كاملة | Merge into Studio |
+| `/forms/:formId/versions/:versionId/edit` | FormDesignerPage | النماذج | منشئ النموذج | تصميم الحقول (Canvas ثلاثي الألواح) | رابط من تفاصيل/قائمة الإصدار | إرسال → عودة لتفاصيل الإصدار | `Forms.UpdateDraft` | Grid يتحول لعمود واحد عند الشاشات الضيقة | Restructure — جوهر #144 |
+| `/forms/:formId/versions/:versionId/review` | FormVersionReviewPage | النماذج | مراجع/معتمد | اعتماد/رفض/طلب تعديل | رابط من تفاصيل الإصدار | → تفاصيل الإصدار | صلاحيات مراجعة الإصدار | صفحة كاملة | Merge into Studio (كخطوة مراجعة داخل نفس الاستوديو) |
+| `/forms/:formId/versions/:versionId/snapshot` | FormVersionSnapshotPage | النماذج | أي مستخدم يملك View | عرض JSON خام لإصدار مقفل | رابط من قائمة الإصدارات عند القفل | لا شيء | `Forms.View` | صفحة كاملة | Advanced fallback — يحتاج عرضًا مقروءًا لاحقًا لكن يبقى مسارًا مستقلاً تقنيًا |
+| `/form-templates` | FormTemplatesPage | النماذج | منشئ النموذج | بدء نموذج من قالب | رابط الشريط الجانبي "قوالب النماذج" | **`window.location.assign`** (إعادة تحميل كاملة، ليست SPA navigation) إلى `/forms/:id/versions` | `Forms.ManageTemplates` | صفحة كاملة | Restructure — يجب دمجها كخطوة بداية داخل استوديو موحّد، وإصلاح خلل إعادة التحميل الكامل |
+| `/form-campaigns` | FormCampaignsListPage (من نفس ملف `FormCampaignsListPage.tsx`) | تشغيل النماذج | منشئ/مسؤول متابعة الحملة | استعراض/إدارة الحملات | رابط الشريط الجانبي "حملات النشر" | `/new`، `/:campaignId`، `/edit`، `/cycles` | `Forms.Publish/ManageCampaigns/View` | صفحة كاملة | Restructure — جوهر #145 |
+| `/form-campaigns/new` | FormCampaignWizardPage | تشغيل النماذج | منشئ الحملة | إنشاء حملة (7 خطوات قابلة للنقر بأي ترتيب) | رابط من القائمة | → `/form-campaigns/:id` | `Forms.ManageCampaigns` | صفحة كاملة | Merge into Ops Workspace |
+| `/form-campaigns/:campaignId` | FormCampaignDetailPage (من نفس ملف `FormCampaignsListPage.tsx`) | تشغيل النماذج | منشئ/مسؤول متابعة الحملة | تفاصيل حملة ومعاينة أحدث دوراتها | رابط من القائمة | `/edit`، `/cycles`، `/preview` | `Forms.View/ManageCampaigns` | صفحة كاملة | Restructure — جوهر #145 |
+| `/form-campaigns/:campaignId/edit` | FormCampaignWizardPage | تشغيل النماذج | مالك الحملة | **معطّل فعليًا**: المكوّن لا يقرأ `:campaignId` إطلاقًا (لا `useParams`، لا `api.formCampaigns.get`)، فيعرض معالج إنشاء فارغًا بدل تحميل بيانات الحملة | رابط "تعديل" من صفحة التفاصيل | — | `Forms.ManageCampaigns` | — | **Replace completely** — عطل وظيفي حقيقي، ليس مجرد احتكاك UX |
+| `/form-campaigns/:campaignId/targeting` | FormCampaignWizardPage | تشغيل النماذج | — | نفس الخلل أعلاه، **بالإضافة إلى كونه Route ميتًا** — لا رابط في التطبيق يشير إليه إطلاقًا | لا يوجد | — | `Forms.ManageCampaigns` | — | Remove/redirect |
+| `/form-campaigns/:campaignId/schedule` | FormCampaignWizardPage | تشغيل النماذج | — | نفس الخلل، ونفس كونه Route ميتًا | لا يوجد | — | `Forms.ManageCampaigns` | — | Remove/redirect |
+| `/form-campaigns/:campaignId/preview` | FormCampaignPreviewPage | تشغيل النماذج | منشئ الحملة | معاينة الاستهداف قبل النشر | من خطوة المعاينة بالمعالج | — | `Forms.ManageCampaigns` | صفحة كاملة | Merge into Ops Workspace |
+| `/form-campaigns/:campaignId/cycles` | FormCampaignCyclesPage | تشغيل النماذج | مسؤول متابعة | قائمة دورات الحملة | رابط من تفاصيل الحملة | `/cycles/:cycleId` | `Forms.View` | صفحة كاملة | Merge into Ops Workspace |
+| `/form-campaigns/:campaignId/cycles/:cycleId` | FormCampaignCycleDetailPage | تشغيل النماذج | مسؤول متابعة | تفاصيل دورة والتكليفات المجمَّدة | رابط من قائمة الدورات | روابط الاستجابة/المراجعة لكل تكليف | `Forms.View` | صفحة كاملة | Merge into Ops Workspace |
+| `/my-form-responses` | MyFormResponsesPage | تشغيل النماذج | المستجيب | استحقاقاتي من النماذج | رابط الشريط الجانبي "ردودي" | `/form-assignments/:id/respond` | `Forms.Respond` | صفحة كاملة | Polish — قائمة شخصية صحيحة النطاق، تحتاج توحيد مصطلحات فقط |
+| `/form-assignments/:assignmentId/respond` | RespondPage | تشغيل النماذج | المستجيب | تعبئة/حفظ مسودة/إرسال الاستجابة | رابط من "ردودي" أو قائمة الالتزام | — | `Forms.Respond` | صفحة كاملة | Polish — autosave وتعارض RowVersion مبنيان جيدًا فعلًا |
+| `/form-response-reviews` | FormResponseReviewsPage | تشغيل النماذج | المراجع | قائمة الاستجابات للمراجعة | رابط الشريط الجانبي "مراجعة الردود" | `/form-responses/:id/review` | `Forms.ReviewResponses` | صفحة كاملة | Restructure — **لا يوجد تالي/سابق**، عودة للقائمة إجبارية بعد كل مراجعة |
+| `/form-responses/:responseId/review` | FormResponseReviewDetailPage | تشغيل النماذج | المراجع | مراجعة/اعتماد/رفض/إعادة/إغلاق استجابة | رابط من قائمة المراجعة | رابط عودة للقائمة فقط | `Forms.ReviewResponses` | صفحة كاملة | Restructure |
+| `/form-compliance` | FormCompliancePage | الالتزام | مسؤول التزام، مدير | تتبّع نسب الإكمال | رابط الشريط الجانبي "التزام النماذج" | يعيد تحميل نفسه بنطاق أضيق (مناطق/سجون/دورات) | `Forms.ViewComplianceDashboard` | صفحة كاملة | Keep — أفضل صفحة تماسكًا في هذا المجال |
+| `/form-compliance/regions/:regionId` | FormCompliancePage (نفس المكوّن) | الالتزام | نفسه | نفس الصفحة بنطاق منطقة | Drill-down من الجدول | نفسه | نفسه | نفسه | Keep |
+| `/form-compliance/facilities/:facilityId` | FormCompliancePage (نفس المكوّن) | الالتزام | نفسه | نفس الصفحة بنطاق سجن (وهي أيضًا وجهة Drill-down الوحيدة من Facility Workspace لقسم النماذج) | Drill-down من الجدول أو من Facility Workspace | نفسه، ثم روابط "فتح الاستجابة"/"فتح المراجعة" لكل صف متبقٍ | نفسه | نفسه | Keep |
+| `/form-compliance/cycles/:cycleId` | FormCompliancePage (نفس المكوّن) | الالتزام | نفسه | نفس الصفحة بنطاق دورة | Drill-down من الجدول | نفسه | نفسه | نفسه | Keep |
+| `/settings/forms-governance` | FormsGovernanceSettingsPage | النماذج/حوكمة | حوكمة النماذج | إعدادات تحقق عامة | رابط الشريط الجانبي "حوكمة النماذج" | لا شيء | `Forms.ManageGovernance` | صفحة كاملة | Advanced fallback |
+| `/notes/:noteId/corrective-actions/new` | CorrectiveActionCreatePage | الملاحظات/الإجراءات | معالج الملاحظة | إنشاء إجراء تصحيحي من ملاحظة | رابط من Workspace وتفاصيل الملاحظة | → `/corrective-actions/:id` | `CorrectiveActions.Create` | صفحة كاملة | Merge into Workspace |
+| `/corrective-actions` | CorrectiveActionsListPage | الإجراءات التصحيحية | مسؤول إجراءات | قائمة شاملة عبر كل الملاحظات (يدعم تمرير `noteId`) | رابط الشريط الجانبي "الإجراءات التصحيحية" | `/corrective-actions/:id` | `CorrectiveActions.View` | صفحة كاملة | Advanced fallback — قيمة مستقلة كقائمة شاملة عابرة للملاحظات، مع بقاء المسار الأساسي داخل Workspace الملاحظة |
+| `/corrective-actions/:id` | CorrectiveActionDetailPage | الإجراءات التصحيحية | منفّذ/مسؤول إجراء | إدارة إجراء تصحيحي كاملة | رابط من القائمة أو من الملاحظة | `/edit` | `CorrectiveActions.View`(+`Update`/`Assign`/… لكل انتقال) | صفحة كاملة | Merge into Workspace |
+| `/corrective-actions/:id/edit` | CorrectiveActionEditPage | الإجراءات التصحيحية | مسؤول إجراء | تعديل الحقول | رابط من التفاصيل | → `/corrective-actions/:id` | `CorrectiveActions.Update` | صفحة كاملة | Merge into Workspace |
+| `/notifications` | NotificationsPage | عابر للمجالات | جميع المستخدمين | إدارة إشعاراتي (تحديد كمقروء/أرشفة) | رابط الشريط الجانبي "الإشعارات (عدد)" | يعتمد على نوع الكيان المرتبط | `Notifications.ViewOwn` | صفحة كاملة | Keep |
+| `/settings/escalations` | EscalationsSettingsPage | التصعيد | مسؤول تصعيد | إدارة السياسات + تشغيل يدوي | رابط الشريط الجانبي "التصعيد" | `/new`، `/:id`، `/:id/edit` | `Escalations.View` (على مستوى النav فقط — **لا تحقق صلاحية داخل الصفحة نفسها**) | صفحة كاملة | Advanced fallback |
+| `/settings/escalations/new` | EscalationPolicyFormPage (create) | التصعيد | مسؤول تصعيد | إنشاء سياسة | رابط من الإعدادات | → تفاصيل السياسة | كما أعلاه (بلا تحقق داخلي) | صفحة كاملة | Advanced fallback |
+| `/settings/escalations/occurrences` | EscalationOccurrencesPage | التصعيد | مسؤول تصعيد/متابعة | استعراض حوادث التصعيد (قراءة فقط) | رابط الشريط الجانبي "حوادث التصعيد" | لا شيء | `Escalations.ViewOccurrences` | صفحة كاملة | Advanced fallback — مرشّح لدمج لاحق ضمن Timeline في Workspace الملاحظات |
+| `/settings/escalations/:id` | EscalationPolicyDetailPage | التصعيد | مسؤول تصعيد | تفاصيل سياسة وقواعدها | رابط من الإعدادات | `/edit` | بلا تحقق داخلي | صفحة كاملة | Advanced fallback |
+| `/settings/escalations/:id/edit` | EscalationPolicyFormPage (edit) | التصعيد | مسؤول تصعيد | تعديل سياسة | رابط من التفاصيل | → التفاصيل | بلا تحقق داخلي | صفحة كاملة | Advanced fallback |
+| `/settings/note-types` | NoteTypesSettingsPage | الملاحظات/إدارة | إدارة أنواع الملاحظات | إدارة الأنواع | رابط الشريط الجانبي "أنواع الملاحظات" | لا شيء | `Notes.ManageTypes` | صفحة كاملة | Advanced fallback |
+| `/settings/note-routing` | NoteRoutingSettingsPage | الملاحظات/إدارة | إدارة توجيه الملاحظات | قواعد التوجيه | رابط الشريط الجانبي "توجيه الملاحظات" | `/settings/note-routing/effectiveness` | `Notes.ViewRouting`+`ManageRoutingRules`+`ActivateRoutingRules` | صفحة كاملة | Advanced fallback |
+| `/settings/note-routing/effectiveness` | NoteRoutingEffectivenessPage | الملاحظات/تحليلات | إدارة/تحليل | فعالية قواعد التوجيه | رابط من إعدادات التوجيه | لا شيء | `Notes.ViewRoutingDiagnostics` | صفحة كاملة | Advanced fallback |
+| `/users` | UsersPage | إدارة | مسؤول نظام | استعراض المستخدمين | رابط الشريط الجانبي "المستخدمون" | لا شيء | `Users.View` | صفحة كاملة | Keep |
+| `/audit` | AuditPage | إدارة | مدقّق/مسؤول نظام | سجل تدقيق غير قابل للتعديل | رابط الشريط الجانبي "سجل التدقيق" | لا شيء | `Audit.View` | صفحة كاملة | Keep |
+| `/attachments` | AttachmentsPage | عابر للمجالات | أي مستخدم رفع | رفع مرفق عام مرتبط بسجن (بلا قائمة/تنزيل) | رابط الشريط الجانبي "المرفقات" | لا شيء | `Attachments.Upload` | صفحة كاملة | Restructure — أغلب الاستخدام الفعلي مضمَّن أصلًا داخل تفاصيل الملاحظة/الإجراء؛ هذه الصفحة تبقى كـfallback عام فقط |
+
+## Routes غير موجودة إطلاقًا (فجوة حرجة)
+
+- **لا يوجد Route احتياطي (`*`) أو صفحة 404 مخصصة.** أي مسار غير مطابق داخل `<Routes>` في `App.tsx` يعرض شاشة فارغة تمامًا (لا `<Route path="*">`). هذا ينطبق أيضًا على أي رابط قديم مكسور من خارج التطبيق (بريد إلكتروني، إشعار محفوظ، Bookmark).
+- **لا يوجد Route أو صفحة 403 مخصصة.** بعض الصفحات تعرض `role="alert"` نصيًا "ليست لديك صلاحية…" داخل نفس المسار عند غياب الصلاحية (مثال: `RegionsPage`, `FacilitiesPage`)، لكن لا توجد صفحة 403 موحّدة عبر التطبيق، ولا نمط ثابت لما يحدث عند طلب Route محمي بالكامل بلا أي صلاحية ذات صلة على الإطلاق.
+- **لا يوجد Route مخصص لمجال المخاطر (Risk Management)** رغم وجود عقد Backend كامل (`/api/v1/facilities/{facilityId}/risks*`) وواجهة عميل جاهزة (`api.risks.*` في `api/client.ts`). المخاطر مرئية **فقط** كلوحة سياقية (`RiskPanel`) داخل Facility Workspace — لا صفحة قائمة، لا صفحة تفاصيل مستقلة، لا رابط "فتح الصفحة الكاملة" (يُعيد `null` صراحة في `legacyRouteForPanel`).
+- **لا يوجد Route لمجال العهد الحساسة (الأسلحة/الذخيرة)** رغم وجود عقد Backend كامل (Phase D.5). العرض الوحيد هو لوحة معاينة آمنة للقراءة فقط داخل Facility Workspace، مع تعليق صريح في الكود يمنع أي رابط "فتح الصفحة الكاملة" لأسباب أمنية (عدم كشف الأرقام التسلسلية/المواقع).
+- **لا يوجد Region Workspace ولا Headquarters Workspace** (المطلوبان في #12 و#13) — `RegionsPage` جدول مسطّح بلا drill-down، ولا وجود لأي Route تحت `/workspaces/regions/*` أو `/workspaces/headquarters/*`. إطار الـWorkspace العام في الخادم (`GET /api/v1/workspaces/{workspaceKey}`) يدعم `WorkspaceLevel.Region`/`Headquarters` بالفعل في الـenum، لكن لا يوجد `WorkspaceDefinitionProvider` مسجَّل لأي منهما — التسجيل الوحيد الحالي هو `facility-operations`.
+
+## Route ميتة مؤكَّدة (غير قابلة للوصول من أي رابط في التطبيق)
+
+| Route | السبب |
+| --- | --- |
+| `/forms/:formId/versions/new` | نفس مكوّن `/forms/:formId/versions`؛ لا رابط في التطبيق يستهدف هذا المسار تحديدًا — إنشاء إصدار جديد ينتقل مباشرة إلى `/edit` |
+| `/form-campaigns/:campaignId/targeting` | لا رابط في أي صفحة يشير إليه، والمكوّن المعروض (`FormCampaignWizardPage`) لا يقرأ `:campaignId` أصلًا |
+| `/form-campaigns/:campaignId/schedule` | نفس السبب أعلاه |
+
+## مكوّن يتيم (مُعرَّف لكنه غير مُوجَّه له Route ولا مستورَد في أي مكان)
+
+- **`src/frontend/src/pages/notes/NotesListPage.tsx`** — غير مستورَد في `App.tsx` ولا في أي مسار ديناميكي (`import()`/`lazy()`). مُصادق عليه بغياب أي استيراد خارج ملفه واختباراته الخاصة. يحتوي وظيفة فريدة غير موجودة في أي مكان آخر بالتطبيق: **استعادة ملاحظة مؤرشفة عبر المعرّف ورقم الإصدار (RowVersion)** خلف صلاحية `Notes.Restore`. يجب نقل هذه الوظيفة الفريدة (وليس بقية الصفحة) إلى الوجهة المستهدفة قبل حذف الملف.
+
+## أنواع Context Panel المكتشفة (لا تملك Route مستقل، تُفتح كلوحة سياقية فقط)
+
+هذه اللوحات تُفتح داخل `FacilityWorkspacePage` عبر `?panel=<type>&entityId=<id>` (محفوظ في الـURL، يدعم back/forward). المصدر الرسمي الوحيد لهذه القائمة هو إعلان `const PANEL_TYPES = [...] as const` في `FacilityWorkspacePage.tsx` نفسها (33 نوعًا)، وليس استنتاجًا يدويًا — راجع `scripts/ux-route-inventory-check.mjs` الذي يتحقق آليًا أن كل نوع مُستخدَم فعليًا في الملف هو عضو في هذا الاتحاد. الجدول التالي يُصنِّف الأنواع الـ33 حسب المجال وسلوكها الفعلي (وليس رصدًا لكل نوع على حدة، تفاديًا لتكرار 33 صفًا متطابق البنية):
+
+| مجموعة الأنواع | الأنواع (`panel.type`) | إجراءات مضمَّنة فعليًا | رابط "فتح الصفحة الكاملة"؟ |
+| --- | --- | --- | --- |
+| الملاحظات | `note` | إجراءات `INLINE_ACTIONS` فقط (Submit/StartWork/RequestVerification/RejectVerification/Reopen/Cancel) | نعم → `/notes/workspace?noteId=` |
+| الإجراءات التصحيحية | `corrective-action` | لا شيء — قراءة فقط | نعم → الصفحة الكاملة (الإجراءات المركّبة) |
+| المخاطر | `risk` | نعم: StartMonitoring/Escalate/Reopen عبر `executeCommand`، مع معالجة تعارض 409 | **لا** — لا يوجد Route كامل أصلاً |
+| العهد الحساسة (تجميعي) | `weapon` | لا شيء — معاينة آمنة مقصودة، لا أرقام تسلسلية ولا مواقع تفصيلية | **لا** — مُعطَّل عمدًا في الكود (`isSensitiveCustodyPanelType` تُعيد `null` صراحة لكل هذه المجموعة) لأسباب أمنية |
+| العهد الحساسة (فرعية، مُكتشَفة عبر `PANEL_TYPES` وليست في الجولة الأولى من التدقيق) | `custody-transaction`, `armory-location`, `ammunition-lot`, `ammunition-transaction`, `inventory-session`, `inventory-discrepancy`, `weapon-inspection`, `maintenance-work-order` | لا شيء — نفس قاعدة المعاينة الآمنة أعلاه، مؤكَّدة عبر `isSensitiveCustodyPanelType()` التي تضم هذه الأنواع الثمانية صراحة | **لا** لكل هذه المجموعة، لنفس السبب الأمني |
+| الإشغال/الوحدات | `facility-unit` | لا شيء | نعم → `/facilities/:id/occupancy` |
+| الموارد | `vehicle`, `equipment`, `communication-device` | لا شيء | نعم → `/facilities/:id/resources` |
+| القوى البشرية | `workforce-member`, `workforce-shift`, `workforce-role`, `workforce-gap`, `workforce-unit`, `workforce-roster`, `workforce-requirement`, `workforce-qualification`, `workforce-critical-position` | إجراء واحد فقط عبر Action Center (نشر أول جدول مسودة)؛ الباقي معاينة | نعم → `/facilities/:id/workforce` |
+| النماذج | `form-assignment` | لا شيء (معاينة متعمدة فقط) | نعم → `/form-compliance/facilities/:facilityId` (وليس مباشرة لصفحة الاستجابة) |
+| مشاريع/خطط/قرارات/حوادث | `project`, `emergency-plan`, `decision`, `incident` | لا شيء — **لا يوجد عقد Backend لهذه المجالات إطلاقًا اليوم**، تُعرَض كـ`DomainGapPanel` (Placeholder) | لا يوجد صفحة لتفتح إليها |
+| جودة البيانات / النشاط الزمني | `requirement-gap`, `activity` | لا شيء | حسب العنصر المصدر |
+
+**ملاحظة تصحيحية**: الجولة الأولى من هذا التدقيق (عبر 5 عمليات بحث موازية + قراءة مباشرة) رصدت 15 نوعًا فقط عبر أنماط استخدام مباشرة (`panel.type === '...'`, `openPanel({ type: '...' })`)، وفاتها 8 أنواع فرعية للعهد الحساسة (تُستخدَم عبر تحويل `routeParameters` غير المطابق لتلك الأنماط النصية) بالإضافة إلى 4 أنواع لمجالات بلا عقد Backend (مشاريع/خطط/قرارات/حوادث). صُحِّح هذا لاحقًا عبر اشتقاق القائمة آليًا من `PANEL_TYPES` نفسها بدل الاعتماد على حصر يدوي — وهذا بالضبط سبب وجود `scripts/ux-route-inventory-check.mjs`: منع هذا النوع من الانحراف الصامت مستقبلاً.
+
+## ملخص الأعداد حسب القرار
+
+| القرار | العدد |
+| --- | --- |
+| Keep | 10 |
+| Polish | 2 |
+| Restructure | 14 |
+| Merge into Workspace (يشمل "Merge into Studio"/"Merge into Ops Workspace" كصياغات مجالية لنفس القرار، والمسار المكرر `/notes`) | 19 |
+| Replace completely | 1 |
+| Advanced fallback | 13 |
+| Remove/redirect | 3 |
+| **الإجمالي** | **62 Route مُعرَّف** (زائد مكوّن يتيم واحد غير موجَّه له Route، `NotesListPage.tsx`) |
+
+هذا العدد مُتحقَّق آليًا (لا يدويًا) عبر `node src/frontend/scripts/ux-route-inventory-check.mjs` (أو `npm run check:ux-routes` من داخل `src/frontend/`)، الذي يفشل صراحة عند أي Route في `App.tsx` بلا صف موثَّق هنا، أو صف موثَّق بلا Route فعلي مطابق.
