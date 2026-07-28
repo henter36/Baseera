@@ -70,6 +70,16 @@ public sealed class NoteWorkflowService(
         await typeAccess.EnsureCanAsync(note.NoteTypeId, NoteTypeCapability.Review, cancellationToken);
         NoteAccessHelper.EnsureRowVersion(note.RowVersion, request.RowVersion);
         NoteStateMachine.EnsureAllowed(note.Status, NoteStatus.Closed);
+        // NoteStateMachine also allows Open/Assigned/InProgress -> Closed for the Phase 1B
+        // decision-approval paths (Invalid/Duplicate/NoAction — NoteDecisionApprovalService), which
+        // carry their own four-eyes gate before ever reaching that transition. VerifyClosure is a
+        // *different* command — the "معالجة" (Treated) path — and must stay restricted to its own
+        // precondition (submitted for verification) regardless of what the shared transition table
+        // permits for other callers.
+        if (note.Status != NoteStatus.PendingVerification)
+        {
+            throw new InvalidOperationException("لا يمكن اعتماد الإغلاق إلا من حالة بانتظار التحقق.");
+        }
 
         var actorId = RequireUserId();
         await EnforceCriticalSoDAsync(note, actorId, cancellationToken);
