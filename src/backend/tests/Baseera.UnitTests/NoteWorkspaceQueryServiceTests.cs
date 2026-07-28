@@ -9,7 +9,7 @@ namespace Baseera.UnitTests;
 
 /// <summary>
 /// Pure-logic coverage for NoteWorkspaceQueryService.ComputeAllowedActions/ResolveProgress/ResolveBlocker —
-/// no database, no I/O. See NoteWorkspaceDetailReadModelIntegrationTests for the full read-model wiring
+/// no database, no I/O. See NoteWorkspaceIntegrationTests for the full read-model wiring
 /// (redaction, timeline bound, DTO shape) against a live SQL Server.
 /// </summary>
 public sealed class NoteWorkspaceQueryServiceTests

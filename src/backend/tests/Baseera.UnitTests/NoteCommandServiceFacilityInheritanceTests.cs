@@ -71,7 +71,7 @@ public sealed class NoteCommandServiceFacilityInheritanceTests : IDisposable
     // by RiskAssessment-style integration tests against real SQL Server, not here: CreateDraftAsync calls
     // BaseeraDbContext.NextOperationalNoteSequenceValueAsync (a raw SQL sequence), which the InMemory EF
     // provider used by these unit tests does not support at all — see
-    // NoteWorkspaceFacilityInheritanceIntegrationTests for the full round-trip coverage. Only the
+    // NoteWorkspaceIntegrationTests for the full round-trip coverage. Only the
     // rejection paths below run before that sequence call is reached, so they're safe to assert here.
 
     [Fact]

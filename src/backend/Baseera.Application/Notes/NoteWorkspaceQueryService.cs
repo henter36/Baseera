@@ -41,13 +41,13 @@ public sealed class NoteWorkspaceQueryService(
         }
 
         var assignments = await notes.GetAssignmentsAsync(id, cancellationToken);
-        var history = await notes.GetHistoryAsync(id, cancellationToken);
+        var history = await LoadRecentHistoryAsync(id, cancellationToken);
         var actionPage = await correctiveActions.ListForNoteAsync(
             id,
             new CorrectiveActionListQuery
             {
                 Page = 1,
-                PageSize = 10,
+                PageSize = TimelinePreviewLimit,
                 SortBy = "createdAtUtc",
                 SortDesc = true
             },
@@ -78,6 +78,32 @@ public sealed class NoteWorkspaceQueryService(
             actionPage,
             attachmentRows,
             timeline);
+    }
+
+    private async Task<IReadOnlyList<NoteStatusHistoryDto>> LoadRecentHistoryAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.NoteStatusHistories
+            .Where(history => history.OperationalNoteId == id)
+            .OrderByDescending(history => history.ChangedAtUtc)
+            .Take(TimelinePreviewLimit)
+            .ToListAsync(cancellationToken);
+        var userIds = rows.Select(row => row.ChangedByUserId).ToHashSet();
+        var users = await db.Users
+            .Where(user => userIds.Contains(user.Id))
+            .ToDictionaryAsync(user => user.Id, user => user.DisplayNameAr, cancellationToken);
+
+        return rows.Select(history => new NoteStatusHistoryDto(
+            history.Id,
+            history.FromStatus,
+            history.ToStatus,
+            NoteDisplay.StatusAr(history.ToStatus),
+            history.ChangedByUserId,
+            users.GetValueOrDefault(history.ChangedByUserId),
+            history.ChangedAtUtc,
+            history.Reason,
+            history.AssignmentId)).ToList();
     }
 
     private static IReadOnlyList<NoteWorkspaceTimelineEntryDto> BuildTimeline(
