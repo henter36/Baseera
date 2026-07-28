@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented and locally validated. Remote GitHub Actions/SonarCloud gates are recorded after push/PR.
+Implemented and validated locally and on PR #150.
 
 ## Starting point
 
@@ -82,9 +82,21 @@ gitleaks detect --source . --config .gitleaks.toml --no-banner
 no leaks found
 ```
 
-## Pending final gates
+## Remote evidence
 
-To be completed before PR handoff:
+PR #150:
 
-- GitHub Actions.
-- SonarCloud.
+```text
+GitHub Actions:
+- backend: pass
+- frontend: pass
+- integration core: pass
+- integration forms: pass
+- integration operations: pass
+- integration workforce: pass
+
+SonarCloud Code Analysis: pass
+secret-scan: pass
+qlty check: pass — No blocking issues
+CodeRabbit: pass — Review completed
+```
