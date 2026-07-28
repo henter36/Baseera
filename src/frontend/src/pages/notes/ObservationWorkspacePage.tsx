@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import {
   api,
   ApiError,
+  type EligibleUser,
   type NoteListFilters,
   type NoteListItem,
   type NoteWorkspaceAllowedAction,
@@ -12,6 +13,7 @@ import {
 import { usePermission } from '../../auth/AuthProvider'
 import { NoteSeverityLabelsAr, NoteStatusLabelsAr, enumOptions, severityTone, statusTone } from '../../notes/noteEnums'
 import { listQueryErrorMessage } from '../../shared/listPageUtils'
+import { WorkspaceEmptyState, WorkspaceErrorState, WorkspaceSkeletonRows } from '../../shared/workspaces/WorkspaceStateView'
 
 const PAGE_SIZE = 20
 const DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
@@ -31,11 +33,13 @@ const ACTION_LABELS: Record<NoteWorkspaceAllowedAction, string> = {
   ADD_ACTION: 'إضافة إجراء',
   REQUEST_VERIFICATION: 'طلب تحقق',
   REJECT_VERIFICATION: 'رفض التحقق',
+  VERIFY_CLOSURE: 'اعتماد الإغلاق',
   REOPEN: 'إعادة فتح',
   CANCEL: 'إلغاء',
 }
 
-const INLINE_ACTIONS = new Set<NoteWorkspaceAllowedAction>([
+// Actions with a simple "reason only" inline form.
+const SIMPLE_INLINE_ACTIONS = new Set<NoteWorkspaceAllowedAction>([
   'SUBMIT',
   'START_WORK',
   'REQUEST_VERIFICATION',
@@ -44,18 +48,15 @@ const INLINE_ACTIONS = new Set<NoteWorkspaceAllowedAction>([
   'CANCEL',
 ])
 
-const TABS = [
+const SECTIONS = [
   ['summary', 'الملخص'],
-  ['actions', 'الإجراءات'],
-  ['assignments', 'التكليفات'],
-  ['resources', 'الموارد'],
-  ['verification', 'التحقق'],
-  ['rca', 'RCA/CAPA'],
-  ['attachments', 'المرفقات'],
-  ['links', 'الروابط'],
-  ['decisions', 'القرارات'],
-  ['timeline', 'Timeline'],
+  ['processing', 'المعالجة'],
+  ['assignment', 'التكليف'],
+  ['evidence', 'الأدلة'],
+  ['history', 'السجل الزمني'],
 ] as const
+
+type SectionKey = (typeof SECTIONS)[number][0]
 
 export function ObservationWorkspacePage() {
   const canView = usePermission('Notes.View')
@@ -67,15 +68,19 @@ export function ObservationWorkspacePage() {
   const [severity, setSeverity] = useState(searchParams.get('severity') ?? '')
   const [regionId, setRegionId] = useState(searchParams.get('regionId') ?? '')
   const [facilityId, setFacilityId] = useState(searchParams.get('facilityId') ?? '')
-  const [overdueOnly, setOverdueOnly] = useState(searchParams.get('overdueOnly') === 'true')
+  const [facilityUnitId, setFacilityUnitId] = useState(searchParams.get('facilityUnitId') ?? '')
+  const [noteTypeId, setNoteTypeId] = useState(searchParams.get('noteType') ?? '')
+  const [due, setDue] = useState(searchParams.get('due') ?? '')
+  const [overdueOnly, setOverdueOnly] = useState(searchParams.get('due') === 'overdue')
   const [requiresMyAction, setRequiresMyAction] = useState(searchParams.get('requiresMyAction') === 'true')
   const [requiresRouting, setRequiresRouting] = useState(searchParams.get('requiresRouting') === 'true')
   const [page, setPage] = useState(Number(searchParams.get('page') ?? '1') || 1)
-  const [sortBy] = useState(searchParams.get('sortBy') ?? 'createdAtUtc')
+  const [sortBy] = useState(searchParams.get('sort') ?? searchParams.get('sortBy') ?? 'createdAtUtc')
   const [sortDesc] = useState(searchParams.get('sortDesc') !== 'false')
   const [selectedId, setSelectedId] = useState(searchParams.get('noteId') ?? '')
-  const [listCollapsed, setListCollapsed] = useState(false)
-  const [activeTab, setActiveTab] = useState<(typeof TABS)[number][0]>('summary')
+  const [listCollapsed, setListCollapsed] = useState(searchParams.get('view') === 'detail')
+  const [activeSection, setActiveSection] = useState<SectionKey>((searchParams.get('section') as SectionKey) || 'summary')
+  const source = searchParams.get('source') ?? ''
   const listScrollRef = useRef<HTMLDivElement | null>(null)
   const searchDebounceMountedRef = useRef(false)
 
@@ -101,23 +106,39 @@ export function ObservationWorkspacePage() {
       severity: severity === '' ? undefined : Number(severity),
       regionId: regionId || undefined,
       facilityId: facilityId || undefined,
+      facilityUnitId: facilityUnitId || undefined,
+      noteTypeId: noteTypeId || undefined,
       overdueOnly: overdueOnly || undefined,
+      dueSoonDays: due === 'soon' ? 7 : undefined,
       requiresMyAction: requiresMyAction || undefined,
       requiresRouting: requiresRouting || undefined,
       sortBy,
       sortDesc,
     }),
-    [page, debouncedSearch, status, severity, regionId, facilityId, overdueOnly, requiresMyAction, requiresRouting, sortBy, sortDesc],
+    [page, debouncedSearch, status, severity, regionId, facilityId, facilityUnitId, noteTypeId, overdueOnly, due, requiresMyAction, requiresRouting, sortBy, sortDesc],
   )
 
   useEffect(() => {
     const next = new URLSearchParams()
-    Object.entries(filters).forEach(([key, value]) => {
-      appendFilterParam(next, key, value)
-    })
+    appendFilterParam(next, 'search', filters.search)
+    appendFilterParam(next, 'status', filters.status)
+    appendFilterParam(next, 'severity', filters.severity)
+    appendFilterParam(next, 'regionId', filters.regionId)
+    appendFilterParam(next, 'facilityId', filters.facilityId)
+    appendFilterParam(next, 'facilityUnitId', filters.facilityUnitId)
+    appendFilterParam(next, 'noteType', filters.noteTypeId)
+    appendFilterParam(next, 'due', due || undefined)
+    appendFilterParam(next, 'requiresMyAction', filters.requiresMyAction)
+    appendFilterParam(next, 'requiresRouting', filters.requiresRouting)
+    appendFilterParam(next, 'page', page > 1 ? page : undefined)
+    appendFilterParam(next, 'sort', sortBy !== 'createdAtUtc' ? sortBy : undefined)
+    if (!sortDesc) next.set('sortDesc', 'false')
     if (selectedId) next.set('noteId', selectedId)
+    if (selectedId) next.set('section', activeSection)
+    if (source) next.set('source', source)
     setSearchParams(next, { replace: true })
-  }, [filters, selectedId, setSearchParams])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, due, selectedId, activeSection, source, setSearchParams, page, sortBy, sortDesc])
 
   const regionsQuery = useQuery({ queryKey: ['workspace-regions'], queryFn: () => api.regions(), enabled: canView })
   const facilitiesQuery = useQuery({
@@ -125,6 +146,12 @@ export function ObservationWorkspacePage() {
     queryFn: () => api.facilities(regionId || undefined),
     enabled: canView,
   })
+  const facilityUnitsQuery = useQuery({
+    queryKey: ['workspace-facility-units', facilityId],
+    queryFn: () => api.facilityUnits(facilityId),
+    enabled: canView && !!facilityId,
+  })
+  const noteTypesQuery = useQuery({ queryKey: ['workspace-note-types'], queryFn: () => api.noteTypes(false), enabled: canView })
   const listQuery = useQuery({
     queryKey: ['notes-workspace', filters],
     queryFn: () => api.notes.workspace(filters),
@@ -138,18 +165,40 @@ export function ObservationWorkspacePage() {
     staleTime: 10_000,
   })
 
+  const notes = listQuery.data?.notes.items ?? []
+  const currentIndex = notes.findIndex((n) => n.id === selectedId)
+  const previousNote = currentIndex > 0 ? notes[currentIndex - 1] : undefined
+  const nextNote = currentIndex >= 0 && currentIndex < notes.length - 1 ? notes[currentIndex + 1] : undefined
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      const isEditable = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      if (isEditable || !selectedId) return
+      if (event.altKey && event.key === 'ArrowRight' && previousNote) {
+        event.preventDefault()
+        selectNote(previousNote.id)
+      } else if (event.altKey && event.key === 'ArrowLeft' && nextNote) {
+        event.preventDefault()
+        selectNote(nextNote.id)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, previousNote, nextNote])
+
   if (!canView) {
-    return <div className="error" role="alert">ليست لديك صلاحية عرض مساحة عمل الملاحظات.</div>
+    return <WorkspaceErrorState message="ليست لديك صلاحية عرض مساحة عمل الملاحظات." />
   }
 
-  const notes = listQuery.data?.notes.items ?? []
   const totalCount = listQuery.data?.notes.totalCount ?? 0
   const totalPages = listQuery.data ? Math.max(1, Math.ceil(totalCount / PAGE_SIZE)) : 1
   const errorMessage = listQueryErrorMessage(listQuery.error, 'ليست لديك صلاحية عرض الملاحظات.', 'تعذر تحميل مساحة عمل الملاحظات.')
 
-  const selectNote = (id: string) => {
+  function selectNote(id: string) {
     setSelectedId(id)
-    setActiveTab('summary')
+    setActiveSection('summary')
   }
 
   return (
@@ -157,7 +206,12 @@ export function ObservationWorkspacePage() {
       <header className="workspace-topbar">
         <div>
           <h1 className="page-title">مساحة عمل الملاحظات</h1>
-          <p className="muted">قائمة، تفاصيل، إجراءات، تكليفات، تحقق، مرفقات وسجل زمني من صفحة واحدة.</p>
+          <p className="muted">قائمة، تفاصيل، إجراءات، تكليفات، أدلة وسجل زمني من صفحة واحدة.</p>
+          {source.startsWith('facility:') && (
+            <Link className="muted" to={`/workspaces/facilities/${source.slice('facility:'.length)}`}>
+              ← العودة إلى مساحة عمل السجن
+            </Link>
+          )}
         </div>
         <div className="workspace-topbar-actions">
           <button type="button" className="secondary" onClick={() => setListCollapsed((v) => !v)}>
@@ -181,20 +235,32 @@ export function ObservationWorkspacePage() {
           <option value="">كل درجات الخطورة</option>
           {enumOptions(NoteSeverityLabelsAr).map((option) => <option key={option.value} value={option.value}>{option.labelAr}</option>)}
         </select>
-        <select aria-label="المنطقة" value={regionId} onChange={(e) => { setPage(1); setRegionId(e.target.value); setFacilityId('') }}>
+        <select aria-label="نوع الملاحظة" value={noteTypeId} onChange={(e) => { setPage(1); setNoteTypeId(e.target.value) }}>
+          <option value="">كل الأنواع</option>
+          {noteTypesQuery.data?.map((type) => <option key={type.id} value={type.id}>{type.nameAr}</option>)}
+        </select>
+        <select aria-label="المنطقة" value={regionId} onChange={(e) => { setPage(1); setRegionId(e.target.value); setFacilityId(''); setFacilityUnitId('') }}>
           <option value="">كل المناطق</option>
           {regionsQuery.data?.items.map((region) => <option key={region.id} value={region.id}>{region.nameAr}</option>)}
         </select>
-        <select aria-label="السجن" value={facilityId} onChange={(e) => { setPage(1); setFacilityId(e.target.value) }}>
+        <select aria-label="السجن" value={facilityId} onChange={(e) => { setPage(1); setFacilityId(e.target.value); setFacilityUnitId('') }}>
           <option value="">كل السجون</option>
           {facilitiesQuery.data?.items.map((facility) => <option key={facility.id} value={facility.id}>{facility.nameAr}</option>)}
         </select>
-        <label className="compact-check"><input type="checkbox" checked={overdueOnly} onChange={(e) => { setPage(1); setOverdueOnly(e.target.checked) }} /> المتأخرة</label>
+        <select aria-label="الوحدة" value={facilityUnitId} onChange={(e) => { setPage(1); setFacilityUnitId(e.target.value) }} disabled={!facilityId}>
+          <option value="">كل الوحدات</option>
+          {facilityUnitsQuery.data?.items.map((unit) => <option key={unit.id} value={unit.id}>{unit.nameAr}</option>)}
+        </select>
+        <select aria-label="الاستحقاق" value={due} onChange={(e) => { setPage(1); setDue(e.target.value); setOverdueOnly(e.target.value === 'overdue') }}>
+          <option value="">كل المواعيد</option>
+          <option value="overdue">المتأخرة</option>
+          <option value="soon">مستحقة قريبًا</option>
+        </select>
         <label className="compact-check"><input type="checkbox" checked={requiresMyAction} onChange={(e) => { setPage(1); setRequiresMyAction(e.target.checked) }} /> بانتظار إجراء مني</label>
         <label className="compact-check"><input type="checkbox" checked={requiresRouting} onChange={(e) => { setPage(1); setRequiresRouting(e.target.checked) }} /> تحتاج توجيه</label>
       </section>
 
-      {listQuery.isError && <div className="error" role="alert"><span>{errorMessage}</span><button type="button" className="secondary" onClick={() => listQuery.refetch()}>إعادة المحاولة</button></div>}
+      {listQuery.isError && <WorkspaceErrorState message={errorMessage ?? 'تعذر تحميل مساحة عمل الملاحظات.'} onRetry={() => listQuery.refetch()} />}
 
       <div className={`workspace-grid ${listCollapsed ? 'is-collapsed' : ''} ${selectedId ? 'has-selection' : ''}`}>
         <aside className="workspace-list-pane" aria-label="قائمة الملاحظات">
@@ -203,8 +269,13 @@ export function ObservationWorkspacePage() {
             <span className="muted">{totalCount} نتيجة</span>
           </div>
           <div className="workspace-list" ref={listScrollRef}>
-            {listQuery.isLoading && Array.from({ length: 5 }).map((_, index) => <div key={index} className="observation-card-skeleton" />)}
-            {!listQuery.isLoading && notes.length === 0 && <div className="empty">لا توجد ملاحظات مطابقة ضمن نطاقك.</div>}
+            {listQuery.isLoading && <WorkspaceSkeletonRows count={5} />}
+            {!listQuery.isLoading && notes.length === 0 && (
+              <WorkspaceEmptyState
+                title="لا توجد ملاحظات مطابقة"
+                hint={totalCount === 0 && !filters.search && !filters.status ? 'لا توجد ملاحظات ضمن نطاقك حاليًا.' : 'جرّب تعديل الفلاتر أو مسح البحث.'}
+              />
+            )}
             {notes.map((note) => (
               <ObservationCard key={note.id} note={note} selected={selectedId === note.id} onSelect={() => selectNote(note.id)} />
             ))}
@@ -218,20 +289,24 @@ export function ObservationWorkspacePage() {
 
         <main className="workspace-detail-pane" aria-live="polite">
           {!selectedId && <NoSelection />}
-          {selectedId && detailQuery.isLoading && <div className="detail-skeleton" />}
+          {selectedId && detailQuery.isLoading && <div className="detail-skeleton" aria-hidden="true" />}
           {selectedId && detailQuery.isError && (
-            <div className="error" role="alert">
-              <span>{detailQuery.error instanceof ApiError ? detailQuery.error.message : 'تعذر تحميل تفاصيل الملاحظة.'}</span>
-              <button type="button" className="secondary" onClick={() => detailQuery.refetch()}>إعادة المحاولة</button>
-            </div>
+            <WorkspaceErrorState
+              message={detailQuery.error instanceof ApiError ? detailQuery.error.message : 'تعذر تحميل تفاصيل الملاحظة.'}
+              onRetry={() => detailQuery.refetch()}
+            />
           )}
           {detailQuery.data && (
             <WorkspaceDetail
               key={detailQuery.data.note.id}
               data={detailQuery.data}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
+              activeSection={activeSection}
+              onSectionChange={setActiveSection}
               onBack={() => setSelectedId('')}
+              previousNote={previousNote}
+              nextNote={nextNote}
+              position={currentIndex >= 0 ? { index: currentIndex, total: notes.length } : undefined}
+              onNavigate={selectNote}
             />
           )}
         </main>
@@ -268,14 +343,22 @@ function ObservationCard({ note, selected, onSelect }: Readonly<{ note: NoteList
 
 function WorkspaceDetail({
   data,
-  activeTab,
-  onTabChange,
+  activeSection,
+  onSectionChange,
   onBack,
+  previousNote,
+  nextNote,
+  position,
+  onNavigate,
 }: Readonly<{
   data: NoteWorkspaceDetail
-  activeTab: (typeof TABS)[number][0]
-  onTabChange: (tab: (typeof TABS)[number][0]) => void
+  activeSection: SectionKey
+  onSectionChange: (section: SectionKey) => void
   onBack: () => void
+  previousNote?: NoteListItem
+  nextNote?: NoteListItem
+  position?: { index: number; total: number }
+  onNavigate: (id: string) => void
 }>) {
   return (
     <article className="workspace-detail">
@@ -301,34 +384,55 @@ function WorkspaceDetail({
           <span>التقدم</span>
         </div>
       </header>
+
+      <nav className="workspace-prev-next" aria-label="التنقل بين الملاحظات">
+        <button type="button" className="secondary" disabled={!previousNote} onClick={() => previousNote && onNavigate(previousNote.id)} title="alt+→">
+          ‹ السابقة
+        </button>
+        {position && <span className="muted">{position.index + 1} من {position.total} (ضمن النتائج المحملة)</span>}
+        <button type="button" className="secondary" disabled={!nextNote} onClick={() => nextNote && onNavigate(nextNote.id)} title="alt+←">
+          التالية ›
+        </button>
+      </nav>
+
       <ActionBar data={data} />
-      <nav className="workspace-tabs" aria-label="تبويبات مساحة العمل">
-        {TABS.map(([key, label]) => (
-          <button key={key} type="button" className={activeTab === key ? 'active' : undefined} onClick={() => onTabChange(key)}>
+      <nav className="workspace-tabs" aria-label="أقسام الملاحظة">
+        {SECTIONS.map(([key, label]) => (
+          <button key={key} type="button" className={activeSection === key ? 'active' : undefined} onClick={() => onSectionChange(key)}>
             {label}
           </button>
         ))}
       </nav>
       <section className="workspace-tab-panel">
-        {activeTab === 'summary' && <SummaryTab data={data} />}
-        {activeTab === 'actions' && <ActionsTab data={data} />}
-        {activeTab === 'assignments' && <AssignmentsTab data={data} />}
-        {activeTab === 'resources' && <EmptyOperationalTab title="الموارد" text="طلبات الموارد وقطع الغيار ستستخدم نموذجًا مستقلاً في المرحلة التالية. لا يتم استخدام بيانات ثابتة هنا." />}
-        {activeTab === 'verification' && <VerificationTab data={data} />}
-        {activeTab === 'rca' && <ActionsTab data={data} />}
-        {activeTab === 'attachments' && <AttachmentsTab data={data} />}
-        {activeTab === 'links' && <EmptyOperationalTab title="الروابط" text="روابط الأصول والمخاطر والمشاريع والعقود والحوادث تحتاج كيانات ربط مخصصة قبل عرضها." />}
-        {activeTab === 'decisions' && <EmptyOperationalTab title="القرارات" text="Decision Timeline موثق كامتداد لاحق بكيان مستقل حتى لا يختلط مع AuditLog." />}
-        {activeTab === 'timeline' && <TimelineTab data={data} />}
+        {activeSection === 'summary' && <SummaryTab data={data} />}
+        {activeSection === 'processing' && <ProcessingTab data={data} />}
+        {activeSection === 'assignment' && <AssignmentTab data={data} />}
+        {activeSection === 'evidence' && <EvidenceTab data={data} />}
+        {activeSection === 'history' && <HistoryTab data={data} />}
       </section>
     </article>
   )
 }
 
+function primaryAndSecondaryActions(allowedActions: NoteWorkspaceAllowedAction[]) {
+  const [primary, ...secondary] = allowedActions
+  return { primary, secondary }
+}
+
 function ActionBar({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   const queryClient = useQueryClient()
   const [reason, setReason] = useState('')
+  const [closureSummary, setClosureSummary] = useState('')
+  const [assigneeUserId, setAssigneeUserId] = useState('')
   const [activeAction, setActiveAction] = useState<NoteWorkspaceAllowedAction | ''>('')
+  const { primary, secondary } = primaryAndSecondaryActions(data.allowedActions)
+
+  const eligibleAssigneesQuery = useQuery({
+    queryKey: ['note-eligible-assignees', data.note.id],
+    queryFn: () => api.notes.eligibleAssignees(data.note.id),
+    enabled: activeAction === 'ASSIGN' || activeAction === 'REASSIGN',
+  })
+
   const runAction = useMutation({
     mutationFn: async (action: NoteWorkspaceAllowedAction) => {
       if (action === 'SUBMIT') return api.notes.submit(data.note.id, { reason, rowVersion: data.note.rowVersion })
@@ -337,28 +441,94 @@ function ActionBar({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
       if (action === 'REJECT_VERIFICATION') return api.notes.returnForRework(data.note.id, { reason, rowVersion: data.note.rowVersion })
       if (action === 'REOPEN') return api.notes.reopen(data.note.id, { reason, rowVersion: data.note.rowVersion })
       if (action === 'CANCEL') return api.notes.cancel(data.note.id, { reason, rowVersion: data.note.rowVersion })
+      if (action === 'VERIFY_CLOSURE') return api.notes.verifyClosure(data.note.id, { reason, closureSummary, rowVersion: data.note.rowVersion })
+      if (action === 'ASSIGN' || action === 'REASSIGN') {
+        if (!assigneeUserId) throw new Error('اختر المكلَّف أولًا.')
+        return api.notes.assign(data.note.id, { assignedToUserId: assigneeUserId, assignedToDepartmentId: null, dueAtUtc: null, reason, rowVersion: data.note.rowVersion })
+      }
       throw new Error('هذا الإجراء غير مدعوم كعملية فورية.')
     },
     onSuccess: async () => {
       setReason('')
+      setClosureSummary('')
+      setAssigneeUserId('')
       setActiveAction('')
       await queryClient.invalidateQueries({ queryKey: ['notes-workspace'] })
       await queryClient.invalidateQueries({ queryKey: ['notes-workspace-detail', data.note.id] })
     },
   })
 
+  function openAction(action: NoteWorkspaceAllowedAction) {
+    setReason('')
+    setClosureSummary('')
+    setAssigneeUserId('')
+    setActiveAction(action)
+  }
+
+  function renderButton(action: NoteWorkspaceAllowedAction, variant: 'primary' | 'secondary') {
+    if (action === 'ADD_ACTION') {
+      return (
+        <Link key={action} to={`/notes/${data.note.id}/corrective-actions/new`}>
+          <button type="button" className={variant === 'primary' ? undefined : 'secondary'}>{ACTION_LABELS[action]}</button>
+        </Link>
+      )
+    }
+    return (
+      <button
+        key={action}
+        type="button"
+        className={activeAction === action ? undefined : variant === 'primary' ? undefined : 'secondary'}
+        onClick={() => openAction(action)}
+      >
+        {ACTION_LABELS[action]}
+      </button>
+    )
+  }
+
+  const canSubmitAssign = assigneeUserId && reason.trim().length >= 3
+  const canSubmitClose = reason.trim().length >= 3 && closureSummary.trim().length >= 3
+  const canSubmitSimple = reason.trim().length >= 3
+
   return (
     <div className="workspace-actionbar">
-      {data.allowedActions.map((action) => {
-        if (action === 'ADD_ACTION') return <Link key={action} to={`/notes/${data.note.id}/corrective-actions/new`}><button type="button" className="secondary">{ACTION_LABELS[action]}</button></Link>
-        if (action === 'ASSIGN' || action === 'REASSIGN') return <Link key={action} to={`/notes/${data.note.id}`}><button type="button" className="secondary">{ACTION_LABELS[action]}</button></Link>
-        if (INLINE_ACTIONS.has(action)) return <button key={action} type="button" className={activeAction === action ? undefined : 'secondary'} onClick={() => setActiveAction(action)}>{ACTION_LABELS[action]}</button>
-        return <button key={action} type="button" className="secondary" disabled title="يتطلب نموذجًا مخصصًا">{ACTION_LABELS[action]}</button>
-      })}
-      {activeAction && (
+      <div className="workspace-actionbar-primary">
+        {primary && renderButton(primary, 'primary')}
+      </div>
+      {secondary.length > 0 && (
+        <div className="workspace-actionbar-secondary">
+          {secondary.map((action) => renderButton(action, 'secondary'))}
+        </div>
+      )}
+
+      {activeAction && (activeAction === 'ASSIGN' || activeAction === 'REASSIGN') && (
+        <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); runAction.mutate(activeAction) }}>
+          <select aria-label="المكلَّف" value={assigneeUserId} onChange={(event) => setAssigneeUserId(event.target.value)}>
+            <option value="">اختر المكلَّف</option>
+            {(eligibleAssigneesQuery.data ?? []).map((user: EligibleUser) => (
+              <option key={user.id} value={user.id}>{user.displayNameAr}</option>
+            ))}
+          </select>
+          <input aria-label="سبب الإسناد" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="سبب الإسناد" />
+          <button type="submit" disabled={!canSubmitAssign || runAction.isPending}>{runAction.isPending ? 'جاري…' : 'تنفيذ'}</button>
+          <button type="button" className="secondary" onClick={() => setActiveAction('')}>إلغاء</button>
+          {runAction.isError && <span className="field-error">{runAction.error instanceof Error ? runAction.error.message : 'تعذر تنفيذ الإجراء.'}</span>}
+        </form>
+      )}
+
+      {activeAction === 'VERIFY_CLOSURE' && (
+        <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); runAction.mutate('VERIFY_CLOSURE') }}>
+          <input aria-label="سبب الاعتماد" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="سبب الاعتماد" />
+          <input aria-label="ملخص الإغلاق" value={closureSummary} onChange={(event) => setClosureSummary(event.target.value)} placeholder="ملخص الإغلاق" />
+          <button type="submit" disabled={!canSubmitClose || runAction.isPending}>{runAction.isPending ? 'جاري…' : 'اعتماد الإغلاق'}</button>
+          <button type="button" className="secondary" onClick={() => setActiveAction('')}>إلغاء</button>
+          {runAction.isError && <span className="field-error">{runAction.error instanceof Error ? runAction.error.message : 'تعذر تنفيذ الإجراء.'}</span>}
+        </form>
+      )}
+
+      {activeAction && SIMPLE_INLINE_ACTIONS.has(activeAction) && (
         <form className="inline-action-form" onSubmit={(event) => { event.preventDefault(); runAction.mutate(activeAction) }}>
           <input aria-label="سبب الإجراء" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="سبب الإجراء" />
-          <button type="submit" disabled={reason.trim().length < 3 || runAction.isPending}>{runAction.isPending ? 'جاري…' : 'تنفيذ'}</button>
+          <button type="submit" disabled={!canSubmitSimple || runAction.isPending}>{runAction.isPending ? 'جاري…' : 'تنفيذ'}</button>
           <button type="button" className="secondary" onClick={() => setActiveAction('')}>إلغاء</button>
           {runAction.isError && <span className="field-error">{runAction.error instanceof Error ? runAction.error.message : 'تعذر تنفيذ الإجراء.'}</span>}
         </form>
@@ -383,25 +553,38 @@ function SummaryTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
       <Metric label="آخر إجراء" value={data.timeline[0]?.titleAr || '—'} />
       <Metric label="تاريخ الإنشاء" value={formatDate(data.note.createdAtUtc)} />
       <Metric label="تاريخ الاستحقاق" value={data.note.dueAtUtc ? formatDate(data.note.dueAtUtc) : '—'} />
-      <Metric label="الإجراءات المفتوحة" value={String(data.summary.openCorrectiveActions)} />
     </div>
   )
 }
 
-function ActionsTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
-  if (data.correctiveActions.items.length === 0) return <div className="empty">لا توجد إجراءات مستقلة مرتبطة بهذه الملاحظة.</div>
-  return <div className="workspace-stack">{data.correctiveActions.items.map((action) => (
-    <div key={action.id} className="workspace-row-card">
-      <div><strong>{action.title}</strong><p className="muted">{action.descriptionSnippet || 'لا يوجد وصف مختصر.'}</p></div>
-      <span className="badge" data-tone={action.isOverdue ? 'danger' : 'muted'}>{action.statusAr}</span>
-      <span>{action.currentAssigneeDisplay || 'بلا مسؤول'}</span>
-      <span>{action.dueAtUtc ? formatDate(action.dueAtUtc) : 'دون استحقاق'}</span>
+function ProcessingTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
+  const verificationStatus = verificationStatusLabel(data)
+  return (
+    <div className="workspace-stack">
+      <div className="workspace-summary-grid">
+        <Metric label="حالة المعالجة" value={data.note.statusAr} />
+        <Metric label="حالة التحقق" value={verificationStatus} />
+        <Metric label="الإجراءات المفتوحة" value={String(data.summary.openCorrectiveActions)} />
+        <Metric label="ملخص الإغلاق" value={data.note.closureSummary || '—'} />
+      </div>
+      {data.correctiveActions.items.length === 0 && <WorkspaceEmptyState title="لا توجد إجراءات تصحيحية مرتبطة" />}
+      {data.correctiveActions.items.map((action) => (
+        <div key={action.id} className="workspace-row-card">
+          <div><strong>{action.title}</strong><p className="muted">{action.descriptionSnippet || 'لا يوجد وصف مختصر.'}</p></div>
+          <span className="badge" data-tone={action.isOverdue ? 'danger' : 'muted'}>{action.statusAr}</span>
+          <span>{action.currentAssigneeDisplay || 'بلا مسؤول'}</span>
+          <span>{action.dueAtUtc ? formatDate(action.dueAtUtc) : 'دون استحقاق'}</span>
+        </div>
+      ))}
+      <Link to={`/notes/${data.note.id}/corrective-actions/new`} className="muted">
+        فتح صفحة الإجراءات التصحيحية المتقدمة ←
+      </Link>
     </div>
-  ))}</div>
+  )
 }
 
-function AssignmentsTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
-  if (data.assignments.length === 0) return <div className="empty">لا توجد تكليفات مسجلة.</div>
+function AssignmentTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
+  if (data.assignments.length === 0) return <WorkspaceEmptyState title="لا توجد تكليفات مسجلة" />
   return <div className="workspace-stack">{data.assignments.map((assignment) => (
     <div key={assignment.id} className="workspace-row-card">
       <div><strong>{assignment.assignedToUserDisplayName || assignment.assignedToDepartmentName}</strong><p className="muted">{assignment.reason}</p></div>
@@ -412,30 +595,52 @@ function AssignmentsTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   ))}</div>
 }
 
-function VerificationTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
-  const verificationStatus = verificationStatusLabel(data)
+function EvidenceTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
+  const queryClient = useQueryClient()
+  const [file, setFile] = useState<File | null>(null)
+  const canUpload = usePermission('Attachments.Upload')
+  const upload = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error('اختر ملفًا أولًا.')
+      return api.uploadAttachment(file, 'OperationalNote', data.note.id, 'مرفق داعم للملاحظة')
+    },
+    onSuccess: async () => {
+      setFile(null)
+      await queryClient.invalidateQueries({ queryKey: ['notes-workspace-detail', data.note.id] })
+    },
+  })
+
   return (
     <div className="workspace-stack">
-      <Metric label="حالة التحقق" value={verificationStatus} />
-      <Metric label="فصل الواجبات" value={data.note.severity >= 3 ? 'مفعل للملاحظات الحرجة في الخادم' : 'حسب السياسة'} />
-      <Metric label="ملخص الإغلاق" value={data.note.closureSummary || '—'} />
+      {canUpload && (
+        <form
+          className="inline-action-form"
+          onSubmit={(event) => { event.preventDefault(); upload.mutate() }}
+        >
+          <input
+            aria-label="إضافة مرفق"
+            type="file"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          />
+          <button type="submit" disabled={!file || upload.isPending}>{upload.isPending ? 'جاري الرفع…' : 'رفع المرفق'}</button>
+          {upload.isError && <span className="field-error">{upload.error instanceof Error ? upload.error.message : 'تعذر رفع المرفق.'}</span>}
+        </form>
+      )}
+      {data.attachments.length === 0 && <WorkspaceEmptyState title="لا توجد مرفقات" />}
+      {data.attachments.map((attachment) => (
+        <div key={attachment.id} className="workspace-row-card">
+          <strong>{attachment.originalFileName}</strong>
+          <span>{attachment.contentType}</span>
+          <span>{Math.ceil(attachment.sizeBytes / 1024)} KB</span>
+          <span>{formatDate(attachment.uploadedAtUtc)}</span>
+        </div>
+      ))}
     </div>
   )
 }
 
-function AttachmentsTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
-  if (data.attachments.length === 0) return <div className="empty">لا توجد مرفقات.</div>
-  return <div className="workspace-stack">{data.attachments.map((attachment) => (
-    <div key={attachment.id} className="workspace-row-card">
-      <strong>{attachment.originalFileName}</strong>
-      <span>{attachment.contentType}</span>
-      <span>{Math.ceil(attachment.sizeBytes / 1024)} KB</span>
-      <span>{formatDate(attachment.uploadedAtUtc)}</span>
-    </div>
-  ))}</div>
-}
-
-function TimelineTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
+function HistoryTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
+  if (data.timeline.length === 0) return <WorkspaceEmptyState title="لا يوجد سجل زمني بعد" />
   return <ol className="workspace-timeline">{data.timeline.map((entry) => (
     <li key={`${entry.type}-${entry.id}`} data-tone={entry.tone}>
       <strong>{entry.titleAr}</strong>
@@ -445,12 +650,8 @@ function TimelineTab({ data }: Readonly<{ data: NoteWorkspaceDetail }>) {
   ))}</ol>
 }
 
-function EmptyOperationalTab({ title, text }: Readonly<{ title: string; text: string }>) {
-  return <div className="empty"><strong>{title}</strong><p>{text}</p></div>
-}
-
 function NoSelection() {
-  return <div className="workspace-no-selection"><strong>اختر ملاحظة</strong><p className="muted">ستظهر الإجراءات والتكليفات والتحقق والـTimeline هنا دون مغادرة الصفحة.</p></div>
+  return <div className="workspace-no-selection"><strong>اختر ملاحظة</strong><p className="muted">ستظهر المعالجة والتكليف والأدلة والسجل الزمني هنا دون مغادرة الصفحة.</p></div>
 }
 
 function Metric({ label, value }: Readonly<{ label: string; value: string }>) {

@@ -260,44 +260,16 @@ export type NoteWorkspaceAllowedAction =
   | 'ADD_ACTION'
   | 'REQUEST_VERIFICATION'
   | 'REJECT_VERIFICATION'
+  | 'VERIFY_CLOSURE'
   | 'REOPEN'
   | 'CANCEL'
-
-export type NoteWorkspaceResource = {
-  id: string
-  titleAr: string
-  statusAr: string
-  responsiblePartyAr?: string | null
-  quantity?: number | null
-  requestedAtUtc?: string | null
-  expectedAtUtc?: string | null
-  deliveredAtUtc?: string | null
-  impactAr?: string | null
-}
-
-export type NoteWorkspaceDecision = {
-  id: string
-  decisionAr: string
-  reasonAr?: string | null
-  alternativesAr?: string | null
-  evidenceAr?: string | null
-  decisionOwnerDisplayName?: string | null
-  decidedAtUtc: string
-  expectedOutcomeAr?: string | null
-  actualOutcomeAr?: string | null
-}
-
-export type NoteWorkspaceLink = {
-  id: string
-  linkTypeAr: string
-  reference: string
-  titleAr: string
-}
 
 export type NoteWorkspaceList = {
   notes: Paged<NoteListItem>
 }
 
+// Resources/Decisions/Links were removed from the server contract (phase1a-observation-implementation-gap.md):
+// they were always empty placeholder arrays backed by no real Domain entity.
 export type NoteWorkspaceDetail = {
   note: NoteDetail
   allowedActions: NoteWorkspaceAllowedAction[]
@@ -305,10 +277,13 @@ export type NoteWorkspaceDetail = {
   assignments: NoteAssignment[]
   correctiveActions: Paged<CorrectiveActionListItem>
   attachments: Attachment[]
-  resources: NoteWorkspaceResource[]
-  decisions: NoteWorkspaceDecision[]
-  links: NoteWorkspaceLink[]
   timeline: NoteWorkspaceTimelineEntry[]
+}
+
+export type EligibleUser = {
+  id: string
+  displayNameAr: string
+  userName: string
 }
 
 export type NoteListFilters = {
@@ -3254,6 +3229,8 @@ export const api = {
       postJson<void>(`/api/v1/notes/${id}/restore`, body),
     history: (id: string) => request<NoteStatusHistoryEntry[]>(`/api/v1/notes/${id}/history`),
     assignments: (id: string) => request<NoteAssignment[]>(`/api/v1/notes/${id}/assignments`),
+    eligibleAssignees: (id: string) => request<EligibleUser[]>(`/api/v1/notes/${id}/eligible-assignees`),
+    eligibleReviewers: (id: string) => request<EligibleUser[]>(`/api/v1/notes/${id}/eligible-reviewers`),
     attachments: (id: string) => request<Attachment[]>(`/api/v1/notes/${id}/attachments`),
     correctiveActions: (id: string, filters: CorrectiveActionListFilters = {}) =>
       request<Paged<CorrectiveActionListItem>>(`/api/v1/notes/${id}/corrective-actions?${buildCorrectiveActionQuery(filters)}`),

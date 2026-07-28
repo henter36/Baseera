@@ -1,11 +1,14 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import {
   ApiError,
   api,
   type CorrectiveActionDetail,
   type CorrectiveActionStatusHistoryEntry,
+  type CreateNoteRequest,
+  type FacilityUnit,
+  type NoteType,
   type FacilityAlertsEscalationsPayload,
   type FacilityCorrectiveActionsPayload,
   type FacilityExecutiveSummaryPayload,
@@ -39,6 +42,7 @@ import {
   type WorkspaceWidgetEnvelope,
 } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
+import { NoteSeverityLabelsAr, enumOptions } from '../../notes/noteEnums'
 import {
   WorkspaceEmpty,
   WorkspaceError,
@@ -70,6 +74,7 @@ const SHORT_DATE_FORMAT = new Intl.DateTimeFormat('ar-SA', {
 
 const PANEL_TYPES = [
   'note',
+  'note-create',
   'corrective-action',
   'escalation',
   'form-assignment',
@@ -173,6 +178,7 @@ const SECTION_NAV: ReadonlyArray<Readonly<{ key: SectionKey; label: string }>> =
 
 export function FacilityWorkspacePage() {
   const { facilityId } = useParams()
+  const navigate = useNavigate()
   const canViewWorkspace = usePermission('Workspaces.View')
   const canViewFacility = usePermission('Workspaces.ViewFacility')
   const canView = canViewWorkspace && canViewFacility
@@ -270,6 +276,7 @@ export function FacilityWorkspacePage() {
         filters={filters}
         onRefresh={() => query.refetch()}
         onOpenActions={() => setIsActionCenterOpen(true)}
+        onOpenNoteCreate={() => openPanel({ type: 'note-create', entityId: 'create' })}
       />
 
       <nav className="command-section-nav" aria-label="تنقل مركز القرار">
@@ -326,6 +333,10 @@ export function FacilityWorkspacePage() {
             query.refetch()
             queryClient.invalidateQueries({ queryKey: ['workspace-panel'] })
           }}
+          onNoteCreated={(noteId) => {
+            navigate(`/notes/workspace?noteId=${encodeURIComponent(noteId)}&facilityId=${encodeURIComponent(facilityId)}&source=${encodeURIComponent(`facility:${facilityId}`)}`)
+          }}
+          facilityNameAr={data.header?.facilityNameAr ?? query.data.definition.titleAr}
         />
       )}
 
@@ -342,14 +353,17 @@ function CommandHeader({
   filters,
   onRefresh,
   onOpenActions,
+  onOpenNoteCreate,
 }: Readonly<{
   shell: WorkspaceShellDto
   data: CommandData
   filters: WorkspaceFilters
   onRefresh: () => void
   onOpenActions: () => void
+  onOpenNoteCreate: () => void
 }>) {
   const statusTone = statusToneFor(data.executive?.statusCode)
+  const canCreateNote = usePermission('Notes.Create')
   return (
     <header className="command-header">
       <div className="command-header-identity">
@@ -369,6 +383,9 @@ function CommandHeader({
       <div className="command-header-actions">
         <span className="command-period">{formatShortDate(filters.fromUtc)} - {formatShortDate(filters.toUtc)}</span>
         <button type="button" className="command-button" onClick={onRefresh}>تحديث</button>
+        {canCreateNote && (
+          <button type="button" className="command-button" onClick={onOpenNoteCreate}>فتح ملاحظة</button>
+        )}
         <button type="button" className="command-button primary" onClick={onOpenActions}>مركز الإجراءات</button>
       </div>
       {shell.widgetFailures.length > 0 && (
@@ -663,6 +680,8 @@ function CommandContextPanel({
   dataQuality,
   onClose,
   onChanged,
+  onNoteCreated,
+  facilityNameAr,
 }: Readonly<{
   panel: PanelState
   facilityId: string
@@ -674,6 +693,8 @@ function CommandContextPanel({
   dataQuality?: FacilityDataQualityPayload
   onClose: () => void
   onChanged: () => void
+  onNoteCreated: (noteId: string) => void
+  facilityNameAr: string
 }>) {
   const panelRef = useRef<HTMLDialogElement | null>(null)
   const summary = findPanelSummary(panel, queue, activity, structure, occupancy, dataQuality)
@@ -698,11 +719,21 @@ function CommandContextPanel({
         {fullPageRoute && <Link className="command-button ghost" to={fullPageRoute}>فتح الصفحة الكاملة</Link>}
       </div>
       <div className="context-panel-summary">
-        <span className="command-eyebrow">{summaryReference(summary) || panel.entityId}</span>
+        {panel.type !== 'note-create' && (
+          <span className="command-eyebrow">{summaryReference(summary) || panel.entityId}</span>
+        )}
         <h2 id="context-panel-title">{title}</h2>
-        {summaryReason(summary) !== '-' && <p>{summaryReason(summary)}</p>}
+        {panel.type !== 'note-create' && summaryReason(summary) !== '-' && <p>{summaryReason(summary)}</p>}
       </div>
-      <PanelDetail panel={panel} facilityId={facilityId} summary={summary} onChanged={onChanged} />
+      <PanelDetail
+        panel={panel}
+        facilityId={facilityId}
+        regionId={shell.context.regionId ?? undefined}
+        summary={summary}
+        onChanged={onChanged}
+        onNoteCreated={onNoteCreated}
+        facilityNameAr={facilityNameAr}
+      />
     </dialog>
   )
 }
@@ -710,11 +741,34 @@ function CommandContextPanel({
 function PanelDetail({
   panel,
   facilityId,
+  regionId,
   summary,
   onChanged,
-}: Readonly<{ panel: PanelState; facilityId: string; summary?: PanelSummary; onChanged: () => void }>) {
+  onNoteCreated,
+  facilityNameAr,
+}: Readonly<{
+  panel: PanelState
+  facilityId: string
+  regionId?: string
+  summary?: PanelSummary
+  onChanged: () => void
+  onNoteCreated: (noteId: string) => void
+  facilityNameAr: string
+}>) {
   if (panel.type === 'note') {
     return <NotePanel noteId={panel.entityId} summary={summary} onChanged={onChanged} />
+  }
+
+  if (panel.type === 'note-create') {
+    return (
+      <NoteCreatePanel
+        facilityId={facilityId}
+        facilityNameAr={facilityNameAr}
+        regionId={regionId}
+        initialUnitId={panel.entityId === 'create' ? undefined : panel.entityId}
+        onCreated={onNoteCreated}
+      />
+    )
   }
 
   if (panel.type === 'corrective-action') {
@@ -859,6 +913,130 @@ function NotePanel({ noteId, summary, onChanged }: Readonly<{ noteId: string; su
         <CompactTimeline rows={detail.timeline.map((item) => ({ title: item.titleAr, at: item.occurredAtUtc, tone: item.tone }))} />
       </ContextSection>
     </div>
+  )
+}
+
+// Create-note-in-context panel (Phase 1A #143 "فتح ملاحظة" from the Facility Workspace): Facility is
+// fixed from the Route/props, never re-selected by the user; FacilityUnit only narrows scope within
+// the same facility and permission, and the server independently re-derives/validates both (a
+// client-supplied facilityId here is presentation state only — see NoteCommandService.CreateDraftAsync).
+function NoteCreatePanel({
+  facilityId,
+  facilityNameAr,
+  regionId,
+  initialUnitId,
+  onCreated,
+}: Readonly<{
+  facilityId: string
+  facilityNameAr: string
+  regionId?: string
+  initialUnitId?: string
+  onCreated: (noteId: string) => void
+}>) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [noteTypeId, setNoteTypeId] = useState('')
+  const [severity, setSeverity] = useState('1')
+  const [facilityUnitId, setFacilityUnitId] = useState(initialUnitId ?? '')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [dueAtUtc, setDueAtUtc] = useState('')
+
+  const noteTypesQuery = useQuery({ queryKey: ['note-create-panel-types'], queryFn: () => api.myNoteTypes() })
+  const unitsQuery = useQuery({
+    queryKey: ['note-create-panel-units', facilityId],
+    queryFn: () => api.facilityUnits(facilityId),
+  })
+  const unitNameAr = unitsQuery.data?.items.find((unit) => unit.id === facilityUnitId)?.nameAr
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const body: CreateNoteRequest = {
+        title,
+        description,
+        noteTypeId,
+        severity: Number(severity),
+        sourceType: 0,
+        sourceReference: null,
+        classification: 0,
+        scopeType: facilityUnitId ? 4 : 3,
+        regionId: regionId ?? null,
+        facilityId,
+        facilityUnitId: facilityUnitId || null,
+        ownerDepartmentId: null,
+        dueAtUtc: dueAtUtc ? new Date(dueAtUtc).toISOString() : null,
+      }
+      return api.notes.create(body)
+    },
+    onSuccess: (created) => onCreated(created.id),
+  })
+
+  const canSubmit = title.trim().length >= 3 && description.trim().length >= 3 && Boolean(noteTypeId) && !mutation.isPending
+
+  return (
+    <form
+      className="context-stack note-create-panel"
+      onSubmit={(event) => { event.preventDefault(); if (canSubmit) mutation.mutate() }}
+    >
+      <ContextSection title="السياق">
+        <StatusRail
+          tone="info"
+          rows={[
+            ['السجن', facilityNameAr],
+            ['الوحدة', unitNameAr ?? 'بلا وحدة محددة'],
+          ]}
+        />
+      </ContextSection>
+
+      <label>
+        <span>نوع الملاحظة</span>
+        <select value={noteTypeId} onChange={(event) => setNoteTypeId(event.target.value)} required>
+          <option value="">اختر النوع</option>
+          {(noteTypesQuery.data as NoteType[] | undefined)?.map((type) => (
+            <option key={type.id} value={type.id}>{type.nameAr}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>العنوان</span>
+        <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+      </label>
+      <label>
+        <span>الوصف</span>
+        <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} required />
+      </label>
+      <label>
+        <span>الوحدة (اختياري)</span>
+        <select value={facilityUnitId} onChange={(event) => setFacilityUnitId(event.target.value)}>
+          <option value="">بلا وحدة محددة</option>
+          {(unitsQuery.data?.items as FacilityUnit[] | undefined)?.map((unit) => (
+            <option key={unit.id} value={unit.id}>{unit.nameAr}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>الخطورة</span>
+        <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
+          {enumOptions(NoteSeverityLabelsAr).map((option) => <option key={option.value} value={option.value}>{option.labelAr}</option>)}
+        </select>
+      </label>
+
+      <button type="button" className="command-button ghost" onClick={() => setShowAdvanced((v) => !v)}>
+        {showAdvanced ? 'إخفاء خيارات إضافية' : 'خيارات إضافية'}
+      </button>
+      {showAdvanced && (
+        <label>
+          <span>تاريخ الاستحقاق</span>
+          <input type="datetime-local" value={dueAtUtc} onChange={(event) => setDueAtUtc(event.target.value)} />
+        </label>
+      )}
+
+      {mutation.isError && (
+        <div className="error" role="alert">{workspaceActionError(mutation.error)}</div>
+      )}
+      <button type="submit" className="command-button primary" disabled={!canSubmit}>
+        {mutation.isPending ? 'جارٍ الحفظ…' : 'حفظ الملاحظة'}
+      </button>
+    </form>
   )
 }
 
@@ -2593,6 +2771,7 @@ function noteActionLabel(action: NoteWorkspaceAllowedAction) {
     ADD_ACTION: 'إضافة إجراء',
     REQUEST_VERIFICATION: 'طلب تحقق',
     REJECT_VERIFICATION: 'رفض التحقق',
+    VERIFY_CLOSURE: 'اعتماد الإغلاق',
     REOPEN: 'إعادة فتح',
     CANCEL: 'إلغاء',
   }
@@ -2685,6 +2864,7 @@ function workforceAdminSectionForPanel(type: PanelType): string | null {
 function panelLabel(type: PanelType) {
   const labels: Partial<Record<PanelType, string>> = {
     note: 'ملاحظة تشغيلية',
+    'note-create': 'فتح ملاحظة',
     'corrective-action': 'إجراء تصحيحي',
     escalation: 'تصعيد',
     'form-assignment': 'التزام نموذج',

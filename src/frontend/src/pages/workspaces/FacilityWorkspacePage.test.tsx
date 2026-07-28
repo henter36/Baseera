@@ -5,7 +5,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
 import { FacilityWorkspacePage } from './FacilityWorkspacePage'
 
-const { getWorkspace, getNoteWorkspaceDetail, getCorrectiveAction, getCorrectiveActionHistory, workforceRosters, publishRoster, riskList, riskGet, riskExecuteCommand, currentPermissions } = vi.hoisted(() => ({
+const {
+  getWorkspace,
+  getNoteWorkspaceDetail,
+  getCorrectiveAction,
+  getCorrectiveActionHistory,
+  workforceRosters,
+  publishRoster,
+  riskList,
+  riskGet,
+  riskExecuteCommand,
+  currentPermissions,
+  myNoteTypes,
+  listFacilityUnits,
+  createNote,
+} = vi.hoisted(() => ({
   getWorkspace: vi.fn(),
   getNoteWorkspaceDetail: vi.fn(),
   getCorrectiveAction: vi.fn(),
@@ -16,6 +30,26 @@ const { getWorkspace, getNoteWorkspaceDetail, getCorrectiveAction, getCorrective
   riskGet: vi.fn(),
   riskExecuteCommand: vi.fn(),
   currentPermissions: new Set<string>(),
+  myNoteTypes: vi.fn(async () => [{
+    id: 'note-type-1',
+    code: 'OPERATIONAL',
+    nameAr: 'تشغيلية',
+    descriptionAr: null,
+    entryInstructionsAr: null,
+    sortOrder: 1,
+    isActive: true,
+    defaultSeverity: 1,
+    defaultSeverityAr: 'متوسطة',
+    defaultDueDays: null,
+    rowVersion: 'rv',
+  }]),
+  listFacilityUnits: vi.fn(async () => ({
+    items: [{ id: 'unit-1', facilityId: 'facility-a', code: 'U1', nameAr: 'عنبر الشمال', isActive: true }],
+    page: 1,
+    pageSize: 100,
+    totalCount: 1,
+  })),
+  createNote: vi.fn(async () => ({ id: 'new-note-id', referenceNumber: 'OBS-99', rowVersion: 'rv' })),
 }))
 
 vi.mock('../../auth/AuthProvider', () => ({
@@ -32,9 +66,12 @@ vi.mock('../../api/client', async () => {
         ...actual.api.workspaces,
         get: getWorkspace,
       },
+      myNoteTypes,
+      facilityUnits: listFacilityUnits,
       notes: {
         ...actual.api.notes,
         workspaceDetail: getNoteWorkspaceDetail,
+        create: createNote,
       },
       correctiveActions: {
         ...actual.api.correctiveActions,
@@ -76,6 +113,9 @@ describe('FacilityWorkspacePage', () => {
     riskGet.mockResolvedValue(riskDetail)
     riskExecuteCommand.mockReset()
     riskExecuteCommand.mockResolvedValue(undefined)
+    myNoteTypes.mockClear()
+    listFacilityUnits.mockClear()
+    createNote.mockClear()
     currentPermissions.clear()
     currentPermissions.add('Workspaces.View')
     currentPermissions.add('Workspaces.ViewFacility')
@@ -504,6 +544,72 @@ describe('FacilityWorkspacePage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('router-location')).not.toHaveTextContent('panel=workforce-shift')
       expect(screen.getByTestId('router-location')).toHaveTextContent('section=workforce')
+    })
+  })
+
+  describe('create note from Facility Workspace', () => {
+    beforeEach(() => {
+      currentPermissions.add('Notes.Create')
+    })
+
+    function renderFacilityPageAcrossNavigation(initialEntry: string) {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      return render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <Routes>
+              <Route path="/workspaces/facilities/:facilityId" element={<FacilityWorkspacePage />} />
+              <Route path="/notes/workspace" element={<div>OBSERVATION_WORKSPACE</div>} />
+            </Routes>
+            <LocationProbe />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      )
+    }
+
+    it('does not show the "فتح ملاحظة" action without Notes.Create', async () => {
+      currentPermissions.delete('Notes.Create')
+      renderPage('/workspaces/facilities/facility-a')
+
+      await screen.findByRole('heading', { name: 'سجن أ1' })
+      expect(screen.queryByRole('button', { name: 'فتح ملاحظة' })).not.toBeInTheDocument()
+    })
+
+    it('inherits the facility (and selected unit) context without letting the user re-pick the facility', async () => {
+      renderPage('/workspaces/facilities/facility-a')
+
+      fireEvent.click(await screen.findByRole('button', { name: 'فتح ملاحظة' }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText('سجن أ1')).toBeInTheDocument()
+      // No facility picker is rendered anywhere in the create form — only a unit select.
+      expect(within(dialog).queryByRole('combobox', { name: /السجن/ })).not.toBeInTheDocument()
+    })
+
+    it('creates the note and opens it in the Observation Workspace with the facility context preserved', async () => {
+      renderFacilityPageAcrossNavigation('/workspaces/facilities/facility-a')
+
+      fireEvent.click(await screen.findByRole('button', { name: 'فتح ملاحظة' }))
+      const dialog = await screen.findByRole('dialog')
+      await within(dialog).findByRole('option', { name: 'تشغيلية' })
+
+      fireEvent.change(within(dialog).getByLabelText('نوع الملاحظة'), { target: { value: 'note-type-1' } })
+      fireEvent.change(within(dialog).getByLabelText('العنوان'), { target: { value: 'ملاحظة من مركز القرار' } })
+      fireEvent.change(within(dialog).getByLabelText('الوصف'), { target: { value: 'وصف كافٍ للملاحظة الجديدة' } })
+      fireEvent.click(within(dialog).getByRole('button', { name: 'حفظ الملاحظة' }))
+
+      await waitFor(() => {
+        expect(createNote).toHaveBeenCalledWith(expect.objectContaining({
+          title: 'ملاحظة من مركز القرار',
+          facilityId: 'facility-a',
+          scopeType: 3,
+          facilityUnitId: null,
+        }))
+      })
+
+      expect(screen.getByTestId('router-location')).toHaveTextContent('/notes/workspace')
+      expect(screen.getByTestId('router-location')).toHaveTextContent('noteId=new-note-id')
+      expect(screen.getByTestId('router-location')).toHaveTextContent(encodeURIComponent('facility:facility-a'))
     })
   })
 })

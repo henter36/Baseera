@@ -22,6 +22,8 @@
 
 ## المرحلة 1 — Observation Workspace rescue (#143)
 
+> **تحديث Phase 1A (منفَّذة)**: PR أول (بند "أ" أدناه: Panel الملاحظة الموحَّد + الإجراءات المضمَّنة الأساسية + توحيد Routes/علم ميزة) نُفِّذ فعليًا على فرع `ux-rescue-phase1a-observation-workspace-foundation` — راجع `docs/ux-rescue/phase1a-observation-completion-report.md` للتفاصيل الكاملة و`phase1a-observation-compliance-ledger.md` للفجوات المتبقية (بنود "ب" و"ج" أدناه: دمج الإجراءات التصحيحية بالكامل، توحيد المرفقات عبر كل السياقات، إزالة/تحويل الصفحات القديمة نهائيًا) المرحّلة إلى Phase 1B/1C. لا يغلق هذا التنفيذ Issue #143.
+
 - **الهدف**: دمج دورة حياة الملاحظة الكاملة (بما فيها الإجراءات التصحيحية والمرفقات) في مساحة تشغيلية واحدة.
 - **النطاق**: راجع `observation-workspace-gap-analysis.md` بالكامل — دمج `NoteCreatePage`/`NoteDetailPage`/`NoteEditPage`/جزء من `CorrectiveActionCreatePage`/`CorrectiveActionDetailPage` ضمن Panel/Split View؛ نقل قدرة استعادة الأرشيف من `NotesListPage` اليتيمة قبل حذفها؛ إضافة `AllowedActions` لعقد الإجراءات التصحيحية؛ توحيد مكوّن المرفقات (رفع+قائمة+تنزيل) عبر كل السياقات.
 - **الاعتماديات**: المرحلة 0 (تحويل `/notes`) يُفضَّل تنفيذها أولاً لتفادي تضارب على نفس الملف.

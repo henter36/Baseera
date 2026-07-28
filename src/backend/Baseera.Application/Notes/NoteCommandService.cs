@@ -32,16 +32,22 @@ public sealed class NoteCommandService(
         await EnsureCanCreateTypeAsync(request.NoteTypeId, cancellationToken);
         var intake = await noteScope.ResolveIntakeAsync(userId, request.RegionId, request.FacilityId, cancellationToken);
 
-        noteScope.ValidateScopeShape(ScopeType.Facility, intake.RegionId, intake.FacilityId, null);
+        // A client-supplied FacilityUnitId only narrows the scope of a note that is already
+        // resolved/validated at facility level above (ResolveIntakeAsync never trusts the client's
+        // FacilityId/RegionId as authoritative either) — it never widens access beyond what the caller
+        // is authorized for at the facility, and EnsureOrgEntitiesActiveAsync below still independently
+        // verifies the unit exists, is active, and actually belongs to that facility.
+        var scopeType = request.FacilityUnitId.HasValue ? ScopeType.FacilityUnit : ScopeType.Facility;
+        noteScope.ValidateScopeShape(scopeType, intake.RegionId, intake.FacilityId, request.FacilityUnitId);
         await noteScope.EnsureOrgEntitiesActiveAsync(
-            ScopeType.Facility, intake.RegionId, intake.FacilityId, null, cancellationToken);
+            scopeType, intake.RegionId, intake.FacilityId, request.FacilityUnitId, cancellationToken);
 
         var probe = new OperationalNote
         {
-            ScopeType = ScopeType.Facility,
+            ScopeType = scopeType,
             RegionId = intake.RegionId,
             FacilityId = intake.FacilityId,
-            FacilityUnitId = null
+            FacilityUnitId = request.FacilityUnitId
         };
         if (!noteScope.CanAccess(probe))
         {
@@ -67,10 +73,10 @@ public sealed class NoteCommandService(
             SourceType = request.SourceType,
             SourceReference = string.IsNullOrWhiteSpace(request.SourceReference) ? null : request.SourceReference.Trim(),
             Classification = request.Classification,
-            ScopeType = ScopeType.Facility,
+            ScopeType = scopeType,
             RegionId = intake.RegionId,
             FacilityId = intake.FacilityId,
-            FacilityUnitId = null,
+            FacilityUnitId = request.FacilityUnitId,
             OwnerDepartmentId = request.OwnerDepartmentId,
             ReportedByUserId = userId,
             ReportedAtUtc = now,

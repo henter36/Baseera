@@ -42,6 +42,13 @@ public interface INoteTypeAccessService
 
 public sealed class NoteTypeAccessService(IBaseeraDbContext db, ICurrentUser currentUser) : INoteTypeAccessService
 {
+    // NoteTypeAccessService is registered Scoped (one instance per request). A single workspace
+    // request (GetDetailAsync + GetAssignmentsAsync + GetHistoryAsync + corrective-action listing)
+    // independently asks for the same user's effective note-type access several times; without this
+    // memoization each call re-ran the same 4 queries (NoteTypes/UserRoles/RoleNoteTypeGrants/
+    // UserNoteTypeOverrides), a self-inflicted N+1 within one request.
+    private readonly Dictionary<Guid, IReadOnlyList<EffectiveNoteTypeAccessDto>> _effectiveAccessCache = [];
+
     public Task<bool> CanViewAsync(Guid noteTypeId, CancellationToken cancellationToken = default) =>
         CanAsync(noteTypeId, NoteTypeCapability.View, cancellationToken);
 
@@ -109,14 +116,22 @@ public sealed class NoteTypeAccessService(IBaseeraDbContext db, ICurrentUser cur
 
     public async Task<IReadOnlyList<EffectiveNoteTypeAccessDto>> GetEffectiveAccessAsync(Guid userId, CancellationToken cancellationToken = default)
     {
+        if (_effectiveAccessCache.TryGetValue(userId, out var cached))
+        {
+            return cached;
+        }
+
         var noteTypes = await db.NoteTypes.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(t => t.NameAr).ToListAsync(cancellationToken);
         var roleIds = await db.UserRoles.Where(role => role.UserId == userId).Select(role => role.RoleId).ToListAsync(cancellationToken);
         var grants = await db.RoleNoteTypeGrants.AsNoTracking().Where(grant => grant.IsActive && roleIds.Contains(grant.RoleId)).ToListAsync(cancellationToken);
         var overrides = await db.UserNoteTypeOverrides.AsNoTracking().Where(overrideRow => overrideRow.IsActive && overrideRow.UserId == userId).ToListAsync(cancellationToken);
 
-        return noteTypes
+        var result = noteTypes
             .Select(noteType => BuildAccessDto(noteType, grants.Where(g => g.NoteTypeId == noteType.Id), overrides.FirstOrDefault(o => o.NoteTypeId == noteType.Id)))
             .ToList();
+
+        _effectiveAccessCache[userId] = result;
+        return result;
     }
 
     public async Task<IReadOnlyDictionary<Guid, EffectiveNoteTypeAccessDto?>> GetEffectiveAccessForUsersAsync(

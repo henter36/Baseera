@@ -14,9 +14,6 @@ public sealed record NoteWorkspaceDetailDto(
     IReadOnlyList<NoteAssignmentDto> Assignments,
     PagedResult<CorrectiveActionListItemDto> CorrectiveActions,
     IReadOnlyList<AttachmentDto> Attachments,
-    IReadOnlyList<NoteWorkspaceResourceDto> Resources,
-    IReadOnlyList<NoteWorkspaceDecisionDto> Decisions,
-    IReadOnlyList<NoteWorkspaceLinkDto> Links,
     IReadOnlyList<NoteWorkspaceTimelineEntryDto> Timeline);
 
 public sealed record NoteWorkspaceSummaryDto(
@@ -38,31 +35,3 @@ public sealed record NoteWorkspaceTimelineEntryDto(
     string? ActorDisplayName,
     DateTimeOffset OccurredAtUtc,
     string Tone);
-
-public sealed record NoteWorkspaceResourceDto(
-    Guid Id,
-    string TitleAr,
-    string StatusAr,
-    string? ResponsiblePartyAr,
-    int? Quantity,
-    DateTimeOffset? RequestedAtUtc,
-    DateTimeOffset? ExpectedAtUtc,
-    DateTimeOffset? DeliveredAtUtc,
-    string? ImpactAr);
-
-public sealed record NoteWorkspaceDecisionDto(
-    Guid Id,
-    string DecisionAr,
-    string? ReasonAr,
-    string? AlternativesAr,
-    string? EvidenceAr,
-    string? DecisionOwnerDisplayName,
-    DateTimeOffset DecidedAtUtc,
-    string? ExpectedOutcomeAr,
-    string? ActualOutcomeAr);
-
-public sealed record NoteWorkspaceLinkDto(
-    Guid Id,
-    string LinkTypeAr,
-    string Reference,
-    string TitleAr);
