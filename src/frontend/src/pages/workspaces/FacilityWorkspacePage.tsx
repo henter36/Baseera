@@ -334,7 +334,12 @@ export function FacilityWorkspacePage() {
             queryClient.invalidateQueries({ queryKey: ['workspace-panel'] })
           }}
           onNoteCreated={(noteId) => {
-            navigate(`/notes/workspace?noteId=${encodeURIComponent(noteId)}&facilityId=${encodeURIComponent(facilityId)}&source=${encodeURIComponent(`facility:${facilityId}`)}`)
+            const params = new URLSearchParams({
+              noteId,
+              facilityId,
+              source: `facility:${facilityId}`,
+            })
+            navigate(buildUrl('/notes/workspace', params))
           }}
           facilityNameAr={data.header?.facilityNameAr ?? query.data.definition.titleAr}
         />
@@ -2463,6 +2468,11 @@ function isPanelType(value: string | null): value is PanelType {
 function sectionFromSearch(searchParams: URLSearchParams): SectionKey {
   const section = searchParams.get('section')
   return SECTION_NAV.some((item) => item.key === section) ? section as SectionKey : 'overview'
+}
+
+function buildUrl(path: string, params: URLSearchParams): string {
+  const queryString = params.toString()
+  return queryString ? `${path}?${queryString}` : path
 }
 
 function closePanel(

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NoteDetailRoute, NotesIndexRoute } from './NotesRouteResolvers'
 
@@ -72,19 +72,37 @@ function renderAt(initialEntry: string, resolver: 'index' | 'detail') {
         <Routes>
           <Route path="/notes" element={resolver === 'index' ? <NotesIndexRoute /> : <div>NOT-USED</div>} />
           <Route path="/notes/:id" element={resolver === 'detail' ? <NoteDetailRoute /> : <div>NOT-USED</div>} />
-          <Route path="/notes/workspace" element={<div>OBSERVATION_WORKSPACE</div>} />
+          <Route path="/notes/workspace" element={<LocationProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
-describe('Notes route resolution (Phase 1A feature flag)', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs()
-  })
+function LocationProbe() {
+  const location = useLocation()
 
+  return (
+    <>
+      <div>OBSERVATION_WORKSPACE</div>
+      <output data-testid="location">
+        {location.pathname}
+        {location.search}
+      </output>
+    </>
+  )
+}
+
+describe('Notes route resolution (Phase 1A feature flag)', () => {
   describe('with the flag enabled (default)', () => {
+    beforeEach(() => {
+      vi.stubEnv('VITE_OBSERVATION_WORKSPACE_V2', 'true')
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
     it('navigates /notes to /notes/workspace', async () => {
       renderAt('/notes', 'index')
       expect(await screen.findByText('OBSERVATION_WORKSPACE')).toBeInTheDocument()
@@ -93,17 +111,43 @@ describe('Notes route resolution (Phase 1A feature flag)', () => {
     it('navigates /notes/:id to /notes/workspace?noteId=:id', async () => {
       renderAt('/notes/11111111-1111-1111-1111-111111111111', 'detail')
       expect(await screen.findByText('OBSERVATION_WORKSPACE')).toBeInTheDocument()
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        'noteId=11111111-1111-1111-1111-111111111111',
+      )
+    })
+
+    it('keeps existing safe query and lets the route id override a hostile noteId', async () => {
+      renderAt(
+        '/notes/11111111-1111-1111-1111-111111111111?noteId=hostile&status=3&page=2&unsafeParam=x',
+        'detail',
+      )
+
+      expect(await screen.findByText('OBSERVATION_WORKSPACE')).toBeInTheDocument()
+      const location = screen.getByTestId('location')
+      expect(location).toHaveTextContent(
+        '/notes/workspace?status=3&page=2&noteId=11111111-1111-1111-1111-111111111111',
+      )
+      expect(location).not.toHaveTextContent('unsafeParam')
+      expect(location).not.toHaveTextContent('hostile')
     })
 
     it('carries safe list filters over when redirecting /notes', async () => {
       renderAt('/notes?status=3&search=hello&page=2&unsafeParam=x', 'index')
       expect(await screen.findByText('OBSERVATION_WORKSPACE')).toBeInTheDocument()
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/notes/workspace?status=3&search=hello&page=2',
+      )
+      expect(screen.getByTestId('location')).not.toHaveTextContent('unsafeParam')
     })
   })
 
   describe('with the flag explicitly disabled (rollback)', () => {
     beforeEach(() => {
       vi.stubEnv('VITE_OBSERVATION_WORKSPACE_V2', 'false')
+    })
+
+    afterEach(() => {
+      vi.unstubAllEnvs()
     })
 
     it('keeps rendering the Legacy NotesListPage at /notes', async () => {

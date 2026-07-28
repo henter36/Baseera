@@ -9,8 +9,9 @@ export function isObservationWorkspaceV2Enabled(): boolean {
 // Query params that are safe to carry over from the legacy /notes list URL into
 // /notes/workspace verbatim (same name, same meaning, never sensitive).
 const CARRY_OVER_LIST_PARAMS = [
-  'search',
   'status',
+  'search',
+  'page',
   'severity',
   'noteTypeId',
   'classification',
@@ -23,7 +24,6 @@ const CARRY_OVER_LIST_PARAMS = [
   'requiresRouting',
   'sortBy',
   'sortDesc',
-  'page',
 ] as const
 
 export function buildWorkspaceRedirectSearch(source: URLSearchParams): string {

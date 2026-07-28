@@ -13,7 +13,7 @@ export function NotesIndexRoute() {
     return <NotesListPage />
   }
   const search = buildWorkspaceRedirectSearch(searchParams)
-  return <Navigate to={`/notes/workspace${search ? `?${search}` : ''}`} replace />
+  return <Navigate to={buildUrl('/notes/workspace', search)} replace />
 }
 
 // /notes/:id used to be the only note detail URL (still linked from old notifications, emails,
@@ -26,5 +26,9 @@ export function NoteDetailRoute() {
     return <NoteDetailPage />
   }
   const search = buildWorkspaceNoteRedirectSearch(id, searchParams)
-  return <Navigate to={`/notes/workspace?${search}`} replace />
+  return <Navigate to={buildUrl('/notes/workspace', search)} replace />
+}
+
+function buildUrl(path: string, queryString: string): string {
+  return queryString ? `${path}?${queryString}` : path
 }
