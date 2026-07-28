@@ -2638,16 +2638,36 @@ function resourcePanelType(resourceTypeCode?: string): PanelType {
   return 'equipment'
 }
 
-function sensitivePanelForTarget(target: { routeParameters: Record<string, string> }, fallback: string): PanelState {
-  if (target.routeParameters.weaponId) return { type: 'weapon', entityId: target.routeParameters.weaponId }
-  if (target.routeParameters.transactionId) return { type: 'custody-transaction', entityId: target.routeParameters.transactionId }
-  if (target.routeParameters.armoryLocationId) return { type: 'armory-location', entityId: target.routeParameters.armoryLocationId }
-  if (target.routeParameters.ammunitionLotId) return { type: 'ammunition-lot', entityId: target.routeParameters.ammunitionLotId }
-  if (target.routeParameters.inventoryId) return { type: 'inventory-session', entityId: target.routeParameters.inventoryId }
-  if (target.routeParameters.discrepancyId) return { type: 'inventory-discrepancy', entityId: target.routeParameters.discrepancyId }
-  if (target.routeParameters.inspectionId) return { type: 'weapon-inspection', entityId: target.routeParameters.inspectionId }
-  if (target.routeParameters.requirementId) return { type: 'requirement-gap', entityId: target.routeParameters.requirementId }
-  return { type: 'weapon', entityId: fallback }
+const SENSITIVE_PANEL_TARGETS: ReadonlyArray<{
+  parameter: string
+  type: PanelType
+}> = [
+  { parameter: 'weaponId', type: 'weapon' },
+  { parameter: 'transactionId', type: 'custody-transaction' },
+  { parameter: 'armoryLocationId', type: 'armory-location' },
+  { parameter: 'ammunitionLotId', type: 'ammunition-lot' },
+  { parameter: 'inventoryId', type: 'inventory-session' },
+  { parameter: 'discrepancyId', type: 'inventory-discrepancy' },
+  { parameter: 'inspectionId', type: 'weapon-inspection' },
+  { parameter: 'requirementId', type: 'requirement-gap' },
+]
+
+function sensitivePanelForTarget(
+  target: { routeParameters: Record<string, string> },
+  fallback: string,
+): PanelState {
+  const matchedTarget = SENSITIVE_PANEL_TARGETS.find(
+    ({ parameter }) => Boolean(target.routeParameters[parameter]),
+  )
+
+  if (!matchedTarget) {
+    return { type: 'weapon', entityId: fallback }
+  }
+
+  return {
+    type: matchedTarget.type,
+    entityId: target.routeParameters[matchedTarget.parameter],
+  }
 }
 
 function sensitiveCustodyStatus(summary: SensitiveCustodyWorkspacePayload['summary']) {
