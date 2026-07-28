@@ -21,9 +21,7 @@ public sealed class NoteWorkspaceQueryService(
     INoteQueryService notes,
     ICorrectiveActionQueryService correctiveActions,
     IAttachmentAppService attachments,
-    INoteDecisionApprovalService decisionApprovals,
-    INotePartsRequirementService parts,
-    INoteSlaService sla) : INoteWorkspaceQueryService
+    INoteWorkspaceEnrichmentService enrichmentService) : INoteWorkspaceQueryService
 {
     // Bounds the combined status-history/corrective-action timeline returned per note to a fixed
     // preview window (docs/ux-rescue/phase1a-observation-performance.md) — never "full audit" history.
@@ -57,25 +55,11 @@ public sealed class NoteWorkspaceQueryService(
             cancellationToken);
         var attachmentRows = await attachments.ListForEntityAsync(nameof(OperationalNote), id, cancellationToken);
         var timeline = BuildTimeline(note, history, actionPage.Items);
-        var openActions = await db.CorrectiveActions.CountAsync(
-            action =>
-                action.OperationalNoteId == id &&
-                action.Status != CorrectiveActionStatus.Completed &&
-                action.Status != CorrectiveActionStatus.Cancelled,
-            cancellationToken);
-
-        var decisions = await decisionApprovals.ListAsync(id, cancellationToken);
-        var pendingDecision = decisions.FirstOrDefault(d => d.Status == NoteDecisionApprovalStatus.Pending);
-        var partsItems = note.TreatmentExecutionType == NoteTreatmentExecutionType.RequiresParts
-            ? await parts.ListAsync(id, cancellationToken)
-            : Array.Empty<NotePartsRequirementDto>();
-        NotePartsProgressDto? partsProgress = note.TreatmentExecutionType == NoteTreatmentExecutionType.RequiresParts
-            ? await parts.GetProgressAsync(id, cancellationToken)
-            : null;
-        var slaState = await sla.ComputeAsync(id, cancellationToken);
+        var openActions = await CountOpenCorrectiveActionsAsync(id, cancellationToken);
+        var enrichment = await enrichmentService.BuildAsync(note, cancellationToken);
 
         var allowedActions = BuildAllowedActions(note);
-        var actionCenter = BuildActionCenter(note, allowedActions, pendingDecision, partsProgress, slaState, openActions, currentUser);
+        var actionCenter = BuildActionCenter(note, allowedActions, enrichment.PendingDecision, enrichment.PartsProgress, openActions, currentUser);
 
         return new NoteWorkspaceDetailDto(
             note,
@@ -85,7 +69,7 @@ public sealed class NoteWorkspaceQueryService(
                 attachmentRows.Count,
                 note.Status == NoteStatus.InProgress && openActions > 0,
                 note.Status == NoteStatus.PendingVerification,
-                pendingDecision is not null,
+                enrichment.PendingDecision is not null,
                 false,
                 ResolveProgress(note.Status, openActions),
                 ResolveBlocker(note, openActions),
@@ -94,11 +78,19 @@ public sealed class NoteWorkspaceQueryService(
             actionPage,
             attachmentRows,
             timeline,
-            decisions,
-            partsItems,
-            slaState,
+            enrichment.Decisions,
+            enrichment.PartsItems,
+            enrichment.SlaState,
             actionCenter);
     }
+
+    private async Task<int> CountOpenCorrectiveActionsAsync(Guid id, CancellationToken cancellationToken) =>
+        await db.CorrectiveActions.CountAsync(
+            action =>
+                action.OperationalNoteId == id &&
+                action.Status != CorrectiveActionStatus.Completed &&
+                action.Status != CorrectiveActionStatus.Cancelled,
+            cancellationToken);
 
     private async Task<IReadOnlyList<NoteStatusHistoryDto>> LoadRecentHistoryAsync(
         Guid id,
@@ -174,6 +166,15 @@ public sealed class NoteWorkspaceQueryService(
     public static IReadOnlyList<string> ComputeAllowedActions(NoteDetailDto note, ICurrentUser currentUser)
     {
         var allowed = new List<string>();
+        AddCoreLifecycleActions(allowed, note, currentUser);
+        AddTriageGateActions(allowed, note, currentUser);
+        AddTreatmentActions(allowed, note, currentUser);
+        AddPartsAndSlaActions(allowed, note, currentUser);
+        return allowed;
+    }
+
+    private static void AddCoreLifecycleActions(List<string> allowed, NoteDetailDto note, ICurrentUser currentUser)
+    {
         AddIf(allowed, "SUBMIT", currentUser.HasPermission(PermissionCodes.NotesUpdate) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Open));
         AddIf(allowed, "ASSIGN", currentUser.HasPermission(PermissionCodes.NotesAssign) && (note.Status is NoteStatus.Open or NoteStatus.Assigned or NoteStatus.Reopened));
         AddIf(allowed, "REASSIGN", currentUser.HasPermission(PermissionCodes.NotesAssign) && note.CurrentAssignment is not null && !NoteStateMachine.IsTerminalLocked(note.Status));
@@ -187,24 +188,32 @@ public sealed class NoteWorkspaceQueryService(
         AddIf(allowed, "VERIFY_CLOSURE", currentUser.HasPermission(PermissionCodes.NotesVerifyClosure) && note.Status == NoteStatus.PendingVerification);
         AddIf(allowed, "REOPEN", currentUser.HasPermission(PermissionCodes.NotesReopen) && NoteStateMachine.CanTransition(note.Status, NoteStatus.Reopened));
         AddIf(allowed, "CANCEL", currentUser.HasPermission(PermissionCodes.NotesCancel) && !NoteStateMachine.IsTerminalLocked(note.Status));
+    }
 
-        // --- Phase 1B: triage gate / treatment result / parts / SLA — purely additive tokens,
-        // computed from NoteDetailDto fields only (no I/O), never gating the pre-existing tokens
-        // above so pre-Phase-1B notes/tests keep their exact original AllowedActions behavior.
+    // --- Phase 1B: triage gate / treatment result / parts / SLA — purely additive tokens,
+    // computed from NoteDetailDto fields only (no I/O), never gating the pre-existing tokens
+    // above so pre-Phase-1B notes/tests keep their exact original AllowedActions behavior.
+    private static void AddTriageGateActions(List<string> allowed, NoteDetailDto note, ICurrentUser currentUser)
+    {
         var atTriageGate = note.Status == NoteStatus.Open && note.TriageOutcome is null;
         AddIf(allowed, "TRIAGE_VALID", currentUser.HasPermission(PermissionCodes.NotesUpdate) && atTriageGate);
         AddIf(allowed, "TRIAGE_PROPOSE_INVALID", currentUser.HasPermission(PermissionCodes.NotesProposeInvalid) && atTriageGate);
         AddIf(allowed, "TRIAGE_PROPOSE_DUPLICATE", currentUser.HasPermission(PermissionCodes.NotesProposeDuplicate) && atTriageGate);
+    }
 
+    private static void AddTreatmentActions(List<string> allowed, NoteDetailDto note, ICurrentUser currentUser)
+    {
         var validAndOpenForTreatment = note.TriageOutcome == NoteTriageOutcome.Valid && !NoteStateMachine.IsTerminalLocked(note.Status);
         AddIf(allowed, "RECORD_TREATMENT", currentUser.HasPermission(PermissionCodes.NotesStartWork) && validAndOpenForTreatment);
         AddIf(allowed, "PROPOSE_NO_ACTION", currentUser.HasPermission(PermissionCodes.NotesProposeNoAction) && validAndOpenForTreatment);
+    }
 
+    private static void AddPartsAndSlaActions(List<string> allowed, NoteDetailDto note, ICurrentUser currentUser)
+    {
         var requiresParts = note.TreatmentExecutionType == NoteTreatmentExecutionType.RequiresParts && !NoteStateMachine.IsTerminalLocked(note.Status);
         AddIf(allowed, "MANAGE_PARTS", currentUser.HasPermission(PermissionCodes.NotesStartWork) && requiresParts);
         AddIf(allowed, "REQUEST_SLA_PAUSE", currentUser.HasPermission(PermissionCodes.NotesStartWork) && requiresParts);
         AddIf(allowed, "APPROVE_SLA_PAUSE", currentUser.HasPermission(PermissionCodes.NotesApproveSlaPause) && requiresParts);
-        return allowed;
     }
 
     private static readonly string[] ActionPriority =
@@ -226,7 +235,6 @@ public sealed class NoteWorkspaceQueryService(
         IReadOnlyList<string> allowedActions,
         NoteDecisionApprovalDto? pendingDecision,
         NotePartsProgressDto? partsProgress,
-        NoteSlaStateDto slaState,
         int openActions,
         ICurrentUser currentUser)
     {
