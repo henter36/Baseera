@@ -144,78 +144,83 @@ public sealed class NotePartsRequirementService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<NotePartsRequirementDto> UpdateStatusAsync(Guid noteId, Guid itemId, UpdatePartsRequirementStatusRequest request, CancellationToken cancellationToken = default)
-    {
-        await LoadEditableNoteAsync(noteId, cancellationToken);
-        var item = await LoadItemAsync(noteId, itemId, cancellationToken);
-        NoteAccessHelper.EnsureRowVersion(item.RowVersion, request.RowVersion);
-        EnsureForwardTransition(item.Status, request.Status);
-
-        var now = DateTimeOffset.UtcNow;
-        item.Status = request.Status;
-        switch (request.Status)
+    public Task<NotePartsRequirementDto> UpdateStatusAsync(Guid noteId, Guid itemId, UpdatePartsRequirementStatusRequest request, CancellationToken cancellationToken = default) =>
+        // Single transaction: the part-status write and the SLA-pause-end check it can trigger must
+        // commit together, or a failure in the second write would leave ProcessingSla paused while
+        // the part is already Installed/Cancelled (CodeRabbit: corrupts SLA metrics on partial failure).
+        db.ExecuteInTransactionAsync(async ct =>
         {
-            case NotePartsRequirementStatus.Available:
-                item.AvailableAtUtc ??= now;
-                break;
-            case NotePartsRequirementStatus.Received:
-                item.ReceivedAtUtc ??= now;
-                break;
-            case NotePartsRequirementStatus.Installed:
-                item.InstalledAtUtc ??= now;
-                break;
-        }
-        db.Update(item);
+            await LoadEditableNoteAsync(noteId, ct);
+            var item = await LoadItemAsync(noteId, itemId, ct);
+            NoteAccessHelper.EnsureRowVersion(item.RowVersion, request.RowVersion);
+            EnsureForwardTransition(item.Status, request.Status);
 
-        await audit.WriteAsync(new AuditEntry
-        {
-            Action = "NotePartsRequirementStatusChanged",
-            Module = NoteAccessHelper.ModuleName,
-            EntityType = nameof(NotePartsRequirement),
-            EntityId = item.Id.ToString(),
-            NewValues = new { item.Status }
+            var now = DateTimeOffset.UtcNow;
+            item.Status = request.Status;
+            switch (request.Status)
+            {
+                case NotePartsRequirementStatus.Available:
+                    item.AvailableAtUtc ??= now;
+                    break;
+                case NotePartsRequirementStatus.Received:
+                    item.ReceivedAtUtc ??= now;
+                    break;
+                case NotePartsRequirementStatus.Installed:
+                    item.InstalledAtUtc ??= now;
+                    break;
+            }
+            db.Update(item);
+
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "NotePartsRequirementStatusChanged",
+                Module = NoteAccessHelper.ModuleName,
+                EntityType = nameof(NotePartsRequirement),
+                EntityId = item.Id.ToString(),
+                NewValues = new { item.Status }
+            }, ct);
+
+            await db.SaveChangesAsync(ct);
+            await sla.EndPauseIfPartsResolvedAsync(noteId, ct);
+            return Map(item);
         }, cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
-        await sla.EndPauseIfPartsResolvedAsync(noteId, cancellationToken);
-        return Map(item);
-    }
-
-    public async Task<NotePartsRequirementDto> CancelAsync(Guid noteId, Guid itemId, CancelPartsRequirementRequest request, CancellationToken cancellationToken = default)
-    {
-        await LoadEditableNoteAsync(noteId, cancellationToken);
-        var item = await LoadItemAsync(noteId, itemId, cancellationToken);
-        NoteAccessHelper.EnsureRowVersion(item.RowVersion, request.RowVersion);
-        if (item.Status is NotePartsRequirementStatus.Cancelled or NotePartsRequirementStatus.Installed)
+    public Task<NotePartsRequirementDto> CancelAsync(Guid noteId, Guid itemId, CancelPartsRequirementRequest request, CancellationToken cancellationToken = default) =>
+        db.ExecuteInTransactionAsync(async ct =>
         {
-            throw new InvalidOperationException("لا يمكن إلغاء عنصر تم تركيبه أو ملغى مسبقًا.");
-        }
+            await LoadEditableNoteAsync(noteId, ct);
+            var item = await LoadItemAsync(noteId, itemId, ct);
+            NoteAccessHelper.EnsureRowVersion(item.RowVersion, request.RowVersion);
+            if (item.Status is NotePartsRequirementStatus.Cancelled or NotePartsRequirementStatus.Installed)
+            {
+                throw new InvalidOperationException("لا يمكن إلغاء عنصر تم تركيبه أو ملغى مسبقًا.");
+            }
 
-        if (string.IsNullOrWhiteSpace(request.Reason))
-        {
-            throw new InvalidOperationException("سبب الإلغاء مطلوب.");
-        }
+            if (string.IsNullOrWhiteSpace(request.Reason))
+            {
+                throw new InvalidOperationException("سبب الإلغاء مطلوب.");
+            }
 
-        var now = DateTimeOffset.UtcNow;
-        item.Status = NotePartsRequirementStatus.Cancelled;
-        item.CancelledAtUtc = now;
-        item.CancelledByUserId = RequireUserId();
-        item.CancelReason = request.Reason.Trim();
-        db.Update(item);
+            var now = DateTimeOffset.UtcNow;
+            item.Status = NotePartsRequirementStatus.Cancelled;
+            item.CancelledAtUtc = now;
+            item.CancelledByUserId = RequireUserId();
+            item.CancelReason = request.Reason.Trim();
+            db.Update(item);
 
-        await audit.WriteAsync(new AuditEntry
-        {
-            Action = "NotePartsRequirementCancelled",
-            Module = NoteAccessHelper.ModuleName,
-            EntityType = nameof(NotePartsRequirement),
-            EntityId = item.Id.ToString(),
-            Reason = item.CancelReason
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "NotePartsRequirementCancelled",
+                Module = NoteAccessHelper.ModuleName,
+                EntityType = nameof(NotePartsRequirement),
+                EntityId = item.Id.ToString(),
+                Reason = item.CancelReason
+            }, ct);
+
+            await db.SaveChangesAsync(ct);
+            await sla.EndPauseIfPartsResolvedAsync(noteId, ct);
+            return Map(item);
         }, cancellationToken);
-
-        await db.SaveChangesAsync(cancellationToken);
-        await sla.EndPauseIfPartsResolvedAsync(noteId, cancellationToken);
-        return Map(item);
-    }
 
     public static NotePartsProgressDto ComputeProgress(IReadOnlyList<NotePartsRequirement> items)
     {
