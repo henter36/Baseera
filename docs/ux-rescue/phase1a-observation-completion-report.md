@@ -74,11 +74,31 @@ Submit، Assign، Reassign (نموذج Inline بمُنتقي مكلَّف عبر
 
 ## CI / SonarCloud / Gitleaks
 
-راجع الفقرة الأخيرة من هذا التقرير (تُستكمَل بعد فتح الـPR وتشغيل CI الفعلي — هذا القسم لا يمكن تعبئته قبل الدفع).
+Status: Ready على آخر دليل منشور للـPR الحالي عند إعداد هذا التقرير.
+
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| Baseera CI | Passed | Run `30326215860` — https://github.com/henter36/Baseera/actions/runs/30326215860 |
+| Backend | Passed | Job `backend`, run `30326215860` |
+| Integration | Passed | Jobs `integration (core/forms/operations/workforce)`, run `30326215860` |
+| Frontend | Passed | Job `frontend`, run `30326215860` |
+| SonarCloud Quality Gate | Passed | `OK` — https://sonarcloud.io/dashboard?id=henter36_Baseera&pullRequest=149 |
+| Gitleaks / secret scan | Passed | Job `secret-scan`, run `30326215860` |
+| qlty | Passed | `qlty check` — https://qlty.sh/gh/henter36/projects/Baseera/pull/149/issues |
+
+Counts recorded for Phase 1A evidence:
+
+| Suite | Passed | Failed | Skipped |
+| --- | ---: | ---: | ---: |
+| Frontend tests | 301 | 0 | 0 |
+| Backend unit tests | 960 | 0 | 0 |
+| Backend integration tests | 251 | 0 | 0 |
+
+Additional local frontend gates recorded in `phase1a-observation-test-matrix.md`: `npm run typecheck`, `npm run lint`, `npm run build`, and `npm audit --audit-level=high` passed.
 
 ## سجل الامتثال
 
-`docs/ux-rescue/phase1a-observation-compliance-ledger.md` — **Missing = 0**.
+`docs/ux-rescue/phase1a-observation-compliance-ledger.md` — **Missing = 0, Blocked = 0**.
 
 ## الفجوات المتبقية لـPhase 1B/1C
 

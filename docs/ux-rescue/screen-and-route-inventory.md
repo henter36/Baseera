@@ -87,11 +87,11 @@
 | `/form-campaigns/:campaignId/targeting` | لا رابط في أي صفحة يشير إليه، والمكوّن المعروض (`FormCampaignWizardPage`) لا يقرأ `:campaignId` أصلًا |
 | `/form-campaigns/:campaignId/schedule` | نفس السبب أعلاه |
 
-## مكوّن يتيم (مُعرَّف لكنه غير مُوجَّه له Route ولا مستورَد في أي مكان) — محدَّث في Phase 1A
+## مكوّنات Legacy وFallback — محدَّثة في Phase 1A
 
 > **تحديث Phase 1A:** لم يعد `NotesListPage.tsx` يتيمًا. راجع `docs/ux-rescue/phase1a-observation-route-transition.md` — أصبح يُستورَد من `NotesRouteResolvers.tsx` ويُعرَض فعليًا خلف علم الميزة `VITE_OBSERVATION_WORKSPACE_V2=false` كـLegacy fallback لمسار `/notes` (ونظيره `NoteDetailPage.tsx` لمسار `/notes/:id`)، وليس محذوفًا. هذا يحافظ تلقائيًا على وظيفة استعادة الملاحظة المؤرشفة أدناه دون الحاجة لنقلها الآن؛ ستُنقَل عند إنهاء الترحيل الكامل في مرحلة لاحقة (1B/1C) وإزالة الـLegacy fallback.
 
-- **`src/frontend/src/pages/notes/NotesListPage.tsx`** — (وصف الحالة الأصلية في Phase 0، قبل التحديث أعلاه) غير مستورَد في `App.tsx` ولا في أي مسار ديناميكي (`import()`/`lazy()`). مُصادق عليه بغياب أي استيراد خارج ملفه واختباراته الخاصة. يحتوي وظيفة فريدة غير موجودة في أي مكان آخر بالتطبيق: **استعادة ملاحظة مؤرشفة عبر المعرّف ورقم الإصدار (RowVersion)** خلف صلاحية `Notes.Restore`. يجب نقل هذه الوظيفة الفريدة (وليس بقية الصفحة) إلى الوجهة المستهدفة قبل حذف الملف.
+- **`src/frontend/src/pages/notes/NotesListPage.tsx`** — (وصف الحالة الأصلية في Phase 0، قبل التحديث أعلاه) كان غير مستورَد في `App.tsx` ولا في أي مسار ديناميكي (`import()`/`lazy()`). في Phase 1A أصبح Legacy fallback موجَّهًا فعليًا خلف `VITE_OBSERVATION_WORKSPACE_V2=false`. يحتوي وظيفة فريدة غير موجودة في أي مكان آخر بالتطبيق: **استعادة ملاحظة مؤرشفة عبر المعرّف ورقم الإصدار (RowVersion)** خلف صلاحية `Notes.Restore`. تبقى هذه الوظيفة متاحة عبر الـLegacy fallback خلال Phase 1A، ولا يوجد قرار حذف في هذه المرحلة.
 
 ## أنواع Context Panel المكتشفة (لا تملك Route مستقل، تُفتح كلوحة سياقية فقط)
 

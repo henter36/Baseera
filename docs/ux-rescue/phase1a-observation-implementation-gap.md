@@ -4,6 +4,8 @@
 
 **اكتشاف جوهري**: خلاف انطباع تدقيق Phase 0، الـBackend لهذا المجال متقدم فعليًا — عقود `GET /notes/workspace` و`GET /notes/{id}/workspace` موجودتان بالفعل مع Scope filtering وRedaction وPagination/Sort/Filter allowlists وAllowedActions. الفجوة الحقيقية أضيق بكثير مما بدا، ومركّزة في: فجوة واحدة في `BuildAllowedActions` (إغلاق الملاحظة غير موجود كإجراء مسموح رغم وجود الـEndpoint)، حقول DTO ميتة تغذّي تبويبات Placeholder دائمة، عدم استخدام `FacilityUnitId` عند الإنشاء، وغياب التكامل بين Facility Workspace وإنشاء ملاحظة.
 
+الجدول أدناه هو **Pre-Phase-1A baseline** محفوظ كتحليل تاريخي؛ القرارات النهائية بعد التنفيذ موثقة في `phase1a-observation-route-transition.md` و`phase1a-observation-compliance-ledger.md`.
+
 | المتطلب | العقد الحالي | قابل لإعادة الاستخدام | الفجوة | القرار |
 | --- | --- | --- | --- | --- |
 | قائمة ملاحظات مصفّاة بالنطاق | `GET /notes/workspace` → `NoteWorkspaceQueryService.ListAsync` → `NoteQueryService.ListAsync` (Scope عبر `INoteScopeService.FilterQueryableAsync`، فلترة/فرز/صفحات مع Allowlist) | نعم بالكامل | لا يوجد | Keep — إعادة استخدام مباشر |
@@ -17,7 +19,7 @@
 | Route/URL موحَّد | `/notes/workspace` موجود، يدعم بالفعل: search/status/severity/regionId/facilityId/overdueOnly/requiresMyAction/requiresRouting/page/sortBy/sortDesc/noteId | نعم لمعظم الحالة | ينقصه: `facilityUnitId`، `owner` (Department)، `assignee` (منفصل عن requiresMyAction)، `noteType`، `due` (دمج overdue/dueSoon)، `view` (Presets)، `section` (تبويب التفاصيل)، `source` | Restructure — توسيع مجموعة المعاملات دون تكرار تمثيل نفس الحالة |
 | توافق Routes قديمة | `/notes` و`/notes/workspace` يعرضان **نفس المكوّن بالفعل** اليوم (لا حاجة لـFeature flag بينهما)؛ `/notes/:id` و`/notes/:id/edit` صفحات Legacy منفصلة تمامًا (`NoteDetailPage`/`NoteEditPage`) | جزئيًا | لا آلية Resolver بعد تتحكم عبر Feature Flag فيما إذا يُفتح `/notes/:id` كصفحة Legacy أو كـDeep-link لـWorkspace | بناء Route Resolver + `VITE_OBSERVATION_WORKSPACE_V2` |
 | مكوّنات مشتركة | `WorkspaceShell.tsx` يحوي بالفعل: `WorkspaceEmpty/Error/Loading/Unauthorized`, `WorkspaceFilterBar`, `WorkspaceWidgetContainer`, `MasterDetailWorkspaceLayout` (غير مستخدَم حتى الآن) | نعم جزئيًا | التسمية/الموقع لا يطابق الاتفاقية المطلوبة (`shared/workspaces/`)؛ لا يوجد `WorkspaceCommandHeader`/`WorkspaceActionBar`/`WorkspaceStateView` موحَّدة | نقل/تكييف ما هو موجود إلى `shared/workspaces/`، لا إعادة كتابة من الصفر |
-| المكوّن اليتيم | `NotesListPage.tsx` غير موجَّه له Route (مؤكَّد من PR #148، ولم يتغيّر) | لا | الوظيفة الفريدة (استعادة أرشيف) لم تُنقَل بعد | نقل قدرة الاستعادة إلى Workspace ثم حذف الملف |
+| Legacy fallback | `NotesListPage.tsx` كان غير موجَّه له Route في Pre-Phase-1A baseline، وأصبح الآن مسجّلًا خلف `VITE_OBSERVATION_WORKSPACE_V2=false` | نعم كـFallback مقصود | Archive restoration remains available through the legacy fallback during Phase 1A. | Legacy fallback retained intentionally behind `VITE_OBSERVATION_WORKSPACE_V2=false`. Archive restoration remains available through the legacy fallback during Phase 1A. |
 | Escalate inline | لا Endpoint لتصعيد ملاحظة بعينها فوريًا (مؤكَّد من PR #148) | لا | يبقى خارج النطاق صراحة | لا تنفيذ — يبقى fallback لصفحة الإعدادات |
 | Accept assignment | لا Endpoint/Command مستقل لـ"قبول التكليف" في هذا الـDomain اليوم (`AcceptedAtUtc` حقل DTO لكن بلا مسار كتابة) | لا | خارج نطاق الإثبات المطلوب لهذه الشريحة | لا تنفيذ — تُوثَّق كـNot Applicable |
 

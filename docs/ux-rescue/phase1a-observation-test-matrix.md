@@ -43,11 +43,11 @@
 
 ## Frontend — Vitest
 
-- `src/frontend/src/pages/notes/ObservationWorkspacePage.test.tsx` (7 اختبارات، أُعيدت كتابتها بالكامل مع الصفحة): Master-detail + إجراءات الخادم، إرسال الفلاتر للخادم، حفظ Deep link للصفحة، مسح حالة الإجراء المضمَّن عند تبديل الملاحظة، **تنقّل سابق/تالي ضمن النافذة المحمَّلة**، **نموذج VERIFY_CLOSURE المخصَّص + رابط العودة لمساحة السجن**، **الأقسام الخمسة بلا تبويبات دائمة فارغة**.
-- `src/frontend/src/pages/notes/NotesRouteResolvers.test.tsx` (جديد، 5 اختبارات): توجيه `/notes`→`/notes/workspace` والعكس عند تعطيل العلم؛ نفس الشيء لـ`/notes/:id`؛ نقل الفلاتر الآمنة فقط عند التحويل.
+- `src/frontend/src/pages/notes/ObservationWorkspacePage.test.tsx`: Master-detail + إجراءات الخادم، إرسال الفلاتر للخادم، حفظ Deep link للصفحة، تحقق `section=summary/evidence/bogus/missing`، مسح حالة الإجراء المضمَّن عند تبديل الملاحظة، **تنقّل سابق/تالي ضمن النافذة المحمَّلة**، **Back/Forward حقيقي عبر history**، **مسح file input بعد الرفع**، **نموذج VERIFY_CLOSURE المخصَّص + رابط العودة لمساحة السجن**، **الأقسام الخمسة بلا تبويبات دائمة فارغة**.
+- `src/frontend/src/pages/notes/NotesRouteResolvers.test.tsx`: توجيه `/notes`→`/notes/workspace` والعكس عند تعطيل العلم؛ نفس الشيء لـ`/notes/:id`؛ تثبيت feature flag داخل suites؛ فحص location الفعلي؛ نقل الفلاتر الآمنة فقط؛ حذف `unsafeParam`؛ وتغليب `noteId` القادم من المسار على query عدائي.
 - `src/frontend/src/pages/workspaces/FacilityWorkspacePage.test.tsx` (30 اختبارًا، 27 موجودة + 3 جديدة): إخفاء زر "فتح ملاحظة" بلا `Notes.Create`؛ عدم وجود Selector سجن في نموذج الإنشاء (السياق موروث لا مُعاد اختياره)؛ إنشاء الملاحظة فعليًا والتحقق من الانتقال إلى `/notes/workspace?noteId=...&facilityId=...&source=facility:...` بجسم طلب يحمل `facilityId`/`scopeType`/`facilityUnitId` الصحيحة.
 
-**إجمالي Frontend: 294/294 ناجح عبر 57 ملفًا** (كان قبل هذه الدفعة رقم أقل بمقدار الاختبارات المذكورة أعلاه) — بلا Skipped.
+**إجمالي Frontend: 301/301 ناجح عبر 57 ملفًا** (كان قبل هذه الدفعة رقم أقل بمقدار الاختبارات المذكورة أعلاه) — Failed=0, Skipped=0.
 
 ## بوابات الجودة الإضافية (مؤكَّدة فعليًا في هذه الدفعة)
 

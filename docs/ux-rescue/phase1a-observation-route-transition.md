@@ -51,4 +51,4 @@ export function isObservationWorkspaceV2Enabled(): boolean {
 
 ## اختبار الـRollback
 
-`src/frontend/src/pages/notes/NotesRouteResolvers.test.tsx` — 5 اختبارات: توجيه `/notes`→`/notes/workspace` والعكس بالعلم مُعطَّلاً، نفس الشيء لـ`/notes/:id`، ونقل الفلاتر الآمنة فقط (رفض معامل غير معروف).
+`src/frontend/src/pages/notes/NotesRouteResolvers.test.tsx` — يثبّت `VITE_OBSERVATION_WORKSPACE_V2` داخل كل suite، ويعرض `useLocation()` داخل route الهدف. التغطية تتحقق من توجيه `/notes`→`/notes/workspace`، توجيه `/notes/:id` إلى `noteId` الصحيح، احتفاظ الفلاتر الآمنة، حذف المعاملات غير الآمنة، وتغليب `noteId` القادم من المسار على `noteId` عدائي في query string. عند تعطيل العلم، تبقى صفحات Legacy (`NotesListPage`/`NoteDetailPage`) هي المعروضة.
