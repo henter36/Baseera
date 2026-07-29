@@ -92,6 +92,9 @@ public sealed class NoteScopeShapeTests
         public IQueryable<OperationalNote> OperationalNotesIncludingDeleted => OperationalNotes;
         public IQueryable<NoteAssignment> NoteAssignments => Enumerable.Empty<NoteAssignment>().AsQueryable();
         public IQueryable<NoteStatusHistory> NoteStatusHistories => Enumerable.Empty<NoteStatusHistory>().AsQueryable();
+        public IQueryable<NoteDecisionApproval> NoteDecisionApprovals => Enumerable.Empty<NoteDecisionApproval>().AsQueryable();
+        public IQueryable<NotePartsRequirement> NotePartsRequirements => Enumerable.Empty<NotePartsRequirement>().AsQueryable();
+        public IQueryable<NoteSlaPausePeriod> NoteSlaPausePeriods => Enumerable.Empty<NoteSlaPausePeriod>().AsQueryable();
         public IQueryable<Domain.CorrectiveActions.CorrectiveAction> CorrectiveActions => Enumerable.Empty<Domain.CorrectiveActions.CorrectiveAction>().AsQueryable();
         public IQueryable<Domain.CorrectiveActions.CorrectiveAction> CorrectiveActionsIncludingDeleted => CorrectiveActions;
         public IQueryable<Domain.CorrectiveActions.CorrectiveActionAssignment> CorrectiveActionAssignments => Enumerable.Empty<Domain.CorrectiveActions.CorrectiveActionAssignment>().AsQueryable();
@@ -304,7 +307,7 @@ public sealed class NoteCriticalSoDTests
         var (db, scope, current, audit) = CreateHarness(processorId, Domain.Identity.PermissionCodes.NotesVerifyClosure);
         var note = SeedCriticalPending(db, processorId);
         var typeAccess = new NoteTypeAccessService(db, current);
-        var workflow = new NoteWorkflowService(db, current, scope, typeAccess, audit, new StubQueryService());
+        var workflow = new NoteWorkflowService(db, current, scope, typeAccess, audit, new StubQueryService(), NoteTestFixtures.FakeAttachments);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("إغلاق", "ملخص", Convert.ToBase64String(note.RowVersion))));
@@ -320,7 +323,7 @@ public sealed class NoteCriticalSoDTests
         var note = SeedCriticalPending(db, processorId);
 
         var typeAccess = new NoteTypeAccessService(db, current);
-        var workflow = new NoteWorkflowService(db, current, scope, typeAccess, audit, new StubQueryService());
+        var workflow = new NoteWorkflowService(db, current, scope, typeAccess, audit, new StubQueryService(), NoteTestFixtures.FakeAttachments);
         var result = await workflow.VerifyClosureAsync(
             note.Id,
             new CloseNoteRequest("إغلاق معتمد", "تم التحقق", Convert.ToBase64String(note.RowVersion)));
@@ -429,7 +432,8 @@ public sealed class NoteCriticalSoDTests
                 NoteSourceType.Manual, "يدوي", null, Domain.Attachments.ClassificationLevel.Internal,
                 Domain.Common.ScopeType.Global, null, null, null, null, Guid.Empty, null,
                 DateTimeOffset.UtcNow, null, false, null, null, null, DateTimeOffset.UtcNow, null, null,
-                null, null, null, DateTimeOffset.UtcNow, "AQIDBA==", false));
+                null, null, null, DateTimeOffset.UtcNow, "AQIDBA==", false,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, false));
 
         public Task<IReadOnlyList<NoteStatusHistoryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<NoteStatusHistoryDto>>([]);

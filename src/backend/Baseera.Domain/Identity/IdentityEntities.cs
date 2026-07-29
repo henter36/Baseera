@@ -121,6 +121,13 @@ public static class PermissionCodes
     public const string NotesActivateRoutingRules = "Notes.ActivateRoutingRules";
     public const string NotesRunRouting = "Notes.RunRouting";
     public const string NotesViewRoutingDiagnostics = "Notes.ViewRoutingDiagnostics";
+    public const string NotesProposeInvalid = "Notes.ProposeInvalid";
+    public const string NotesApproveInvalid = "Notes.ApproveInvalid";
+    public const string NotesProposeDuplicate = "Notes.ProposeDuplicate";
+    public const string NotesApproveDuplicate = "Notes.ApproveDuplicate";
+    public const string NotesProposeNoAction = "Notes.ProposeNoAction";
+    public const string NotesApproveNoAction = "Notes.ApproveNoAction";
+    public const string NotesApproveSlaPause = "Notes.ApproveSlaPause";
     public const string CorrectiveActionsView = "CorrectiveActions.View";
     public const string CorrectiveActionsViewSensitive = "CorrectiveActions.ViewSensitive";
     public const string CorrectiveActionsCreate = "CorrectiveActions.Create";

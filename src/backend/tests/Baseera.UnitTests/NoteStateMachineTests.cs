@@ -18,6 +18,11 @@ public sealed class NoteStateMachineTests
     [InlineData(NoteStatus.Closed, NoteStatus.Reopened)]
     [InlineData(NoteStatus.Reopened, NoteStatus.Assigned)]
     [InlineData(NoteStatus.Reopened, NoteStatus.InProgress)]
+    // Phase 1B decision-approval closures (Invalid/Duplicate/NoAction) — close directly without
+    // ever routing through PendingVerification (docs/ux-rescue/phase1b-observation-state-mapping.md).
+    [InlineData(NoteStatus.Open, NoteStatus.Closed)]
+    [InlineData(NoteStatus.Assigned, NoteStatus.Closed)]
+    [InlineData(NoteStatus.InProgress, NoteStatus.Closed)]
     public void Allowed_transitions_are_accepted(NoteStatus from, NoteStatus to)
     {
         Assert.True(NoteStateMachine.CanTransition(from, to));
@@ -33,7 +38,6 @@ public sealed class NoteStateMachineTests
     [InlineData(NoteStatus.Assigned, NoteStatus.Open)]
     [InlineData(NoteStatus.Assigned, NoteStatus.PendingVerification)]
     [InlineData(NoteStatus.InProgress, NoteStatus.Assigned)]
-    [InlineData(NoteStatus.InProgress, NoteStatus.Closed)]
     [InlineData(NoteStatus.PendingVerification, NoteStatus.Cancelled)]
     [InlineData(NoteStatus.Closed, NoteStatus.InProgress)]
     [InlineData(NoteStatus.Closed, NoteStatus.Cancelled)]

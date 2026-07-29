@@ -83,6 +83,20 @@
 
 مساحة عمل الملاحظات (`/notes/workspace`) وإنشاء ملاحظة من `workspaces/facilities/:facilityId` يعيدان استخدام هذا الجدول حرفيًا — لم تُضَف أي صلاحية `Notes.*` جديدة. المرجع المصدري الوحيد لتحديد الإجراءات الظاهرة داخل الـWorkspace هو `NoteWorkspaceQueryService.ComputeAllowedActions` (يقرأ `NoteStateMachine.CanTransition` + صلاحية المستخدم فعليًا)، وليس أي منطق واجهة يخمّن الإجراء التالي من الحالة وحدها. الفجوة الوحيدة التي أُصلحت هنا: `Notes.VerifyClosure` كان له Endpoint ونقطة API فعليتان لكنه لم يكن يظهر إطلاقًا ضمن `AllowedActions` — تمت إضافته لقائمة الحساب فقط، دون أي تغيير في مصفوفة الأدوار أعلاه. صلاحية عرض/إنشاء الملاحظة من Facility Workspace هي نفسها `Notes.View`/`Notes.Create` أعلاه؛ لا صلاحية "Facility Workspace" توسّع صلاحيات الملاحظات (السجن لا يمنح وصولاً إضافيًا).
 
+### UX Rescue Phase 1B — 7 صلاحيات جديدة (بوابة الفرز، اعتماد القرار الموحَّد، تجميد SLA)
+
+| الصلاحية | الوصف | SystemAdmin | HQ Executive | Decision Support Director | Regional Director | Regional Coordinator | Facility Director |
+|----------|-------|:-----------:|:------------:|:--------------------------:|:------------------:|:---------------------:|:-------------------:|
+| Notes.ProposeInvalid | اقتراح اعتبار ملاحظة غير صحيحة | ✓ | | ✓ | ✓ | ✓ | ✓ |
+| Notes.ApproveInvalid | اعتماد قرار غير صحيحة (مراجع مستقل عن المقترح) | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| Notes.ProposeDuplicate | اقتراح اعتبار ملاحظة مكررة | ✓ | | ✓ | ✓ | ✓ | ✓ |
+| Notes.ApproveDuplicate | اعتماد قرار التكرار | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| Notes.ProposeNoAction | اقتراح عدم الحاجة إلى إجراء | ✓ | | ✓ | ✓ | ✓ | ✓ |
+| Notes.ApproveNoAction | اعتماد عدم الحاجة إلى إجراء | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| Notes.ApproveSlaPause | اعتماد تجميد SLA أثناء انتظار القطع | ✓ | ✓ | ✓ | ✓ | | ✓ |
+
+**فصل الواجبات هنا شخصي لا دوري**: عمدًا لم تُفصَل الأدوار بين Propose/Approve (`RegionalDirector`/`FacilityDirector`/`DecisionSupportDirector` يملكون الاثنين معًا) — المنع الفعلي هو أن مُقترِح قرار بعينه لا يستطيع اعتماد ذلك القرار تحديدًا (`ProposedByUserId != ReviewedByUserId` على مستوى السجل)، وليس منع الدور من الفعلَين معًا. `RegionalCoordinator` استثناء متعمَّد: يملك Propose* فقط (لا يملك `Notes.VerifyClosure` أصلًا، فهو طبقة معالجة لا اعتماد). لا تغيير على مصفوفة صلاحيات B.1 أعلاه. تفصيل كامل: `phase1b-observation-permissions.md`.
+
 ## صلاحيات الإجراءات التصحيحية (مفعّلة في B.2.1)
 
 النطاق مشتق من `OperationalNote` الأصلية. السجل غير الموجود أو خارج النطاق يعود `404 Not Found` لمنع التعداد، ونقص الصلاحية داخل النطاق يعود `403 Forbidden`.

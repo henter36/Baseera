@@ -14,7 +14,11 @@ public sealed record NoteWorkspaceDetailDto(
     IReadOnlyList<NoteAssignmentDto> Assignments,
     PagedResult<CorrectiveActionListItemDto> CorrectiveActions,
     IReadOnlyList<AttachmentDto> Attachments,
-    IReadOnlyList<NoteWorkspaceTimelineEntryDto> Timeline);
+    IReadOnlyList<NoteWorkspaceTimelineEntryDto> Timeline,
+    IReadOnlyList<NoteDecisionApprovalDto> DecisionApprovals,
+    IReadOnlyList<NotePartsRequirementDto> PartsRequirements,
+    NoteSlaStateDto Sla,
+    NoteActionCenterDto ActionCenter);
 
 public sealed record NoteWorkspaceSummaryDto(
     int OpenCorrectiveActions,

@@ -118,39 +118,76 @@ public sealed class NoteQueryService(
     public async Task<NoteDetailDto?> GetDetailAsync(Guid id, CancellationToken cancellationToken = default)
     {
         NoteAccessHelper.EnsurePermission(currentUser, PermissionCodes.NotesView);
-        var note = await db.OperationalNotes.Include(n => n.NoteType).FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
-        if (note is null || !noteScope.CanAccess(note))
-        {
-            return null;
-        }
-        if (!await typeAccess.CanViewAsync(note.NoteTypeId, cancellationToken))
+        var note = await LoadViewableNoteAsync(id, cancellationToken);
+        if (note is null)
         {
             return null;
         }
 
         var canSensitive = NoteAccessHelper.CanViewSensitive(currentUser);
-        var redact = NoteAccessHelper.RequiresSensitive(note.Classification) && !canSensitive;
-        if (NoteAccessHelper.RequiresSensitive(note.Classification) && canSensitive)
+        await RecordSensitiveViewIfNeededAsync(note, canSensitive, cancellationToken);
+
+        var current = MapAssignment(await LoadCurrentAssignmentAsync(id, cancellationToken));
+        var related = await LoadRelatedDisplayNamesAsync(note, cancellationToken);
+
+        return BuildDetailDto(note, current, related, canSensitive);
+    }
+
+    private async Task<OperationalNote?> LoadViewableNoteAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var note = await db.OperationalNotes.Include(n => n.NoteType).FirstOrDefaultAsync(n => n.Id == id, cancellationToken);
+        if (note is null || !noteScope.CanAccess(note))
         {
-            await audit.WriteAsync(new AuditEntry
-            {
-                Action = "NoteSensitiveViewed",
-                Module = "Notes",
-                EntityType = nameof(OperationalNote),
-                EntityId = note.Id.ToString(),
-                IsSensitiveView = true,
-                NewValues = new { note.ReferenceNumber, note.Classification }
-            }, cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
+            return null;
         }
 
-        var currentAssignment = await db.NoteAssignments
+        return await typeAccess.CanViewAsync(note.NoteTypeId, cancellationToken) ? note : null;
+    }
+
+    private async Task RecordSensitiveViewIfNeededAsync(OperationalNote note, bool canSensitive, CancellationToken cancellationToken)
+    {
+        if (!NoteAccessHelper.RequiresSensitive(note.Classification) || !canSensitive)
+        {
+            return;
+        }
+
+        await audit.WriteAsync(new AuditEntry
+        {
+            Action = "NoteSensitiveViewed",
+            Module = "Notes",
+            EntityType = nameof(OperationalNote),
+            EntityId = note.Id.ToString(),
+            IsSensitiveView = true,
+            NewValues = new { note.ReferenceNumber, note.Classification }
+        }, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<NoteAssignment?> LoadCurrentAssignmentAsync(Guid id, CancellationToken cancellationToken) =>
+        await db.NoteAssignments
             .Include(a => a.AssignedToUser)
             .Include(a => a.AssignedToDepartment)
             .Include(a => a.AssignedByUser)
             .FirstOrDefaultAsync(a => a.OperationalNoteId == id && a.IsCurrent, cancellationToken);
-        var current = MapAssignment(currentAssignment);
+
+    private sealed record RelatedDisplayNames(string? ReporterName, string? TriageDeciderName, string? DuplicateOfReferenceNumber);
+
+    private async Task<RelatedDisplayNames> LoadRelatedDisplayNamesAsync(OperationalNote note, CancellationToken cancellationToken)
+    {
         var reporter = (await db.Users.FirstOrDefaultAsync(u => u.Id == note.ReportedByUserId, cancellationToken))?.DisplayNameAr;
+        var triageDeciderName = note.TriageDecidedByUserId.HasValue
+            ? (await db.Users.FirstOrDefaultAsync(u => u.Id == note.TriageDecidedByUserId.Value, cancellationToken))?.DisplayNameAr
+            : null;
+        var duplicateOfReference = note.DuplicateOfNoteId.HasValue
+            ? (await db.OperationalNotesIncludingDeleted.FirstOrDefaultAsync(n => n.Id == note.DuplicateOfNoteId.Value, cancellationToken))?.ReferenceNumber
+            : null;
+
+        return new RelatedDisplayNames(reporter, triageDeciderName, duplicateOfReference);
+    }
+
+    private static NoteDetailDto BuildDetailDto(OperationalNote note, NoteAssignmentDto? current, RelatedDisplayNames related, bool canSensitive)
+    {
+        var redact = NoteAccessHelper.RequiresSensitive(note.Classification) && !canSensitive;
         var now = DateTimeOffset.UtcNow;
 
         return new NoteDetailDto(
@@ -178,7 +215,7 @@ public sealed class NoteQueryService(
             note.FacilityUnitId,
             note.OwnerDepartmentId,
             note.ReportedByUserId,
-            reporter,
+            related.ReporterName,
             note.ReportedAtUtc,
             note.DueAtUtc,
             NoteStateMachine.IsOverdue(note.Status, note.DueAtUtc, now),
@@ -193,7 +230,22 @@ public sealed class NoteQueryService(
             current,
             note.CreatedAtUtc,
             Convert.ToBase64String(note.RowVersion),
-            redact);
+            redact,
+            note.TriageOutcome,
+            note.TriageOutcome.HasValue ? NoteDisplay.TriageOutcomeAr(note.TriageOutcome.Value) : null,
+            note.TriageDecidedAtUtc,
+            related.TriageDeciderName,
+            note.DuplicateOfNoteId,
+            related.DuplicateOfReferenceNumber,
+            note.TreatmentResultType,
+            note.TreatmentResultType.HasValue ? NoteDisplay.TreatmentResultTypeAr(note.TreatmentResultType.Value) : null,
+            note.TreatmentExecutionType,
+            note.TreatmentExecutionType.HasValue ? NoteDisplay.TreatmentExecutionTypeAr(note.TreatmentExecutionType.Value) : null,
+            note.TreatmentResultText,
+            note.NoActionJustificationAr,
+            note.ClosureReason,
+            note.ClosureReason.HasValue ? NoteDisplay.ClosureReasonAr(note.ClosureReason.Value) : null,
+            note.NoteType.SupportsPartsWorkflow);
     }
 
     public async Task<IReadOnlyList<NoteStatusHistoryDto>> GetHistoryAsync(Guid id, CancellationToken cancellationToken = default)

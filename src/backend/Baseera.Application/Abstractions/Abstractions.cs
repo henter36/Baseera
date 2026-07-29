@@ -51,6 +51,9 @@ public interface IBaseeraDbContext
     IQueryable<OperationalNote> OperationalNotesIncludingDeleted { get; }
     IQueryable<NoteAssignment> NoteAssignments { get; }
     IQueryable<NoteStatusHistory> NoteStatusHistories { get; }
+    IQueryable<NoteDecisionApproval> NoteDecisionApprovals { get; }
+    IQueryable<NotePartsRequirement> NotePartsRequirements { get; }
+    IQueryable<NoteSlaPausePeriod> NoteSlaPausePeriods { get; }
     IQueryable<CorrectiveAction> CorrectiveActions { get; }
     IQueryable<CorrectiveAction> CorrectiveActionsIncludingDeleted { get; }
     IQueryable<CorrectiveActionAssignment> CorrectiveActionAssignments { get; }

@@ -13,6 +13,7 @@ internal sealed class NoteTypeConfiguration : IEntityTypeConfiguration<NoteType>
         builder.Property(x => x.NameAr).HasMaxLength(200).IsRequired();
         builder.Property(x => x.DescriptionAr).HasMaxLength(1000);
         builder.Property(x => x.EntryInstructionsAr).HasMaxLength(2000);
+        builder.Property(x => x.SupportsPartsWorkflow).HasDefaultValue(false);
         builder.HasIndex(x => x.Code).IsUnique();
         builder.HasIndex(x => x.SortOrder);
         builder.ToTable("NoteTypes", t =>
@@ -235,6 +236,8 @@ internal sealed class OperationalNoteConfiguration : IEntityTypeConfiguration<Op
         builder.Property(x => x.SourceReference).HasMaxLength(200);
         builder.Property(x => x.ClosureSummary).HasMaxLength(2000);
         builder.Property(x => x.ReopenReason).HasMaxLength(2000);
+        builder.Property(x => x.TreatmentResultText).HasMaxLength(4000);
+        builder.Property(x => x.NoActionJustificationAr).HasMaxLength(2000);
 
         builder.HasIndex(x => x.ReferenceNumber).IsUnique();
         builder.HasIndex(x => x.NoteTypeId);
@@ -247,6 +250,8 @@ internal sealed class OperationalNoteConfiguration : IEntityTypeConfiguration<Op
         builder.HasIndex(x => x.OwnerDepartmentId);
         builder.HasIndex(x => x.ReportedByUserId);
         builder.HasIndex(x => x.CreatedAtUtc);
+        builder.HasIndex(x => x.TriageOutcome);
+        builder.HasIndex(x => x.DuplicateOfNoteId);
 
         builder.HasOne(x => x.NoteType).WithMany(t => t.OperationalNotes).HasForeignKey(x => x.NoteTypeId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.Region).WithMany().HasForeignKey(x => x.RegionId).OnDelete(DeleteBehavior.Restrict);
@@ -256,6 +261,97 @@ internal sealed class OperationalNoteConfiguration : IEntityTypeConfiguration<Op
         builder.HasOne(x => x.ReportedByUser).WithMany().HasForeignKey(x => x.ReportedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.ClosedByUser).WithMany().HasForeignKey(x => x.ClosedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(x => x.ReopenedByUser).WithMany().HasForeignKey(x => x.ReopenedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.TriageDecidedByUser).WithMany().HasForeignKey(x => x.TriageDecidedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.DuplicateOfNote).WithMany().HasForeignKey(x => x.DuplicateOfNoteId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class NoteDecisionApprovalConfiguration : IEntityTypeConfiguration<NoteDecisionApproval>
+{
+    public void Configure(EntityTypeBuilder<NoteDecisionApproval> builder)
+    {
+        builder.ToTable("NoteDecisionApprovals", t =>
+        {
+            t.HasCheckConstraint(
+                "CK_NoteDecisionApprovals_Duplicate_RequiresOriginal",
+                "([DecisionType] <> 1) OR ([OriginalNoteId] IS NOT NULL)");
+            t.HasCheckConstraint(
+                "CK_NoteDecisionApprovals_NoSelfApproval",
+                "[ReviewedByUserId] IS NULL OR [ReviewedByUserId] <> [ProposedByUserId]");
+        });
+
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.JustificationAr).HasMaxLength(2000);
+        builder.Property(x => x.ReviewReason).HasMaxLength(2000);
+
+        // At most one active (Pending) approval of a given type per note.
+        builder.HasIndex(x => new { x.OperationalNoteId, x.DecisionType })
+            .IsUnique()
+            .HasFilter("[Status] = 0");
+        builder.HasIndex(x => new { x.OperationalNoteId, x.ProposedAtUtc });
+
+        builder.HasOne(x => x.OperationalNote).WithMany(n => n.DecisionApprovals).HasForeignKey(x => x.OperationalNoteId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.OriginalNote).WithMany().HasForeignKey(x => x.OriginalNoteId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ProposedByUser).WithMany().HasForeignKey(x => x.ProposedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(x => x.ReviewedByUser).WithMany().HasForeignKey(x => x.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class NotePartsRequirementConfiguration : IEntityTypeConfiguration<NotePartsRequirement>
+{
+    public void Configure(EntityTypeBuilder<NotePartsRequirement> builder)
+    {
+        builder.ToTable("NotePartsRequirements", t =>
+        {
+            t.HasCheckConstraint("CK_NotePartsRequirements_Quantity_Positive", "[Quantity] > 0");
+        });
+
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.ItemName).HasMaxLength(300).IsRequired();
+        builder.Property(x => x.ItemCode).HasMaxLength(100);
+        builder.Property(x => x.Quantity).HasColumnType("decimal(18,3)");
+        builder.Property(x => x.Unit).HasMaxLength(50).IsRequired();
+        builder.Property(x => x.RequestNumber).HasMaxLength(100);
+        builder.Property(x => x.SupplierOrSource).HasMaxLength(300);
+        builder.Property(x => x.Notes).HasMaxLength(2000);
+        builder.Property(x => x.CancelReason).HasMaxLength(1000);
+
+        builder.HasIndex(x => new { x.OperationalNoteId, x.Status });
+        // Prevents unintentional duplicate active line items for the same coded part on one note.
+        builder.HasIndex(x => new { x.OperationalNoteId, x.ItemCode })
+            .IsUnique()
+            .HasFilter("[ItemCode] IS NOT NULL AND [Status] <> 5");
+
+        builder.HasOne(x => x.OperationalNote).WithMany(n => n.PartsRequirements).HasForeignKey(x => x.OperationalNoteId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Baseera.Domain.Identity.User>().WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Baseera.Domain.Identity.User>().WithMany().HasForeignKey(x => x.CancelledByUserId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.ConfigureRowVersion();
+    }
+}
+
+internal sealed class NoteSlaPausePeriodConfiguration : IEntityTypeConfiguration<NoteSlaPausePeriod>
+{
+    public void Configure(EntityTypeBuilder<NoteSlaPausePeriod> builder)
+    {
+        builder.ToTable("NoteSlaPausePeriods");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+        builder.Property(x => x.EndReason).HasMaxLength(1000);
+        builder.Property(x => x.RelatedPartsRequirementIdsCsv).HasMaxLength(4000);
+
+        // Only one un-ended pause period active per note at a time.
+        builder.HasIndex(x => x.OperationalNoteId)
+            .IsUnique()
+            .HasFilter("[EndedAtUtc] IS NULL");
+
+        builder.HasOne(x => x.OperationalNote).WithMany(n => n.SlaPausePeriods).HasForeignKey(x => x.OperationalNoteId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Baseera.Domain.Identity.User>().WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Baseera.Domain.Identity.User>().WithMany().HasForeignKey(x => x.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
 
         builder.ConfigureRowVersion();
     }

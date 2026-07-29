@@ -249,3 +249,150 @@ public sealed class RunNoteRoutingRequestValidator : AbstractValidator<RunNoteRo
 
     private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
 }
+
+// ===== Phase 1B validators =====
+
+public sealed class TriageValidRequestValidator : AbstractValidator<TriageValidRequest>
+{
+    public TriageValidRequestValidator()
+    {
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class ProposeInvalidRequestValidator : AbstractValidator<ProposeInvalidRequest>
+{
+    public ProposeInvalidRequestValidator()
+    {
+        RuleFor(x => x.JustificationAr).Must(BeMeaningful).WithMessage("مبرر اعتبار الملاحظة غير صحيحة مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class ProposeDuplicateRequestValidator : AbstractValidator<ProposeDuplicateRequest>
+{
+    public ProposeDuplicateRequestValidator()
+    {
+        RuleFor(x => x.OriginalNoteId).NotEmpty().WithMessage("الملاحظة الأصلية مطلوبة.");
+        RuleFor(x => x.JustificationAr).Must(BeMeaningful).WithMessage("مبرر اعتبارها مكررة مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class RecordTreatmentResultRequestValidator : AbstractValidator<RecordTreatmentResultRequest>
+{
+    public RecordTreatmentResultRequestValidator()
+    {
+        RuleFor(x => x.TreatmentResultText).Must(BeMeaningful).WithMessage("نتيجة المعالجة مطلوبة.").MaximumLength(4000);
+        RuleFor(x => x.ExecutionType).IsInEnum();
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class ProposeNoActionRequestValidator : AbstractValidator<ProposeNoActionRequest>
+{
+    public ProposeNoActionRequestValidator()
+    {
+        RuleFor(x => x.JustificationAr).Must(BeMeaningful).WithMessage("مبرر عدم الحاجة إلى إجراء مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class ApproveNoteDecisionRequestValidator : AbstractValidator<ApproveNoteDecisionRequest>
+{
+    public ApproveNoteDecisionRequestValidator()
+    {
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+        RuleFor(x => x.ReviewReason).MaximumLength(2000);
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class ReturnNoteDecisionRequestValidator : AbstractValidator<ReturnNoteDecisionRequest>
+{
+    public ReturnNoteDecisionRequestValidator()
+    {
+        RuleFor(x => x.ReviewReason).Must(BeMeaningful).WithMessage("سبب الإعادة مطلوب.").MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class AddPartsRequirementRequestValidator : AbstractValidator<AddPartsRequirementRequest>
+{
+    public AddPartsRequirementRequestValidator()
+    {
+        RuleFor(x => x.ItemName).Must(BeMeaningful).WithMessage("اسم القطعة مطلوب.").MaximumLength(300);
+        RuleFor(x => x.ItemCode).MaximumLength(100);
+        RuleFor(x => x.Quantity).GreaterThan(0).WithMessage("الكمية يجب أن تكون أكبر من صفر.");
+        RuleFor(x => x.Unit).Must(BeMeaningful).WithMessage("الوحدة مطلوبة.").MaximumLength(50);
+        RuleFor(x => x.RequestNumber).MaximumLength(100);
+        RuleFor(x => x.SupplierOrSource).MaximumLength(300);
+        RuleFor(x => x.Notes).MaximumLength(2000);
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class UpdatePartsRequirementRequestValidator : AbstractValidator<UpdatePartsRequirementRequest>
+{
+    public UpdatePartsRequirementRequestValidator()
+    {
+        RuleFor(x => x.ItemName).Must(BeMeaningful).WithMessage("اسم القطعة مطلوب.").MaximumLength(300);
+        RuleFor(x => x.ItemCode).MaximumLength(100);
+        RuleFor(x => x.Quantity).GreaterThan(0).WithMessage("الكمية يجب أن تكون أكبر من صفر.");
+        RuleFor(x => x.Unit).Must(BeMeaningful).WithMessage("الوحدة مطلوبة.").MaximumLength(50);
+        RuleFor(x => x.RequestNumber).MaximumLength(100);
+        RuleFor(x => x.SupplierOrSource).MaximumLength(300);
+        RuleFor(x => x.Notes).MaximumLength(2000);
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class UpdatePartsRequirementStatusRequestValidator : AbstractValidator<UpdatePartsRequirementStatusRequest>
+{
+    public UpdatePartsRequirementStatusRequestValidator()
+    {
+        RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class CancelPartsRequirementRequestValidator : AbstractValidator<CancelPartsRequirementRequest>
+{
+    public CancelPartsRequirementRequestValidator()
+    {
+        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب الإلغاء مطلوب.").MaximumLength(1000);
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}
+
+public sealed class RequestSlaPauseRequestValidator : AbstractValidator<RequestSlaPauseRequest>
+{
+    public RequestSlaPauseRequestValidator()
+    {
+        RuleFor(x => x.Reason).Must(BeMeaningful).WithMessage("سبب طلب التجميد مطلوب.").MaximumLength(1000);
+        RuleFor(x => x.RelatedPartsRequirementIds).NotEmpty().WithMessage("يتطلب طلب التجميد ربط عنصر قطعة واحد على الأقل.");
+        RuleFor(x => x.RowVersion).Must(BeMeaningful).WithMessage("إصدار السجل مطلوب.");
+    }
+
+    private static bool BeMeaningful(string? value) => !string.IsNullOrWhiteSpace(value);
+}

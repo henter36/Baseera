@@ -48,6 +48,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     public DbSet<OperationalNote> OperationalNotes => Set<OperationalNote>();
     public DbSet<NoteAssignment> NoteAssignments => Set<NoteAssignment>();
     public DbSet<NoteStatusHistory> NoteStatusHistories => Set<NoteStatusHistory>();
+    public DbSet<NoteDecisionApproval> NoteDecisionApprovals => Set<NoteDecisionApproval>();
+    public DbSet<NotePartsRequirement> NotePartsRequirements => Set<NotePartsRequirement>();
+    public DbSet<NoteSlaPausePeriod> NoteSlaPausePeriods => Set<NoteSlaPausePeriod>();
     public DbSet<CorrectiveAction> CorrectiveActions => Set<CorrectiveAction>();
     public DbSet<CorrectiveActionAssignment> CorrectiveActionAssignments => Set<CorrectiveActionAssignment>();
     public DbSet<CorrectiveActionStatusHistory> CorrectiveActionStatusHistories => Set<CorrectiveActionStatusHistory>();
@@ -166,6 +169,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
     IQueryable<OperationalNote> Application.Abstractions.IBaseeraDbContext.OperationalNotesIncludingDeleted => OperationalNotes.IgnoreQueryFilters();
     IQueryable<NoteAssignment> Application.Abstractions.IBaseeraDbContext.NoteAssignments => NoteAssignments;
     IQueryable<NoteStatusHistory> Application.Abstractions.IBaseeraDbContext.NoteStatusHistories => NoteStatusHistories;
+    IQueryable<NoteDecisionApproval> Application.Abstractions.IBaseeraDbContext.NoteDecisionApprovals => NoteDecisionApprovals;
+    IQueryable<NotePartsRequirement> Application.Abstractions.IBaseeraDbContext.NotePartsRequirements => NotePartsRequirements;
+    IQueryable<NoteSlaPausePeriod> Application.Abstractions.IBaseeraDbContext.NoteSlaPausePeriods => NoteSlaPausePeriods;
     IQueryable<CorrectiveAction> Application.Abstractions.IBaseeraDbContext.CorrectiveActions => CorrectiveActions;
     IQueryable<CorrectiveAction> Application.Abstractions.IBaseeraDbContext.CorrectiveActionsIncludingDeleted => CorrectiveActions.IgnoreQueryFilters();
     IQueryable<CorrectiveActionAssignment> Application.Abstractions.IBaseeraDbContext.CorrectiveActionAssignments => CorrectiveActionAssignments;
@@ -451,6 +457,9 @@ public sealed class BaseeraDbContext(DbContextOptions<BaseeraDbContext> options)
         // Join/dependent entities must filter deleted OperationalNote/User to avoid EF 10622 with required navigations.
         modelBuilder.Entity<NoteAssignment>().HasQueryFilter(na => !na.OperationalNote.IsDeleted && !na.AssignedByUser.IsDeleted);
         modelBuilder.Entity<NoteStatusHistory>().HasQueryFilter(h => !h.OperationalNote.IsDeleted && !h.ChangedByUser.IsDeleted);
+        modelBuilder.Entity<NoteDecisionApproval>().HasQueryFilter(a => !a.OperationalNote.IsDeleted && !a.ProposedByUser.IsDeleted);
+        modelBuilder.Entity<NotePartsRequirement>().HasQueryFilter(p => !p.OperationalNote.IsDeleted);
+        modelBuilder.Entity<NoteSlaPausePeriod>().HasQueryFilter(p => !p.OperationalNote.IsDeleted);
         modelBuilder.Entity<CorrectiveActionAssignment>().HasQueryFilter(a => !a.CorrectiveAction.IsDeleted && !a.AssignedByUser.IsDeleted);
         modelBuilder.Entity<CorrectiveActionStatusHistory>().HasQueryFilter(h => !h.CorrectiveAction.IsDeleted && !h.ChangedByUser.IsDeleted);
         modelBuilder.Entity<EscalationRule>().HasQueryFilter(r => !r.IsDeleted && !r.EscalationPolicy.IsDeleted);

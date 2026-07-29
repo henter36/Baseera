@@ -35,7 +35,7 @@ public sealed class NoteWorkflowServiceTests : IDisposable
         var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
         var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
-        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
+        return new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries, NoteTestFixtures.FakeAttachments);
     }
 
     private static string RowVersionOf(OperationalNote note) => Convert.ToBase64String(note.RowVersion);
@@ -95,6 +95,30 @@ public sealed class NoteWorkflowServiceTests : IDisposable
 
         var workflow = BuildWorkflowForUser(processor.Id, PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
         await AssertVerifyRejectedWithoutMutation(workflow, note);
+    }
+
+    [Theory]
+    [InlineData(NoteStatus.Open)]
+    [InlineData(NoteStatus.Assigned)]
+    [InlineData(NoteStatus.InProgress)]
+    public async Task VerifyClosure_rejects_statuses_the_decision_approval_path_may_close(NoteStatus status)
+    {
+        // NoteStateMachine.CanTransition allows status -> Closed for these statuses so that
+        // NoteDecisionApprovalService can close notes on an approved Invalid/Duplicate/NoAction
+        // decision. VerifyClosureAsync is the unrelated "treated" closure path and must stay
+        // restricted to PendingVerification even though the shared transition table permits more.
+        Assert.True(NoteStateMachine.CanTransition(status, NoteStatus.Closed));
+
+        var (workflow, _, reporterId) = BuildWorkflow(PermissionCodes.NotesVerifyClosure, PermissionCodes.NotesView);
+        var note = SeedNote(status, reporterId: reporterId);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.VerifyClosureAsync(note.Id, new CloseNoteRequest("اعتماد", "تم الحل", RowVersionOf(note))));
+        Assert.Contains("بانتظار التحقق", ex.Message);
+
+        _db.Entry(note).Reload();
+        Assert.Equal(status, note.Status);
+        Assert.Null(note.ClosedAtUtc);
     }
 
     [Fact]
@@ -385,7 +409,7 @@ public sealed class NoteWorkflowServiceTests : IDisposable
         var typeAccess = new NoteTypeAccessService(_db, current);
         var audit = new AuditService(_db, current, new OrganizationalScopeService(current, _db));
         var queries = new NoteQueryService(_db, current, scope, typeAccess, audit);
-        var workflow = new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries);
+        var workflow = new NoteWorkflowService(_db, current, scope, typeAccess, audit, queries, NoteTestFixtures.FakeAttachments);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             workflow.StartWorkAsync(note.Id, new TransitionNoteRequest("بدء", Convert.ToBase64String(note.RowVersion))));

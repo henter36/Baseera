@@ -69,7 +69,22 @@ public sealed record NoteDetailDto(
     NoteAssignmentDto? CurrentAssignment,
     DateTimeOffset CreatedAtUtc,
     string RowVersion,
-    bool IsSensitiveRedacted);
+    bool IsSensitiveRedacted,
+    NoteTriageOutcome? TriageOutcome,
+    string? TriageOutcomeAr,
+    DateTimeOffset? TriageDecidedAtUtc,
+    string? TriageDecidedByDisplayName,
+    Guid? DuplicateOfNoteId,
+    string? DuplicateOfNoteReferenceNumber,
+    NoteTreatmentResultType? TreatmentResultType,
+    string? TreatmentResultTypeAr,
+    NoteTreatmentExecutionType? TreatmentExecutionType,
+    string? TreatmentExecutionTypeAr,
+    string? TreatmentResultText,
+    string? NoActionJustificationAr,
+    NoteClosureReason? ClosureReason,
+    string? ClosureReasonAr,
+    bool NoteTypeSupportsPartsWorkflow);
 
 public sealed record NoteAssignmentDto(
     Guid Id,
@@ -451,6 +466,127 @@ public sealed record NoteRoutingPreviewDto(
     DateTimeOffset? ExpectedDueAtUtc,
     string DueAtSource,
     IReadOnlyList<string> Warnings);
+
+// ===== Phase 1B: triage gate =====
+
+public sealed record TriageValidRequest(string RowVersion);
+
+public sealed record ProposeInvalidRequest(string JustificationAr, string RowVersion);
+
+public sealed record ProposeDuplicateRequest(Guid OriginalNoteId, string JustificationAr, string RowVersion);
+
+// ===== Phase 1B: treatment result =====
+
+public sealed record RecordTreatmentResultRequest(
+    string TreatmentResultText,
+    NoteTreatmentExecutionType ExecutionType,
+    string RowVersion);
+
+public sealed record ProposeNoActionRequest(string JustificationAr, string RowVersion);
+
+// ===== Phase 1B: unified decision-approval (four-eyes) =====
+
+public sealed record NoteDecisionApprovalDto(
+    Guid Id,
+    Guid OperationalNoteId,
+    NoteDecisionApprovalType DecisionType,
+    string DecisionTypeAr,
+    NoteDecisionApprovalStatus Status,
+    string StatusAr,
+    string? JustificationAr,
+    Guid? OriginalNoteId,
+    string? OriginalNoteReferenceNumber,
+    Guid ProposedByUserId,
+    string? ProposedByDisplayName,
+    DateTimeOffset ProposedAtUtc,
+    Guid? ReviewedByUserId,
+    string? ReviewedByDisplayName,
+    DateTimeOffset? ReviewedAtUtc,
+    string? ReviewReason,
+    string RowVersion);
+
+public sealed record ApproveNoteDecisionRequest(string? ReviewReason, string RowVersion);
+
+public sealed record ReturnNoteDecisionRequest(string ReviewReason, string RowVersion);
+
+// ===== Phase 1B: multi-part parts requirement =====
+
+public sealed record NotePartsRequirementDto(
+    Guid Id,
+    Guid OperationalNoteId,
+    string ItemName,
+    string? ItemCode,
+    decimal Quantity,
+    string Unit,
+    string? RequestNumber,
+    NotePartsRequirementStatus Status,
+    string StatusAr,
+    DateTimeOffset RequestedAtUtc,
+    DateTimeOffset? AvailableAtUtc,
+    DateTimeOffset? ReceivedAtUtc,
+    DateTimeOffset? InstalledAtUtc,
+    string? SupplierOrSource,
+    string? Notes,
+    string? CancelReason,
+    string RowVersion);
+
+public sealed record AddPartsRequirementRequest(
+    string ItemName,
+    string? ItemCode,
+    decimal Quantity,
+    string Unit,
+    string? RequestNumber,
+    string? SupplierOrSource,
+    string? Notes);
+
+public sealed record UpdatePartsRequirementRequest(
+    string ItemName,
+    string? ItemCode,
+    decimal Quantity,
+    string Unit,
+    string? RequestNumber,
+    string? SupplierOrSource,
+    string? Notes,
+    string RowVersion);
+
+public sealed record UpdatePartsRequirementStatusRequest(NotePartsRequirementStatus Status, string RowVersion);
+
+public sealed record CancelPartsRequirementRequest(string Reason, string RowVersion);
+
+public sealed record NotePartsProgressDto(int Total, int Installed, int Cancelled, int Remaining, bool AllResolved);
+
+// ===== Phase 1B: three-tier SLA =====
+
+public sealed record RequestSlaPauseRequest(
+    string Reason,
+    IReadOnlyList<Guid> RelatedPartsRequirementIds,
+    DateTimeOffset? ReviewDueAtUtc,
+    string RowVersion);
+
+public sealed record NoteSlaStateDto(
+    double OverallAgeSeconds,
+    double ProcessingSlaSeconds,
+    double ExternalWaitDurationSeconds,
+    bool IsProcessingSlaPaused,
+    Guid? ActivePauseId,
+    DateTimeOffset? ActivePauseStartedAtUtc,
+    string? ActivePauseReason,
+    DateTimeOffset? ActivePauseReviewDueAtUtc);
+
+// ===== Phase 1B: server-authored action center =====
+
+public sealed record NoteActionCenterDto(
+    IReadOnlyList<string> AllowedActions,
+    string? PrimaryAction,
+    IReadOnlyList<string> SecondaryActions,
+    string? PendingDecision,
+    bool DecisionApprovalRequired,
+    bool CanApprovePendingDecision,
+    string? Blocker,
+    string? NextAction,
+    string ClosureReasonToken,
+    NotePartsProgressDto? PartsProgress,
+    bool ClosureReadiness);
 
 public sealed record NoteRoutingEffectivenessQuery(DateTimeOffset? FromUtc, DateTimeOffset? ToUtc);
 

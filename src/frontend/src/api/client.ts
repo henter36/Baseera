@@ -216,6 +216,95 @@ export type NoteDetail = {
   createdAtUtc: string
   rowVersion: string
   isSensitiveRedacted: boolean
+  // Phase 1B
+  triageOutcome?: number | null
+  triageOutcomeAr?: string | null
+  triageDecidedAtUtc?: string | null
+  triageDecidedByDisplayName?: string | null
+  duplicateOfNoteId?: string | null
+  duplicateOfNoteReferenceNumber?: string | null
+  treatmentResultType?: number | null
+  treatmentResultTypeAr?: string | null
+  treatmentExecutionType?: number | null
+  treatmentExecutionTypeAr?: string | null
+  treatmentResultText?: string | null
+  noActionJustificationAr?: string | null
+  closureReason?: number | null
+  closureReasonAr?: string | null
+  noteTypeSupportsPartsWorkflow: boolean
+}
+
+export type NoteDecisionApproval = {
+  id: string
+  operationalNoteId: string
+  decisionType: number
+  decisionTypeAr: string
+  status: number
+  statusAr: string
+  justificationAr?: string | null
+  originalNoteId?: string | null
+  originalNoteReferenceNumber?: string | null
+  proposedByUserId: string
+  proposedByDisplayName?: string | null
+  proposedAtUtc: string
+  reviewedByUserId?: string | null
+  reviewedByDisplayName?: string | null
+  reviewedAtUtc?: string | null
+  reviewReason?: string | null
+  rowVersion: string
+}
+
+export type NotePartsRequirement = {
+  id: string
+  operationalNoteId: string
+  itemName: string
+  itemCode?: string | null
+  quantity: number
+  unit: string
+  requestNumber?: string | null
+  status: number
+  statusAr: string
+  requestedAtUtc: string
+  availableAtUtc?: string | null
+  receivedAtUtc?: string | null
+  installedAtUtc?: string | null
+  supplierOrSource?: string | null
+  notes?: string | null
+  cancelReason?: string | null
+  rowVersion: string
+}
+
+export type NotePartsProgress = {
+  total: number
+  installed: number
+  cancelled: number
+  remaining: number
+  allResolved: boolean
+}
+
+export type NoteSlaState = {
+  overallAgeSeconds: number
+  processingSlaSeconds: number
+  externalWaitDurationSeconds: number
+  isProcessingSlaPaused: boolean
+  activePauseId?: string | null
+  activePauseStartedAtUtc?: string | null
+  activePauseReason?: string | null
+  activePauseReviewDueAtUtc?: string | null
+}
+
+export type NoteActionCenter = {
+  allowedActions: NoteWorkspaceAllowedAction[]
+  primaryAction?: NoteWorkspaceAllowedAction | null
+  secondaryActions: NoteWorkspaceAllowedAction[]
+  pendingDecision?: string | null
+  decisionApprovalRequired: boolean
+  canApprovePendingDecision: boolean
+  blocker?: string | null
+  nextAction?: string | null
+  closureReasonToken: string
+  partsProgress?: NotePartsProgress | null
+  closureReadiness: boolean
 }
 
 export type NoteStatusHistoryEntry = {
@@ -263,6 +352,15 @@ export type NoteWorkspaceAllowedAction =
   | 'VERIFY_CLOSURE'
   | 'REOPEN'
   | 'CANCEL'
+  // Phase 1B
+  | 'TRIAGE_VALID'
+  | 'TRIAGE_PROPOSE_INVALID'
+  | 'TRIAGE_PROPOSE_DUPLICATE'
+  | 'RECORD_TREATMENT'
+  | 'PROPOSE_NO_ACTION'
+  | 'MANAGE_PARTS'
+  | 'REQUEST_SLA_PAUSE'
+  | 'APPROVE_SLA_PAUSE'
 
 export type NoteWorkspaceList = {
   notes: Paged<NoteListItem>
@@ -278,6 +376,10 @@ export type NoteWorkspaceDetail = {
   correctiveActions: Paged<CorrectiveActionListItem>
   attachments: Attachment[]
   timeline: NoteWorkspaceTimelineEntry[]
+  decisionApprovals: NoteDecisionApproval[]
+  partsRequirements: NotePartsRequirement[]
+  sla: NoteSlaState
+  actionCenter: NoteActionCenter
 }
 
 export type EligibleUser = {
@@ -363,6 +465,34 @@ export type WorkflowActionRequest = {
 export type CloseNoteRequest = {
   reason: string
   closureSummary: string
+  rowVersion: string
+}
+
+// ===== Phase 1B request bodies =====
+
+export type TriageValidRequest = { rowVersion: string }
+export type ProposeInvalidRequest = { justificationAr: string; rowVersion: string }
+export type ProposeDuplicateRequest = { originalNoteId: string; justificationAr: string; rowVersion: string }
+export type RecordTreatmentResultRequest = { treatmentResultText: string; executionType: number; rowVersion: string }
+export type ProposeNoActionRequest = { justificationAr: string; rowVersion: string }
+export type ApproveNoteDecisionRequest = { reviewReason?: string | null; rowVersion: string }
+export type ReturnNoteDecisionRequest = { reviewReason: string; rowVersion: string }
+export type AddPartsRequirementRequest = {
+  itemName: string
+  itemCode?: string | null
+  quantity: number
+  unit: string
+  requestNumber?: string | null
+  supplierOrSource?: string | null
+  notes?: string | null
+}
+export type UpdatePartsRequirementRequest = AddPartsRequirementRequest & { rowVersion: string }
+export type UpdatePartsRequirementStatusRequest = { status: number; rowVersion: string }
+export type CancelPartsRequirementRequest = { reason: string; rowVersion: string }
+export type RequestSlaPauseRequest = {
+  reason: string
+  relatedPartsRequirementIds: string[]
+  reviewDueAtUtc?: string | null
   rowVersion: string
 }
 
@@ -3236,6 +3366,47 @@ export const api = {
       request<Paged<CorrectiveActionListItem>>(`/api/v1/notes/${id}/corrective-actions?${buildCorrectiveActionQuery(filters)}`),
     createCorrectiveAction: (id: string, body: CreateCorrectiveActionRequest) =>
       postJson<CorrectiveActionDetail>(`/api/v1/notes/${id}/corrective-actions`, body),
+
+    // Phase 1B: triage gate
+    triageValid: (id: string, body: TriageValidRequest) =>
+      postJson<NoteDetail>(`/api/v1/notes/${id}/triage/valid`, body),
+    triageProposeInvalid: (id: string, body: ProposeInvalidRequest) =>
+      postJson<NoteDecisionApproval>(`/api/v1/notes/${id}/triage/propose-invalid`, body),
+    triageProposeDuplicate: (id: string, body: ProposeDuplicateRequest) =>
+      postJson<NoteDecisionApproval>(`/api/v1/notes/${id}/triage/propose-duplicate`, body),
+
+    // Phase 1B: treatment result
+    recordTreatment: (id: string, body: RecordTreatmentResultRequest) =>
+      postJson<NoteDetail>(`/api/v1/notes/${id}/treatment/result`, body),
+    proposeNoAction: (id: string, body: ProposeNoActionRequest) =>
+      postJson<NoteDecisionApproval>(`/api/v1/notes/${id}/treatment/propose-no-action`, body),
+
+    // Phase 1B: unified decision approval (four-eyes)
+    decisions: (id: string) => request<NoteDecisionApproval[]>(`/api/v1/notes/${id}/decisions`),
+    approveDecision: (id: string, approvalId: string, body: ApproveNoteDecisionRequest) =>
+      postJson<NoteDetail>(`/api/v1/notes/${id}/decisions/${approvalId}/approve`, body),
+    returnDecision: (id: string, approvalId: string, body: ReturnNoteDecisionRequest) =>
+      postJson<NoteDetail>(`/api/v1/notes/${id}/decisions/${approvalId}/return`, body),
+
+    // Phase 1B: multi-part parts requirement
+    parts: (id: string) => request<NotePartsRequirement[]>(`/api/v1/notes/${id}/parts`),
+    addPart: (id: string, body: AddPartsRequirementRequest) =>
+      postJson<NotePartsRequirement>(`/api/v1/notes/${id}/parts`, body),
+    updatePart: (id: string, itemId: string, body: UpdatePartsRequirementRequest) =>
+      putJson<NotePartsRequirement>(`/api/v1/notes/${id}/parts/${itemId}`, body),
+    deletePart: (id: string, itemId: string) =>
+      request<void>(`/api/v1/notes/${id}/parts/${itemId}`, { method: 'DELETE' }),
+    updatePartStatus: (id: string, itemId: string, body: UpdatePartsRequirementStatusRequest) =>
+      postJson<NotePartsRequirement>(`/api/v1/notes/${id}/parts/${itemId}/status`, body),
+    cancelPart: (id: string, itemId: string, body: CancelPartsRequirementRequest) =>
+      postJson<NotePartsRequirement>(`/api/v1/notes/${id}/parts/${itemId}/cancel`, body),
+
+    // Phase 1B: three-tier SLA
+    slaState: (id: string) => request<NoteSlaState>(`/api/v1/notes/${id}/sla`),
+    requestSlaPause: (id: string, body: RequestSlaPauseRequest) =>
+      postJson<NoteSlaState>(`/api/v1/notes/${id}/sla/request-pause`, body),
+    approveSlaPause: (id: string, pauseId: string, body: WorkflowActionRequest) =>
+      postJson<NoteSlaState>(`/api/v1/notes/${id}/sla/pauses/${pauseId}/approve`, body),
   },
 
   correctiveActions: {

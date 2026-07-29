@@ -180,6 +180,23 @@ public static class DatabaseInitializer
             PermissionCodes.NotesViewRouting,
             PermissionCodes.NotesViewRoutingDiagnostics
         ];
+        // Four-eyes on note decisions (Invalid/Duplicate/NoAction) is enforced per-instance
+        // (proposer != reviewer, docs/ux-rescue/phase1b-observation-permissions.md), not by role
+        // separation — the same role may legitimately hold both arrays, mirroring the existing
+        // critical-SoD pattern for note closure (docs/permissions-matrix.md §Critical SoD).
+        string[] noteDecisionProposer =
+        [
+            PermissionCodes.NotesProposeInvalid,
+            PermissionCodes.NotesProposeDuplicate,
+            PermissionCodes.NotesProposeNoAction
+        ];
+        string[] noteDecisionApprover =
+        [
+            PermissionCodes.NotesApproveInvalid,
+            PermissionCodes.NotesApproveDuplicate,
+            PermissionCodes.NotesApproveNoAction,
+            PermissionCodes.NotesApproveSlaPause
+        ];
         string[] routingManager =
         [
             PermissionCodes.NotesViewRouting,
@@ -408,6 +425,7 @@ public static class DatabaseInitializer
             PermissionCodes.NotesCancel,
             PermissionCodes.NotesArchive,
             PermissionCodes.NotesRestore,
+            noteDecisionApprover,
             caReviewer,
             routingViewer,
             escalationViewer,
@@ -430,6 +448,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesReturnForRework,
             PermissionCodes.NotesReopen,
             PermissionCodes.NotesCancel,
+            noteDecisionProposer,
+            noteDecisionApprover,
             noteTypeManagers,
             routingManager,
             caDirector,
@@ -464,6 +484,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesRestore,
             PermissionCodes.NotesManageUserTypeOverrides,
             PermissionCodes.NotesManageIntakeProfiles,
+            noteDecisionProposer,
+            noteDecisionApprover,
             routingManager,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
@@ -486,6 +508,7 @@ public static class DatabaseInitializer
             PermissionCodes.NotesStartWork,
             PermissionCodes.NotesSubmitForVerification,
             PermissionCodes.NotesCancel,
+            noteDecisionProposer,
             caCoordinator,
             ownNotifications,
             workspaceRegion,
@@ -511,6 +534,8 @@ public static class DatabaseInitializer
             PermissionCodes.NotesRestore,
             PermissionCodes.NotesManageUserTypeOverrides,
             PermissionCodes.NotesManageIntakeProfiles,
+            noteDecisionProposer,
+            noteDecisionApprover,
             routingManager,
             caDirector,
             PermissionCodes.CorrectiveActionsArchive,
@@ -706,6 +731,7 @@ public static class DatabaseInitializer
         foreach (var definition in definitions)
         {
             var existing = await db.NoteTypes.FirstOrDefaultAsync(t => t.Code == definition.Code, cancellationToken);
+            var supportsPartsWorkflow = definition.Code is "TECHNICAL" or "OPERATIONAL";
             if (existing is null)
             {
                 db.NoteTypes.Add(new NoteType
@@ -719,8 +745,15 @@ public static class DatabaseInitializer
                     IsActive = true,
                     DefaultSeverity = definition.DefaultSeverity,
                     DefaultDueDays = definition.DefaultDueDays,
+                    // Server-authored parts-workflow gate (docs/ux-rescue/phase1b-observation-state-mapping.md):
+                    // TECHNICAL/OPERATIONAL are the two catalog types matching the spec's "تقنية/تشغيلية/صيانة/مرافق/تجهيزات" set.
+                    SupportsPartsWorkflow = supportsPartsWorkflow,
                     CreatedBy = "seed"
                 });
+            }
+            else if (supportsPartsWorkflow && !existing.SupportsPartsWorkflow)
+            {
+                existing.SupportsPartsWorkflow = true;
             }
         }
 
@@ -1716,6 +1749,13 @@ public static class DatabaseInitializer
             (PermissionCodes.NotesActivateRoutingRules, "تفعيل وتعطيل قواعد توجيه الملاحظات", NotesModule),
             (PermissionCodes.NotesRunRouting, "تشغيل توجيه الملاحظات", NotesModule),
             (PermissionCodes.NotesViewRoutingDiagnostics, "عرض تشخيصات توجيه الملاحظات", NotesModule),
+            (PermissionCodes.NotesProposeInvalid, "اقتراح اعتبار ملاحظة غير صحيحة", NotesModule),
+            (PermissionCodes.NotesApproveInvalid, "اعتماد قرار غير صحيحة", NotesModule),
+            (PermissionCodes.NotesProposeDuplicate, "اقتراح اعتبار ملاحظة مكررة", NotesModule),
+            (PermissionCodes.NotesApproveDuplicate, "اعتماد قرار التكرار", NotesModule),
+            (PermissionCodes.NotesProposeNoAction, "اقتراح عدم الحاجة إلى إجراء", NotesModule),
+            (PermissionCodes.NotesApproveNoAction, "اعتماد عدم الحاجة إلى إجراء", NotesModule),
+            (PermissionCodes.NotesApproveSlaPause, "اعتماد تجميد SLA أثناء انتظار القطع", NotesModule),
             (PermissionCodes.CorrectiveActionsView, "عرض الإجراءات التصحيحية", CorrectiveActionsModule),
             (PermissionCodes.CorrectiveActionsViewSensitive, "عرض الإجراءات التصحيحية الحساسة", CorrectiveActionsModule),
             (PermissionCodes.CorrectiveActionsCreate, "إنشاء إجراء تصحيحي", CorrectiveActionsModule),

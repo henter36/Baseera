@@ -1,3 +1,5 @@
+using Baseera.Application.Abstractions;
+using Baseera.Application.Attachments;
 using Baseera.Domain.Attachments;
 using Baseera.Domain.Common;
 using Baseera.Domain.Identity;
@@ -14,6 +16,22 @@ namespace Baseera.UnitTests;
 internal static class NoteTestFixtures
 {
     public static readonly Guid DefaultNoteTypeId = Guid.Parse("44444444-4444-4444-4444-444444444403");
+
+    /// <summary>No-attachment stand-in for IAttachmentAppService — sufficient for tests that never
+    /// exercise the Phase 1B evidence-required-for-High/Critical-decisions gate.</summary>
+    public static IAttachmentAppService FakeAttachments { get; } = new EmptyAttachmentAppService();
+
+    private sealed class EmptyAttachmentAppService : IAttachmentAppService
+    {
+        public Task<AttachmentDto> UploadAsync(UploadAttachmentRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Not used by these tests.");
+
+        public Task<(AttachmentDto Meta, Stream Content)> DownloadAsync(Guid id, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Not used by these tests.");
+
+        public Task<IReadOnlyList<AttachmentDto>> ListForEntityAsync(string entityType, Guid entityId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AttachmentDto>>([]);
+    }
 
     public static BaseeraDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<BaseeraDbContext>()
@@ -109,7 +127,8 @@ internal static class NoteTestFixtures
                 NameAr = "تشغيلية",
                 IsActive = true,
                 SortOrder = 30,
-                DefaultSeverity = NoteSeverity.Medium
+                DefaultSeverity = NoteSeverity.Medium,
+                SupportsPartsWorkflow = true
             });
         }
 

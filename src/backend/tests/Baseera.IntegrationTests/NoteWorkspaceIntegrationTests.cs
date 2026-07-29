@@ -176,12 +176,14 @@ public sealed class NoteWorkspaceIntegrationTests(OperationsIntegrationFixture f
 
         var note = await CreateNoteAsync(admin, SeedIds.FacilityA1, null, "جاهزة للتحقق");
         note = await TransitionAsync(admin, $"/api/v1/notes/{note.Id}/submit", note.RowVersion);
+        note = await DecideTriageValidAsync(admin, note.Id, note.RowVersion);
         note = await AssignAsync(verifier, note.Id, workerId, note.RowVersion);
 
         var beforeVerification = await admin.GetFromJsonAsync<WorkspaceDetailResponse>($"/api/v1/notes/{note.Id}/workspace", JsonOptions);
         Assert.DoesNotContain("VERIFY_CLOSURE", beforeVerification!.AllowedActions);
 
         note = await TransitionAsync(worker, $"/api/v1/notes/{note.Id}/start-work", note.RowVersion);
+        note = await RecordDirectTreatmentAsync(worker, note.Id, note.RowVersion);
         note = await TransitionAsync(worker, $"/api/v1/notes/{note.Id}/submit-for-verification", note.RowVersion);
 
         var pendingVerification = await verifier.GetFromJsonAsync<WorkspaceDetailResponse>($"/api/v1/notes/{note.Id}/workspace", JsonOptions);
@@ -208,6 +210,7 @@ public sealed class NoteWorkspaceIntegrationTests(OperationsIntegrationFixture f
 
         var note = await CreateNoteAsync(admin, SeedIds.FacilityA1, null, "ملاحظة تاريخ طويل");
         note = await TransitionAsync(admin, $"/api/v1/notes/{note.Id}/submit", note.RowVersion);
+        note = await DecideTriageValidAsync(admin, note.Id, note.RowVersion);
 
         Guid workerId;
         using (var scope = _factory.Services.CreateScope())
@@ -217,6 +220,7 @@ public sealed class NoteWorkspaceIntegrationTests(OperationsIntegrationFixture f
         }
         note = await AssignAsync(admin, note.Id, workerId, note.RowVersion);
         note = await TransitionAsync(admin, $"/api/v1/notes/{note.Id}/start-work", note.RowVersion);
+        note = await RecordDirectTreatmentAsync(admin, note.Id, note.RowVersion);
 
         // Bounce PendingVerification <-> InProgress repeatedly to accumulate more than
         // TimelinePreviewLimit (30) status-history rows via real, valid transitions.
@@ -418,6 +422,29 @@ public sealed class NoteWorkspaceIntegrationTests(OperationsIntegrationFixture f
     private static async Task<WorkspaceNote> TransitionAsync(HttpClient client, string url, string rowVersion)
     {
         var response = await client.PostAsJsonAsync(url, new { reason = (string?)"اختبار", rowVersion });
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<WorkspaceNote>(body, JsonOptions)!;
+    }
+
+    /// <summary>Phase 1B mandatory pre-condition for SUBMIT_FOR_VERIFICATION — see DecideTriageValidAsync
+    /// in NotesCoreIntegrationTests.cs for the same rationale.</summary>
+    private static async Task<WorkspaceNote> DecideTriageValidAsync(HttpClient client, Guid noteId, string rowVersion)
+    {
+        var response = await client.PostAsJsonAsync($"/api/v1/notes/{noteId}/triage/valid", new { rowVersion });
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, body);
+        return JsonSerializer.Deserialize<WorkspaceNote>(body, JsonOptions)!;
+    }
+
+    private static async Task<WorkspaceNote> RecordDirectTreatmentAsync(HttpClient client, Guid noteId, string rowVersion)
+    {
+        var response = await client.PostAsJsonAsync($"/api/v1/notes/{noteId}/treatment/result", new
+        {
+            treatmentResultText = "تمت المعالجة المباشرة.",
+            executionType = NoteTreatmentExecutionType.Direct,
+            rowVersion
+        });
         var body = await response.Content.ReadAsStringAsync();
         Assert.True(response.IsSuccessStatusCode, body);
         return JsonSerializer.Deserialize<WorkspaceNote>(body, JsonOptions)!;

@@ -2014,6 +2014,110 @@ public static class ApiEndpoints
             var created = await actions.CreateDraftAsync(id, request, ct);
             return Results.Created($"/api/v1/corrective-actions/{created.Id}", created);
         }).RequireAuthorization(AuthPolicies.CorrectiveActionsCreate);
+
+        // ===== Phase 1B: triage gate =====
+
+        notes.MapPost("/{id:guid}/triage/valid", async (Guid id, TriageValidRequest request, IValidator<TriageValidRequest> validator, INoteTriageService triage, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await triage.DecideValidAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesUpdate);
+
+        notes.MapPost("/{id:guid}/triage/propose-invalid", async (Guid id, ProposeInvalidRequest request, IValidator<ProposeInvalidRequest> validator, INoteTriageService triage, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await triage.ProposeInvalidAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesProposeInvalid);
+
+        notes.MapPost("/{id:guid}/triage/propose-duplicate", async (Guid id, ProposeDuplicateRequest request, IValidator<ProposeDuplicateRequest> validator, INoteTriageService triage, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await triage.ProposeDuplicateAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesProposeDuplicate);
+
+        // ===== Phase 1B: treatment result =====
+
+        notes.MapPost("/{id:guid}/treatment/result", async (Guid id, RecordTreatmentResultRequest request, IValidator<RecordTreatmentResultRequest> validator, INoteTreatmentService treatment, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await treatment.RecordTreatmentResultAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        notes.MapPost("/{id:guid}/treatment/propose-no-action", async (Guid id, ProposeNoActionRequest request, IValidator<ProposeNoActionRequest> validator, INoteTreatmentService treatment, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await treatment.ProposeNoActionAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesProposeNoAction);
+
+        // ===== Phase 1B: unified decision approval (four-eyes) =====
+
+        notes.MapGet("/{id:guid}/decisions", async (Guid id, INoteDecisionApprovalService decisions, CancellationToken ct) =>
+            Results.Ok(await decisions.ListAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapPost("/{id:guid}/decisions/{approvalId:guid}/approve", async (Guid id, Guid approvalId, ApproveNoteDecisionRequest request, IValidator<ApproveNoteDecisionRequest> validator, INoteDecisionApprovalService decisions, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await decisions.ApproveAsync(id, approvalId, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesApproveAnyDecision);
+
+        notes.MapPost("/{id:guid}/decisions/{approvalId:guid}/return", async (Guid id, Guid approvalId, ReturnNoteDecisionRequest request, IValidator<ReturnNoteDecisionRequest> validator, INoteDecisionApprovalService decisions, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await decisions.ReturnAsync(id, approvalId, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesApproveAnyDecision);
+
+        // ===== Phase 1B: multi-part parts requirement =====
+
+        notes.MapGet("/{id:guid}/parts", async (Guid id, INotePartsRequirementService parts, CancellationToken ct) =>
+            Results.Ok(await parts.ListAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapPost("/{id:guid}/parts", async (Guid id, AddPartsRequirementRequest request, IValidator<AddPartsRequirementRequest> validator, INotePartsRequirementService parts, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await parts.AddAsync(id, request, ct);
+            return Results.Created($"/api/v1/notes/{id}/parts/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        notes.MapPut("/{id:guid}/parts/{itemId:guid}", async (Guid id, Guid itemId, UpdatePartsRequirementRequest request, IValidator<UpdatePartsRequirementRequest> validator, INotePartsRequirementService parts, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await parts.UpdateAsync(id, itemId, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        notes.MapDelete("/{id:guid}/parts/{itemId:guid}", async (Guid id, Guid itemId, INotePartsRequirementService parts, CancellationToken ct) =>
+        {
+            await parts.DeleteAsync(id, itemId, ct);
+            return Results.NoContent();
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        notes.MapPost("/{id:guid}/parts/{itemId:guid}/status", async (Guid id, Guid itemId, UpdatePartsRequirementStatusRequest request, IValidator<UpdatePartsRequirementStatusRequest> validator, INotePartsRequirementService parts, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await parts.UpdateStatusAsync(id, itemId, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        notes.MapPost("/{id:guid}/parts/{itemId:guid}/cancel", async (Guid id, Guid itemId, CancelPartsRequirementRequest request, IValidator<CancelPartsRequirementRequest> validator, INotePartsRequirementService parts, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await parts.CancelAsync(id, itemId, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        // ===== Phase 1B: three-tier SLA =====
+
+        notes.MapGet("/{id:guid}/sla", async (Guid id, INoteSlaService sla, CancellationToken ct) =>
+            Results.Ok(await sla.ComputeAsync(id, ct))).RequireAuthorization(AuthPolicies.NotesView);
+
+        notes.MapPost("/{id:guid}/sla/request-pause", async (Guid id, RequestSlaPauseRequest request, IValidator<RequestSlaPauseRequest> validator, INoteSlaService sla, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await sla.RequestPauseAsync(id, request, ct));
+        }).RequireAuthorization(AuthPolicies.NotesStartWork);
+
+        notes.MapPost("/{id:guid}/sla/pauses/{pauseId:guid}/approve", async (Guid id, Guid pauseId, WorkflowActionRequest request, IValidator<WorkflowActionRequest> validator, INoteSlaService sla, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            return Results.Ok(await sla.ApprovePauseAsync(id, pauseId, request.RowVersion, ct));
+        }).RequireAuthorization(AuthPolicies.NotesApproveSlaPause);
     }
 
     private static async Task<IResult> ListNotesAsync(
