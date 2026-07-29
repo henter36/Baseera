@@ -3,7 +3,7 @@
 - **Branch**: `ux-rescue-phase2a-unified-form-designer-studio`
 - **Continues**: #144 (لا يُغلَق بهذا التسليم)، #45، #12، #13
 - **PR**: يُحدَّث بعد فتحه (انظر نهاية هذا الملف)
-- **Commit SHA**: يُحدَّث بعد الـCommit
+- **Commit SHA**: `6fe8622d16b51bff2339541a811509302bb0bd47`
 
 ## ملخص تنفيذي
 
@@ -121,6 +121,6 @@ Test Files  63 passed (63)
 
 ---
 
-**PR URL**: يُحدَّث بعد الفتح
+**PR URL**: يُحدَّث بعد الفتح (راجع رابط الـPR في رسالة التسليم النهائية)
 **Branch**: `ux-rescue-phase2a-unified-form-designer-studio`
-**Commit SHA**: يُحدَّث بعد الـCommit
+**Commit SHA**: `6fe8622d16b51bff2339541a811509302bb0bd47`
