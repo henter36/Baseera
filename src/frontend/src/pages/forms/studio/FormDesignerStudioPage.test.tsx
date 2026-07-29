@@ -184,6 +184,14 @@ describe('FormDesignerStudioPage — existing form', () => {
     expect(screen.getByRole('button', { name: /حفظ نسخة جديدة/ })).toBeInTheDocument()
   }, 10000)
 
+  it('shows an error instead of an endless spinner when the selected version fails to load', async () => {
+    getVersion.mockRejectedValue(new ApiError(500, 'تعذر تحميل الإصدار'))
+    renderStudio('/forms/designer/form-1?versionId=v1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذر تحميل الإصدار')
+    expect(screen.queryByText('جاري تحميل الاستوديو…')).not.toBeInTheDocument()
+  })
+
   it('renders the mobile review-only mode with an explicit message that advanced structuring needs a bigger screen, and no drag-and-drop affordance', async () => {
     layoutModeMock.current = 'mobile'
     renderStudio('/forms/designer/form-1?versionId=v1')

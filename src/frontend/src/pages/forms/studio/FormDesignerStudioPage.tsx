@@ -252,12 +252,12 @@ function StudioWorkspace({
     onError: (err) => setDecisionError(resolveErrorMessage(err, 'تعذر تنفيذ القرار.')),
   })
 
-  if (versionQuery.isLoading || !history || !schema) {
-    return <div className="loading">جاري تحميل الاستوديو…</div>
-  }
-
   if (versionQuery.isError) {
     return <div className="error" role="alert">{formatApiError(versionQuery.error as ApiError)}</div>
+  }
+
+  if (versionQuery.isLoading || !history || !schema) {
+    return <div className="loading">جاري تحميل الاستوديو…</div>
   }
 
   const navigateToElement = (location: IssueLocation) => {
