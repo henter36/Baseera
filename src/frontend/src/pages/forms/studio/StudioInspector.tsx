@@ -168,15 +168,15 @@ export function StudioInspector({ schema, page, selectedField, issues, onApplySc
           <>
             <label className="field">
               <span>الحد الأدنى</span>
-              <input type="number" value={field.number?.min ?? ''} onChange={(e) => applyPatch({ number: { ...(field.number ?? {}), min: e.target.value === '' ? null : Number(e.target.value) } })} />
+              <input type="number" value={field.number?.min ?? ''} onChange={(e) => applyPatch({ number: { ...field.number, min: e.target.value === '' ? null : Number(e.target.value) } })} />
             </label>
             <label className="field">
               <span>الحد الأعلى</span>
-              <input type="number" value={field.number?.max ?? ''} onChange={(e) => applyPatch({ number: { ...(field.number ?? {}), max: e.target.value === '' ? null : Number(e.target.value) } })} />
+              <input type="number" value={field.number?.max ?? ''} onChange={(e) => applyPatch({ number: { ...field.number, max: e.target.value === '' ? null : Number(e.target.value) } })} />
             </label>
             <label className="field">
               <span>صيغة العرض (عدد المنازل العشرية)</span>
-              <input type="number" min={0} max={6} value={field.number?.decimalPlaces ?? ''} onChange={(e) => applyPatch({ number: { ...(field.number ?? {}), decimalPlaces: e.target.value === '' ? null : Number(e.target.value) } })} />
+              <input type="number" min={0} max={6} value={field.number?.decimalPlaces ?? ''} onChange={(e) => applyPatch({ number: { ...field.number, decimalPlaces: e.target.value === '' ? null : Number(e.target.value) } })} />
             </label>
           </>
         )}
@@ -219,8 +219,8 @@ export function StudioInspector({ schema, page, selectedField, issues, onApplySc
         <div className="panel-section">
           <h3 className="section-title">تحقق هذا الحقل</h3>
           <ul>
-            {fieldIssues.map((issue, index) => (
-              <li key={`${issue.code}-${index}`} className={issue.severity === 0 ? 'error' : 'warn'}>{issue.messageAr}</li>
+            {fieldIssues.map((issue) => (
+              <li key={`${issue.code}-${issue.path}`} className={issue.severity === 0 ? 'error' : 'warn'}>{issue.messageAr}</li>
             ))}
           </ul>
         </div>
@@ -313,7 +313,7 @@ function ChoiceOptionsEditor({ field, onChange }: Readonly<{ field: FormFieldSch
     <div className="field field-wide">
       <span>الخيارات</span>
       {choice.options.map((option, index) => (
-        <div key={index} className="designer-row">
+        <div key={option.value} className="designer-row">
           <input aria-label={`نص الخيار ${index + 1}`} value={option.labelAr} onChange={(e) => updateOption(index, { labelAr: e.target.value })} />
           <input aria-label={`مفتاح الخيار ${index + 1}`} value={option.value} onChange={(e) => updateOption(index, { value: e.target.value })} />
           {keyErrors[index] && <span className="field-error">{keyErrors[index]}</span>}

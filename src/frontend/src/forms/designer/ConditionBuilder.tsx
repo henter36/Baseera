@@ -85,6 +85,15 @@ function emptyGroup(): FormConditionGroup {
   return { combinator: 0, predicates: [], groups: [] }
 }
 
+/** A stable key for a nested condition group. `FormConditionGroup` (mirroring the server's
+ * record) has no id of its own, and nested groups can be added/removed/reordered — so the key
+ * is derived from the group's own content rather than its array position. `ConditionBuilder`
+ * keeps no per-instance local state, so two groups with identical content sharing a key is
+ * harmless (they'd render identically either way). */
+export function conditionGroupKey(group: FormConditionGroup): string {
+  return JSON.stringify(group)
+}
+
 type ConditionBuilderProps = {
   value: FormConditionGroup | null | undefined
   onChange: (next: FormConditionGroup | null) => void
@@ -146,7 +155,8 @@ export function ConditionBuilder({
   }
 
   return (
-    <div className="condition-builder" role="group" aria-label="مُنشئ الشرط">
+    <fieldset className="condition-builder">
+      <legend>مُنشئ الشرط</legend>
       <div className="condition-builder-row">
         <span>عندما تتحقق</span>
         <select
@@ -166,7 +176,7 @@ export function ConditionBuilder({
         const isMulti = MULTI_VALUE_OPERATORS.has(predicate.operator)
 
         return (
-          <div className="condition-builder-predicate" key={`${predicate.fieldKey}-${index}`}>
+          <div className="condition-builder-predicate" key={JSON.stringify(predicate)}>
             <select
               aria-label="الحقل"
               value={predicate.fieldKey}
@@ -235,7 +245,7 @@ export function ConditionBuilder({
       })}
 
       {group.groups.map((nested, index) => (
-        <div className="condition-builder-nested" key={index}>
+        <div className="condition-builder-nested" key={conditionGroupKey(nested)}>
           <ConditionBuilder
             value={nested}
             onChange={(next) => updateNestedGroup(index, next)}
@@ -256,6 +266,6 @@ export function ConditionBuilder({
         )}
         <button type="button" className="secondary" onClick={() => onChange(null)}>إزالة الشرط بالكامل</button>
       </div>
-    </div>
+    </fieldset>
   )
 }

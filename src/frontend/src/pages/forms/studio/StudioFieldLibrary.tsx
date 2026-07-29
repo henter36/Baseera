@@ -27,8 +27,8 @@ export function StudioFieldLibrary({ onAddField, recentTypes }: Readonly<StudioF
         <div className="studio-field-library-category">
           <h4>مستخدمة حديثًا</h4>
           <div className="studio-field-library-grid">
-            {recentTypes.map((type, index) => (
-              <button key={`recent-${type}-${index}`} type="button" className="secondary" onClick={() => onAddField(type)}>
+            {recentTypes.map((type) => (
+              <button key={`recent-${type}`} type="button" className="secondary" onClick={() => onAddField(type)}>
                 + {FormFieldTypeLabelsAr[type]}
               </button>
             ))}

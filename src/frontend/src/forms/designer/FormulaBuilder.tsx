@@ -34,6 +34,14 @@ const FUNCTION_LABELS_AR: Record<number, string> = {
 const NUMERIC_ONLY_FUNCTIONS = new Set([0, 1, 2, 3, 4, 5, 6, 7])
 const VARIADIC_FUNCTIONS = new Set([0, 1, 2, 3, 8, 9])
 
+/** A stable key for a formula argument node. `FormFormulaNode` (mirroring the server's
+ * polymorphic record) has no id, and arguments can be added/removed/reordered — so the key is
+ * derived from the node's own content. `FormulaNodeEditor` keeps no per-instance local state,
+ * so two arguments with identical content sharing a key is harmless. */
+export function formulaNodeKey(node: FormFormulaNode): string {
+  return JSON.stringify(node)
+}
+
 function defaultNodeForKind(kind: FormFormulaNode['kind'], numericField?: FormulaField): FormFormulaNode {
   switch (kind) {
     case 'constantNumber':
@@ -159,7 +167,7 @@ function FormulaNodeEditor({ node, onChange, availableFields, excludeFieldKey, r
           </select>
           <span className="formula-node-args">
             {current.arguments.map((arg, index) => (
-              <span className="formula-node-arg" key={index}>
+              <span className="formula-node-arg" key={formulaNodeKey(arg)}>
                 <FormulaNodeEditor
                   node={arg}
                   onChange={(next) => {
@@ -215,7 +223,8 @@ export function FormulaBuilder({ value, onChange, availableFields, excludeFieldK
   }
 
   return (
-    <div className="formula-builder" role="group" aria-label="مُنشئ الصيغة">
+    <fieldset className="formula-builder">
+      <legend>مُنشئ الصيغة</legend>
       <FormulaNodeEditor
         node={value}
         onChange={onChange}
@@ -224,6 +233,6 @@ export function FormulaBuilder({ value, onChange, availableFields, excludeFieldK
         requireNumeric={false}
       />
       <button type="button" className="secondary" onClick={() => onChange(null)}>إزالة الصيغة</button>
-    </div>
+    </fieldset>
   )
 }
