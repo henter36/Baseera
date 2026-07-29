@@ -52,4 +52,48 @@ describe('StudioInspector choice options', () => {
     expect(labelInput).toHaveValue('خيار ب معدّل')
     expect(labelInput).toHaveFocus()
   })
+
+  it('keeps a duplicate-key error attached to the correct row after an earlier option is removed', async () => {
+    const user = userEvent.setup()
+    const schema = createEmptySchema()
+    const field = newField(FormFieldTypes.SingleChoice)
+    field.choice = {
+      options: [
+        { value: 'a', labelAr: 'خيار أ', order: 0, isActive: true },
+        { value: 'b', labelAr: 'خيار ب', order: 1, isActive: true },
+        { value: 'c', labelAr: 'خيار ج', order: 2, isActive: true },
+      ],
+      allowOther: false,
+    }
+    schema.pages[0].sections[0].fields = [field]
+
+    function ThreeOptionHarness() {
+      const [state, setState] = useState(schema)
+      return (
+        <StudioInspector
+          schema={state}
+          page={state.pages[0]}
+          selectedField={state.pages[0].sections[0].fields.find((f) => f.id === field.id)}
+          issues={[]}
+          onApplySchema={setState}
+        />
+      )
+    }
+
+    render(<ThreeOptionHarness />)
+
+    const thirdKeyInput = screen.getByLabelText('مفتاح الخيار 3') as HTMLInputElement
+    await user.clear(thirdKeyInput)
+    await user.type(thirdKeyInput, 'a')
+    expect(screen.getByText('مفتاح مكرر.')).toBeInTheDocument()
+
+    await user.click(screen.getAllByRole('button', { name: 'حذف الخيار' })[0])
+
+    // Option "c" (holding the rejected duplicate value) shifted from row 3 to row 2 when "a" was
+    // removed. Its error message must follow it there rather than staying pinned to a stale index.
+    const rows = document.querySelectorAll('.designer-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].textContent).not.toContain('مفتاح مكرر.')
+    expect(rows[1].textContent).toContain('مفتاح مكرر.')
+  })
 })

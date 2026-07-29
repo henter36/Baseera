@@ -102,7 +102,7 @@
 | 52 | منع استخدام حقل غير رقمي في عملية رقمية | Verified | `FormulaBuilder.tsx` (`requireNumeric`، `NUMERIC_ONLY_FUNCTIONS`) |
 | 53 | Dependency list | Partial — موجودة ضمنيًا (تصفية الحقول المتاحة) لا كقائمة منفصلة معروضة | — |
 | 54 | Server-side validation هو المصدر النهائي | Verified | `validateVersion` |
-| 55 | Preview وRuntime يستخدمان نفس القواعد (لا نفس المحرك) | Partial | `previewLogic.ts` تنفيذ منفصل يُستخدَم في المعاينة؛ الخادم يستخدم `FormFormulaEvaluator`/`FormConditionEvaluator` منفصلَين تمامًا. القواعد مُختبَرة توافقيًا يدويًا في `Schema/FormFormulaEvaluatorTests.cs`/`Responses/FormConditionEvaluatorTests.cs` الموجودين مسبقًا، لكن لا محرك مشترك ولا عقد اختبار تكافؤ آلي (parity contract) يمنع انحراف التنفيذَين مستقبلًا — انحراف كهذا لن يُكتشَف إلا يدويًا |
+| 55 | Preview وRuntime يستخدمان نفس القواعد (لا نفس المحرك) | Partial | `previewLogic.ts` تنفيذ منفصل يُستخدَم في المعاينة؛ الخادم يستخدم `FormFormulaEvaluator`/`FormConditionEvaluator` منفصلَين تمامًا. لكل تنفيذ تغطية اختبار آلية منفصلة (`Schema/FormFormulaEvaluatorTests.cs`/`Responses/FormConditionEvaluatorTests.cs` للخادم؛ اختبارات `previewLogic.ts` الخاصة به للواجهة)، لكن لا محرك مشترك ولا عقد اختبار تكافؤ آلي (parity contract) يقارن مخرجات التنفيذَين على نفس المدخلات ويمنع انحرافهما مستقبلًا — انحراف كهذا لن يُكتشَف إلا يدويًا |
 
 ## التحقق المستمر
 

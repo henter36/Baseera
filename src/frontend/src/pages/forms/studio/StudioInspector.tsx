@@ -278,7 +278,21 @@ function defaultFileSettings(): NonNullable<FormFieldSchema['file']> {
 
 function ChoiceOptionsEditor({ field, onChange }: Readonly<{ field: FormFieldSchema; onChange: (choice: NonNullable<FormFieldSchema['choice']>) => void }>) {
   const choice = field.choice ?? { options: [], allowOther: false }
-  const [keyErrors, setKeyErrors] = useState<Record<number, string>>({})
+  const [keyErrors, setKeyErrors] = useState<Record<string, string>>({})
+
+  // Editor-only stable ids, generated once per option at creation time (not derived from option
+  // content, which the user edits) — used for both the React key and keyErrors, so a row keeps its
+  // identity (and its error message stays attached to the right row) across add/remove/reorder.
+  // Reset only when the field itself changes (switching selection); preserved across our own
+  // option mutations by updating optionIds in lockstep with each mutation below.
+  const [idsForField, setIdsForField] = useState<{ fieldId: string; ids: string[] }>(() => ({
+    fieldId: field.id,
+    ids: choice.options.map(() => crypto.randomUUID()),
+  }))
+  if (idsForField.fieldId !== field.id) {
+    setIdsForField({ fieldId: field.id, ids: choice.options.map(() => crypto.randomUUID()) })
+  }
+  const optionIds = idsForField.fieldId === field.id ? idsForField.ids : choice.options.map(() => crypto.randomUUID())
 
   const setOptions = (options: FormFieldOption[]) => onChange(reindexChoice({ ...choice, options }))
 
@@ -286,7 +300,7 @@ function ChoiceOptionsEditor({ field, onChange }: Readonly<{ field: FormFieldSch
     if (patch.value !== undefined) {
       const normalized = patch.value.trim()
       const duplicate = choice.options.some((o, i) => i !== index && o.value === normalized)
-      setKeyErrors((prev) => ({ ...prev, [index]: duplicate ? 'مفتاح مكرر.' : '' }))
+      setKeyErrors((prev) => ({ ...prev, [optionIds[index]]: duplicate ? 'مفتاح مكرر.' : '' }))
       if (duplicate) {
         return
       }
@@ -297,9 +311,13 @@ function ChoiceOptionsEditor({ field, onChange }: Readonly<{ field: FormFieldSch
   const addOption = () => {
     const nextIndex = choice.options.length + 1
     setOptions([...choice.options, { value: `option_${nextIndex}`, labelAr: `خيار ${nextIndex}`, order: choice.options.length, isActive: true }])
+    setIdsForField((prev) => ({ ...prev, ids: [...prev.ids, crypto.randomUUID()] }))
   }
 
-  const removeOption = (index: number) => setOptions(choice.options.filter((_, i) => i !== index))
+  const removeOption = (index: number) => {
+    setOptions(choice.options.filter((_, i) => i !== index))
+    setIdsForField((prev) => ({ ...prev, ids: prev.ids.filter((_, i) => i !== index) }))
+  }
 
   const moveOption = (index: number, direction: -1 | 1) => {
     const target = index + direction
@@ -307,23 +325,21 @@ function ChoiceOptionsEditor({ field, onChange }: Readonly<{ field: FormFieldSch
     const next = [...choice.options]
     ;[next[index], next[target]] = [next[target], next[index]]
     setOptions(next)
+    setIdsForField((prev) => {
+      const ids = [...prev.ids]
+      ;[ids[index], ids[target]] = [ids[target], ids[index]]
+      return { ...prev, ids }
+    })
   }
 
   return (
     <div className="field field-wide">
       <span>الخيارات</span>
       {choice.options.map((option, index) => (
-        // Index is intentional, not the general anti-pattern S6479 warns about: this row holds
-        // controlled inputs with no local state, and moveOption() swaps array entries in place
-        // (same DOM position, swapped content) rather than reordering keys, so an index key stays
-        // correct across reordering too. option.value was tried and reverted as a key — the user
-        // can edit that exact field, and a key that changes while it's being typed into remounts
-        // the row and drops focus mid-edit. See StudioInspector.test.tsx "does not lose focus
-        // while typing into an option key input".
-        <div key={index} className="designer-row"> {/* NOSONAR */}
+        <div key={optionIds[index]} className="designer-row">
           <input aria-label={`نص الخيار ${index + 1}`} value={option.labelAr} onChange={(e) => updateOption(index, { labelAr: e.target.value })} />
           <input aria-label={`مفتاح الخيار ${index + 1}`} value={option.value} onChange={(e) => updateOption(index, { value: e.target.value })} />
-          {keyErrors[index] && <span className="field-error">{keyErrors[index]}</span>}
+          {keyErrors[optionIds[index]] && <span className="field-error">{keyErrors[optionIds[index]]}</span>}
           <button type="button" className="secondary" aria-label="نقل لأعلى" onClick={() => moveOption(index, -1)}>↑</button>
           <button type="button" className="secondary" aria-label="نقل لأسفل" onClick={() => moveOption(index, 1)}>↓</button>
           <button type="button" className="secondary" aria-label="حذف الخيار" onClick={() => removeOption(index)}>حذف</button>
