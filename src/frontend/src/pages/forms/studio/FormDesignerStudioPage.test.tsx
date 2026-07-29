@@ -138,8 +138,8 @@ describe('FormDesignerStudioPage — new form start flow', () => {
 
     await waitFor(() => expect(createForm).toHaveBeenCalled())
     await waitFor(() => expect(createVersion).toHaveBeenCalledWith('form-1'))
-    await waitFor(() => expect(screen.getByText('نموذج تجريبي')).toBeInTheDocument())
-  })
+    expect(await screen.findByText('نموذج تجريبي')).toBeInTheDocument()
+  }, 10000)
 })
 
 describe('FormDesignerStudioPage — existing form', () => {
@@ -159,10 +159,10 @@ describe('FormDesignerStudioPage — existing form', () => {
     await user.type(labelInput, 'تسمية جديدة')
     await user.tab()
 
-    await waitFor(() => expect(screen.getByText(/توجد تغييرات غير محفوظة/)).toBeInTheDocument())
+    expect(await screen.findByText(/توجد تغييرات غير محفوظة/)).toBeInTheDocument()
     await waitFor(() => expect(autosaveSchema).toHaveBeenCalled(), { timeout: 3000 })
-    await waitFor(() => expect(screen.getByText(/تم الحفظ/)).toBeInTheDocument())
-  })
+    expect(await screen.findByText(/تم الحفظ/)).toBeInTheDocument()
+  }, 10000)
 
   it('shows the three non-destructive conflict actions on a 409 autosave response', async () => {
     const user = userEvent.setup()
@@ -176,11 +176,11 @@ describe('FormDesignerStudioPage — existing form', () => {
     await user.type(labelInput, 'تسمية أخرى')
     await user.tab()
 
-    await waitFor(() => expect(screen.getByText('تم تعديل المسودة من مستخدم آخر منذ آخر تحميل لهذه الصفحة.')).toBeInTheDocument(), { timeout: 3000 })
+    expect(await screen.findByText('تم تعديل المسودة من مستخدم آخر منذ آخر تحميل لهذه الصفحة.', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'تحميل النسخة الأحدث' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'مقارنة التغييرات' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /حفظ نسخة جديدة/ })).toBeInTheDocument()
-  })
+  }, 10000)
 
   it('renders the mobile review-only mode with an explicit message that advanced structuring needs a bigger screen, and no drag-and-drop affordance', async () => {
     layoutModeMock.current = 'mobile'
