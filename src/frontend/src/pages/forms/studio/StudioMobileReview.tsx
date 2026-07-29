@@ -1,6 +1,76 @@
 import { useState } from 'react'
 import { flattenFields } from '../../../forms/designer/fieldDependencies'
-import type { FormSchemaDocument } from '../../../forms/designer/schemaTypes'
+import type { FormPageSchema, FormSchemaDocument } from '../../../forms/designer/schemaTypes'
+
+function MobileReviewPageTitleField({
+  pageId,
+  titleAr,
+  onCommit,
+}: Readonly<{ pageId: string; titleAr: string; onCommit: (pageId: string, title: string) => void }>) {
+  const [draft, setDraft] = useState(titleAr)
+  return (
+    <label className="field field-wide">
+      <span>عنوان الصفحة</span>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft.trim()) onCommit(pageId, draft.trim()) }}
+      />
+    </label>
+  )
+}
+
+function MobileReviewFieldLabelField({
+  pageId,
+  fieldId,
+  labelAr,
+  onCommit,
+}: Readonly<{ pageId: string; fieldId: string; labelAr: string; onCommit: (pageId: string, fieldId: string, label: string) => void }>) {
+  const [draft, setDraft] = useState(labelAr)
+  return (
+    <label className="field field-wide">
+      <span>عنوان الحقل</span>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft.trim()) onCommit(pageId, fieldId, draft.trim()) }}
+      />
+    </label>
+  )
+}
+
+function MobileReviewPageSection({
+  page,
+  onRenamePageTitle,
+  onRenameFieldLabel,
+}: Readonly<{
+  page: FormPageSchema
+  onRenamePageTitle: (pageId: string, title: string) => void
+  onRenameFieldLabel: (pageId: string, fieldId: string, label: string) => void
+}>) {
+  const fields = flattenFields({ schemaFormatVersion: 1, pages: [page] })
+  return (
+    <div className="panel-section">
+      <MobileReviewPageTitleField pageId={page.id} titleAr={page.titleAr} onCommit={onRenamePageTitle} />
+      {fields.map(({ field }) => (
+        <MobileReviewFieldLabelField key={field.id} pageId={page.id} fieldId={field.id} labelAr={field.labelAr} onCommit={onRenameFieldLabel} />
+      ))}
+    </div>
+  )
+}
+
+function MobileReviewStatusSummary({ errorCount, warningCount }: Readonly<{ errorCount: number; warningCount: number }>) {
+  const errorMessage = errorCount > 0
+    ? <span className="error" role="alert">{errorCount} أخطاء تمنع المراجعة.</span>
+    : <span className="muted">لا توجد أخطاء مانعة.</span>
+
+  return (
+    <div className="panel-section" aria-live="polite">
+      {errorMessage}
+      {warningCount > 0 && <span className="warn"> {warningCount} تحذيرات.</span>}
+    </div>
+  )
+}
 
 type StudioMobileReviewProps = {
   schema: FormSchemaDocument
@@ -25,45 +95,17 @@ export function StudioMobileReview({
   onRequestReview,
   isRequestingReview,
 }: Readonly<StudioMobileReviewProps>) {
-  const [draftValues, setDraftValues] = useState<Record<string, string>>({})
-
   return (
     <div className="studio-mobile" dir="rtl">
-      <div className="studio-mobile-banner" role="status">
+      <output className="studio-mobile-banner" aria-live="polite">
         الهيكلة المتقدمة (الصفحات والأقسام والشروط والصيغ) تتطلب شاشة أكبر (حاسوب أو جهاز لوحي).
         يمكنك من الجوال مراجعة النموذج وتعديل العناوين والنصوص البسيطة فقط.
-      </div>
+      </output>
 
-      <div className="panel-section" aria-live="polite">
-        {errorCount > 0 ? (
-          <span className="error" role="alert">{errorCount} أخطاء تمنع المراجعة.</span>
-        ) : (
-          <span className="muted">لا توجد أخطاء مانعة.</span>
-        )}
-        {warningCount > 0 && <span className="warn"> {warningCount} تحذيرات.</span>}
-      </div>
+      <MobileReviewStatusSummary errorCount={errorCount} warningCount={warningCount} />
 
       {schema.pages.map((page) => (
-        <div className="panel-section" key={page.id}>
-          <label className="field field-wide">
-            <span>عنوان الصفحة</span>
-            <input
-              value={draftValues[`page-${page.id}`] ?? page.titleAr}
-              onChange={(e) => setDraftValues((v) => ({ ...v, [`page-${page.id}`]: e.target.value }))}
-              onBlur={(e) => { if (e.target.value.trim()) onRenamePageTitle(page.id, e.target.value.trim()) }}
-            />
-          </label>
-          {flattenFields({ ...schema, pages: [page] }).map(({ field }) => (
-            <label className="field field-wide" key={field.id}>
-              <span>عنوان الحقل</span>
-              <input
-                value={draftValues[`field-${field.id}`] ?? field.labelAr}
-                onChange={(e) => setDraftValues((v) => ({ ...v, [`field-${field.id}`]: e.target.value }))}
-                onBlur={(e) => { if (e.target.value.trim()) onRenameFieldLabel(page.id, field.id, e.target.value.trim()) }}
-              />
-            </label>
-          ))}
-        </div>
+        <MobileReviewPageSection key={page.id} page={page} onRenamePageTitle={onRenamePageTitle} onRenameFieldLabel={onRenameFieldLabel} />
       ))}
 
       <div className="toolbar">
