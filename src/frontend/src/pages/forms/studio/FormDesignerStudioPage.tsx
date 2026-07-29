@@ -84,8 +84,14 @@ function StudioForExistingForm({ formId, layoutMode }: Readonly<{ formId: string
   }
 
   if (!versionIdParam) {
-    if (versionsQuery.data?.length === 0 && canDesign) {
-      return <CreateFirstVersion formId={formId} onCreated={(versionId) => navigate(`/forms/designer/${formId}?versionId=${versionId}`, { replace: true })} />
+    if (versionsQuery.isError) {
+      return <div className="error" role="alert">{formatApiError(versionsQuery.error as ApiError)}</div>
+    }
+    if (versionsQuery.data?.length === 0) {
+      if (canDesign) {
+        return <CreateFirstVersion formId={formId} onCreated={(versionId) => navigate(`/forms/designer/${formId}?versionId=${versionId}`, { replace: true })} />
+      }
+      return <div className="error" role="alert">لا يوجد إصدار متاح لهذا النموذج، وليست لديك صلاحية إنشاء واحد.</div>
     }
     return <div className="loading">جاري تحديد الإصدار…</div>
   }

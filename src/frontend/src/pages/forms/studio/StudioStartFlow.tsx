@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { api, ApiError, type CreateFormRequest, type FormTemplateListItem } from '../../../api/client'
 import { formatApiError } from '../../../forms/designer/designerHelpers'
 import { FormPreviewPanel } from '../../../forms/designer/FormPreviewPanel'
-import { createEmptySchema, type FormSchemaDocument } from '../../../forms/designer/schemaTypes'
 import { ScopeType, ScopeTypeLabelsAr } from '../../../forms/formEnums'
+import { parseSchema } from './studioWorkspaceHelpers'
 
 type StartFlowMode = 'choose' | 'blank' | 'template' | 'copy'
 
@@ -24,15 +24,6 @@ const TEMPLATE_VISIBILITY_LABELS_AR: Record<number, string> = {
 
 function generateFormCode(): string {
   return `FORM-${Date.now().toString(36).toUpperCase()}`
-}
-
-function parseSchema(json: string): FormSchemaDocument {
-  try {
-    const parsed = JSON.parse(json) as FormSchemaDocument
-    return parsed.pages?.length ? parsed : createEmptySchema()
-  } catch {
-    return createEmptySchema()
-  }
 }
 
 type IdentityDraft = {

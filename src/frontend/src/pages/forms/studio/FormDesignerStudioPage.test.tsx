@@ -27,8 +27,9 @@ const {
   listRegions: vi.fn(async () => ({ items: [], page: 1, pageSize: 50, totalCount: 0 })),
 }))
 
+const permissionsMock = vi.hoisted(() => ({ current: new Set(['Forms.UpdateDraft', 'Forms.Create', 'Forms.ViewVersionHistory']) }))
 vi.mock('../../../auth/AuthProvider', () => ({
-  usePermission: (code: string) => ['Forms.UpdateDraft', 'Forms.Create', 'Forms.ViewVersionHistory'].includes(code),
+  usePermission: (code: string) => permissionsMock.current.has(code),
 }))
 
 const layoutModeMock = vi.hoisted(() => ({ current: 'desktop' as 'desktop' | 'tablet' | 'mobile' }))
@@ -117,6 +118,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks()
   layoutModeMock.current = 'desktop'
+  permissionsMock.current = new Set(['Forms.UpdateDraft', 'Forms.Create', 'Forms.ViewVersionHistory'])
 })
 
 describe('FormDesignerStudioPage — new form start flow', () => {
@@ -188,5 +190,28 @@ describe('FormDesignerStudioPage — existing form', () => {
 
     expect(await screen.findByText(/الهيكلة المتقدمة .* تتطلب شاشة أكبر/)).toBeInTheDocument()
     expect(screen.queryByLabelText('سحب لإعادة الترتيب')).not.toBeInTheDocument()
+  })
+})
+
+describe('FormDesignerStudioPage — resolving a version when no versionId is in the URL', () => {
+  beforeEach(() => {
+    getForm.mockResolvedValue(sampleForm)
+  })
+
+  it('shows an error instead of an endless spinner when the versions list fails to load', async () => {
+    listVersions.mockRejectedValue(new ApiError(500, 'تعذر تحميل الإصدارات'))
+    renderStudio('/forms/designer/form-1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('تعذر تحميل الإصدارات')
+    expect(screen.queryByText('جاري تحديد الإصدار…')).not.toBeInTheDocument()
+  })
+
+  it('shows an error instead of an endless spinner when there are no versions and the user cannot create one', async () => {
+    permissionsMock.current.delete('Forms.UpdateDraft')
+    listVersions.mockResolvedValue([])
+    renderStudio('/forms/designer/form-1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('لا يوجد إصدار متاح لهذا النموذج')
+    expect(screen.queryByText('جاري تحديد الإصدار…')).not.toBeInTheDocument()
   })
 })

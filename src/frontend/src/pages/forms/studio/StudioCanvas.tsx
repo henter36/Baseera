@@ -79,7 +79,7 @@ type FieldRowProps = {
   isSelected: boolean
   hasError: boolean
   hasWarning: boolean
-  dependents: DependentReference[]
+  fieldDependents: (fieldKey: string) => DependentReference[]
   onSelect: () => void
   onMoveUp: () => void
   onMoveDown: () => void
@@ -88,10 +88,13 @@ type FieldRowProps = {
   onRenameLabel: (label: string) => void
 }
 
-function FieldRow({ field, isSelected, hasError, hasWarning, dependents, onSelect, onMoveUp, onMoveDown, onDuplicate, onDelete, onRenameLabel }: Readonly<FieldRowProps>) {
+function FieldRow({ field, isSelected, hasError, hasWarning, fieldDependents, onSelect, onMoveUp, onMoveDown, onDuplicate, onDelete, onRenameLabel }: Readonly<FieldRowProps>) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelDraft, setLabelDraft] = useState(field.labelAr)
+  // Computed lazily (only once the user actually opens the delete-confirmation), not on every
+  // render, since finding dependents walks the whole schema — see StudioCanvas's fieldDependents.
+  const dependents = confirmingDelete ? fieldDependents(field.key) : []
 
   const commitLabel = () => {
     setEditingLabel(false)
@@ -279,7 +282,7 @@ export function StudioCanvas({
                           isSelected={field.id === selectedFieldId}
                           hasError={tone.hasError}
                           hasWarning={tone.hasWarning}
-                          dependents={fieldDependents(field.key)}
+                          fieldDependents={fieldDependents}
                           onSelect={() => onSelectField(field.id)}
                           onMoveUp={() => onMoveField(field.id, -1, page)}
                           onMoveDown={() => onMoveField(field.id, 1, page)}
