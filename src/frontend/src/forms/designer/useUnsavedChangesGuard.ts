@@ -17,9 +17,12 @@ export function useUnsavedChangesGuard(isDirty: boolean) {
       return
     }
 
+    // Calling preventDefault() is the modern (spec-compliant) way to trigger the browser's
+    // generic "leave site?" prompt. `event.returnValue` is a legacy fallback some very old
+    // browser versions required; the project has no documented legacy-browser target
+    // (no browserslist/legacy build config), so it is not set here.
     const handler = (event: BeforeUnloadEvent) => {
       event.preventDefault()
-      event.returnValue = ''
     }
 
     window.addEventListener('beforeunload', handler)
