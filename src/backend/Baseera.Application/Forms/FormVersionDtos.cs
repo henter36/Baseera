@@ -99,6 +99,14 @@ public sealed record FormTemplateListItemDto(
     int FieldCount,
     DateTimeOffset CreatedAtUtc);
 
+public sealed record FormTemplateSchemaDto(
+    Guid Id,
+    string NameAr,
+    string CanonicalSchemaJson,
+    int PageCount,
+    int SectionCount,
+    int FieldCount);
+
 public sealed record CreateFormTemplateRequest(
     Guid FormDefinitionId,
     Guid FormVersionId,

@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { api, type CreateFormCampaignRequest, type FormCampaignScheduleRequest, type FormCampaignTargetRequest } from '../../api/client'
 import { usePermission } from '../../auth/AuthProvider'
 import { listQueryErrorMessage } from '../../shared/listPageUtils'
@@ -23,9 +23,12 @@ function FieldLabel({ htmlFor, children }: FieldLabelProps) {
 export function FormCampaignWizardPage() {
   const canManage = usePermission('Forms.ManageCampaigns')
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [step, setStep] = useState(0)
-  const [formDefinitionId, setFormDefinitionId] = useState('')
-  const [formVersionId, setFormVersionId] = useState('')
+  // Prefilled from the studio's "الانتقال إلى الجدولة والنشر" link (?formId=&versionId=) so
+  // approving a version and starting a campaign doesn't lose context; still editable below.
+  const [formDefinitionId, setFormDefinitionId] = useState(() => searchParams.get('formId') ?? '')
+  const [formVersionId, setFormVersionId] = useState(() => searchParams.get('versionId') ?? '')
   const [code, setCode] = useState(`CMP-${Date.now()}`)
   const [nameAr, setNameAr] = useState('')
   const [ruleType, setRuleType] = useState(0)

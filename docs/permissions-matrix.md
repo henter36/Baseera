@@ -363,7 +363,7 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 | Forms.ManageGovernance | إدارة سياسة الحوكمة | ✓ | | | | |
 | Forms.ManageRetention | إدارة الاحتفاظ | ✓ | | | | |
 
-صلاحيات C.2+ (Seed فقط): `Forms.Publish`, `Forms.Respond`, `Forms.MonitorRegion`, `Forms.MonitorHeadquarters`, `Forms.ApproveResponses`, `Forms.Analyze`, `Forms.Export`.
+صلاحيات C.2+ — **تصحيح (Phase 2A)**: `Forms.Publish` و`Forms.Respond` و`Forms.MonitorRegion` و`Forms.MonitorHeadquarters` و`Forms.ApproveResponses` مفعّلة وموصولة فعليًا بنقاط API حقيقية (`RequireAuthorization` على مسارات الحملات/الاستجابات)، وليست Seed فقط كما كان موثَّقًا سابقًا. `Forms.Analyze` و`Forms.Export` فقط يبقيان Seed فقط — معرَّفان في `PermissionCodes` لكن غير مستخدَمين في أي `RequireAuthorization()` حتى الآن.
 
 ## صلاحيات مسجّلة للوحدات اللاحقة (Seed فقط في A)
 
@@ -394,6 +394,29 @@ cancel, assign (تكليف وإعادة تكليف), return-for-rework, verify-c
 ## Phase C.3 campaign permissions
 
 `Forms.ManageCampaigns`, `Forms.PreviewTargets`, `Forms.PauseCampaign`, `Forms.CancelCampaign`, `Forms.ViewCampaignAssignments` (+ wired `Forms.Publish`). FormResponse permissions remain for #48.
+
+## Phase 2A — استوديو تصميم النماذج الموحَّد
+
+لا صلاحيات جديدة أُضيفت؛ التوجيه الصريح لهذه المرحلة كان "راجع الصلاحيات الحالية ولا تضف مكررًا". جدول التعيين بين الصلاحيات المفاهيمية المطلوبة في تكليف المرحلة والصلاحيات الفعلية الموجودة:
+
+| الصلاحية المفاهيمية (نص التكليف) | الصلاحية الفعلية المستخدَمة | ملاحظة |
+|---|---|---|
+| Forms.View | `Forms.View` | كما هي |
+| Forms.Create | `Forms.Create` | يشمل بداية الاستوديو (فارغ/قالب/نسخ) |
+| Forms.Update | `Forms.UpdateDraft` | لا صلاحية منفصلة لتعديل بيانات النموذج الوصفية عبر الاستوديو؛ `FormEditPage` المستقلة تستخدم `Forms.Update` الفعلية أيضًا |
+| Forms.DeleteDraft | — | **غير موجودة فعليًا في الكود ولم تُضَف**: لا يوجد مسار حذف صريح لمسودة نموذج/إصدار اليوم (فقط أرشفة عبر `Forms.Archive`)؛ لا حاجة لصلاحية حذف منفصلة |
+| Forms.Design | `Forms.UpdateDraft` | تصميم الحقول/الصفحات/الأقسام كلها تحت نفس صلاحية تعديل المسودة الحالية |
+| Forms.ManageConditions / Forms.ManageFormulas | `Forms.UpdateDraft` | Condition Builder وFormula Builder جزء من تعديل المسودة، لا صلاحية منفصلة — نفس مستوى الحبيبية (granularity) الموجود أصلاً في `IFormVersionService` |
+| Forms.Preview | `Forms.UpdateDraft` (+ `Forms.ViewVersionHistory` للقراءة فقط) | المعاينة تُبنى من نفس الـSchema المحلي، لا نقطة API مخصصة |
+| Forms.Validate | `Forms.View` | يطابق صلاحية نقطة `POST .../validate` الفعلية في `ApiEndpoints.cs` |
+| Forms.RequestReview | `Forms.SubmitForReview` | نفس الاسم الفعلي المستخدَم في الكود، لا تسمية "RequestReview" في الخادم |
+| Forms.Review / Forms.Approve | `Forms.RequestChanges` + `Forms.Reject` (مراجعة) و`Forms.Approve` (اعتماد) | `StudioReviewPanel` يعرض الأزرار حسب `allowedActions` الفعلية القادمة من الخادم |
+| Forms.Publish | `Forms.Publish` | غير مستخدَم مباشرة داخل الاستوديو؛ رابط "الانتقال إلى الجدولة والنشر" يقود لمعالج الحملة (`Forms.ManageCampaigns`) |
+| Forms.ViewVersions | `Forms.ViewVersionHistory` | يشمل أيضًا صفحة مقارنة الإصدارات الجديدة `/forms/:formId/versions/compare` |
+| Forms.CreateVersion | `Forms.UpdateDraft` (إنشاء إصدار داخل نفس النموذج) و`Forms.CloneVersion` (نسخ إصدار)، و**جديد**: نقطة `POST /api/v1/forms/copy-from/{sourceFormId}/{sourceVersionId}` تتطلب `Forms.Create` (لإنشاء النموذج الجديد) بالإضافة إلى فحص داخلي لـ`Forms.UpdateDraft` | انظر أدناه |
+| Forms.ManageTemplates | `Forms.ManageTemplates` (إدارة/إنشاء قوالب) و`Forms.View` (معاينة/سرد القوالب، بما فيها نقطة المعاينة الجديدة `GET /api/v1/form-templates/{id}/schema`) | استخدام قالب لبدء نموذج لا يتطلب `Forms.ManageTemplates` — فقط عرض النموذج المطلوب لإنشائه (`Forms.Create` + `Forms.ManageTemplates` الفعليان في `CreateFormFromTemplateAsync`، غير معدَّل) |
+
+**نقطة Backend جديدة واحدة مضافة في هذه المرحلة**: `POST /api/v1/forms/copy-from/{sourceFormId}/{sourceVersionId}` (نسخ نموذج موجود إلى مسودة جديدة مستقلة، دون نسخ الاستجابات أو الحملات، مع تسجيل المصدر في AuditLog) — محمية بـ`Forms.Create` على مستوى الـEndpoint، وتتحقق داخليًا من `Forms.UpdateDraft` وأن المستخدم يملك صلاحية عرض (`FormAccessCapability.View`) على النموذج المصدر (نفس فحص النطاق `formScope`/`effectiveAccess` المستخدَم في بقية `FormVersionService`؛ خارج النطاق أو بلا صلاحية → `404`، وليس `403`، اتساقًا مع بقية الخدمة). ونقطة قراءة واحدة: `GET /api/v1/form-templates/{templateId}/schema` (معاينة القالب قبل الاستخدام) — محمية بـ`Forms.View` وتتبع بالضبط نفس قواعد رؤية القالب المستخدَمة في `GET /api/v1/form-templates` (استُخرجت في دالة مشتركة `BuildVisibleTemplatesQueryAsync` لمنع الانحراف بين القائمة والمعاينة).
 
 ## Phase D.0 workspace permissions
 

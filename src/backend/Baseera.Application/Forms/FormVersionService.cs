@@ -14,6 +14,7 @@ public interface IFormVersionService
     Task<FormVersionDetailDto> GetAsync(Guid formId, Guid versionId, CancellationToken cancellationToken = default);
     Task<FormVersionDetailDto> CreateAsync(Guid formId, CreateFormVersionRequest request, CancellationToken cancellationToken = default);
     Task<FormVersionDetailDto> CloneAsync(Guid formId, Guid versionId, CancellationToken cancellationToken = default);
+    Task<FormVersionDetailDto> CreateFromExistingFormAsync(Guid sourceFormId, Guid sourceVersionId, CreateFormRequest newFormRequest, CancellationToken cancellationToken = default);
     Task<FormVersionDetailDto> SaveSchemaAsync(Guid formId, Guid versionId, SaveFormSchemaRequest request, bool autosave, CancellationToken cancellationToken = default);
     Task<FormVersionValidateResultDto> ValidateAsync(Guid formId, Guid versionId, SaveFormSchemaRequest request, CancellationToken cancellationToken = default);
     Task<FormVersionDetailDto> SubmitForReviewAsync(Guid formId, Guid versionId, FormVersionTransitionRequest request, CancellationToken cancellationToken = default);
@@ -32,7 +33,8 @@ public sealed class FormVersionService(
     IFormEffectiveAccessService effectiveAccess,
     IFormSeparationOfDutiesService sod,
     IFormSchemaCanonicalizer canonicalizer,
-    IAuditService audit) : IFormVersionService
+    IAuditService audit,
+    IFormCommandService formCommands) : IFormVersionService
 {
     private const int MaxVersionAllocationAttempts = 5;
 
@@ -75,6 +77,40 @@ public sealed class FormVersionService(
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsCloneVersion);
         return await CreateAsync(formId, new CreateFormVersionRequest(versionId), cancellationToken);
+    }
+
+    public async Task<FormVersionDetailDto> CreateFromExistingFormAsync(
+        Guid sourceFormId, Guid sourceVersionId, CreateFormRequest newFormRequest, CancellationToken cancellationToken = default)
+    {
+        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsCreate);
+        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsUpdateDraft);
+        var userId = currentUser.UserId ?? throw new UnauthorizedAccessException();
+
+        var sourceForm = await FormAccessHelper.LoadInScopeOrNotFoundAsync(db, formScope, sourceFormId, cancellationToken: cancellationToken);
+        await EnsureViewOrNotFoundAsync(sourceForm, cancellationToken);
+        var sourceVersion = await LoadVersionAsync(sourceFormId, sourceVersionId, cancellationToken);
+        var sourceSchemaJson = sourceVersion.Status == FormVersionStatus.Locked && sourceVersion.SnapshotId is Guid snapshotId
+            ? (await db.FormSchemaSnapshots.AsNoTracking().FirstAsync(s => s.Id == snapshotId, cancellationToken)).CanonicalSchemaJson
+            : sourceVersion.DraftSchemaJson;
+        var sourceVersionNumber = sourceVersion.VersionNumber;
+
+        return await db.ExecuteInTransactionAsync(async ct =>
+        {
+            var createdForm = await formCommands.CreateDraftAsync(newFormRequest, ct);
+            var newForm = await db.FormDefinitions.FirstAsync(f => f.Id == createdForm.Id, ct);
+            var detail = await AllocateAndPersistVersionAsync(newForm, newForm.Id, null, sourceSchemaJson, userId, ct);
+
+            await audit.WriteAsync(new AuditEntry
+            {
+                Action = "FormVersionCopiedFromExistingForm",
+                Module = FormAccessHelper.ModuleName,
+                EntityType = nameof(FormVersion),
+                EntityId = detail.Id.ToString("D"),
+                NewValues = new { newFormId = newForm.Id, sourceFormId, sourceVersionId, sourceVersionNumber }
+            }, ct);
+            await db.SaveChangesAsync(ct);
+            return detail;
+        }, cancellationToken);
     }
 
     public async Task<FormVersionDetailDto> SaveSchemaAsync(

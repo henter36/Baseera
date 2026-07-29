@@ -2,7 +2,9 @@
 
 مصدر هذا الجرد: قراءة مباشرة لـ `src/frontend/src/App.tsx` (جدول التوجيه الكامل)، وكل ملف Page/Component المرتبط، بالإضافة إلى العقود الخلفية المؤثرة في الصلاحيات وقرارات الواجهة. لا يعتمد هذا الجرد على تخمين أسماء الملفات — كل صف تحقّق من الكود الفعلي.
 
-**إجمالي Routes المعرَّفة في `App.tsx`: 62** (بعضها يُعيد استخدام نفس المكوّن لعدة مسارات، موضّح أدناه). هذا الرقم مُتحقَّق آليًا عبر `scripts/ux-route-inventory-check.mjs` الذي يقارن كل `<Route path>` فعلي بصف موثَّق في هذا الجدول.
+**إجمالي Routes المعرَّفة في `App.tsx`: 65** (بعضها يُعيد استخدام نفس المكوّن لعدة مسارات، موضّح أدناه). هذا الرقم مُتحقَّق آليًا عبر `scripts/ux-route-inventory-check.mjs` الذي يقارن كل `<Route path>` فعلي بصف موثَّق في هذا الجدول.
+
+> **تحديث Phase 2A (منفَّذة)**: استوديو تصميم النماذج الموحَّد أُضيف على `/forms/designer/new` و`/forms/designer/:formId`، ويُدمِج إنشاء/تحرير/شروط/صيغ/معاينة/تحقق/مراجعة الإصدار في مكان واحد. راجع `docs/ux-rescue/phase2a-form-designer-route-transition.md` لتفصيل القرار لكل Route. `/forms/:formId/versions/:versionId/edit` و`/forms/:formId/versions/new` أصبحا Redirect غير قابلين للوصول من أي رابط داخلي (نُقلا إلى قسم "Route ميتة مؤكَّدة" أدناه)؛ لا يزالان يعملان لأي رابط قديم محفوظ. أُضيف أيضًا `/forms/:formId/versions/compare` لمقارنة إصدارين.
 
 ## جدول القرار الأولي لكل Route
 
@@ -23,19 +25,22 @@
 | `/notes/new` | NoteCreatePage | الملاحظات | مُبلِّغ عن ملاحظة | إنشاء ملاحظة جديدة | زر "ملاحظة جديدة" في Workspace | → `/notes/:id` بعد الإنشاء | `Notes.Create` | صفحة كاملة | Merge into Workspace — يجب أن يصبح نموذجًا مضمَّنًا |
 | `/notes/:id` | NoteDetailPage | الملاحظات | جميع أدوار الملاحظات | تفاصيل كاملة وإجراءات لا تعمل ضمن Workspace (ASSIGN، verifyClosure) | تنقّل قسري من ActionBar في Workspace | `/notes/:id/edit`، `/notes/:noteId/corrective-actions/new` | `Notes.View`(+`Update`/`Archive` لأزرار محدَّدة) | صفحة كاملة | Merge into Workspace — هدف #143 دمج كل ما هنا |
 | `/notes/:id/edit` | NoteEditPage | الملاحظات | مالك/محرِّر الملاحظة | تعديل الحقول | رابط من التفاصيل | → `/notes/:id` | `Notes.Update` | صفحة كاملة | Merge into Workspace |
-| `/forms` | FormsListPage | النماذج | منشئ/مدير النموذج | استعراض النماذج | رابط الشريط الجانبي "النماذج" | `/forms/new`، `/forms/:id` | `Forms.View` | صفحة كاملة | Restructure — ضمن نطاق #144 |
-| `/forms/new` | FormCreatePage | النماذج | منشئ النموذج | إنشاء بيانات نموذج (وصفية فقط، بلا إصدار) | رابط من القائمة | → `/forms/:id` | `Forms.Create` | صفحة كاملة | Merge into Studio (#144) |
-| `/forms/:id` | FormDetailPage | النماذج | منشئ/مدير النموذج | بيانات النموذج وحالته | رابط من القائمة/الإنشاء | `/forms/:formId/versions`، `/edit`، `/review`، `/access` | `Forms.View` | صفحة كاملة | Restructure |
-| `/forms/:id/edit` | FormEditPage | النماذج | منشئ النموذج | تعديل بيانات النموذج | رابط من التفاصيل | → `/forms/:id` | `Forms.Update` | صفحة كاملة | Merge into Studio |
-| `/forms/:id/review` | FormReviewPage | النماذج | مراجع/معتمد | مراجعة حالة **Form** (منفصلة تمامًا عن مراجعة الإصدار!) | رابط من التفاصيل | → `/forms/:id` | صلاحيات مراجعة النموذج | صفحة كاملة | Restructure — نظام مراجعة مواز مربك لمراجعة الإصدار |
+| `/forms` | FormsListPage | النماذج | منشئ/مدير النموذج | استعراض النماذج | رابط الشريط الجانبي "النماذج" | `/forms/designer/new`، `/forms/:id` | `Forms.View` | صفحة كاملة | Keep — زر الإنشاء يوجّه الآن إلى الاستوديو |
+| `/forms/designer/new` | FormDesignerStudioPage | النماذج | منشئ النموذج | **المسار الرئيس الجديد**: بداية نموذج (فارغ/قالب/نسخ) ثم فتح الاستوديو | رابط شريط جانبي "استوديو تصميم النماذج"، زر "نموذج جديد" في `/forms` | → `/forms/designer/:formId?versionId=` بعد الإنشاء | `Forms.UpdateDraft` (+`Forms.Create`) | وضع مراجعة وتعديلات بسيطة فقط (لا سحب وإفلات) | Keep — جديد في Phase 2A |
+| `/forms/designer/:formId` | FormDesignerStudioPage | النماذج | منشئ/مراجع النموذج | **المسار الرئيس الجديد**: الاستوديو الموحَّد (Canvas + مكتبة حقول/مخطط + Inspector + شروط/صيغ + تحقق + معاينة + مراجعة)، عبر `?versionId=` اختياري | روابط "تصميم"/"فتح الاستوديو" من `/forms/:formId/versions*` | يبقى داخل الاستوديو؛ رابط للجدولة والنشر بعد الاعتماد | `Forms.UpdateDraft`، `Forms.ViewVersionHistory` | وضع مراجعة وتعديلات بسيطة فقط (لا سحب وإفلات، لا شروط/صيغ) | Keep — جديد في Phase 2A |
+| `/forms/new` | FormCreatePage | النماذج | منشئ النموذج | إنشاء بيانات نموذج كاملة (وصفية + حوكمة، بلا إصدار) | لا رابط داخلي بعد نقل زر الإنشاء إلى الاستوديو | → `/forms/:id` | `Forms.Create` | صفحة كاملة | Advanced fallback — نموذج الحقول الكامل (تصنيف/إدارة) لمن يحتاج الإعداد الكامل بدل بداية الاستوديو المبسّطة |
+| `/forms/:id` | FormDetailPage | النماذج | منشئ/مدير النموذج | بيانات النموذج وحالته | رابط من القائمة/الإنشاء | `/forms/:formId/versions`، `/edit`، `/review`، `/access` | `Forms.View` | صفحة كاملة | Keep |
+| `/forms/:id/edit` | FormEditPage | النماذج | منشئ النموذج | تعديل بيانات النموذج (تصنيف/إدارة/اسم) | رابط من التفاصيل | → `/forms/:id` | `Forms.Update` | صفحة كاملة | Advanced fallback |
+| `/forms/:id/review` | FormReviewPage | النماذج | مراجع/معتمد | مراجعة حالة **Form** (منفصلة عن مراجعة الإصدار) | رابط من التفاصيل | → `/forms/:id` | صلاحيات مراجعة النموذج | صفحة كاملة | Advanced fallback — يبقى منفصلاً؛ مراجعة الإصدار دُمجت داخل الاستوديو (`StudioReviewPanel`) |
 | `/forms/:id/access` | FormAccessPage | النماذج | حوكمة/إدارة | منح صلاحيات وصول | رابط من التفاصيل | → `/forms/:id` | `Forms.ManageAccess` | صفحة كاملة | Advanced fallback |
-| `/forms/:formId/versions` | FormVersionsPage | النماذج | منشئ النموذج | قائمة الإصدارات | رابط من التفاصيل | `/versions/new` (نفس المكوّن)، `/versions/:versionId`, `/edit` | `Forms.View` | صفحة كاملة | Merge into Studio |
-| `/forms/:formId/versions/new` | FormVersionsPage (نفس مكوّن القائمة) | النماذج | — | **Route ميت** — لا رابط في التطبيق يشير إليه؛ زر "إصدار جديد" في القائمة نفسها ينشئ الإصدار وينتقل مباشرة إلى `/edit` دون المرور بهذا المسار | لا يوجد | — | `Forms.View` | — | Remove/redirect — مسار غير قابل للوصول فعليًا |
-| `/forms/:formId/versions/:versionId` | FormVersionDetailPage | النماذج | منشئ/مراجع | حالة الإصدار | رابط من قائمة الإصدارات | `/edit`، `/review`، `/snapshot` | `Forms.View` | صفحة كاملة | Merge into Studio |
-| `/forms/:formId/versions/:versionId/edit` | FormDesignerPage | النماذج | منشئ النموذج | تصميم الحقول (Canvas ثلاثي الألواح) | رابط من تفاصيل/قائمة الإصدار | إرسال → عودة لتفاصيل الإصدار | `Forms.UpdateDraft` | Grid يتحول لعمود واحد عند الشاشات الضيقة | Restructure — جوهر #144 |
-| `/forms/:formId/versions/:versionId/review` | FormVersionReviewPage | النماذج | مراجع/معتمد | اعتماد/رفض/طلب تعديل | رابط من تفاصيل الإصدار | → تفاصيل الإصدار | صلاحيات مراجعة الإصدار | صفحة كاملة | Merge into Studio (كخطوة مراجعة داخل نفس الاستوديو) |
-| `/forms/:formId/versions/:versionId/snapshot` | FormVersionSnapshotPage | النماذج | أي مستخدم يملك View | عرض JSON خام لإصدار مقفل | رابط من قائمة الإصدارات عند القفل | لا شيء | `Forms.View` | صفحة كاملة | Advanced fallback — يحتاج عرضًا مقروءًا لاحقًا لكن يبقى مسارًا مستقلاً تقنيًا |
-| `/form-templates` | FormTemplatesPage | النماذج | منشئ النموذج | بدء نموذج من قالب | رابط الشريط الجانبي "قوالب النماذج" | **`window.location.assign`** (إعادة تحميل كاملة، ليست SPA navigation) إلى `/forms/:id/versions` | `Forms.ManageTemplates` | صفحة كاملة | Restructure — يجب دمجها كخطوة بداية داخل استوديو موحّد، وإصلاح خلل إعادة التحميل الكامل |
+| `/forms/:formId/versions` | FormVersionsPage | النماذج | منشئ النموذج | قائمة الإصدارات | رابط من التفاصيل | `/versions/:versionId`, `/compare`، روابط الاستوديو | `Forms.View` | صفحة كاملة | Keep |
+| `/forms/:formId/versions/new` | RedirectToStudioNew | النماذج | — | **Route ميت (Redirect)** — لا رابط داخلي يشير إليه؛ يُحوَّل فورًا إلى `/forms/designer/:formId` | لا يوجد (روابط قديمة محفوظة فقط) | → `/forms/designer/:formId` | `Forms.View` | — | Remove/redirect |
+| `/forms/:formId/versions/compare` | FormVersionComparePage | النماذج | منشئ/مراجع | مقارنة إصدارين (حقول/خيارات/شروط/صيغ/إلزام) | رابط "مقارنة الإصدارات" من قائمة الإصدارات | لا شيء | `Forms.ViewVersionHistory` | صفحة كاملة | Keep — جديد في Phase 2A |
+| `/forms/:formId/versions/:versionId` | FormVersionDetailPage | النماذج | منشئ/مراجع | حالة الإصدار | رابط من قائمة الإصدارات | الاستوديو، `/review`، `/snapshot` | `Forms.View` | صفحة كاملة | Keep |
+| `/forms/:formId/versions/:versionId/edit` | RedirectToStudioEdit | النماذج | — | **Route ميت (Redirect)** — لا رابط داخلي يشير إليه بعد تحديث كل الروابط لتستهدف `/forms/designer/:formId?versionId=` مباشرة؛ يُحوَّل فورًا | لا يوجد (روابط قديمة محفوظة فقط) | → `/forms/designer/:formId?versionId=` | `Forms.UpdateDraft` | — | Remove/redirect |
+| `/forms/:formId/versions/:versionId/review` | FormVersionReviewPage | النماذج | مراجع/معتمد | اعتماد/رفض/طلب تعديل (نسخة صفحة كاملة مستقلة) | رابط من تفاصيل الإصدار | → تفاصيل الإصدار | صلاحيات مراجعة الإصدار | صفحة كاملة | Advanced fallback — نفس القرار متاح أيضًا داخل الاستوديو (`StudioReviewPanel`) دون مغادرته |
+| `/forms/:formId/versions/:versionId/snapshot` | FormVersionSnapshotPage | النماذج | أي مستخدم يملك View | عرض JSON خام لإصدار مقفل | رابط من قائمة الإصدارات عند القفل | لا شيء | `Forms.View` | صفحة كاملة | Advanced fallback |
+| `/form-templates` | FormTemplatesPage | النماذج | منشئ النموذج | بدء نموذج من قالب (تدفق كامل مستقل) | رابط الشريط الجانبي "قوالب النماذج" | SPA navigation (تم إصلاح `window.location.assign`) إلى `/forms/:id/versions` | `Forms.ManageTemplates` | صفحة كاملة | Advanced fallback — القوالب متاحة الآن أيضًا كخطوة بداية داخل الاستوديو (`/forms/designer/new`)؛ هذه الصفحة تبقى للاستخدام الإداري لإنشاء/إدارة القوالب |
 | `/form-campaigns` | FormCampaignsListPage (من نفس ملف `FormCampaignsListPage.tsx`) | تشغيل النماذج | منشئ/مسؤول متابعة الحملة | استعراض/إدارة الحملات | رابط الشريط الجانبي "حملات النشر" | `/new`، `/:campaignId`، `/edit`، `/cycles` | `Forms.Publish/ManageCampaigns/View` | صفحة كاملة | Restructure — جوهر #145 |
 | `/form-campaigns/new` | FormCampaignWizardPage | تشغيل النماذج | منشئ الحملة | إنشاء حملة (7 خطوات قابلة للنقر بأي ترتيب) | رابط من القائمة | → `/form-campaigns/:id` | `Forms.ManageCampaigns` | صفحة كاملة | Merge into Ops Workspace |
 | `/form-campaigns/:campaignId` | FormCampaignDetailPage (من نفس ملف `FormCampaignsListPage.tsx`) | تشغيل النماذج | منشئ/مسؤول متابعة الحملة | تفاصيل حملة ومعاينة أحدث دوراتها | رابط من القائمة | `/edit`، `/cycles`، `/preview` | `Forms.View/ManageCampaigns` | صفحة كاملة | Restructure — جوهر #145 |
@@ -83,7 +88,8 @@
 
 | Route | السبب |
 | --- | --- |
-| `/forms/:formId/versions/new` | نفس مكوّن `/forms/:formId/versions`؛ لا رابط في التطبيق يستهدف هذا المسار تحديدًا — إنشاء إصدار جديد ينتقل مباشرة إلى `/edit` |
+| `/forms/:formId/versions/new` | يُحوَّل الآن إلى `/forms/designer/:formId` (`RedirectToStudioNew`)؛ لا رابط داخلي يستهدف هذا المسار تحديدًا |
+| `/forms/:formId/versions/:versionId/edit` | يُحوَّل الآن إلى `/forms/designer/:formId?versionId=` (`RedirectToStudioEdit`)؛ كل الروابط الداخلية (قائمة الإصدارات، تفاصيل الإصدار) تستهدف الاستوديو مباشرة منذ Phase 2A |
 | `/form-campaigns/:campaignId/targeting` | لا رابط في أي صفحة يشير إليه، والمكوّن المعروض (`FormCampaignWizardPage`) لا يقرأ `:campaignId` أصلًا |
 | `/form-campaigns/:campaignId/schedule` | نفس السبب أعلاه |
 
@@ -117,13 +123,13 @@
 
 | القرار | العدد |
 | --- | --- |
-| Keep | 10 |
+| Keep | 17 (بعد Phase 2A: +`/forms`, `/forms/:id`, `/forms/:formId/versions`, `/forms/:formId/versions/:versionId`, `/forms/:formId/versions/compare`، `/forms/designer/new`، `/forms/designer/:formId`) |
 | Polish | 2 |
-| Restructure | 14 |
-| Merge into Workspace (يشمل "Merge into Studio"/"Merge into Ops Workspace" كصياغات مجالية لنفس القرار، والمسار المكرر `/notes`) | 19 |
+| Restructure | 9 (بعد Phase 2A: تم تنفيذ إعادة هيكلة مسارات النماذج) |
+| Merge into Workspace (يشمل "Merge into Studio"/"Merge into Ops Workspace" كصياغات مجالية لنفس القرار، والمسار المكرر `/notes`) | 14 (بعد Phase 2A: الدمج الفعلي لإنشاء/تصميم/شروط/صيغ/معاينة/تحقق/مراجعة الإصدار داخل `/forms/designer/:formId`) |
 | Replace completely | 1 |
-| Advanced fallback | 13 |
-| Remove/redirect | 3 |
-| **الإجمالي** | **62 Route مُعرَّف** (كان هناك مكوّن يتيم واحد، `NotesListPage.tsx`، قبل Phase 1A — راجع ملاحظة التحديث أعلاه: أصبح Legacy fallback مستخدَم فعليًا خلف علم الميزة، وليس يتيمًا) |
+| Advanced fallback | 18 (بعد Phase 2A: +`/forms/new`, `/forms/:id/edit`, `/forms/:id/review`, `/forms/:formId/versions/:versionId/review`, `/form-templates` — تبقى مسارات صحيحة ومتاحة، لكن الاستوديو الموحَّد يغطي نفس القدرات لمعظم المستخدمين) |
+| Remove/redirect | 4 (بعد Phase 2A: +`/forms/:formId/versions/:versionId/edit`، الذي كان المسار الأساسي للمصمم قبل الاستوديو) |
+| **الإجمالي** | **65 Route مُعرَّف** (زيادة 3 عن Phase 0/1: `/forms/designer/new`, `/forms/designer/:formId`, `/forms/:formId/versions/compare`؛ كان هناك مكوّن يتيم واحد، `NotesListPage.tsx`، قبل Phase 1A — راجع ملاحظة التحديث أعلاه: أصبح Legacy fallback مستخدَم فعليًا خلف علم الميزة، وليس يتيمًا) |
 
 هذا العدد مُتحقَّق آليًا (لا يدويًا) عبر `node src/frontend/scripts/ux-route-inventory-check.mjs` (أو `npm run check:ux-routes` من داخل `src/frontend/`)، الذي يفشل صراحة عند أي Route في `App.tsx` بلا صف موثَّق هنا، أو صف موثَّق بلا Route فعلي مطابق.

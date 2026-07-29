@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router'
+import { NavLink, Navigate, Route, Routes, useParams } from 'react-router'
 import { useEffect, useState } from 'react'
 import { api } from './api/client'
 import { useAuth } from './auth/AuthProvider'
@@ -35,9 +35,10 @@ import { FormsListPage } from './pages/forms/FormsListPage'
 import { OperationalDashboardPage } from './pages/dashboard/OperationalDashboardPage'
 import { FormVersionsPage } from './pages/forms/versions/FormVersionsPage'
 import { FormVersionDetailPage } from './pages/forms/versions/FormVersionDetailPage'
-import { FormDesignerPage } from './pages/forms/versions/FormDesignerPage'
 import { FormVersionReviewPage } from './pages/forms/versions/FormVersionReviewPage'
 import { FormVersionSnapshotPage } from './pages/forms/versions/FormVersionSnapshotPage'
+import { FormVersionComparePage } from './pages/forms/versions/FormVersionComparePage'
+import { FormDesignerStudioPage } from './pages/forms/studio/FormDesignerStudioPage'
 import { FormTemplatesPage } from './pages/forms/templates/FormTemplatesPage'
 import { FormCampaignsListPage, FormCampaignDetailPage } from './pages/form-campaigns/FormCampaignsListPage'
 import { FormCampaignWizardPage } from './pages/form-campaigns/FormCampaignWizardPage'
@@ -51,6 +52,22 @@ import { FacilityOccupancyPage } from './pages/occupancy/FacilityOccupancyPage'
 import { FacilityResourcesPage } from './pages/resources/FacilityResourcesPage'
 import { FacilityWorkforcePage } from './pages/workforce/FacilityWorkforcePage'
 import { ReferenceWorkspacePage } from './pages/workspaces/ReferenceWorkspacePage'
+
+/**
+ * `/forms/:formId/versions/:versionId/edit` (the legacy single-purpose designer route) and the
+ * dead `/forms/:formId/versions/new` route are both superseded by the unified studio at
+ * `/forms/designer/:formId`. Redirecting here (rather than deleting the old routes outright)
+ * keeps old bookmarks/deep links working — see docs/ux-rescue/phase2a-form-designer-route-transition.md.
+ */
+export function RedirectToStudioEdit() {
+  const { formId, versionId } = useParams<{ formId: string; versionId: string }>()
+  return <Navigate to={`/forms/designer/${formId}?versionId=${versionId}`} replace />
+}
+
+export function RedirectToStudioNew() {
+  const { formId } = useParams<{ formId: string }>()
+  return <Navigate to={`/forms/designer/${formId}`} replace />
+}
 
 function isReferenceWorkspaceNavEnabled() {
   return import.meta.env.DEV || import.meta.env.VITE_ENABLE_REFERENCE_WORKSPACE === 'true'
@@ -99,6 +116,7 @@ function Shell({ children }: AppChildrenProps) {
             </NavLink>
           )}
           {hasPermission('Forms.View') && <NavLink to="/forms" className={({ isActive }) => isActive ? 'active' : undefined}>النماذج</NavLink>}
+          {hasPermission('Forms.UpdateDraft') && <NavLink to="/forms/designer/new" className={({ isActive }) => isActive ? 'active' : undefined}>استوديو تصميم النماذج</NavLink>}
           {hasPermission('Forms.View') && <NavLink to="/form-templates" className={({ isActive }) => isActive ? 'active' : undefined}>قوالب النماذج</NavLink>}
           {(hasPermission('Forms.Publish') || hasPermission('Forms.ManageCampaigns') || hasPermission('Forms.View')) && (
             <NavLink to="/form-campaigns" className={({ isActive }) => isActive ? 'active' : undefined}>حملات النشر</NavLink>
@@ -163,10 +181,13 @@ export default function App() {
       <Route path="/forms/:id/edit" element={<Protected><FormEditPage /></Protected>} />
       <Route path="/forms/:id/review" element={<Protected><FormReviewPage /></Protected>} />
       <Route path="/forms/:id/access" element={<Protected><FormAccessPage /></Protected>} />
+      <Route path="/forms/designer/new" element={<Protected><FormDesignerStudioPage /></Protected>} />
+      <Route path="/forms/designer/:formId" element={<Protected><FormDesignerStudioPage /></Protected>} />
       <Route path="/forms/:formId/versions" element={<Protected><FormVersionsPage /></Protected>} />
-      <Route path="/forms/:formId/versions/new" element={<Protected><FormVersionsPage /></Protected>} />
+      <Route path="/forms/:formId/versions/new" element={<Protected><RedirectToStudioNew /></Protected>} />
+      <Route path="/forms/:formId/versions/compare" element={<Protected><FormVersionComparePage /></Protected>} />
       <Route path="/forms/:formId/versions/:versionId" element={<Protected><FormVersionDetailPage /></Protected>} />
-      <Route path="/forms/:formId/versions/:versionId/edit" element={<Protected><FormDesignerPage /></Protected>} />
+      <Route path="/forms/:formId/versions/:versionId/edit" element={<Protected><RedirectToStudioEdit /></Protected>} />
       <Route path="/forms/:formId/versions/:versionId/review" element={<Protected><FormVersionReviewPage /></Protected>} />
       <Route path="/forms/:formId/versions/:versionId/snapshot" element={<Protected><FormVersionSnapshotPage /></Protected>} />
       <Route path="/form-templates" element={<Protected><FormTemplatesPage /></Protected>} />

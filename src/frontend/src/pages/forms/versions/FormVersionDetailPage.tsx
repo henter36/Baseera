@@ -37,7 +37,7 @@ export function FormVersionDetailPage() {
         <h1 className="page-title">إصدار v{v.versionNumber}</h1>
         <div className="toolbar">
           <Link to={`/forms/${formId}/versions`}>كل الإصدارات</Link>
-          {canDesign && <Link to={`/forms/${formId}/versions/${versionId}/edit`}>فتح المصمم</Link>}
+          {canDesign && <Link to={`/forms/designer/${formId}?versionId=${versionId}`}>فتح الاستوديو</Link>}
           {canReview && <Link to={`/forms/${formId}/versions/${versionId}/review`}>مراجعة</Link>}
           {canViewSnapshot && <Link to={`/forms/${formId}/versions/${versionId}/snapshot`}>اللقطة</Link>}
         </div>

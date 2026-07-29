@@ -23,6 +23,7 @@
 | **Phase D.6** — سجل المخاطر المؤسسي ومركز معالجة مخاطر السجن | قيد التنفيذ على الفرع `phase-d6-facility-risk-treatment-center`؛ تنفيذ جزئي من Issue #16 (Facility scope فقط) واستمرار #11؛ لا تغلق Issue #16 أو #11 أو #15 — [`docs/phase-d6-risk-completion-report.md`](docs/phase-d6-risk-completion-report.md) |
 | **UX Rescue Phase 1A** — أساس مساحة عمل الملاحظات | قيد التنفيذ على الفرع `ux-rescue-phase1a-observation-workspace-foundation`؛ تنفيذ جزئي من Issue #143 واستمرار #11؛ لا تغلق Issue #143 أو #11 أو #18 أو #19 — [`docs/ux-rescue/phase1a-observation-completion-report.md`](docs/ux-rescue/phase1a-observation-completion-report.md) |
 | **UX Rescue Phase 1A.1** — تصحيح مساحة الملاحظات داخل الصفحة | قيد التنفيذ على الفرع `ux-rescue-phase1a1-observation-in-page-workspace`؛ متابعة تصحيحية لـPR #149، تستبدل popup تفاصيل الملاحظة بـmaster-detail داخل `/notes/workspace`، ولا تبدأ Phase 1B — [`docs/ux-rescue/phase1a1-observation-completion-report.md`](docs/ux-rescue/phase1a1-observation-completion-report.md) |
+| **UX Rescue Phase 2A** — استوديو تصميم النماذج الموحَّد | قيد التنفيذ على الفرع `ux-rescue-phase2a-unified-form-designer-studio`؛ استوديو موحَّد واحد (`/forms/designer/new`, `/forms/designer/:formId`) يدمج الإنشاء/التصميم/الشروط/الصيغ/المعاينة/التحقق/المراجعة، مع Condition Builder وFormula Builder جديدين؛ تنفيذ من Issue #144 يستمر #45 و#12/#13؛ لا تغلق Issue #144 قبل مراجعة سجل الامتثال — [`docs/ux-rescue/phase2a-form-designer-completion-report.md`](docs/ux-rescue/phase2a-form-designer-completion-report.md) |
 
 ## المتطلبات
 

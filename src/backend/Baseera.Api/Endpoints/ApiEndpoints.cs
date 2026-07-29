@@ -1027,6 +1027,15 @@ public static class ApiEndpoints
             return Results.Created($"/api/v1/forms/{formId}/versions/{created.Id}", created);
         }).RequireAuthorization(AuthPolicies.FormsCloneVersion);
 
+        forms.MapPost("/copy-from/{sourceFormId:guid}/{sourceVersionId:guid}", async (
+            Guid sourceFormId, Guid sourceVersionId, CreateFormRequest request,
+            IValidator<CreateFormRequest> validator, IFormVersionService service, CancellationToken ct) =>
+        {
+            await validator.ValidateAndThrowAsync(request, ct);
+            var created = await service.CreateFromExistingFormAsync(sourceFormId, sourceVersionId, request, ct);
+            return Results.Created($"/api/v1/forms/{created.FormDefinitionId}/versions/{created.Id}", created);
+        }).RequireAuthorization(AuthPolicies.FormsCreate);
+
         forms.MapPut("/{formId:guid}/versions/{versionId:guid}/schema", async (
             Guid formId, Guid versionId, SaveFormSchemaRequest request,
             IValidator<SaveFormSchemaRequest> validator, IFormVersionService service, CancellationToken ct) =>
@@ -1107,6 +1116,10 @@ public static class ApiEndpoints
 
         templates.MapGet("/", async (IFormTemplateService service, CancellationToken ct) =>
             Results.Ok(await service.ListAsync(ct)))
+            .RequireAuthorization(AuthPolicies.FormsView);
+
+        templates.MapGet("/{templateId:guid}/schema", async (Guid templateId, IFormTemplateService service, CancellationToken ct) =>
+            Results.Ok(await service.GetSchemaAsync(templateId, ct)))
             .RequireAuthorization(AuthPolicies.FormsView);
 
         templates.MapPost("/", async (

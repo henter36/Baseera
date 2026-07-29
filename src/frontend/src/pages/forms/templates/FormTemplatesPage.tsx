@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { api, ApiError } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
 
@@ -10,6 +10,7 @@ export function FormTemplatesPage() {
   const [code, setCode] = useState('')
   const [nameAr, setNameAr] = useState('')
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const listQuery = useQuery({
     queryKey: ['form-templates'],
@@ -28,7 +29,7 @@ export function FormTemplatesPage() {
       }),
     onSuccess: (form) => {
       void qc.invalidateQueries({ queryKey: ['forms'] })
-      window.location.assign(`/forms/${form.id}/versions`)
+      void navigate(`/forms/${form.id}/versions`)
     },
   })
 

@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 public interface IFormTemplateService
 {
     Task<IReadOnlyList<FormTemplateListItemDto>> ListAsync(CancellationToken cancellationToken = default);
+    Task<FormTemplateSchemaDto> GetSchemaAsync(Guid templateId, CancellationToken cancellationToken = default);
     Task<FormTemplateListItemDto> CreateFromLockedVersionAsync(CreateFormTemplateRequest request, CancellationToken cancellationToken = default);
     Task<FormDetailDto> CreateFormFromTemplateAsync(Guid templateId, CreateFormFromTemplateRequest request, CancellationToken cancellationToken = default);
 }
@@ -26,6 +27,25 @@ public sealed class FormTemplateService(
     public async Task<IReadOnlyList<FormTemplateListItemDto>> ListAsync(CancellationToken cancellationToken = default)
     {
         FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsView);
+        var query = await BuildVisibleTemplatesQueryAsync(cancellationToken);
+        var templates = await query.OrderBy(t => t.NameAr).ToListAsync(cancellationToken);
+        return templates.Select(Map).ToList();
+    }
+
+    public async Task<FormTemplateSchemaDto> GetSchemaAsync(Guid templateId, CancellationToken cancellationToken = default)
+    {
+        FormAccessHelper.EnsurePermission(currentUser, PermissionCodes.FormsView);
+        var query = await BuildVisibleTemplatesQueryAsync(cancellationToken);
+        var template = await query.FirstOrDefaultAsync(t => t.Id == templateId, cancellationToken)
+            ?? throw new KeyNotFoundException("القالب غير موجود.");
+        return new FormTemplateSchemaDto(template.Id, template.NameAr, template.CanonicalSchemaJson, template.PageCount, template.SectionCount, template.FieldCount);
+    }
+
+    /// Same eligibility rules the studio's start-flow list and preview both rely on: sensitivity,
+    /// visibility (Organization / Department / Private), and source-form scope must all agree so a
+    /// template can never be listed but blocked on preview (or vice versa).
+    private async Task<IQueryable<FormTemplate>> BuildVisibleTemplatesQueryAsync(CancellationToken cancellationToken)
+    {
         var userId = currentUser.UserId ?? throw new UnauthorizedAccessException();
         var canSensitive = FormAccessHelper.CanViewSensitive(currentUser);
 
@@ -49,10 +69,7 @@ public sealed class FormTemplateService(
                 && t.OwnerDepartmentId != null
                 && (t.OwnerUserId == userId || accessibleDepartmentIds.Contains(t.OwnerDepartmentId.Value))));
 
-        query = query.Where(t => !t.SourceFormDefinitionId.HasValue || scopedFormIds.Contains(t.SourceFormDefinitionId.Value));
-
-        var templates = await query.OrderBy(t => t.NameAr).ToListAsync(cancellationToken);
-        return templates.Select(Map).ToList();
+        return query.Where(t => !t.SourceFormDefinitionId.HasValue || scopedFormIds.Contains(t.SourceFormDefinitionId.Value));
     }
 
     public async Task<FormTemplateListItemDto> CreateFromLockedVersionAsync(

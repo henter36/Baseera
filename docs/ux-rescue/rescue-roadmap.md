@@ -40,6 +40,8 @@
 
 ## المرحلة 2 — Form Designer rescue (#144)
 
+> **تحديث Phase 2A (منفَّذة جزئيًا — راجع سجل الامتثال)**: نُفِّذت فعليًا على فرع `ux-rescue-phase2a-unified-form-designer-studio` — استوديو موحَّد واحد يدمج بند "أ" (دمج Form/FormVersion + إصلاح القفل كوضع قراءة فقط + حارس التنقّل) وبند "ب" (Condition builder) وبند "ج" (Formula builder) وبند "د" (دمج القوالب) معًا في تنفيذ واحد بدل 4 PRs منفصلة كما اقتُرح أدناه أصلاً — قرار دمج واعٍ لأن الأجزاء الأربعة تتشارك نفس الحالة (`historyStore`, `applySchema`) ويصعب فصلها دون ازدواج. راجع `docs/ux-rescue/phase2a-form-designer-completion-report.md` و`docs/ux-rescue/phase2a-form-designer-compliance-ledger.md` للتفاصيل والبنود المتبقية (Partial/Missing) قبل إغلاق Issue #144 فعليًا.
+
 - **الهدف**: استوديو تأليف موحَّد بوضعين (بسيط/متقدم)، مع بناء Condition/Formula UI الغائبة تمامًا اليوم.
 - **النطاق**: راجع `form-designer-gap-analysis.md` بالكامل — أولوية قصوى لبناء **Condition builder وFormula builder** (فجوة Critical مؤكَّدة، لا مجرد تحسين)؛ دمج Form+FormVersion في عرض حالة واحد؛ إضافة حارس تنقّل/`beforeunload`؛ دمج القوالب كخطوة بداية بدل `window.location.assign`.
 - **الاعتماديات**: مستقلة عن المرحلة 1 (مجال منفصل تمامًا)، يمكن تنفيذها بالتوازي.
