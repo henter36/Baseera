@@ -62,6 +62,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<IFormWorkflowService, FormWorkflowService>();
         services.AddScoped<IFormAccessGrantService, FormAccessGrantService>();
         services.AddScoped<IFormSchemaCanonicalizer, FormSchemaCanonicalizer>();
+        services.AddScoped<IFormVersionAccessGuard, FormVersionAccessGuard>();
         services.AddScoped<IFormVersionService, FormVersionService>();
         services.AddScoped<IFormTemplateService, FormTemplateService>();
         services.AddScoped<IFormTimeZoneResolver, FormTimeZoneResolver>();

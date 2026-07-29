@@ -87,6 +87,36 @@ public sealed class FormsVersionIntegrationTests : IntegrationTestBase<FormsInte
     }
 
     [IntegrationConnectionFact]
+    public async Task SubmitForReview_with_a_schema_that_fails_minimum_content_validation_is_rejected_and_leaves_the_draft_untouched()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-v-designer");
+        var form = await CreateFormAsync(designer);
+        var created = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions", new { });
+        var version = JsonSerializer.Deserialize<VersionDetail>(await created.Content.ReadAsStringAsync(), JsonOptions)!;
+
+        var emptySchema = JsonSerializer.Serialize(new { schemaFormatVersion = 1, pages = Array.Empty<object>() });
+        var save = await designer.PutAsJsonAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}/schema", new
+        {
+            schemaJson = emptySchema,
+            rowVersion = version.RowVersion
+        });
+        var saveBody = await save.Content.ReadAsStringAsync();
+        Assert.True(save.IsSuccessStatusCode, saveBody);
+        version = JsonSerializer.Deserialize<VersionDetail>(saveBody, JsonOptions)!;
+
+        var submit = await designer.PostAsJsonAsync(
+            $"/api/v1/forms/{form.Id}/versions/{version.Id}/submit-review",
+            new { reason = "إرسال بمخطط فارغ", rowVersion = version.RowVersion });
+        Assert.Equal(HttpStatusCode.BadRequest, submit.StatusCode);
+
+        // A rejected submission must not silently transition the version's status.
+        var reload = await designer.GetAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}");
+        var reloadedVersion = JsonSerializer.Deserialize<VersionDetail>(await reload.Content.ReadAsStringAsync(), JsonOptions)!;
+        Assert.Equal(FormVersionStatus.Draft, reloadedVersion.Status);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Version_rowversion_conflict_returns_409()
     {
         await SeedAsync();
