@@ -313,7 +313,14 @@ function ChoiceOptionsEditor({ field, onChange }: Readonly<{ field: FormFieldSch
     <div className="field field-wide">
       <span>الخيارات</span>
       {choice.options.map((option, index) => (
-        <div key={index} className="designer-row">
+        // Index is intentional, not the general anti-pattern S6479 warns about: this row holds
+        // controlled inputs with no local state, and moveOption() swaps array entries in place
+        // (same DOM position, swapped content) rather than reordering keys, so an index key stays
+        // correct across reordering too. option.value was tried and reverted as a key — the user
+        // can edit that exact field, and a key that changes while it's being typed into remounts
+        // the row and drops focus mid-edit. See StudioInspector.test.tsx "does not lose focus
+        // while typing into an option key input".
+        <div key={index} className="designer-row"> {/* NOSONAR */}
           <input aria-label={`نص الخيار ${index + 1}`} value={option.labelAr} onChange={(e) => updateOption(index, { labelAr: e.target.value })} />
           <input aria-label={`مفتاح الخيار ${index + 1}`} value={option.value} onChange={(e) => updateOption(index, { value: e.target.value })} />
           {keyErrors[index] && <span className="field-error">{keyErrors[index]}</span>}

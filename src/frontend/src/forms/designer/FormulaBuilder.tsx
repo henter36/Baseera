@@ -159,7 +159,13 @@ function FormulaNodeEditor({ node, onChange, availableFields, excludeFieldKey, r
           </select>
           <span className="formula-node-args">
             {current.arguments.map((arg, index) => (
-              <span className="formula-node-arg" key={index}>
+              // Index is intentional, not the general anti-pattern S6479 warns about: this argument
+              // holds a controlled input with no local state, and arguments are only appended/
+              // removed-by-filter, never reordered. A content-derived key (JSON.stringify(arg)) was
+              // tried and reverted — it changes on every keystroke, remounting the input and
+              // dropping focus mid-edit. See FormulaBuilder.test.tsx "does not lose focus while
+              // typing into a constant-number argument".
+              <span className="formula-node-arg" key={index}> {/* NOSONAR */}
                 <FormulaNodeEditor
                   node={arg}
                   onChange={(next) => {

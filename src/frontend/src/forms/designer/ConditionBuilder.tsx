@@ -167,7 +167,13 @@ export function ConditionBuilder({
         const isMulti = MULTI_VALUE_OPERATORS.has(predicate.operator)
 
         return (
-          <div className="condition-builder-predicate" key={index}>
+          // Index is intentional, not the general anti-pattern S6479 warns about: this row holds
+          // controlled text/select inputs with no per-row local state, and the list only supports
+          // append (addPredicate) and filter-based removal, never reordering. A content-derived
+          // key (e.g. JSON.stringify(predicate)) was tried and reverted — it changes on every
+          // keystroke, which remounts the row and drops input focus mid-edit. See
+          // ConditionBuilder.test.tsx "does not lose focus while typing into a predicate value input".
+          <div className="condition-builder-predicate" key={index}> {/* NOSONAR */}
             <select
               aria-label="الحقل"
               value={predicate.fieldKey}
@@ -236,7 +242,10 @@ export function ConditionBuilder({
       })}
 
       {group.groups.map((nested, index) => (
-        <div className="condition-builder-nested" key={index}>
+        // Index is intentional here too, for the same reason as the predicate rows above: append/
+        // filter-only list, no per-row local state, and a content-derived key remounts (and drops
+        // focus in) any input nested inside the sub-group on every keystroke.
+        <div className="condition-builder-nested" key={index}> {/* NOSONAR */}
           <ConditionBuilder
             value={nested}
             onChange={(next) => updateNestedGroup(index, next)}
