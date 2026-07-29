@@ -1,15 +1,64 @@
-import { reindexOrders, type FormFieldSchema, type FormPageSchema, type FormSchemaDocument, type FormSectionSchema } from './schemaTypes'
+import {
+  reindexOrders,
+  type FormConditionGroup,
+  type FormFieldSchema,
+  type FormFormulaNode,
+  type FormPageSchema,
+  type FormSchemaDocument,
+  type FormSectionSchema,
+} from './schemaTypes'
 
-function cloneWithNewIds(field: FormFieldSchema): FormFieldSchema {
+function remapConditionGroup<T extends FormConditionGroup | null | undefined>(group: T, keyMap: Map<string, string>): T {
+  if (!group) return group
+  return {
+    ...group,
+    predicates: group.predicates.map((p) => ({ ...p, fieldKey: keyMap.get(p.fieldKey) ?? p.fieldKey })),
+    groups: group.groups.map((g) => remapConditionGroup(g, keyMap)),
+  } as T
+}
+
+function remapFormulaNode<T extends FormFormulaNode | null | undefined>(node: T, keyMap: Map<string, string>): T {
+  if (!node) return node
+  switch (node.kind) {
+    case 'fieldReference':
+      return { ...node, fieldKey: keyMap.get(node.fieldKey) ?? node.fieldKey } as T
+    case 'binary':
+      return { ...node, left: remapFormulaNode(node.left, keyMap), right: remapFormulaNode(node.right, keyMap) } as T
+    case 'function':
+      return { ...node, arguments: node.arguments.map((a) => remapFormulaNode(a, keyMap)) } as T
+    default:
+      return node
+  }
+}
+
+/** Precomputes old-key -> new-key for every field being duplicated together (including nested
+ * repeating-table columns), so visibilityCondition/requiredCondition/formula references between
+ * fields in the same duplicated group can be rewritten to point at their copies rather than the
+ * untouched originals. */
+function collectFieldKeyMap(fields: FormFieldSchema[], map: Map<string, string> = new Map()): Map<string, string> {
+  for (const field of fields) {
+    const newId = crypto.randomUUID()
+    map.set(field.key, `${field.key}_copy_${newId.slice(0, 4)}`)
+    if (field.repeatingTable) {
+      collectFieldKeyMap(field.repeatingTable.columns, map)
+    }
+  }
+  return map
+}
+
+function cloneWithNewIds(field: FormFieldSchema, keyMap: Map<string, string>): FormFieldSchema {
   const id = crypto.randomUUID()
   return {
     ...field,
     id,
-    key: `${field.key}_copy_${id.slice(0, 4)}`,
+    key: keyMap.get(field.key) ?? `${field.key}_copy_${id.slice(0, 4)}`,
     choice: field.choice ? { ...field.choice, options: field.choice.options.map((o) => ({ ...o })) } : field.choice,
     repeatingTable: field.repeatingTable
-      ? { ...field.repeatingTable, columns: field.repeatingTable.columns.map(cloneWithNewIds) }
+      ? { ...field.repeatingTable, columns: field.repeatingTable.columns.map((c) => cloneWithNewIds(c, keyMap)) }
       : field.repeatingTable,
+    visibilityCondition: remapConditionGroup(field.visibilityCondition, keyMap),
+    requiredCondition: remapConditionGroup(field.requiredCondition, keyMap),
+    formula: remapFormulaNode(field.formula, keyMap),
   }
 }
 
@@ -53,12 +102,14 @@ export function duplicateSection(schema: FormSchemaDocument, pageId: string, sec
       if (page.id !== pageId) return page
       const source = page.sections.find((s) => s.id === sectionId)
       if (!source) return page
+      const keyMap = collectFieldKeyMap(source.fields)
       const copy: FormSectionSchema = {
         ...source,
         id,
         key: `${source.key}_copy_${id.slice(0, 4)}`,
         titleAr: `${source.titleAr} (نسخة)`,
-        fields: source.fields.map(cloneWithNewIds),
+        visibilityCondition: remapConditionGroup(source.visibilityCondition, keyMap),
+        fields: source.fields.map((f) => cloneWithNewIds(f, keyMap)),
       }
       return { ...page, sections: [...page.sections, copy] }
     }),
@@ -85,7 +136,9 @@ export function duplicateField(schema: FormSchemaDocument, pageId: string, secti
           if (section.id !== sectionId) return section
           const index = section.fields.findIndex((f) => f.id === fieldId)
           if (index === -1) return section
-          const copy = cloneWithNewIds(section.fields[index])
+          const source = section.fields[index]
+          const keyMap = collectFieldKeyMap(source.repeatingTable ? source.repeatingTable.columns : [])
+          const copy = cloneWithNewIds(source, keyMap)
           const fields = [...section.fields]
           fields.splice(index + 1, 0, copy)
           return { ...section, fields }
@@ -125,14 +178,22 @@ export function duplicatePage(schema: FormSchemaDocument, pageId: string): FormS
   const id = crypto.randomUUID()
   const source = schema.pages.find((p) => p.id === pageId)
   if (!source) return schema
+  const keyMap = source.sections.reduce((map, section) => collectFieldKeyMap(section.fields, map), new Map<string, string>())
   const copy: FormPageSchema = {
     ...source,
     id,
     key: `${source.key}_copy_${id.slice(0, 4)}`,
     titleAr: `${source.titleAr} (نسخة)`,
+    visibilityCondition: remapConditionGroup(source.visibilityCondition, keyMap),
     sections: source.sections.map((section) => {
       const sectionId = crypto.randomUUID()
-      return { ...section, id: sectionId, key: `${section.key}_copy_${sectionId.slice(0, 4)}`, fields: section.fields.map(cloneWithNewIds) }
+      return {
+        ...section,
+        id: sectionId,
+        key: `${section.key}_copy_${sectionId.slice(0, 4)}`,
+        visibilityCondition: remapConditionGroup(section.visibilityCondition, keyMap),
+        fields: section.fields.map((f) => cloneWithNewIds(f, keyMap)),
+      }
     }),
   }
   return reindexOrders({ ...schema, pages: [...schema.pages, copy] })
