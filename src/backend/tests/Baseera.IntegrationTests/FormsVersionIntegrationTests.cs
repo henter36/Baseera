@@ -87,6 +87,36 @@ public sealed class FormsVersionIntegrationTests : IntegrationTestBase<FormsInte
     }
 
     [IntegrationConnectionFact]
+    public async Task SubmitForReview_with_a_schema_that_fails_minimum_content_validation_is_rejected_and_leaves_the_draft_untouched()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-v-designer");
+        var form = await CreateFormAsync(designer);
+        var created = await designer.PostAsJsonAsync($"/api/v1/forms/{form.Id}/versions", new { });
+        var version = JsonSerializer.Deserialize<VersionDetail>(await created.Content.ReadAsStringAsync(), JsonOptions)!;
+
+        var emptySchema = JsonSerializer.Serialize(new { schemaFormatVersion = 1, pages = Array.Empty<object>() });
+        var save = await designer.PutAsJsonAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}/schema", new
+        {
+            schemaJson = emptySchema,
+            rowVersion = version.RowVersion
+        });
+        var saveBody = await save.Content.ReadAsStringAsync();
+        Assert.True(save.IsSuccessStatusCode, saveBody);
+        version = JsonSerializer.Deserialize<VersionDetail>(saveBody, JsonOptions)!;
+
+        var submit = await designer.PostAsJsonAsync(
+            $"/api/v1/forms/{form.Id}/versions/{version.Id}/submit-review",
+            new { reason = "إرسال بمخطط فارغ", rowVersion = version.RowVersion });
+        Assert.Equal(HttpStatusCode.BadRequest, submit.StatusCode);
+
+        // A rejected submission must not silently transition the version's status.
+        var reload = await designer.GetAsync($"/api/v1/forms/{form.Id}/versions/{version.Id}");
+        var reloadedVersion = JsonSerializer.Deserialize<VersionDetail>(await reload.Content.ReadAsStringAsync(), JsonOptions)!;
+        Assert.Equal(FormVersionStatus.Draft, reloadedVersion.Status);
+    }
+
+    [IntegrationConnectionFact]
     public async Task Version_rowversion_conflict_returns_409()
     {
         await SeedAsync();
@@ -441,6 +471,17 @@ public sealed class FormsVersionIntegrationTests : IntegrationTestBase<FormsInte
         Assert.DoesNotContain(listOther, t => t.Id == privateItem.Id);
         Assert.DoesNotContain(listOther, t => t.Id == deptItem.Id);
 
+        // Preview (GET .../schema) must follow the exact same visibility rules as the list —
+        // a template that is listed for a user must be previewable, and vice versa.
+        var previewOrgByOther = await other.GetAsync($"/api/v1/form-templates/{orgItem.Id}/schema");
+        Assert.True(previewOrgByOther.IsSuccessStatusCode, await previewOrgByOther.Content.ReadAsStringAsync());
+        var previewPrivateByOther = await other.GetAsync($"/api/v1/form-templates/{privateItem.Id}/schema");
+        Assert.Equal(HttpStatusCode.NotFound, previewPrivateByOther.StatusCode);
+        var previewPrivateByOwner = await designer.GetAsync($"/api/v1/form-templates/{privateItem.Id}/schema");
+        Assert.True(previewPrivateByOwner.IsSuccessStatusCode, await previewPrivateByOwner.Content.ReadAsStringAsync());
+        var previewSchema = JsonSerializer.Deserialize<TemplateSchemaDto>(await previewPrivateByOwner.Content.ReadAsStringAsync(), JsonOptions)!;
+        Assert.False(string.IsNullOrWhiteSpace(previewSchema.CanonicalSchemaJson));
+
         await _factory.SeedUserAsync("forms-v-region-tpl", "منطقة", [RoleCodes.FormDesigner],
             (ScopeType.Region, SeedIds.RegionA, null));
         var regionClient = _factory.CreateAuthenticatedClient("forms-v-region-tpl");
@@ -448,6 +489,75 @@ public sealed class FormsVersionIntegrationTests : IntegrationTestBase<FormsInte
         Assert.DoesNotContain(listRegion, t => t.Id == orgItem.Id);
         Assert.DoesNotContain(listRegion, t => t.Id == deptItem.Id);
         Assert.DoesNotContain(listRegion, t => t.Id == privateItem.Id);
+    }
+
+    [IntegrationConnectionFact]
+    public async Task Copy_from_existing_form_seeds_new_draft_and_records_audit_provenance()
+    {
+        await SeedAsync();
+        var designer = _factory.CreateAuthenticatedClient("forms-v-designer");
+
+        var sourceForm = await CreateFormAsync(designer);
+        var sourceVersionResponse = await designer.PostAsJsonAsync($"/api/v1/forms/{sourceForm.Id}/versions", new { });
+        var sourceVersion = JsonSerializer.Deserialize<VersionDetail>(await sourceVersionResponse.Content.ReadAsStringAsync(), JsonOptions)!;
+        var schema = MinimalValidSchemaJson();
+        var saveResponse = await designer.PutAsJsonAsync($"/api/v1/forms/{sourceForm.Id}/versions/{sourceVersion.Id}/schema", new
+        {
+            schemaJson = schema,
+            rowVersion = sourceVersion.RowVersion
+        });
+        sourceVersion = JsonSerializer.Deserialize<VersionDetail>(await saveResponse.Content.ReadAsStringAsync(), JsonOptions)!;
+
+        var newCode = $"VFCOPY{Interlocked.Increment(ref _codeSequence):D4}";
+        var copyResponse = await designer.PostAsJsonAsync($"/api/v1/forms/copy-from/{sourceForm.Id}/{sourceVersion.Id}", new
+        {
+            code = newCode,
+            nameAr = "نموذج منسوخ",
+            nameEn = (string?)null,
+            description = "نسخة من نموذج قائم",
+            classification = 1,
+            scopeType = ScopeType.Global,
+            regionId = (Guid?)null,
+            facilityId = (Guid?)null,
+            facilityUnitId = (Guid?)null,
+            ownerDepartmentId = (Guid?)null
+        });
+        var copyBody = await copyResponse.Content.ReadAsStringAsync();
+        Assert.True(copyResponse.IsSuccessStatusCode, copyBody);
+        var copiedVersion = JsonSerializer.Deserialize<VersionDetail>(copyBody, JsonOptions)!;
+
+        Assert.NotEqual(sourceForm.Id, copiedVersion.FormDefinitionId);
+        Assert.Equal(1, copiedVersion.VersionNumber);
+        Assert.Equal(FormVersionStatus.Draft, copiedVersion.Status);
+        Assert.Equal(sourceVersion.DraftSchemaHash, copiedVersion.DraftSchemaHash);
+
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<BaseeraDbContext>();
+        var auditEntry = await db.AuditLogs
+            .Where(a => a.Action == "FormVersionCopiedFromExistingForm" && a.EntityId == copiedVersion.Id.ToString("D"))
+            .FirstOrDefaultAsync();
+        Assert.NotNull(auditEntry);
+        Assert.Contains(sourceForm.Id.ToString(), auditEntry!.NewValuesJson);
+        Assert.Contains(sourceVersion.Id.ToString(), auditEntry.NewValuesJson);
+
+        // Copying from a form outside the caller's scope must behave like it does not exist.
+        await _factory.SeedUserAsync("forms-v-copy-region", "منطقة نسخ", [RoleCodes.FormDesigner],
+            (ScopeType.Region, SeedIds.RegionA, null));
+        var regionClient = _factory.CreateAuthenticatedClient("forms-v-copy-region");
+        var deniedCopy = await regionClient.PostAsJsonAsync($"/api/v1/forms/copy-from/{sourceForm.Id}/{sourceVersion.Id}", new
+        {
+            code = $"VFCOPYDENY{Interlocked.Increment(ref _codeSequence):D4}",
+            nameAr = "محاولة نسخ خارج النطاق",
+            nameEn = (string?)null,
+            description = "لا يجب أن تنجح",
+            classification = 1,
+            scopeType = ScopeType.Region,
+            regionId = SeedIds.RegionA,
+            facilityId = (Guid?)null,
+            facilityUnitId = (Guid?)null,
+            ownerDepartmentId = (Guid?)null
+        });
+        Assert.Equal(HttpStatusCode.NotFound, deniedCopy.StatusCode);
     }
 
     private async Task SeedAsync()
@@ -543,4 +653,6 @@ public sealed class FormsVersionIntegrationTests : IntegrationTestBase<FormsInte
     private sealed record SnapshotDto(Guid Id, string SchemaHash, string CanonicalSchemaJson);
 
     private sealed record TemplateItem(Guid Id, string Code);
+
+    private sealed record TemplateSchemaDto(Guid Id, string NameAr, string CanonicalSchemaJson, int PageCount, int SectionCount, int FieldCount);
 }

@@ -22,7 +22,7 @@ export function FormVersionsPage() {
     mutationFn: () => api.forms.createVersion(formId!),
     onSuccess: (version) => {
       void qc.invalidateQueries({ queryKey: ['form-versions', formId] })
-      void navigate(`/forms/${formId}/versions/${version.id}/edit`)
+      void navigate(`/forms/designer/${formId}?versionId=${version.id}`)
     },
   })
 
@@ -46,6 +46,7 @@ export function FormVersionsPage() {
         <h1 className="page-title">إصدارات النموذج</h1>
         <div className="toolbar">
           <Link to={`/forms/${formId}`} className="secondary">عودة للنموذج</Link>
+          {items.length > 1 && <Link to={`/forms/${formId}/versions/compare`} className="secondary">مقارنة الإصدارات</Link>}
           {canDesign && (
             <button type="button" onClick={() => createMutation.mutate()} disabled={createMutation.isPending}>
               إصدار جديد
@@ -79,7 +80,7 @@ export function FormVersionsPage() {
                     {editable && canDesign && (
                       <>
                         {' · '}
-                        <Link to={`/forms/${formId}/versions/${v.id}/edit`}>تصميم</Link>
+                        <Link to={`/forms/designer/${formId}?versionId=${v.id}`}>تصميم</Link>
                       </>
                     )}
                     {status === 4 && (

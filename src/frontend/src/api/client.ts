@@ -2536,6 +2536,15 @@ export type FormVersionReviewDecisionDto = {
   isAdministrativeOverride: boolean
 }
 
+export type FormTemplateSchema = {
+  id: string
+  nameAr: string
+  canonicalSchemaJson: string
+  pageCount: number
+  sectionCount: number
+  fieldCount: number
+}
+
 export type FormTemplateListItem = {
   id: string
   code: string
@@ -3698,6 +3707,8 @@ export const api = {
       postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions`, body),
     cloneVersion: (formId: string, versionId: string) =>
       postJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/clone`, {}),
+    copyFromExistingForm: (sourceFormId: string, sourceVersionId: string, body: CreateFormRequest) =>
+      postJson<FormVersionDetail>(`/api/v1/forms/copy-from/${sourceFormId}/${sourceVersionId}`, body),
     saveSchema: (formId: string, versionId: string, body: SaveFormSchemaRequest) =>
       putJson<FormVersionDetail>(`/api/v1/forms/${formId}/versions/${versionId}/schema`, body),
     autosaveSchema: (formId: string, versionId: string, body: SaveFormSchemaRequest) =>
@@ -3729,6 +3740,7 @@ export const api = {
 
   formTemplates: {
     list: () => request<FormTemplateListItem[]>('/api/v1/form-templates'),
+    getSchema: (templateId: string) => request<FormTemplateSchema>(`/api/v1/form-templates/${templateId}/schema`),
     create: (body: CreateFormTemplateRequest) => postJson<FormTemplateListItem>('/api/v1/form-templates', body),
     createForm: (templateId: string, body: CreateFormFromTemplateRequest) =>
       postJson<FormDetail>(`/api/v1/form-templates/${templateId}/create-form`, body),

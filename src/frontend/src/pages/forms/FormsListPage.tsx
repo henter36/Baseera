@@ -101,8 +101,8 @@ export function FormsListPage() {
           <p className="muted">عرض تعريفات النماذج ضمن نطاقك مع الفرز والتصفية.</p>
         </div>
         {canCreate && (
-          <Link to="/forms/new">
-            <button type="button">نموذج جديد</button>
+          <Link to="/forms/designer/new">
+            <button type="button">نموذج جديد (استوديو التصميم)</button>
           </Link>
         )}
       </div>

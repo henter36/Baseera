@@ -96,7 +96,23 @@
 - Targeting/exclusions/preview via shared resolver; idempotent multi-instance scheduler.
 - Does **not** include FormResponse (#48) or reminders/notifications (#50).
 
-**التالي:** Phase C.4 / Issue #48 — form responses & fill workspace.
+### Phase C.4 — Form Response Workflow (Issue #48, Epic #45)
+
+> **تصحيح**: هذا القسم كان غير موثَّق سابقًا رغم اكتماله فعليًا — تحقَّق أثناء Phase 2A أن `FormResponse` والتطبيق الكامل والـAPI وMigration (`20260723050801_PhaseC4FormResponseWorkflow`) و4 ملفات اختبار تكامل مخصصة موجودة بالفعل في الكود.
+
+- `FormResponse` كمسودة/إرسال قابل للتحقق، مربوط بالتكليف (`FacilityAssignment`) وليس بالنموذج مباشرة.
+- Autosave مسودة الاستجابة، تحقق قبل الإرسال، مراجعة (بدء/إعادة/اعتماد/رفض/إغلاق).
+- صفحات `MyFormResponsesPage`, `RespondPage`, `FormResponseReviewsPage`, `FormResponseReviewDetailPage`.
+
+### Phase 2A — UX Rescue: Unified Form Designer Studio (Issue #144)
+
+- استوديو تأليف موحَّد واحد (`/forms/designer/new`, `/forms/designer/:formId`) يدمج الإنشاء/التصميم/الشروط/الصيغ/المعاينة/التحقق/طلب المراجعة، بدل 7 Routes منفصلة سابقًا لإنشاء نموذج بسيط.
+- Condition Builder وFormula Builder جديدان بالكامل (كانا الفجوة الحرجة الوحيدة المؤكَّدة في `form-designer-gap-analysis.md`) — مبنيان فوق نموذج البيانات ومحرك التقييم الموجودين مسبقًا، بلا محرك موازٍ.
+- دمج حالة `FormDefinition`+`FormVersion` في عرض مراجعة واحد؛ حارس مغادرة؛ بانر تعارض 409 بثلاثة خيارات آمنة؛ مقارنة إصدارين؛ وضع موبايل مراجعة فقط موثَّق ومُختبَر.
+- إضافتان صغيرتان على عقد Backend فقط: نسخ نموذج موجود عبر النماذج (`POST /api/v1/forms/copy-from/{sourceFormId}/{sourceVersionId}`)، ومعاينة قالب قبل الاستخدام (`GET /api/v1/form-templates/{id}/schema`).
+- راجع `docs/ux-rescue/phase2a-form-designer-*.md` للتفصيل الكامل (النطاق، المعمارية، الانتقال بين Routes، عقد الـSchema، الحفظ التلقائي، التحقق، الوصول، الأداء، مصفوفة الاختبارات، سجل الامتثال، تقرير الإكمال).
+
+**التالي:** Phase 3 / Issue #145 — Form Operations Workspace (نشر/استهداف/دورات/استجابات/مراجعة/التزام في مساحة واحدة)، حسب `docs/ux-rescue/rescue-roadmap.md`.
 
 ## المرحلة D — الموارد والتشغيل
 
