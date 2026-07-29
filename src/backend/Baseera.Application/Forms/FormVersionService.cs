@@ -159,7 +159,7 @@ public sealed class FormVersionService(
         Guid formId, Guid versionId, SaveFormSchemaRequest request, CancellationToken cancellationToken = default)
     {
         EnsureViewPermission();
-        var form = await accessGuard.LoadViewableAsync(formId, cancellationToken);
+        await accessGuard.LoadViewableAsync(formId, cancellationToken);
         var version = await LoadVersionAsync(formId, versionId, cancellationToken);
         FormAccessHelper.EnsureRowVersion(version.RowVersion, request.RowVersion);
         var json = string.IsNullOrWhiteSpace(request.SchemaJson) ? version.DraftSchemaJson : request.SchemaJson;

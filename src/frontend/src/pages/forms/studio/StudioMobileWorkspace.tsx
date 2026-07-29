@@ -1,6 +1,8 @@
+import type { FormSchemaValidationIssue } from '../../../api/client'
 import { FormPreviewPanel } from '../../../forms/designer/FormPreviewPanel'
 import type { FormSchemaDocument } from '../../../forms/designer/schemaTypes'
 import type { AutosaveStatus } from '../../../forms/designer/useFormDesignerAutosave'
+import { classifyIssues } from '../../../forms/designer/ValidationPanel'
 import { StudioMobileReview } from './StudioMobileReview'
 import { StudioTopBar } from './StudioTopBar'
 
@@ -16,8 +18,7 @@ type StudioMobileWorkspaceProps = {
   canValidate: boolean
   formId: string
   schema: FormSchemaDocument
-  errorCount: number
-  warningCount: number
+  issues: FormSchemaValidationIssue[]
   previewMode: PreviewMode | null
   onTogglePreview: () => void
   onClosePreview: () => void
@@ -44,8 +45,7 @@ export function StudioMobileWorkspace({
   canValidate,
   formId,
   schema,
-  errorCount,
-  warningCount,
+  issues,
   previewMode,
   onTogglePreview,
   onClosePreview,
@@ -58,6 +58,7 @@ export function StudioMobileWorkspace({
   onRequestReview,
   isRequestingReview,
 }: Readonly<StudioMobileWorkspaceProps>) {
+  const { errors, warnings } = classifyIssues(schema, issues)
   return (
     <div className="panel" dir="rtl">
       <StudioTopBar
@@ -86,8 +87,8 @@ export function StudioMobileWorkspace({
       ) : (
         <StudioMobileReview
           schema={schema}
-          errorCount={errorCount}
-          warningCount={warningCount}
+          errorCount={errors.length}
+          warningCount={warnings.length}
           onRenameFieldLabel={onRenameFieldLabel}
           onRenamePageTitle={onRenamePageTitle}
           onTogglePreview={onTogglePreview}

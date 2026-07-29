@@ -4,39 +4,20 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { api, ApiError, type FormSchemaValidationIssue, type FormVersionValidateResult } from '../../../api/client'
 import { usePermission } from '../../../auth/AuthProvider'
 import { formatApiError, hasAllowedAction, updateFieldInSchema, useDesignerSchema } from '../../../forms/designer/designerHelpers'
-import { findDependents } from '../../../forms/designer/fieldDependencies'
-import { FormPreviewPanel } from '../../../forms/designer/FormPreviewPanel'
-import { redoHistory, undoHistory, type HistoryState } from '../../../forms/designer/historyStore'
+import type { HistoryState } from '../../../forms/designer/historyStore'
 import type { FormFieldType, FormSchemaDocument } from '../../../forms/designer/schemaTypes'
-import {
-  deleteField as deleteFieldOp,
-  deletePage as deletePageOp,
-  deleteSection as deleteSectionOp,
-  duplicateField as duplicateFieldOp,
-  duplicatePage as duplicatePageOp,
-  duplicateSection as duplicateSectionOp,
-  addSection as addSectionOp,
-  renamePageTitle,
-  renameSectionTitle,
-} from '../../../forms/designer/studioSchemaOps'
+import { renamePageTitle } from '../../../forms/designer/studioSchemaOps'
 import { useFormDesignerAutosave } from '../../../forms/designer/useFormDesignerAutosave'
 import { useResponsiveStudioLayout } from '../../../forms/designer/useResponsiveStudioLayout'
 import { useUnsavedChangesGuard } from '../../../forms/designer/useUnsavedChangesGuard'
-import { classifyIssues, ValidationPanel } from '../../../forms/designer/ValidationPanel'
-import { StudioCanvas } from './StudioCanvas'
-import { StudioConflictBanner } from './StudioConflictBanner'
-import { StudioInspector } from './StudioInspector'
+import type { IssueLocation } from '../../../forms/designer/ValidationPanel'
+import { StudioDesktopWorkspace } from './StudioDesktopWorkspace'
 import { StudioMobileWorkspace } from './StudioMobileWorkspace'
-import { StudioReviewPanel } from './StudioReviewPanel'
-import { StudioSidePanel } from './StudioSidePanel'
 import { StudioStartFlow } from './StudioStartFlow'
-import { StudioTopBar } from './StudioTopBar'
 import { useStudioFieldCommands } from './useStudioFieldCommands'
 import {
-  countPageErrors,
   loadRecentTypes,
   resolveErrorMessage,
-  resolveFieldIssueTone,
   runVersionReviewDecision,
   saveCurrentSchemaAsNewVersion,
   saveRecentTypes,
@@ -273,9 +254,7 @@ function StudioWorkspace({
     return <div className="error" role="alert">{formatApiError(versionQuery.error as ApiError)}</div>
   }
 
-  const { errors, warnings } = classifyIssues(schema, issues)
-
-  const navigateToElement = (location: { pageId: string | null; fieldId: string | null }) => {
+  const navigateToElement = (location: IssueLocation) => {
     if (location.pageId) setSelectedPageId(location.pageId)
     if (location.fieldId) setSelectedFieldId(location.fieldId)
     setPreviewMode(null)
@@ -297,8 +276,7 @@ function StudioWorkspace({
         canValidate={canEdit}
         formId={formId}
         schema={schema}
-        errorCount={errors.length}
-        warningCount={warnings.length}
+        issues={issues}
         previewMode={previewMode}
         onTogglePreview={() => setPreviewMode(previewMode ? null : 'mobile')}
         onClosePreview={() => setPreviewMode(null)}
@@ -315,117 +293,57 @@ function StudioWorkspace({
   }
 
   return (
-    <div className="panel studio-shell" dir="rtl">
-      <StudioTopBar
-        formNameAr={form.nameAr}
-        formStatusAr={form.statusAr}
-        versionNumber={versionQuery.data!.versionNumber}
-        versionStatusAr={versionQuery.data!.statusAr}
-        autosaveStatus={status}
-        autosaveError={error}
-        canUndo={canEdit && history.past.length > 0}
-        canRedo={canEdit && history.future.length > 0}
-        canValidate
-        canPreview
-        canRequestReview={hasAllowedAction(allowedActions, 'SubmitForReview')}
-        isRequestingReview={submitMutation.isPending}
-        formId={formId}
-        onUndo={() => setHistory((h) => (h ? undoHistory(h) : h))}
-        onRedo={() => setHistory((h) => (h ? redoHistory(h) : h))}
-        onValidate={() => validateMutation.mutate()}
-        onTogglePreview={() => setPreviewMode(previewMode ? null : 'desktop')}
-        onRequestReview={() => submitMutation.mutate()}
-        onReloadAfterConflict={handleReloadAfterConflict}
-      />
-
-      {status === 'conflict' && (
-        <StudioConflictBanner
-          localSchema={schema}
-          serverSchema={conflictServerSchema}
-          isLoadingServerSchema={!conflictServerSchema}
-          onLoadLatest={handleReloadAfterConflict}
-          onSaveAsNewVersion={() => saveAsNewVersionMutation.mutate()}
-          isSavingAsNewVersion={isSavingAsNewVersion}
-        />
-      )}
-
-      {previewMode ? (
-        <FormPreviewPanel schema={schema} mode={previewMode} onModeChange={setPreviewMode} onClose={() => setPreviewMode(null)} />
-      ) : (
-        <>
-          {layoutMode === 'tablet' && (
-            <div className="studio-panel-toggle-row">
-              <button type="button" className="secondary" onClick={() => setLeftPanelOpen((v) => !v)} aria-expanded={leftPanelOpen}>مكتبة الحقول / المخطط</button>
-              <button type="button" className="secondary" onClick={() => setInspectorPanelOpen((v) => !v)} aria-expanded={inspectorPanelOpen}>Inspector</button>
-            </div>
-          )}
-
-          <div className="studio-body">
-            <StudioSidePanel
-              rightTab={rightTab}
-              onChangeTab={setRightTab}
-              canEdit={canEdit}
-              onAddField={handleAddField}
-              recentTypes={recentTypes}
-              schema={schema}
-              selectedFieldId={selectedFieldId}
-              errorCountByPageId={(pageId) => countPageErrors(errors, pageId)}
-              onSelectField={(pageId, fieldId) => { setSelectedPageId(pageId); setSelectedFieldId(fieldId) }}
-              panelOpen={layoutMode === 'desktop' ? undefined : leftPanelOpen}
-            />
-
-            <StudioCanvas
-              schema={schema}
-              page={page}
-              selectedPageId={selectedPageId}
-              selectedFieldId={selectedFieldId}
-              fieldIssueTone={(fieldId) => resolveFieldIssueTone(errors, warnings, fieldId)}
-              fieldDependents={(key) => findDependents(schema, key)}
-              onSelectPage={setSelectedPageId}
-              onSelectField={setSelectedFieldId}
-              onAddPage={handleAddPage}
-              onDuplicatePage={(pageId) => guardedApplySchema(duplicatePageOp(schema, pageId))}
-              onDeletePage={(pageId) => guardedApplySchema(deletePageOp(schema, pageId))}
-              canDeletePage={canEdit && schema.pages.length > 1}
-              onRenamePageTitle={renamePage}
-              onAddSection={(pageId) => guardedApplySchema(addSectionOp(schema, pageId))}
-              onDuplicateSection={(pageId, sectionId) => guardedApplySchema(duplicateSectionOp(schema, pageId, sectionId))}
-              onDeleteSection={(pageId, sectionId) => guardedApplySchema(deleteSectionOp(schema, pageId, sectionId))}
-              onRenameSectionTitle={(sectionId, title) => guardedApplySchema(renameSectionTitle(schema, sectionId, title))}
-              onDragEnd={canEdit ? onDragEnd : () => undefined}
-              onMoveField={canEdit ? moveFieldKeyboard : () => undefined}
-              onDuplicateField={(pageId, sectionId, fieldId) => guardedApplySchema(duplicateFieldOp(schema, pageId, sectionId, fieldId))}
-              onDeleteField={(pageId, sectionId, fieldId) => guardedApplySchema(deleteFieldOp(schema, pageId, sectionId, fieldId))}
-              onRenameFieldLabel={renameFieldLabel}
-            />
-
-            <div className="studio-inspector-panel" data-panel-open={layoutMode === 'desktop' ? undefined : inspectorPanelOpen}>
-              <StudioInspector schema={schema} page={page} selectedField={selectedField} issues={issues} onApplySchema={guardedApplySchema} />
-            </div>
-          </div>
-
-          {(errors.length > 0 || warnings.length > 0) && (
-            <ValidationPanel schema={schema} issues={issues} onNavigateToElement={navigateToElement} />
-          )}
-
-          {(canEdit || canReviewOrApprove) && (
-            <StudioReviewPanel
-              formId={formId}
-              versionId={versionId}
-              formStatusAr={form.statusAr}
-              versionStatusAr={versionQuery.data!.statusAr}
-              versionAllowedActions={allowedActions}
-              lastValidation={lastValidation}
-              hasBlockingErrors={errors.length > 0}
-              isSubmitting={submitMutation.isPending}
-              onSubmitForReview={() => submitMutation.mutate()}
-              onReviewDecision={(action, reason) => decisionMutation.mutate({ action, reason })}
-              isDecisionPending={decisionMutation.isPending}
-              decisionError={decisionError}
-            />
-          )}
-        </>
-      )}
-    </div>
+    <StudioDesktopWorkspace
+      formId={formId}
+      versionId={versionId}
+      formNameAr={form.nameAr}
+      formStatusAr={form.statusAr}
+      versionNumber={versionQuery.data!.versionNumber}
+      versionStatusAr={versionQuery.data!.statusAr}
+      allowedActions={allowedActions}
+      autosaveStatus={status}
+      autosaveError={error}
+      canEdit={canEdit}
+      canReviewOrApprove={canReviewOrApprove}
+      history={history}
+      setHistory={setHistory}
+      schema={schema}
+      page={page}
+      selectedPageId={selectedPageId}
+      selectedFieldId={selectedFieldId}
+      selectedField={selectedField}
+      setSelectedPageId={setSelectedPageId}
+      setSelectedFieldId={setSelectedFieldId}
+      rawIssues={issues}
+      lastValidation={lastValidation}
+      previewMode={previewMode}
+      setPreviewMode={setPreviewMode}
+      layoutMode={layoutMode}
+      rightTab={rightTab}
+      setRightTab={setRightTab}
+      leftPanelOpen={leftPanelOpen}
+      setLeftPanelOpen={setLeftPanelOpen}
+      inspectorPanelOpen={inspectorPanelOpen}
+      setInspectorPanelOpen={setInspectorPanelOpen}
+      recentTypes={recentTypes}
+      handleAddField={handleAddField}
+      handleAddPage={handleAddPage}
+      guardedApplySchema={guardedApplySchema}
+      onDragEnd={onDragEnd}
+      moveFieldKeyboard={moveFieldKeyboard}
+      renameFieldLabel={renameFieldLabel}
+      renamePage={renamePage}
+      navigateToElement={navigateToElement}
+      conflictServerSchema={conflictServerSchema}
+      onReloadAfterConflict={handleReloadAfterConflict}
+      onSaveAsNewVersion={() => saveAsNewVersionMutation.mutate()}
+      isSavingAsNewVersion={isSavingAsNewVersion}
+      onValidate={() => validateMutation.mutate()}
+      onRequestReview={() => submitMutation.mutate()}
+      isRequestingReview={submitMutation.isPending}
+      onReviewDecision={(action, reason) => decisionMutation.mutate({ action, reason })}
+      isDecisionPending={decisionMutation.isPending}
+      decisionError={decisionError}
+    />
   )
 }
