@@ -138,6 +138,27 @@ export function duplicatePage(schema: FormSchemaDocument, pageId: string): FormS
   return reindexOrders({ ...schema, pages: [...schema.pages, copy] })
 }
 
+export function appendNewPage(schema: FormSchemaDocument): { schema: FormSchemaDocument; pageId: string } {
+  const pageId = crypto.randomUUID()
+  const sectionId = crypto.randomUUID()
+  return {
+    pageId,
+    schema: {
+      ...schema,
+      pages: [
+        ...schema.pages,
+        {
+          id: pageId,
+          key: `page_${pageId.slice(0, 8)}`,
+          titleAr: `صفحة ${schema.pages.length + 1}`,
+          order: schema.pages.length,
+          sections: [{ id: sectionId, key: `section_${sectionId.slice(0, 8)}`, titleAr: 'قسم', order: 0, fields: [] }],
+        },
+      ],
+    },
+  }
+}
+
 export function moveFieldAcrossSections(
   schema: FormSchemaDocument,
   pageId: string,
