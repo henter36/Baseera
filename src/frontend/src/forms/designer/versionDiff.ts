@@ -42,25 +42,41 @@ function diffOptions(before: FormFieldSchema | null, after: FormFieldSchema | nu
   return changes
 }
 
-function diffField(before: FormFieldSchema | null, after: FormFieldSchema | null): Omit<FieldDiffEntry, 'key' | 'kind' | 'before' | 'after'> {
-  const changedProperties: string[] = []
-  if (before && after) {
-    if (before.labelAr !== after.labelAr) changedProperties.push('العنوان')
-    if (before.type !== after.type) changedProperties.push('النوع')
-    if ((before.description ?? '') !== (after.description ?? '')) changedProperties.push('الوصف')
-    if ((before.defaultValue ?? '') !== (after.defaultValue ?? '')) changedProperties.push('القيمة الافتراضية')
-    if (stableJson(before.text) !== stableJson(after.text)) changedProperties.push('إعدادات النص')
-    if (stableJson(before.number) !== stableJson(after.number)) changedProperties.push('إعدادات الرقم')
-    if (stableJson(before.file) !== stableJson(after.file)) changedProperties.push('إعدادات المرفق')
-  }
+type FieldPropertyDiffCheck = {
+  label: string
+  isDifferent: (before: FormFieldSchema, after: FormFieldSchema) => boolean
+}
 
+// Order matches the original if-chain exactly — changedProperties must render in this sequence.
+const FIELD_PROPERTY_CHECKS: FieldPropertyDiffCheck[] = [
+  { label: 'العنوان', isDifferent: (b, a) => b.labelAr !== a.labelAr },
+  { label: 'النوع', isDifferent: (b, a) => b.type !== a.type },
+  { label: 'الوصف', isDifferent: (b, a) => (b.description ?? '') !== (a.description ?? '') },
+  { label: 'القيمة الافتراضية', isDifferent: (b, a) => (b.defaultValue ?? '') !== (a.defaultValue ?? '') },
+  { label: 'إعدادات النص', isDifferent: (b, a) => stableJson(b.text) !== stableJson(a.text) },
+  { label: 'إعدادات الرقم', isDifferent: (b, a) => stableJson(b.number) !== stableJson(a.number) },
+  { label: 'إعدادات المرفق', isDifferent: (b, a) => stableJson(b.file) !== stableJson(a.file) },
+  { label: 'قواعد التحقق', isDifferent: (b, a) => stableJson(b.validationRules) !== stableJson(a.validationRules) },
+]
+
+function diffFieldProperties(before: FormFieldSchema | null, after: FormFieldSchema | null): string[] {
+  if (!before || !after) return []
+  return FIELD_PROPERTY_CHECKS.filter((check) => check.isDifferent(before, after)).map((check) => check.label)
+}
+
+function hasRequiredChanged(before: FormFieldSchema | null, after: FormFieldSchema | null): boolean {
+  const requiredFlagChanged = (before?.isRequired ?? false) !== (after?.isRequired ?? false)
+  const requiredConditionChanged = stableJson(before?.requiredCondition) !== stableJson(after?.requiredCondition)
+  return requiredFlagChanged || requiredConditionChanged
+}
+
+function diffField(before: FormFieldSchema | null, after: FormFieldSchema | null): Omit<FieldDiffEntry, 'key' | 'kind' | 'before' | 'after'> {
   return {
-    changedProperties,
+    changedProperties: diffFieldProperties(before, after),
     optionChanges: diffOptions(before, after),
     conditionChanged: stableJson(before?.visibilityCondition) !== stableJson(after?.visibilityCondition),
     formulaChanged: stableJson(before?.formula) !== stableJson(after?.formula),
-    requiredChanged: (before?.isRequired ?? false) !== (after?.isRequired ?? false)
-      || stableJson(before?.requiredCondition) !== stableJson(after?.requiredCondition),
+    requiredChanged: hasRequiredChanged(before, after),
   }
 }
 

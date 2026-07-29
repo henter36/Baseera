@@ -1,6 +1,6 @@
 import type { FormSchemaValidationIssue } from '../../api/client'
 import { flattenFields } from './fieldDependencies'
-import type { FormSchemaDocument } from './schemaTypes'
+import type { FormFieldSchema, FormSchemaDocument } from './schemaTypes'
 
 export type IssueLocation = {
   pageId: string | null
@@ -11,36 +11,52 @@ export type IssueLocation = {
   fieldLabelAr: string | null
 }
 
+const EMPTY_LOCATION: IssueLocation = {
+  pageId: null,
+  pageTitleAr: null,
+  sectionId: null,
+  sectionTitleAr: null,
+  fieldId: null,
+  fieldLabelAr: null,
+}
+
+function findPageOrSectionLocation(schema: FormSchemaDocument, entityId: string): IssueLocation | null {
+  for (const page of schema.pages) {
+    if (page.id === entityId) {
+      return { ...EMPTY_LOCATION, pageId: page.id, pageTitleAr: page.titleAr }
+    }
+    const section = page.sections.find((s) => s.id === entityId)
+    if (section) {
+      return { ...EMPTY_LOCATION, pageId: page.id, pageTitleAr: page.titleAr, sectionId: section.id, sectionTitleAr: section.titleAr }
+    }
+  }
+  return null
+}
+
+function matchesIssueField(field: FormFieldSchema, issue: FormSchemaValidationIssue): boolean {
+  return field.id === issue.entityId || field.key.toLowerCase() === issue.fieldKey?.toLowerCase()
+}
+
+function findFieldLocation(schema: FormSchemaDocument, issue: FormSchemaValidationIssue): IssueLocation | null {
+  const match = flattenFields(schema).find(({ field }) => matchesIssueField(field, issue))
+  if (!match) return null
+
+  const { field, pageId, sectionId } = match
+  const page = schema.pages.find((p) => p.id === pageId)
+  const section = page?.sections.find((s) => s.id === sectionId)
+  return {
+    pageId,
+    pageTitleAr: page?.titleAr ?? null,
+    sectionId,
+    sectionTitleAr: section?.titleAr ?? null,
+    fieldId: field.id,
+    fieldLabelAr: field.labelAr,
+  }
+}
+
 export function locateIssue(schema: FormSchemaDocument, issue: FormSchemaValidationIssue): IssueLocation {
-  if (issue.entityId) {
-    for (const page of schema.pages) {
-      if (page.id === issue.entityId) {
-        return { pageId: page.id, pageTitleAr: page.titleAr, sectionId: null, sectionTitleAr: null, fieldId: null, fieldLabelAr: null }
-      }
-      for (const section of page.sections) {
-        if (section.id === issue.entityId) {
-          return { pageId: page.id, pageTitleAr: page.titleAr, sectionId: section.id, sectionTitleAr: section.titleAr, fieldId: null, fieldLabelAr: null }
-        }
-      }
-    }
-  }
-
-  for (const { field, pageId, sectionId } of flattenFields(schema)) {
-    if (field.id === issue.entityId || (issue.fieldKey && field.key.toLowerCase() === issue.fieldKey.toLowerCase())) {
-      const page = schema.pages.find((p) => p.id === pageId)
-      const section = page?.sections.find((s) => s.id === sectionId)
-      return {
-        pageId,
-        pageTitleAr: page?.titleAr ?? null,
-        sectionId,
-        sectionTitleAr: section?.titleAr ?? null,
-        fieldId: field.id,
-        fieldLabelAr: field.labelAr,
-      }
-    }
-  }
-
-  return { pageId: null, pageTitleAr: null, sectionId: null, sectionTitleAr: null, fieldId: null, fieldLabelAr: null }
+  const entityLocation = issue.entityId ? findPageOrSectionLocation(schema, issue.entityId) : null
+  return entityLocation ?? findFieldLocation(schema, issue) ?? EMPTY_LOCATION
 }
 
 const ACTION_HINTS_AR: Record<string, string> = {
@@ -58,6 +74,14 @@ const ACTION_HINTS_AR: Record<string, string> = {
 export type ClassifiedIssue = FormSchemaValidationIssue & {
   location: IssueLocation
   actionAr: string
+}
+
+/** A stable, order-independent identity for a validation issue — the server does not assign
+ * issues a dedicated id, so this composes the fields that together identify a specific issue
+ * instance (rule, path, and the element it points at) instead of falling back to array index. */
+export function validationIssueKey(issue: ClassifiedIssue): string {
+  const target = issue.location.fieldId ?? issue.location.sectionId ?? issue.location.pageId ?? 'form'
+  return `${issue.code}:${issue.path}:${target}`
 }
 
 export function classifyIssues(
@@ -152,8 +176,8 @@ export function ValidationPanel({ schema, issues, onNavigateToElement }: Readonl
         <div className="muted">لا توجد أخطاء مانعة.</div>
       ) : (
         <ul>
-          {errors.map((issue, index) => (
-            <IssueRow key={`error-${index}`} issue={issue} tone="error" onNavigateToElement={onNavigateToElement} />
+          {errors.map((issue) => (
+            <IssueRow key={validationIssueKey(issue)} issue={issue} tone="error" onNavigateToElement={onNavigateToElement} />
           ))}
         </ul>
       )}
@@ -163,8 +187,8 @@ export function ValidationPanel({ schema, issues, onNavigateToElement }: Readonl
         <div className="muted">لا توجد تحذيرات.</div>
       ) : (
         <ul>
-          {warnings.map((issue, index) => (
-            <IssueRow key={`warn-${index}`} issue={issue} tone="warn" onNavigateToElement={onNavigateToElement} />
+          {warnings.map((issue) => (
+            <IssueRow key={validationIssueKey(issue)} issue={issue} tone="warn" onNavigateToElement={onNavigateToElement} />
           ))}
         </ul>
       )}
