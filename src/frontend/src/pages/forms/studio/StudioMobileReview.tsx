@@ -8,6 +8,11 @@ function MobileReviewPageTitleField({
   onCommit,
 }: Readonly<{ pageId: string; titleAr: string; onCommit: (pageId: string, title: string) => void }>) {
   const [draft, setDraft] = useState(titleAr)
+  const [syncedTitleAr, setSyncedTitleAr] = useState(titleAr)
+  if (titleAr !== syncedTitleAr) {
+    setSyncedTitleAr(titleAr)
+    setDraft(titleAr)
+  }
   return (
     <label className="field field-wide">
       <span>عنوان الصفحة</span>
@@ -27,6 +32,11 @@ function MobileReviewFieldLabelField({
   onCommit,
 }: Readonly<{ pageId: string; fieldId: string; labelAr: string; onCommit: (pageId: string, fieldId: string, label: string) => void }>) {
   const [draft, setDraft] = useState(labelAr)
+  const [syncedLabelAr, setSyncedLabelAr] = useState(labelAr)
+  if (labelAr !== syncedLabelAr) {
+    setSyncedLabelAr(labelAr)
+    setDraft(labelAr)
+  }
   return (
     <label className="field field-wide">
       <span>عنوان الحقل</span>

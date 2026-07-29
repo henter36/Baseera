@@ -313,7 +313,7 @@ function ChoiceOptionsEditor({ field, onChange }: Readonly<{ field: FormFieldSch
     <div className="field field-wide">
       <span>الخيارات</span>
       {choice.options.map((option, index) => (
-        <div key={option.value} className="designer-row">
+        <div key={index} className="designer-row">
           <input aria-label={`نص الخيار ${index + 1}`} value={option.labelAr} onChange={(e) => updateOption(index, { labelAr: e.target.value })} />
           <input aria-label={`مفتاح الخيار ${index + 1}`} value={option.value} onChange={(e) => updateOption(index, { value: e.target.value })} />
           {keyErrors[index] && <span className="field-error">{keyErrors[index]}</span>}

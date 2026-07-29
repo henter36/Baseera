@@ -59,6 +59,15 @@ describe('ConditionBuilder', () => {
     expect(screen.getAllByRole('group', { name: 'مُنشئ الشرط' })).toHaveLength(2)
   })
 
+  it('does not lose focus while typing into a predicate value input', async () => {
+    const user = userEvent.setup()
+    render(<Harness initial={{ combinator: 0, predicates: [{ fieldKey: 'text_field', operator: 0, value: '' }], groups: [] }} />)
+    const valueInput = screen.getByLabelText('القيمة') as HTMLInputElement
+    await user.type(valueInput, 'hello')
+    expect(valueInput).toHaveValue('hello')
+    expect(valueInput).toHaveFocus()
+  })
+
   it('calls onChange(null) when removing the whole condition', async () => {
     const user = userEvent.setup()
     const spy = vi.fn()

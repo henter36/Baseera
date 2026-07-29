@@ -60,6 +60,15 @@ describe('FormulaBuilder', () => {
     expect(Array.from(fieldSelect.options).some((o) => o.value === 'total')).toBe(false)
   })
 
+  it('does not lose focus while typing into a constant-number argument', async () => {
+    const user = userEvent.setup()
+    render(<Harness initial={{ kind: 'function', function: 2, arguments: [{ kind: 'constantNumber', value: 0 }] }} />)
+    const argInput = screen.getByLabelText('القيمة الرقمية') as HTMLInputElement
+    await user.type(argInput, '123')
+    expect(argInput).toHaveValue(123)
+    expect(argInput).toHaveFocus()
+  })
+
   it('adds and removes arguments for variadic functions', async () => {
     const user = userEvent.setup()
     render(<Harness initial={{ kind: 'function', function: 2, arguments: [{ kind: 'constantNumber', value: 1 }] }} />)
